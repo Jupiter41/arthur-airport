@@ -126,6 +126,26 @@ The full stack is ready in ~60–90 seconds on first run.
 | Grafana                     | http://localhost:3001      | admin / art-grafana      |
 | Prometheus                  | http://localhost:9090      | —                        |
 
+### Default credentials
+
+All credentials are for **local development only**. Never reuse these in production.
+
+| Service         | Username | Password               | Notes                                            |
+| --------------- | -------- | ---------------------- | ------------------------------------------------ |
+| Neo4j           | `neo4j`  | `art-digital-twin`     | Browser at `:7474`, Bolt at `:7687`              |
+| Grafana         | `admin`  | `art-grafana`          | Web UI at `:3001`                                |
+| API Gateway JWT | —        | `art-digital-twin-dev` | `JWT_SECRET` env var; used to sign/verify tokens |
+| Kafka UI        | —        | —                      | No auth (dev mode)                               |
+| Prometheus      | —        | —                      | No auth (dev mode)                               |
+
+To obtain a JWT token for the API gateway:
+
+```bash
+curl -s -X POST http://localhost:3000/auth/token \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"dashboard","secret":"art-dev-secret"}' | jq -r .token
+```
+
 ### Useful commands
 
 ```bash

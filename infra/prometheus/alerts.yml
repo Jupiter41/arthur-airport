@@ -1,0 +1,81 @@
+# alerts.yml
+groups:
+  - name: simulation
+    rules:
+      - alert: SimulationPaused
+        expr: sim_paused == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Simulation has been paused for > 2 minutes"
+
+      - alert: SimTickLatencyHigh
+        expr: histogram_quantile(0.99, sim_tick_latency_ms_bucket) > 500
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Simulation tick p99 latency > 500ms — sim may be lagging"
+
+  - name: incidents
+    rules:
+      - alert: CriticalIncidentActive
+        expr: incidents_active{severity="critical"} > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical incident active at KART"
+
+      - alert: DeepCascadeActive
+        expr: cascade_depth_max >= 4
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cascade depth >= 4 — monitor all systems"
+
+  - name: operations
+    rules:
+      - alert: RunwayCapacityDegraded
+        expr: runway_arrival_rate < 20
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Runway arrival rate below 20/hr — weather impact"
+
+      - alert: HoldingStackDeep
+        expr: holding_stack_depth > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Holding stack > 5 aircraft for > 2 minutes"
+
+      - alert: SecurityQueueLong
+        expr: security_wait_minutes > 25
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Security wait > 25 min in terminal {{ $labels.terminal }}"
+
+      - alert: ConveyorZoneOffline
+        expr: conveyor_zone_status == 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Conveyor zone {{ $labels.zone_id }} offline"
+
+  - name: gateway
+    rules:
+      - alert: UpstreamServiceDown
+        expr: gateway_upstream_errors_total > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Upstream service {{ $labels.service }} returning errors"

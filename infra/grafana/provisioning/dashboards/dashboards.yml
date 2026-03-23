@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: 'Arthur Airport'
+    orgId: 1
+    folder: 'Arthur Airport'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

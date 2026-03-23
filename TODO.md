@@ -21,15 +21,15 @@ No domain code yet — just the plumbing.
 
 ### Tasks
 
-- [ ] Write `docker-compose.yml` from `docs/infra/DOCKER.md §2`
-- [ ] Write `infra/prometheus/prometheus.yml` from `docs/infra/MONITORING.md §2`
-- [ ] Write `infra/prometheus/alerts.yml` from `docs/infra/MONITORING.md §4`
-- [ ] Write `infra/grafana/provisioning/datasources/prometheus.yml`
-- [ ] Write `infra/grafana/provisioning/dashboards/dashboards.yml`
-- [ ] Write minimal Python service scaffold (main.py + /health + /ready + /metrics + Dockerfile)
-- [ ] Copy scaffold to all 6 Python service directories
-- [ ] Write Node.js gateway scaffold (Express + /health + /ready + Dockerfile)
-- [ ] Write React dashboard scaffold (Vite + Tailwind + Dockerfile)
+- [x] Write `docker-compose.yml` from `docs/infra/DOCKER.md §2`
+- [x] Write `infra/prometheus/prometheus.yml` from `docs/infra/MONITORING.md §2`
+- [x] Write `infra/prometheus/alerts.yml` from `docs/infra/MONITORING.md §4`
+- [x] Write `infra/grafana/provisioning/datasources/prometheus.yml`
+- [x] Write `infra/grafana/provisioning/dashboards/dashboards.yml`
+- [x] Write minimal Python service scaffold (main.py + /health + /ready + /metrics + Dockerfile)
+- [x] Copy scaffold to all 6 Python service directories
+- [x] Write Node.js gateway scaffold (Express + /health + /ready + Dockerfile)
+- [x] Write React dashboard scaffold (Vite + Tailwind + Dockerfile)
 
 ### Desired output
 

@@ -1,0 +1,44 @@
+# prometheus.yml
+global:
+  scrape_interval:     5s
+  evaluation_interval: 5s
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  - job_name: flight-service
+    static_configs:
+      - targets: ['flight-service:8001']
+
+  - job_name: passenger-service
+    static_configs:
+      - targets: ['passenger-service:8002']
+
+  - job_name: baggage-service
+    static_configs:
+      - targets: ['baggage-service:8003']
+
+  - job_name: weather-service
+    static_configs:
+      - targets: ['weather-service:8004']
+
+  - job_name: incident-service
+    static_configs:
+      - targets: ['incident-service:8005']
+
+  - job_name: sim-orchestrator
+    static_configs:
+      - targets: ['sim-orchestrator:8006']
+
+  - job_name: api-gateway
+    static_configs:
+      - targets: ['api-gateway:3000']
+
+  - job_name: kafka
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+
+  - job_name: neo4j
+    static_configs:
+      - targets: ['neo4j:2004']

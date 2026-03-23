@@ -1,0 +1,27 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Placeholder — Sprint 9",
+      "type": "text",
+      "options": {
+        "content": "Dashboard panels will be added in Sprint 9.",
+        "mode": "markdown"
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["arthur-airport"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Simulation Overview",
+  "uid": "art-sim-overview"
+}
