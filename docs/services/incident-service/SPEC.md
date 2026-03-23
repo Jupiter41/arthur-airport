@@ -29,12 +29,14 @@ A vehicle, aircraft, or person enters an active runway without clearance.
 **Severity range:** high → critical  
 **Trigger:** probabilistic (0.005/hr, ×2.0 during IMC/LIFR) or manual  
 **Immediate effects:**
+
 - Affected runway status → `incident`
 - All flights using that runway: `FlightStatusChanged` → `delayed` (go-around / hold)
 - If aircraft on approach: go-around instruction emitted
 - Protocol: `RUNWAY_STOP` → ATC broadcasts stop command to all ground traffic
 
 **Cascade chain:**
+
 ```
 runway_incursion
     └── runway_closure_holding_stack    (depth 1: arrivals enter holding)
@@ -54,12 +56,14 @@ A fire or DG hazard is detected in the baggage handling area.
 **Severity range:** medium → high  
 **Trigger:** probabilistic (0.008/hr, ×1.5 during high throughput) or manual  
 **Immediate effects:**
+
 - Affected make-up zone offline: throughput → 0
 - All baggage in zone: status → `flagged`
 - Nearby flights potentially delayed (baggage not loaded)
 - Protocol: `BAGGAGE_HOLD` → affected zone evacuated, ARFF notified
 
 **Cascade chain:**
+
 ```
 baggage_fire
     └── make_up_zone_offline             (depth 1: zone throughput = 0)
@@ -77,6 +81,7 @@ An unauthorized individual or object enters a restricted zone.
 **Severity range:** medium → critical  
 **Trigger:** probabilistic (0.010/hr) or manual  
 **Immediate effects:**
+
 - Affected zone status → locked
 - All passengers in zone: `PassengerAlert` (zone_lockdown)
 - Security lanes in terminal: closed
@@ -86,6 +91,7 @@ An unauthorized individual or object enters a restricted zone.
   - critical: `FULL_EVACUATION` (all terminals)
 
 **Cascade chain:**
+
 ```
 security_breach
     └── zone_lockdown                    (depth 1: zone closed)
@@ -103,14 +109,17 @@ security_breach
 Driven by the weather FSM rather than independent probability. An `IncidentCreated` of type `severe_weather` is automatically created when weather transitions to `IMC` or `LIFR`.
 
 **Severity:**
+
 - IMC → `medium`
 - LIFR → `critical`
 
 **Immediate effects:**
+
 - Runway capacity reduced (handled by flight-service on `WeatherStateChanged`)
 - This incident provides the unified alert/cascade view in the dashboard
 
 **Cascade chain:**
+
 ```
 severe_weather
     └── runway_capacity_reduction        (depth 1: arrival/departure rate drops)
@@ -130,11 +139,13 @@ Infrastructure failure: conveyor jam, power outage, IT system down.
 **Severity range:** low → high  
 **Trigger:** probabilistic (0.015/hr, ×1.5 during high throughput) or manual  
 **Subtypes:**
+
 - `conveyor_jam` — baggage sorting halted
 - `power_outage` — terminal power lost (gates, conveyors, displays)
 - `it_failure` — check-in systems or FIDS offline
 
 **Cascade chain (conveyor_jam example):**
+
 ```
 system_failure (conveyor_jam)
     └── baggage_throughput_reduction     (depth 1: sorting offline)
@@ -143,6 +154,31 @@ system_failure (conveyor_jam)
 ```
 
 **TTR:** 10–120 simulated minutes (wide range — minor jam vs full power outage)
+
+#### security_congestion subtype
+
+Triggered automatically when `passenger-service` emits `SecurityCongestionDetected` (wait > 20
+sim-min for 5 consecutive ticks in a terminal). Not triggered probabilistically — only by the
+passenger flow model.
+
+**Severity:** `medium` (wait 20–30 min) → `high` (wait > 30 min)
+
+**Immediate effects:**
+
+- Throughput penalty deepens (slowdown_factor further reduced by 0.15)
+- `PassengerAlert` issued to all pax in that terminal's security queue
+- Affected terminal flagged on the passenger flow heatmap (orange zone)
+
+**Cascade chain:**
+
+```
+system_failure (security_congestion, terminal-B)
+    └── boarding_delayed                 (depth 1: gate boarding delayed for terminal-B flights)
+            └── flight_departure_delay   (depth 2: departures from terminal-B delayed)
+```
+
+**TTR:** Auto-resolved when `security_wait_minutes` drops below 15 for 3 consecutive sim-minutes.
+No manual resolution required — the congestion clears itself as flights depart and queue drains.
 
 ---
 
@@ -178,14 +214,14 @@ The incident service maintains a full cascade tree in Neo4j via `SPAWNED` relati
 
 ## 4. Emergency protocols
 
-| Protocol code | Trigger | Actions |
-|---|---|---|
-| `RUNWAY_STOP` | Runway incursion (any severity) | All ground traffic stop; approach aircraft go-around |
-| `BAGGAGE_HOLD` | Baggage fire | ARFF dispatch; make-up zone evacuated |
-| `ZONE_LOCKDOWN` | Security breach (medium) | Pier sealed; security re-screening |
-| `TERMINAL_LOCKDOWN` | Security breach (high) | Terminal closed; all boarding suspended |
-| `FULL_EVACUATION` | Security breach (critical) | All terminals; emergency services |
-| `LOW_VIS_PROCEDURES` | Severe weather (IMC/LIFR) | CAT II/III ILS; reduced taxi speed |
+| Protocol code        | Trigger                         | Actions                                              |
+| -------------------- | ------------------------------- | ---------------------------------------------------- |
+| `RUNWAY_STOP`        | Runway incursion (any severity) | All ground traffic stop; approach aircraft go-around |
+| `BAGGAGE_HOLD`       | Baggage fire                    | ARFF dispatch; make-up zone evacuated                |
+| `ZONE_LOCKDOWN`      | Security breach (medium)        | Pier sealed; security re-screening                   |
+| `TERMINAL_LOCKDOWN`  | Security breach (high)          | Terminal closed; all boarding suspended              |
+| `FULL_EVACUATION`    | Security breach (critical)      | All terminals; emergency services                    |
+| `LOW_VIS_PROCEDURES` | Severe weather (IMC/LIFR)       | CAT II/III ILS; reduced taxi speed                   |
 
 Protocol activation emits a `IncidentAlert` with `sound_alert: true` and `severity: critical` regardless of the incident's own severity field.
 
@@ -195,21 +231,22 @@ Protocol activation emits a `IncidentAlert` with `sound_alert: true` and `severi
 
 ### Consumed topics
 
-| Topic | Event type | Action |
-|---|---|---|
-| `sim.clock` | `SimClockTick` | Evaluate probabilistic event firing; advance TTR timers |
-| `incidents.inject` | `InjectIncident` | Create manual incident |
-| `weather.events` | `WeatherStateChanged` | Auto-create severe_weather incident on IMC/LIFR |
-| `baggage.events` | `BaggageFlagged` (DG class 3) | Probabilistically trigger baggage_fire |
+| Topic               | Event type                    | Action                                                  |
+| ------------------- | ----------------------------- | ------------------------------------------------------- |
+| `sim.clock`         | `SimClockTick`                | Evaluate probabilistic event firing; advance TTR timers |
+| `incidents.inject`  | `InjectIncident`              | Create manual incident                                  |
+| `weather.events`    | `WeatherStateChanged`         | Auto-create severe_weather incident on IMC/LIFR         |
+| `baggage.events`    | `BaggageFlagged` (DG class 3) | Probabilistically trigger baggage_fire                  |
+| `passengers.events` | `SecurityCongestionDetected`  | Create security_congestion system_failure incident      |
 
 ### Produced topics
 
-| Topic | Event type | Trigger |
-|---|---|---|
-| `incidents.events` | `IncidentCreated` | New incident |
-| `incidents.events` | `IncidentStatusChanged` | Status change |
-| `incidents.events` | `IncidentCascaded` | Cascade child created |
-| `incidents.alerts` | `IncidentAlert` | Every new incident + every status change |
+| Topic              | Event type              | Trigger                                  |
+| ------------------ | ----------------------- | ---------------------------------------- |
+| `incidents.events` | `IncidentCreated`       | New incident                             |
+| `incidents.events` | `IncidentStatusChanged` | Status change                            |
+| `incidents.events` | `IncidentCascaded`      | Cascade child created                    |
+| `incidents.alerts` | `IncidentAlert`         | Every new incident + every status change |
 
 ---
 
@@ -218,20 +255,22 @@ Protocol activation emits a `IncidentAlert` with `sound_alert: true` and `severi
 Base path: `/api/v1`
 
 #### `GET /incidents`
+
 All incidents (active, contained, resolved).
 
 Query parameters:
 
-| Parameter | Type | Description |
-|---|---|---|
-| `status` | string | `active`, `contained`, `resolved`, `escalated` |
-| `type` | string | Incident type filter |
-| `severity` | string | `low`, `medium`, `high`, `critical` |
-| `from` | datetime | sim time range start |
-| `to` | datetime | |
-| `limit` | integer | default 20, max 100 |
+| Parameter  | Type     | Description                                    |
+| ---------- | -------- | ---------------------------------------------- |
+| `status`   | string   | `active`, `contained`, `resolved`, `escalated` |
+| `type`     | string   | Incident type filter                           |
+| `severity` | string   | `low`, `medium`, `high`, `critical`            |
+| `from`     | datetime | sim time range start                           |
+| `to`       | datetime |                                                |
+| `limit`    | integer  | default 20, max 100                            |
 
 Response `200`:
+
 ```json
 {
   "total": 3,
@@ -257,9 +296,11 @@ Response `200`:
 ---
 
 #### `GET /incidents/{incident_id}`
+
 Full incident detail with cascade tree.
 
 Response `200`:
+
 ```json
 {
   "id": "uuid",
@@ -298,9 +339,21 @@ Response `200`:
     { "flight_number": "BK201", "impact": "holding", "delay_minutes": 18 }
   ],
   "timeline": [
-    { "status": "active",     "note": "Incident created",         "at": "2024-06-15T14:30:00Z" },
-    { "status": "active",     "note": "RUNWAY_STOP protocol sent","at": "2024-06-15T14:30:05Z" },
-    { "status": "active",     "note": "Holding stack: 7 aircraft","at": "2024-06-15T14:31:00Z" }
+    {
+      "status": "active",
+      "note": "Incident created",
+      "at": "2024-06-15T14:30:00Z"
+    },
+    {
+      "status": "active",
+      "note": "RUNWAY_STOP protocol sent",
+      "at": "2024-06-15T14:30:05Z"
+    },
+    {
+      "status": "active",
+      "note": "Holding stack: 7 aircraft",
+      "at": "2024-06-15T14:31:00Z"
+    }
   ]
 }
 ```
@@ -308,9 +361,11 @@ Response `200`:
 ---
 
 #### `POST /incidents/inject`
+
 Manually inject a hazardous event (also available via the dashboard UI).
 
 Request body:
+
 ```json
 {
   "type": "security_breach",
@@ -325,9 +380,11 @@ Response `201`: created incident object.
 ---
 
 #### `POST /incidents/{incident_id}/contain`
+
 Manually mark incident as contained (investigation ongoing, immediate hazard neutralised).
 
 Request body:
+
 ```json
 { "note": "Vehicle removed from runway. Inspection underway." }
 ```
@@ -335,9 +392,11 @@ Request body:
 ---
 
 #### `POST /incidents/{incident_id}/resolve`
+
 Manually resolve an incident.
 
 Request body:
+
 ```json
 { "note": "Runway cleared and inspected. Normal operations resumed." }
 ```
@@ -345,9 +404,11 @@ Request body:
 ---
 
 #### `GET /incidents/{incident_id}/report`
+
 Returns the auto-generated incident report.
 
 Response `200`:
+
 ```json
 {
   "incident_id": "uuid",
@@ -371,9 +432,11 @@ Response `200`:
 ---
 
 #### `GET /alerts`
+
 Current active alerts for the dashboard notification panel.
 
 Response `200`:
+
 ```json
 {
   "alerts": [
@@ -397,25 +460,26 @@ Response `200`:
 ### WebSocket
 
 #### `WS /ws/incidents`
+
 Streams all incident events in real time. Always receives `IncidentAlert` payloads without requiring a filter.
 
 ---
 
 ## 7. Configuration
 
-| Env variable | Default | Description |
-|---|---|---|
-| `NEO4J_URI` | `bolt://neo4j:7687` | |
-| `NEO4J_USER` | `neo4j` | |
-| `NEO4J_PASSWORD` | `art-digital-twin` | |
-| `KAFKA_BROKERS` | `kafka:9092` | |
-| `CASCADE_MAX_DEPTH` | `5` | Maximum cascade tree depth |
-| `PROB_RUNWAY_INCURSION_PER_HR` | `0.005` | Base probability |
-| `PROB_BAGGAGE_FIRE_PER_HR` | `0.008` | Base probability |
-| `PROB_SECURITY_BREACH_PER_HR` | `0.010` | Base probability |
-| `PROB_SYSTEM_FAILURE_PER_HR` | `0.015` | Base probability |
-| `INCIDENT_SUPPRESSION_WINDOW_HRS` | `2` | Post-incident suppression window |
-| `LOG_LEVEL` | `INFO` | |
+| Env variable                      | Default             | Description                      |
+| --------------------------------- | ------------------- | -------------------------------- |
+| `NEO4J_URI`                       | `bolt://neo4j:7687` |                                  |
+| `NEO4J_USER`                      | `neo4j`             |                                  |
+| `NEO4J_PASSWORD`                  | `art-digital-twin`  |                                  |
+| `KAFKA_BROKERS`                   | `kafka:9092`        |                                  |
+| `CASCADE_MAX_DEPTH`               | `5`                 | Maximum cascade tree depth       |
+| `PROB_RUNWAY_INCURSION_PER_HR`    | `0.005`             | Base probability                 |
+| `PROB_BAGGAGE_FIRE_PER_HR`        | `0.008`             | Base probability                 |
+| `PROB_SECURITY_BREACH_PER_HR`     | `0.010`             | Base probability                 |
+| `PROB_SYSTEM_FAILURE_PER_HR`      | `0.015`             | Base probability                 |
+| `INCIDENT_SUPPRESSION_WINDOW_HRS` | `2`                 | Post-incident suppression window |
+| `LOG_LEVEL`                       | `INFO`              |                                  |
 
 ---
 
@@ -423,20 +487,20 @@ Streams all incident events in real time. Always receives `IncidentAlert` payloa
 
 ### Endpoints
 
-| Endpoint | Description |
-|---|---|
-| `GET /health` | Liveness |
-| `GET /ready` | Readiness |
-| `GET /metrics` | Prometheus |
+| Endpoint       | Description |
+| -------------- | ----------- |
+| `GET /health`  | Liveness    |
+| `GET /ready`   | Readiness   |
+| `GET /metrics` | Prometheus  |
 
 ### Key Prometheus metrics
 
-| Metric | Type | Description |
-|---|---|---|
-| `incidents_active_total` | Gauge | Active incidents by type |
-| `incidents_created_total` | Counter | All incidents created, labelled by type, severity, trigger |
-| `incident_ttr_minutes` | Histogram | Time-to-resolve distribution |
-| `cascade_events_total` | Counter | Child incidents spawned |
-| `cascade_depth_max` | Gauge | Deepest cascade in last 24 sim-hours |
-| `protocols_activated_total` | Counter | Emergency protocols by code |
-| `flights_impacted_by_incidents_total` | Counter | Flights affected by incidents |
+| Metric                                | Type      | Description                                                |
+| ------------------------------------- | --------- | ---------------------------------------------------------- |
+| `incidents_active_total`              | Gauge     | Active incidents by type                                   |
+| `incidents_created_total`             | Counter   | All incidents created, labelled by type, severity, trigger |
+| `incident_ttr_minutes`                | Histogram | Time-to-resolve distribution                               |
+| `cascade_events_total`                | Counter   | Child incidents spawned                                    |
+| `cascade_depth_max`                   | Gauge     | Deepest cascade in last 24 sim-hours                       |
+| `protocols_activated_total`           | Counter   | Emergency protocols by code                                |
+| `flights_impacted_by_incidents_total` | Counter   | Flights affected by incidents                              |

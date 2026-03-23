@@ -18,32 +18,32 @@
 
 ## 2. Topic catalogue
 
-| Topic | Producer | Consumers | Retention |
-|---|---|---|---|
-| `sim.clock` | sim-orchestrator | all services | 1h |
-| `flights.events` | flight-service | passenger-service, baggage-service, incident-service, api-gateway | 7 days |
-| `flights.schedule` | sim-orchestrator | flight-service | 7 days |
-| `passengers.events` | passenger-service | api-gateway | 7 days |
-| `baggage.events` | baggage-service | api-gateway | 7 days |
-| `weather.events` | weather-service | flight-service, incident-service, api-gateway | 7 days |
-| `incidents.events` | incident-service | flight-service, passenger-service, baggage-service, api-gateway | 30 days |
-| `incidents.alerts` | incident-service | api-gateway | 30 days |
-| `incidents.inject` | api-gateway (manual trigger) | incident-service | 1h |
+| Topic               | Producer                     | Consumers                                                         | Retention |
+| ------------------- | ---------------------------- | ----------------------------------------------------------------- | --------- |
+| `sim.clock`         | sim-orchestrator             | all services                                                      | 1h        |
+| `flights.events`    | flight-service               | passenger-service, baggage-service, incident-service, api-gateway | 7 days    |
+| `flights.schedule`  | sim-orchestrator             | flight-service                                                    | 7 days    |
+| `passengers.events` | passenger-service            | `incident-svc`, `gateway`                                         | 7 days    |
+| `baggage.events`    | baggage-service              | api-gateway                                                       | 7 days    |
+| `weather.events`    | weather-service              | flight-service, incident-service, api-gateway                     | 7 days    |
+| `incidents.events`  | incident-service             | flight-service, passenger-service, baggage-service, api-gateway   | 30 days   |
+| `incidents.alerts`  | incident-service             | api-gateway                                                       | 30 days   |
+| `incidents.inject`  | api-gateway (manual trigger) | incident-service                                                  | 1h        |
 
 ---
 
 ## 3. Partition and consumer group strategy
 
-| Topic | Partitions | Key | Consumer groups |
-|---|---|---|---|
-| `sim.clock` | 1 | — | all services (broadcast) |
-| `flights.events` | 6 | `flight_id` | `pax-svc`, `bag-svc`, `inc-svc`, `gateway` |
-| `passengers.events` | 6 | `passenger_id` | `gateway` |
-| `baggage.events` | 6 | `baggage_tag` | `gateway` |
-| `weather.events` | 1 | — | `flight-svc`, `inc-svc`, `gateway` |
-| `incidents.events` | 3 | `incident_id` | `flight-svc`, `pax-svc`, `bag-svc`, `gateway` |
-| `incidents.alerts` | 3 | `incident_id` | `gateway` |
-| `incidents.inject` | 1 | — | `inc-svc` |
+| Topic               | Partitions | Key            | Consumer groups                               |
+| ------------------- | ---------- | -------------- | --------------------------------------------- |
+| `sim.clock`         | 1          | —              | all services (broadcast)                      |
+| `flights.events`    | 6          | `flight_id`    | `pax-svc`, `bag-svc`, `inc-svc`, `gateway`    |
+| `passengers.events` | 6          | `passenger_id` | `gateway`                                     |
+| `baggage.events`    | 6          | `baggage_tag`  | `gateway`                                     |
+| `weather.events`    | 1          | —              | `flight-svc`, `inc-svc`, `gateway`            |
+| `incidents.events`  | 3          | `incident_id`  | `flight-svc`, `pax-svc`, `bag-svc`, `gateway` |
+| `incidents.alerts`  | 3          | `incident_id`  | `gateway`                                     |
+| `incidents.inject`  | 1          | —              | `inc-svc`                                     |
 
 ---
 
@@ -87,6 +87,7 @@ Emitted every simulated minute. All services use this to advance their internal 
 ### 4.2 `flights.events`
 
 #### `FlightStatusChanged`
+
 Emitted whenever a flight transitions between states.
 
 ```json
@@ -107,6 +108,7 @@ Emitted whenever a flight transitions between states.
 ```
 
 #### `FlightGateAssigned`
+
 ```json
 {
   "event_type": "FlightGateAssigned",
@@ -122,6 +124,7 @@ Emitted whenever a flight transitions between states.
 ```
 
 #### `FlightRunwayAssigned`
+
 ```json
 {
   "event_type": "FlightRunwayAssigned",
@@ -136,6 +139,7 @@ Emitted whenever a flight transitions between states.
 ```
 
 #### `FlightCancelled`
+
 ```json
 {
   "event_type": "FlightCancelled",
@@ -154,6 +158,7 @@ Emitted whenever a flight transitions between states.
 ### 4.3 `passengers.events`
 
 #### `PassengerStatusChanged`
+
 ```json
 {
   "event_type": "PassengerStatusChanged",
@@ -170,6 +175,7 @@ Emitted whenever a flight transitions between states.
 ```
 
 #### `PassengerAlert`
+
 ```json
 {
   "event_type": "PassengerAlert",
@@ -184,11 +190,30 @@ Emitted whenever a flight transitions between states.
 }
 ```
 
+#### `SecurityCongestionDetected`
+
+```json
+{
+  "event_type": "SecurityCongestionDetected",
+  "payload": {
+    "terminal": "B",
+    "queue_depth": 103,
+    "wait_minutes": 34,
+    "consecutive_ticks_over_threshold": 6,
+    "effective_throughput_pax_per_hr": 312,
+    "slowdown_factor": 0.58,
+    "forecast_queue_depth": 67,
+    "at": "2024-06-15T14:43:00Z"
+  }
+}
+```
+
 ---
 
 ### 4.4 `baggage.events`
 
 #### `BaggageStatusChanged`
+
 ```json
 {
   "event_type": "BaggageStatusChanged",
@@ -206,6 +231,7 @@ Emitted whenever a flight transitions between states.
 ```
 
 #### `BaggageFlagged`
+
 ```json
 {
   "event_type": "BaggageFlagged",
@@ -227,6 +253,7 @@ Emitted whenever a flight transitions between states.
 ### 4.5 `weather.events`
 
 #### `WeatherStateChanged`
+
 ```json
 {
   "event_type": "WeatherStateChanged",
@@ -250,7 +277,9 @@ Emitted whenever a flight transitions between states.
 ```
 
 #### `METARIssued`
+
 Full METAR string for developer / dashboard display.
+
 ```json
 {
   "event_type": "METARIssued",
@@ -266,6 +295,7 @@ Full METAR string for developer / dashboard display.
 ### 4.6 `incidents.events`
 
 #### `IncidentCreated`
+
 ```json
 {
   "event_type": "IncidentCreated",
@@ -285,6 +315,7 @@ Full METAR string for developer / dashboard display.
 ```
 
 #### `IncidentStatusChanged`
+
 ```json
 {
   "event_type": "IncidentStatusChanged",
@@ -299,7 +330,9 @@ Full METAR string for developer / dashboard display.
 ```
 
 #### `IncidentCascaded`
+
 Emitted when an incident spawns a child incident/effect.
+
 ```json
 {
   "event_type": "IncidentCascaded",
@@ -319,7 +352,9 @@ Emitted when an incident spawns a child incident/effect.
 ### 4.7 `incidents.alerts`
 
 #### `IncidentAlert`
+
 Pushed to dashboards as real-time notifications.
+
 ```json
 {
   "event_type": "IncidentAlert",

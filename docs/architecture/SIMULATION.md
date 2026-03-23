@@ -29,12 +29,12 @@ real elapsed time × speed_multiplier = sim elapsed time
 ```
 
 | Speed preset | Multiplier | 1 real second = |
-|---|---|---|
-| Real time | 1× | 1 sim second |
-| Fast | 10× | 10 sim seconds |
-| Default | 60× | 1 sim minute |
-| Compressed | 600× | 10 sim minutes |
-| Fast-forward | 3600× | 1 sim hour |
+| ------------ | ---------- | --------------- |
+| Real time    | 1×         | 1 sim second    |
+| Fast         | 10×        | 10 sim seconds  |
+| Default      | 60×        | 1 sim minute    |
+| Compressed   | 600×       | 10 sim minutes  |
+| Fast-forward | 3600×      | 1 sim hour      |
 
 Speed is configurable at runtime via the orchestrator API (`PATCH /sim/speed`).
 
@@ -54,13 +54,13 @@ On startup (and each day boundary), the orchestrator generates a full day's flig
 
 ### Daily volume targets
 
-| Metric | Target |
-|---|---|
-| Total movements | 420 (210 arrivals + 210 departures) |
+| Metric              | Target                                     |
+| ------------------- | ------------------------------------------ |
+| Total movements     | 420 (210 arrivals + 210 departures)        |
 | Peak hour movements | ~38 (07:00–09:00 and 17:00–19:00 sim time) |
-| Off-peak movements | ~8–12/hour |
-| Airlines | 12 fictional carriers |
-| Aircraft types | B738, A320, A321, B77W, A333, E195, DH8D |
+| Off-peak movements  | ~8–12/hour                                 |
+| Airlines            | 12 fictional carriers                      |
+| Aircraft types      | B738, A320, A321, B77W, A333, E195, DH8D   |
 
 ### Schedule generation algorithm
 
@@ -83,6 +83,7 @@ On startup (and each day boundary), the orchestrator generates a full day's flig
 For each flight, generate `round(seat_capacity × load_factor)` passengers where `load_factor ~ Beta(8, 2)` (mean ~80%).
 
 Each passenger record includes:
+
 - Generated name (from a pool of 2,000 first names × 2,000 surnames)
 - PNR (6-character alphanumeric, unique)
 - Nationality (weighted by destination)
@@ -93,6 +94,7 @@ Each passenger record includes:
 ### Baggage generation
 
 For each passenger with bags, generate baggage records with:
+
 - Weight sampled from `Normal(18kg, 4kg)`, clamped to [2, 32]
 - Dangerous goods flag: 0.002 probability (realistic DG rate)
 - If DG: assign a random IATA DG class (2, 3, 8, or 9)
@@ -105,23 +107,23 @@ The weather service manages a finite state machine with four states representing
 
 ### States
 
-| State | Visibility | Ceiling | Description |
-|---|---|---|---|
-| `CAVOK` | > 10 km | none | Clear skies, no significant cloud |
-| `VMC` | 5–10 km | > 1500 ft | Visual meteorological conditions |
-| `IMC` | 1.5–5 km | 500–1500 ft | Instrument conditions, reduced capacity |
-| `LIFR` | < 1.5 km | < 500 ft | Low IFR, severe restrictions |
+| State   | Visibility | Ceiling     | Description                             |
+| ------- | ---------- | ----------- | --------------------------------------- |
+| `CAVOK` | > 10 km    | none        | Clear skies, no significant cloud       |
+| `VMC`   | 5–10 km    | > 1500 ft   | Visual meteorological conditions        |
+| `IMC`   | 1.5–5 km   | 500–1500 ft | Instrument conditions, reduced capacity |
+| `LIFR`  | < 1.5 km   | < 500 ft    | Low IFR, severe restrictions            |
 
 ### Transition matrix
 
 Transition probabilities per simulated hour:
 
-| From \ To | CAVOK | VMC | IMC | LIFR |
-|---|---|---|---|---|
-| `CAVOK` | 0.85 | 0.13 | 0.02 | 0.00 |
-| `VMC` | 0.20 | 0.65 | 0.14 | 0.01 |
-| `IMC` | 0.05 | 0.30 | 0.55 | 0.10 |
-| `LIFR` | 0.00 | 0.05 | 0.35 | 0.60 |
+| From \ To | CAVOK | VMC  | IMC  | LIFR |
+| --------- | ----- | ---- | ---- | ---- |
+| `CAVOK`   | 0.85  | 0.13 | 0.02 | 0.00 |
+| `VMC`     | 0.20  | 0.65 | 0.14 | 0.01 |
+| `IMC`     | 0.05  | 0.30 | 0.55 | 0.10 |
+| `LIFR`    | 0.00  | 0.05 | 0.35 | 0.60 |
 
 Transitions are sampled on each simulated hour tick. Transitions from `LIFR` back to `VMC` or `CAVOK` in a single step are not permitted — weather improves gradually.
 
@@ -157,12 +159,12 @@ def sample_weather(state: WeatherCategory) -> WeatherParams:
 
 ### Runway capacity impact
 
-| Weather state | Max arrival rate (movements/hour) | Max departure rate | Runway config |
-|---|---|---|---|
-| `CAVOK` | 32 | 32 | both runways |
-| `VMC` | 28 | 28 | both runways |
-| `IMC` | 18 | 16 | single ILS runway |
-| `LIFR` | 8 | 6 | single ILS runway, CAT III only |
+| Weather state | Max arrival rate (movements/hour) | Max departure rate | Runway config                   |
+| ------------- | --------------------------------- | ------------------ | ------------------------------- |
+| `CAVOK`       | 32                                | 32                 | both runways                    |
+| `VMC`         | 28                                | 28                 | both runways                    |
+| `IMC`         | 18                                | 16                 | single ILS runway               |
+| `LIFR`        | 8                                 | 6                  | single ILS runway, CAT III only |
 
 When capacity drops, the flight service receives the `WeatherStateChanged` event and begins delaying departures to respect the new rate limit. Arrivals are held in a simulated holding stack.
 
@@ -212,24 +214,24 @@ Flight delayed / cancelled
 
 Probabilities are expressed per simulated hour of operation.
 
-| Event type | Base probability/hour | Severity range | Runway impact |
-|---|---|---|---|
-| `runway_incursion` | 0.005 | high–critical | immediate closure |
-| `baggage_fire` | 0.008 | medium–high | none |
-| `security_breach` | 0.010 | medium–critical | terminal zone lockdown |
-| `severe_weather` | driven by weather FSM | — | per weather state |
-| `system_failure` | 0.015 | low–high | depends on system |
+| Event type         | Base probability/hour | Severity range  | Runway impact          |
+| ------------------ | --------------------- | --------------- | ---------------------- |
+| `runway_incursion` | 0.005                 | high–critical   | immediate closure      |
+| `baggage_fire`     | 0.008                 | medium–high     | none                   |
+| `security_breach`  | 0.010                 | medium–critical | terminal zone lockdown |
+| `severe_weather`   | driven by weather FSM | —               | per weather state      |
+| `system_failure`   | 0.015                 | low–high        | depends on system      |
 
 ### Probability modifiers
 
 Base probabilities are multiplied by situational modifiers:
 
-| Condition | Modifier |
-|---|---|
-| Peak hour (07:00–09:00, 17:00–19:00) | × 1.8 |
-| IMC or LIFR weather | × 2.0 (runway incursion) |
-| High baggage throughput (> 80% capacity) | × 1.5 (baggage fire, system failure) |
-| Recent incident within 2 sim-hours | × 0.3 (suppression — avoid event flood) |
+| Condition                                | Modifier                                |
+| ---------------------------------------- | --------------------------------------- |
+| Peak hour (07:00–09:00, 17:00–19:00)     | × 1.8                                   |
+| IMC or LIFR weather                      | × 2.0 (runway incursion)                |
+| High baggage throughput (> 80% capacity) | × 1.5 (baggage fire, system failure)    |
+| Recent incident within 2 sim-hours       | × 0.3 (suppression — avoid event flood) |
 
 ### Manual injection
 
@@ -269,16 +271,16 @@ Created (active)
 
 ## 7. Orchestrator API
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/sim/status` | Current sim time, speed, day number, active incidents |
-| PATCH | `/sim/speed` | Change simulation speed multiplier |
-| POST | `/sim/reset` | Reset to day 1, reseed all data |
-| POST | `/sim/pause` | Pause the simulation clock |
-| POST | `/sim/resume` | Resume after pause |
-| POST | `/sim/inject` | Manually inject a hazardous event |
-| GET | `/sim/schedule` | Current day's flight schedule |
-| GET | `/sim/metrics` | Simulation health metrics |
+| Method | Endpoint        | Description                                           |
+| ------ | --------------- | ----------------------------------------------------- |
+| GET    | `/sim/status`   | Current sim time, speed, day number, active incidents |
+| PATCH  | `/sim/speed`    | Change simulation speed multiplier                    |
+| POST   | `/sim/reset`    | Reset to day 1, reseed all data                       |
+| POST   | `/sim/pause`    | Pause the simulation clock                            |
+| POST   | `/sim/resume`   | Resume after pause                                    |
+| POST   | `/sim/inject`   | Manually inject a hazardous event                     |
+| GET    | `/sim/schedule` | Current day's flight schedule                         |
+| GET    | `/sim/metrics`  | Simulation health metrics                             |
 
 ---
 
@@ -294,5 +296,43 @@ fixtures/
 ├── first_names.json       # 2,000 first names (multinational)
 ├── surnames.json          # 2,000 surnames (multinational)
 ├── nationalities.json     # nationality distribution weights
-└── dg_classes.json        # dangerous goods class definitions
+├── dg_classes.json        # dangerous goods class definitions
+└── events.json            # special events calendar (see below)
 ```
+
+### Special events calendar (`fixtures/events.json`)
+
+Special events modify passenger demand for specific simulated days. They are consumed by the
+forecasting model in `passenger-service` as the `is_special_event` and `event_pax_multiplier` features.
+
+```json
+{
+  "events": [
+    {
+      "name": "ART City Marathon",
+      "sim_days": [4, 5],
+      "pax_multiplier": 1.18,
+      "terminals_affected": ["A", "B"],
+      "description": "Major sporting event draws 18% more leisure passengers"
+    },
+    {
+      "name": "Summer peak week",
+      "sim_days": [14, 15, 16, 17, 18, 19, 20],
+      "pax_multiplier": 1.32,
+      "terminals_affected": ["A", "B", "C"],
+      "description": "Peak summer holiday week — all terminals at high load"
+    },
+    {
+      "name": "Business conference",
+      "sim_days": [8, 9],
+      "pax_multiplier": 1.12,
+      "terminals_affected": ["C"],
+      "description": "Regional business summit increases Terminal C traffic"
+    }
+  ]
+}
+```
+
+The `pax_multiplier` scales the `expected_pax_next_90min` feature in the forecast model and also
+inflates the number of passengers generated by the sim-orchestrator on affected sim days
+(`daily_pax = base_pax × event_pax_multiplier`).
