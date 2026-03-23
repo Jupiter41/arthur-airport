@@ -1,0 +1,282 @@
+[
+  {
+    "iata": "VTX",
+    "name": "Vortex City Intl",
+    "distance_nm": 280,
+    "region": "domestic",
+    "weight": 0.06
+  },
+  {
+    "iata": "MRD",
+    "name": "Meridian Airport",
+    "distance_nm": 520,
+    "region": "domestic",
+    "weight": 0.05
+  },
+  {
+    "iata": "CRL",
+    "name": "Coral Bay Intl",
+    "distance_nm": 1100,
+    "region": "domestic",
+    "weight": 0.04
+  },
+  {
+    "iata": "SLV",
+    "name": "Silverton Regional",
+    "distance_nm": 350,
+    "region": "domestic",
+    "weight": 0.05
+  },
+  {
+    "iata": "FRH",
+    "name": "Farhaven Airport",
+    "distance_nm": 680,
+    "region": "domestic",
+    "weight": 0.04
+  },
+  {
+    "iata": "KDN",
+    "name": "Kadence Metro",
+    "distance_nm": 450,
+    "region": "domestic",
+    "weight": 0.04
+  },
+  {
+    "iata": "PLM",
+    "name": "Palmera Airport",
+    "distance_nm": 310,
+    "region": "domestic",
+    "weight": 0.04
+  },
+  {
+    "iata": "ECH",
+    "name": "Echofield Muni",
+    "distance_nm": 190,
+    "region": "domestic",
+    "weight": 0.03
+  },
+  {
+    "iata": "WDS",
+    "name": "Windstone Intl",
+    "distance_nm": 900,
+    "region": "domestic",
+    "weight": 0.04
+  },
+  {
+    "iata": "BRK",
+    "name": "Brookhaven Airport",
+    "distance_nm": 240,
+    "region": "domestic",
+    "weight": 0.03
+  },
+  {
+    "iata": "TLN",
+    "name": "Tallinor Intl",
+    "distance_nm": 1500,
+    "region": "shorthaul",
+    "weight": 0.04
+  },
+  {
+    "iata": "NVD",
+    "name": "Nova Delphi Airport",
+    "distance_nm": 1800,
+    "region": "shorthaul",
+    "weight": 0.03
+  },
+  {
+    "iata": "CST",
+    "name": "Costa Meridia Intl",
+    "distance_nm": 1350,
+    "region": "shorthaul",
+    "weight": 0.03
+  },
+  {
+    "iata": "GVN",
+    "name": "Gravenna Intl",
+    "distance_nm": 2100,
+    "region": "shorthaul",
+    "weight": 0.03
+  },
+  {
+    "iata": "LKS",
+    "name": "Lakeside Hub",
+    "distance_nm": 1650,
+    "region": "shorthaul",
+    "weight": 0.03
+  },
+  {
+    "iata": "PTR",
+    "name": "Port Ariel Intl",
+    "distance_nm": 1900,
+    "region": "shorthaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "MNT",
+    "name": "Montara Regional",
+    "distance_nm": 1200,
+    "region": "shorthaul",
+    "weight": 0.03
+  },
+  {
+    "iata": "RDG",
+    "name": "Ridgeway Airport",
+    "distance_nm": 1050,
+    "region": "shorthaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "SVR",
+    "name": "Silverwind Intl",
+    "distance_nm": 2300,
+    "region": "shorthaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "HLN",
+    "name": "Helios North",
+    "distance_nm": 1400,
+    "region": "shorthaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "AZR",
+    "name": "Azura Intl",
+    "distance_nm": 3200,
+    "region": "longhaul",
+    "weight": 0.03
+  },
+  {
+    "iata": "KMR",
+    "name": "Kamura City Intl",
+    "distance_nm": 4500,
+    "region": "longhaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "DKR",
+    "name": "Darkstone Intl",
+    "distance_nm": 3800,
+    "region": "longhaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "YLN",
+    "name": "Yulani Gateway",
+    "distance_nm": 5200,
+    "region": "longhaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "OKB",
+    "name": "Oakbridge Intl",
+    "distance_nm": 3500,
+    "region": "longhaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "TSR",
+    "name": "Tesseract Hub",
+    "distance_nm": 4100,
+    "region": "longhaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "MPH",
+    "name": "Mapleton Heights",
+    "distance_nm": 2900,
+    "region": "longhaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "VRN",
+    "name": "Veronique Intl",
+    "distance_nm": 3600,
+    "region": "longhaul",
+    "weight": 0.01
+  },
+  {
+    "iata": "BLS",
+    "name": "Bluestone Intl",
+    "distance_nm": 5800,
+    "region": "longhaul",
+    "weight": 0.01
+  },
+  {
+    "iata": "NXS",
+    "name": "Nexus Point",
+    "distance_nm": 6200,
+    "region": "longhaul",
+    "weight": 0.01
+  },
+  {
+    "iata": "FLR",
+    "name": "Floriana Airport",
+    "distance_nm": 750,
+    "region": "domestic",
+    "weight": 0.03
+  },
+  {
+    "iata": "QNT",
+    "name": "Quantum Field",
+    "distance_nm": 480,
+    "region": "domestic",
+    "weight": 0.03
+  },
+  {
+    "iata": "ZPH",
+    "name": "Zephyr Heights",
+    "distance_nm": 620,
+    "region": "domestic",
+    "weight": 0.02
+  },
+  {
+    "iata": "IRN",
+    "name": "Iron Gate Intl",
+    "distance_nm": 1700,
+    "region": "shorthaul",
+    "weight": 0.02
+  },
+  {
+    "iata": "CNX",
+    "name": "Connexa Airport",
+    "distance_nm": 2400,
+    "region": "shorthaul",
+    "weight": 0.01
+  },
+  {
+    "iata": "RVS",
+    "name": "Riverside Metro",
+    "distance_nm": 360,
+    "region": "domestic",
+    "weight": 0.02
+  },
+  {
+    "iata": "PRX",
+    "name": "Praxis Hub",
+    "distance_nm": 1550,
+    "region": "shorthaul",
+    "weight": 0.01
+  },
+  {
+    "iata": "GLD",
+    "name": "Guildford Intl",
+    "distance_nm": 4800,
+    "region": "longhaul",
+    "weight": 0.01
+  },
+  {
+    "iata": "SDN",
+    "name": "Sandune Airport",
+    "distance_nm": 870,
+    "region": "domestic",
+    "weight": 0.02
+  },
+  {
+    "iata": "WVR",
+    "name": "Waveridge Intl",
+    "distance_nm": 2700,
+    "region": "longhaul",
+    "weight": 0.01
+  }
+]

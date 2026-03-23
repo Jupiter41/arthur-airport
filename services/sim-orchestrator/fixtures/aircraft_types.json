@@ -1,0 +1,74 @@
+[
+  {
+    "icao": "B738",
+    "name": "Boeing 737-800",
+    "seat_capacity": 186,
+    "wide_body": false,
+    "range_nm": 2935,
+    "weight": 0.28
+  },
+  {
+    "icao": "A320",
+    "name": "Airbus A320-200",
+    "seat_capacity": 180,
+    "wide_body": false,
+    "range_nm": 3300,
+    "weight": 0.25
+  },
+  {
+    "icao": "A321",
+    "name": "Airbus A321-200",
+    "seat_capacity": 220,
+    "wide_body": false,
+    "range_nm": 3200,
+    "weight": 0.15
+  },
+  {
+    "icao": "B77W",
+    "name": "Boeing 777-300ER",
+    "seat_capacity": 396,
+    "wide_body": true,
+    "range_nm": 7370,
+    "weight": 0.08
+  },
+  {
+    "icao": "A333",
+    "name": "Airbus A330-300",
+    "seat_capacity": 300,
+    "wide_body": true,
+    "range_nm": 6350,
+    "weight": 0.07
+  },
+  {
+    "icao": "A332",
+    "name": "Airbus A330-200",
+    "seat_capacity": 260,
+    "wide_body": true,
+    "range_nm": 7250,
+    "weight": 0.04
+  },
+  {
+    "icao": "E195",
+    "name": "Embraer E195",
+    "seat_capacity": 124,
+    "wide_body": false,
+    "range_nm": 2300,
+    "weight": 0.08
+  },
+  {
+    "icao": "DH8D",
+    "name": "Dash 8-Q400",
+    "seat_capacity": 78,
+    "wide_body": false,
+    "range_nm": 1100,
+    "weight": 0.04
+  },
+  {
+    "icao": "B748",
+    "name": "Boeing 747-8",
+    "seat_capacity": 410,
+    "wide_body": true,
+    "range_nm": 8000,
+    "weight": 0.01
+  }
+]

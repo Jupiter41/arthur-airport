@@ -1,0 +1,98 @@
+[
+  {
+    "code": "AX",
+    "name": "Artex Airways",
+    "hub": "ART",
+    "market_share": 0.22,
+    "preferred_terminal": "B",
+    "fleet": ["B738", "A320", "A321", "B77W"]
+  },
+  {
+    "code": "NB",
+    "name": "Northbound Airlines",
+    "hub": "ART",
+    "market_share": 0.15,
+    "preferred_terminal": "A",
+    "fleet": ["A320", "A321", "E195"]
+  },
+  {
+    "code": "SP",
+    "name": "SkyPeak",
+    "hub": "VTX",
+    "market_share": 0.12,
+    "preferred_terminal": "C",
+    "fleet": ["B738", "A320", "DH8D"]
+  },
+  {
+    "code": "VL",
+    "name": "Velox Air",
+    "hub": "MRD",
+    "market_share": 0.1,
+    "preferred_terminal": "A",
+    "fleet": ["A333", "B77W", "A320"]
+  },
+  {
+    "code": "PN",
+    "name": "Pinnacle Connect",
+    "hub": "ART",
+    "market_share": 0.08,
+    "preferred_terminal": "B",
+    "fleet": ["E195", "DH8D"]
+  },
+  {
+    "code": "OC",
+    "name": "OceanCrest",
+    "hub": "CRL",
+    "market_share": 0.07,
+    "preferred_terminal": "C",
+    "fleet": ["A332", "B77W", "A321"]
+  },
+  {
+    "code": "TR",
+    "name": "Terravion",
+    "hub": "SLV",
+    "market_share": 0.06,
+    "preferred_terminal": "A",
+    "fleet": ["B738", "A320"]
+  },
+  {
+    "code": "AM",
+    "name": "ArcticMeridian",
+    "hub": "FRH",
+    "market_share": 0.05,
+    "preferred_terminal": "B",
+    "fleet": ["A321", "B738", "DH8D"]
+  },
+  {
+    "code": "EW",
+    "name": "EastWing",
+    "hub": "KDN",
+    "market_share": 0.05,
+    "preferred_terminal": "C",
+    "fleet": ["A320", "E195"]
+  },
+  {
+    "code": "DL",
+    "name": "DawnLink",
+    "hub": "PLM",
+    "market_share": 0.04,
+    "preferred_terminal": "A",
+    "fleet": ["B738", "DH8D"]
+  },
+  {
+    "code": "GR",
+    "name": "GreenRoute",
+    "hub": "ECH",
+    "market_share": 0.03,
+    "preferred_terminal": "B",
+    "fleet": ["E195", "DH8D"]
+  },
+  {
+    "code": "ZN",
+    "name": "Zenith Long-Haul",
+    "hub": "ART",
+    "market_share": 0.03,
+    "preferred_terminal": "C",
+    "fleet": ["B77W", "A333", "B748"]
+  }
+]

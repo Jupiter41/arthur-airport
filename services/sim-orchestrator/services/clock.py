@@ -1,0 +1,172 @@
+"""Simulation clock — async loop emitting SimClockTick events."""
+
+import asyncio
+import logging
+import os
+import time
+from datetime import datetime, timedelta
+
+from kafka.producer import emit_clock_tick
+
+logger = logging.getLogger(__name__)
+
+SIM_START_TIME = datetime.fromisoformat(
+    os.getenv("SIM_START_TIME", "2024-06-15T06:00:00")
+)
+
+# Module-level state
+_running: bool = True
+_paused: bool = False
+_sim_time: datetime = SIM_START_TIME
+_speed_multiplier: int = int(os.getenv("SIM_SPEED_MULTIPLIER", "60"))
+_sim_day: int = 1
+_tick_number: int = 0
+_tick_latencies: list[float] = []
+_events_produced: int = 0
+
+# Callbacks
+_on_hour_boundary = None
+_on_day_boundary = None
+
+
+def configure_callbacks(on_hour=None, on_day=None) -> None:
+    """Set callbacks for hour and day boundary events."""
+    global _on_hour_boundary, _on_day_boundary
+    _on_hour_boundary = on_hour
+    _on_day_boundary = on_day
+
+
+def get_state() -> dict:
+    """Return current clock state."""
+    return {
+        "running": _running,
+        "paused": _paused,
+        "sim_time": _sim_time.isoformat(),
+        "real_time": datetime.utcnow().isoformat(),
+        "speed_multiplier": _speed_multiplier,
+        "day_number": _sim_day,
+        "tick_number": _tick_number,
+    }
+
+
+def get_sim_time() -> datetime:
+    return _sim_time
+
+
+def get_sim_day() -> int:
+    return _sim_day
+
+
+def get_tick_number() -> int:
+    return _tick_number
+
+
+def get_speed() -> int:
+    return _speed_multiplier
+
+
+def is_paused() -> bool:
+    return _paused
+
+
+def is_running() -> bool:
+    return _running
+
+
+def get_events_produced() -> int:
+    return _events_produced
+
+
+def get_tick_latencies() -> list[float]:
+    return _tick_latencies
+
+
+def set_speed(multiplier: int) -> None:
+    global _speed_multiplier
+    _speed_multiplier = multiplier
+    logger.info("Speed set to %dx", multiplier)
+
+
+def pause() -> None:
+    global _paused
+    _paused = True
+    logger.info("Simulation paused at %s", _sim_time)
+
+
+def resume() -> None:
+    global _paused
+    _paused = False
+    logger.info("Simulation resumed at %s", _sim_time)
+
+
+def stop() -> None:
+    global _running
+    _running = False
+    logger.info("Simulation stopped")
+
+
+def reset_to_start() -> None:
+    """Reset clock state to initial values."""
+    global _sim_time, _sim_day, _tick_number, _paused, _running, _events_produced, _tick_latencies
+    _sim_time = SIM_START_TIME
+    _sim_day = 1
+    _tick_number = 0
+    _paused = False
+    _running = True
+    _events_produced = 0
+    _tick_latencies = []
+    logger.info("Clock reset to %s", _sim_time)
+
+
+async def run_clock_loop() -> None:
+    """Main simulation clock loop. Emits SimClockTick each simulated minute."""
+    global _sim_time, _sim_day, _tick_number, _events_produced, _tick_latencies
+
+    logger.info("Clock loop started at %s (speed: %dx)", _sim_time, _speed_multiplier)
+
+    while _running:
+        if _paused:
+            await asyncio.sleep(0.1)
+            continue
+
+        tick_start = time.monotonic()
+
+        _sim_time += timedelta(minutes=1)
+        _tick_number += 1
+
+        emit_clock_tick(
+            sim_time=_sim_time,
+            speed_multiplier=_speed_multiplier,
+            tick_number=_tick_number,
+            day_of_sim=_sim_day,
+        )
+        _events_produced += 1
+
+        # Hour boundary check
+        if _sim_time.minute == 0 and _on_hour_boundary:
+            try:
+                await _on_hour_boundary(_sim_time)
+            except Exception as e:
+                logger.error("Hour boundary callback error: %s", e)
+
+        # Day boundary: seed next day at 23:30
+        if _sim_time.hour == 23 and _sim_time.minute == 30 and _on_day_boundary:
+            try:
+                await _on_day_boundary(_sim_day + 1, _sim_time)
+            except Exception as e:
+                logger.error("Day boundary callback error: %s", e)
+
+        # Detect day rollover
+        prev = _sim_time - timedelta(minutes=1)
+        if _sim_time.date() != prev.date():
+            _sim_day += 1
+            logger.info("Day boundary: now day %d (%s)", _sim_day, _sim_time.date())
+
+        tick_elapsed = (time.monotonic() - tick_start) * 1000  # ms
+        _tick_latencies.append(tick_elapsed)
+        if len(_tick_latencies) > 1000:
+            _tick_latencies = _tick_latencies[-500:]
+
+        sleep_s = 60.0 / _speed_multiplier
+        actual_sleep = max(0, sleep_s - tick_elapsed / 1000)
+        await asyncio.sleep(actual_sleep)

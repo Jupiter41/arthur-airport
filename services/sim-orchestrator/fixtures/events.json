@@ -1,0 +1,58 @@
+{
+  "base_probabilities": {
+    "runway_incursion": 0.005,
+    "baggage_fire": 0.008,
+    "security_breach": 0.01,
+    "system_failure": 0.015
+  },
+  "peak_hours": [7, 8, 9, 17, 18, 19],
+  "peak_multiplier": 1.8,
+  "weather_multiplier": {
+    "runway_incursion": 2.0
+  },
+  "high_throughput_multiplier": {
+    "baggage_fire": 1.5,
+    "system_failure": 1.5
+  },
+  "suppression_factor": 0.3,
+  "suppression_window_hours": 2,
+  "severity_ranges": {
+    "runway_incursion": ["high", "critical"],
+    "baggage_fire": ["medium", "high"],
+    "security_breach": ["medium", "critical"],
+    "system_failure": ["low", "high"]
+  },
+  "ttr_ranges_minutes": {
+    "runway_incursion": [15, 45],
+    "baggage_fire": [20, 60],
+    "security_breach": [30, 90],
+    "system_failure": [10, 120]
+  },
+  "locations": {
+    "runway_incursion": [
+      "runway-09L",
+      "runway-27R",
+      "runway-09R",
+      "runway-27L"
+    ],
+    "baggage_fire": [
+      "make-up-area-A",
+      "make-up-area-B",
+      "make-up-area-C",
+      "baggage-hall"
+    ],
+    "security_breach": [
+      "security-A",
+      "security-B",
+      "security-C",
+      "terminal-perimeter"
+    ],
+    "system_failure": [
+      "check-in-system",
+      "baggage-sorting",
+      "flight-display",
+      "gate-reader",
+      "radar-feed"
+    ]
+  }
+}

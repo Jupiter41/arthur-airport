@@ -76,17 +76,17 @@ a seeded airport structure and a full Day 1 flight schedule with passengers and 
 
 ### Tasks
 
-- [ ] Write `fixtures/` JSON files — airlines, aircraft_types, destinations, first_names, surnames, nationalities, dg_classes, events
-- [ ] Implement `db/neo4j.py` — async driver init + constraint/index creation
-- [ ] Implement `db/seed.py` — airport structure seed (Airport, Terminals, Gates, Runways)
-- [ ] Implement `services/schedule.py` — bimodal departure slot sampling + flight generation
-- [ ] Implement `services/passengers.py` — passenger generation per flight (Beta load factor)
-- [ ] Implement `services/baggage.py` — baggage generation per passenger (Poisson lambda=1.2)
-- [ ] Implement `kafka/producer.py` — SimClockTick producer + FlightScheduleSeeded batch event
-- [ ] Implement `services/clock.py` — async clock loop with configurable speed
-- [ ] Implement `services/injector.py` — probabilistic event evaluation (per simulated hour)
-- [ ] Implement REST control API: GET /sim/status, PATCH /sim/speed, POST /sim/pause, POST /sim/resume, POST /sim/reset, POST /sim/inject, GET /sim/schedule, GET /sim/metrics
-- [ ] Update /ready to wait for Neo4j + Kafka healthy
+- [x] Write `fixtures/` JSON files — airlines, aircraft_types, destinations, first_names, surnames, nationalities, dg_classes, events
+- [x] Implement `db/neo4j.py` — async driver init + constraint/index creation
+- [x] Implement `db/seed.py` — airport structure seed (Airport, Terminals, Gates, Runways)
+- [x] Implement `services/schedule.py` — bimodal departure slot sampling + flight generation
+- [x] Implement `services/passengers.py` — passenger generation per flight (Beta load factor)
+- [x] Implement `services/baggage.py` — baggage generation per passenger (Poisson lambda=1.2)
+- [x] Implement `kafka/producer.py` — SimClockTick producer + FlightScheduleSeeded batch event
+- [x] Implement `services/clock.py` — async clock loop with configurable speed
+- [x] Implement `services/injector.py` — probabilistic event evaluation (per simulated hour)
+- [x] Implement REST control API: GET /sim/status, PATCH /sim/speed, POST /sim/pause, POST /sim/resume, POST /sim/reset, POST /sim/inject, GET /sim/schedule, GET /sim/metrics
+- [x] Update /ready to wait for Neo4j + Kafka healthy
 
 ### Desired output
 

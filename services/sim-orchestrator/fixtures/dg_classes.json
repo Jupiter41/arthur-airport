@@ -1,0 +1,26 @@
+[
+  {
+    "class": "2",
+    "name": "Gases",
+    "description": "Compressed, liquefied or dissolved gases",
+    "probability": 0.0005
+  },
+  {
+    "class": "3",
+    "name": "Flammable Liquids",
+    "description": "Flammable liquids including paints and solvents",
+    "probability": 0.0008
+  },
+  {
+    "class": "8",
+    "name": "Corrosives",
+    "description": "Corrosive substances",
+    "probability": 0.0003
+  },
+  {
+    "class": "9",
+    "name": "Miscellaneous",
+    "description": "Miscellaneous dangerous goods (lithium batteries, dry ice)",
+    "probability": 0.0004
+  }
+]
