@@ -163,13 +163,7 @@ This repository is structured for **agent-assisted development**. Every service 
 
 ### How it works
 
-The `agents/` folder at the repo root contains all context files for AI tools. Run the deploy script once to place them at the locations each tool expects:
-
-```bash
-bash agents/deploy.sh
-```
-
-This creates:
+Context files for AI tools include:
 
 ```
 CLAUDE.md                          ← Claude Code reads on repo open
