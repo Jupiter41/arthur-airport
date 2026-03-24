@@ -244,3 +244,10 @@ CREATE (a)-[:CURRENT_WEATHER]->(w)
 - **`ceiling_ft` is `None` for CAVOK** — handle null in the METAR builder and in the Pydantic model (`Optional[int]`).
 - **Phenomena is a list** — store as a Neo4j list property, not a comma-separated string.
 - **`severe_weather` incident is created by incident-service**, not weather-service. Weather-service only emits `WeatherStateChanged`. Incident-service consumes it and creates the incident when category is IMC or LIFR.
+
+### Testing notes
+
+- **FSM transition matrix rows must sum to 1.0** — test that each row's probabilities add up to 1.0 (within floating-point tolerance).
+- **LIFR should never reach CAVOK in one step** — verify the transition matrix has `0.0` probability for LIFR→CAVOK. Weather degrades and improves gradually.
+- **Capacity reduction is cumulative** — crosswind and tailwind penalties stack with the base category capacity. Test boundary values for each weather category.
+- **METAR format is strict aviation standard** — test negative temperatures use `M` prefix (e.g., `M02`), wind direction is 3 digits, visibility is in meters.

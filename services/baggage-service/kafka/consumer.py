@@ -424,6 +424,12 @@ async def _process_bag_exit(
             await update_baggage_status(
                 bag.baggage_id, "loaded", makeup_zone, sim_time
             )
+            # Set loaded_at timestamp on the LOADED_ON relationship
+            if bag.flight_id:
+                from db.neo4j import set_loaded_on_timestamp
+                await set_loaded_on_timestamp(
+                    bag.baggage_id, bag.flight_id, sim_time
+                )
             event_payload = await emit_baggage_status_changed(
                 baggage_id=bag.baggage_id,
                 tag=bag.tag,
@@ -441,9 +447,33 @@ async def _process_bag_exit(
                 })
 
     elif from_zone.startswith("make-up"):
-        # Bags exiting make-up are now fully loaded — remove from conveyor
-        # They stay in "loaded" status until flight departs
-        pass
+        # Bags exiting make-up are now fully loaded onto the flight.
+        # Verify/set status to "loaded" and create LOADED_ON relationship
+        # timestamp in case the sorting-matrix exit handler missed it.
+        await update_baggage_status(
+            bag.baggage_id, "loaded", from_zone, sim_time
+        )
+        # Ensure LOADED_ON relationship has loaded_at timestamp
+        if bag.flight_id:
+            from db.neo4j import set_loaded_on_timestamp
+            await set_loaded_on_timestamp(
+                bag.baggage_id, bag.flight_id, sim_time
+            )
+        event_payload = await emit_baggage_status_changed(
+            baggage_id=bag.baggage_id,
+            tag=bag.tag,
+            previous_status="sorting",
+            new_status="loaded",
+            scan_zone=from_zone,
+            sim_time=sim_time,
+            passenger_id=bag.passenger_id,
+            flight_id=bag.flight_id,
+        )
+        if _ws_broadcast:
+            await _ws_broadcast({
+                "event_type": "BaggageStatusChanged",
+                "payload": event_payload,
+            })
 
     elif from_zone.startswith("arrival-belt"):
         # Bags exiting arrival belt → collected

@@ -188,3 +188,9 @@ as `dwell_minutes`. Do not re-sample on subsequent ticks.
 - **`adjacent_terminal_congested`** is derived from your own `_zone_density` state — not an external call.
 - **SA lane capacity is fixed at 20 pax/hr.** It is never affected by the slowdown factor and never contributes to main queue depth.
 - **On `security_breach` incident**: freeze main lanes to 0 throughput. SA lane drops to 10 pax/hr but stays open.
+
+### Testing notes
+
+- **Connection risk tiers have exact MCT boundaries** — test the 4-tier classification (ok/watch/at_risk/missed) at exact boundary values (MCT, MCT+15, MCT+30).
+- **`SecurityCheckpoint` is a stateful pure-Python class** — it manages queue depth, throughput, and freeze state with no external dependencies. Ideal for unit testing.
+- **`SecuritySystem` manages 3 terminal checkpoints** — test that `drain_all()` processes the correct number of passengers per tick across all terminals.

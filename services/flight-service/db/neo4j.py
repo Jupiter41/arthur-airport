@@ -183,11 +183,17 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
     OPTIONAL MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
     WITH f, g, r,
          count(p) AS pax_total,
-         sum(CASE WHEN p.status = 'boarded' THEN 1 ELSE 0 END) AS pax_boarded
+         sum(CASE WHEN p.status = 'boarded' THEN 1 ELSE 0 END) AS pax_boarded,
+         sum(CASE WHEN p.status = 'at_gate' THEN 1 ELSE 0 END) AS pax_at_gate,
+         sum(CASE WHEN p.status = 'airside' THEN 1 ELSE 0 END) AS pax_airside,
+         sum(CASE WHEN p.status = 'security_queue' THEN 1 ELSE 0 END) AS pax_security,
+         sum(CASE WHEN p.connection = true AND p.connection_risk IN ['at_risk', 'missed'] THEN 1 ELSE 0 END) AS pax_connections_at_risk
     OPTIONAL MATCH (b:Baggage)-[:LOADED_ON]->(f)
-    WITH f, g, r, pax_total, pax_boarded,
+    WITH f, g, r, pax_total, pax_boarded, pax_at_gate, pax_airside, pax_security, pax_connections_at_risk,
          count(b) AS baggage_count,
-         sum(CASE WHEN b.status IN ['loaded', 'in_hold', 'arrived', 'on_carousel', 'collected'] THEN 1 ELSE 0 END) AS baggage_loaded
+         sum(CASE WHEN b.status IN ['loaded', 'in_hold', 'arrived', 'on_carousel', 'collected'] THEN 1 ELSE 0 END) AS baggage_loaded,
+         sum(CASE WHEN b.status IN ['sorting', 'screening', 'inducted'] THEN 1 ELSE 0 END) AS baggage_in_sorting,
+         sum(CASE WHEN b.status = 'flagged' THEN 1 ELSE 0 END) AS baggage_flagged
     RETURN f {
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
@@ -198,8 +204,14 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
     r { .id, .status, .ils } AS runway,
     pax_total,
     pax_boarded,
+    pax_at_gate,
+    pax_airside,
+    pax_security,
+    pax_connections_at_risk,
     baggage_count,
-    baggage_loaded
+    baggage_loaded,
+    baggage_in_sorting,
+    baggage_flagged
     """
     async with driver.session() as session:
         result = await session.run(query, id=flight_id)
@@ -208,6 +220,21 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
             return None
         flight = dict(record["flight"])
         flight["pax_count"] = flight.get("pax_count") or int(record.get("pax_total") or 0)
+        flight["passengers"] = {
+            "total": int(record.get("pax_total") or 0) or flight.get("pax_count", 0),
+            "boarded": int(record.get("pax_boarded") or 0),
+            "at_gate": int(record.get("pax_at_gate") or 0),
+            "airside": int(record.get("pax_airside") or 0),
+            "security": int(record.get("pax_security") or 0),
+            "connections_at_risk": int(record.get("pax_connections_at_risk") or 0),
+        }
+        flight["baggage"] = {
+            "total_items": int(record.get("baggage_count") or 0),
+            "loaded": int(record.get("baggage_loaded") or 0),
+            "in_sorting": int(record.get("baggage_in_sorting") or 0),
+            "flagged": int(record.get("baggage_flagged") or 0),
+        }
+        # Keep flat fields for backward compatibility
         flight["pax_boarded"] = int(record.get("pax_boarded") or 0)
         flight["baggage_count"] = int(record.get("baggage_count") or 0)
         flight["baggage_loaded"] = int(record.get("baggage_loaded") or 0)

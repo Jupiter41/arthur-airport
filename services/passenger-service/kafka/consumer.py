@@ -80,6 +80,10 @@ _active_incidents: dict[str, bool] = {"A": False, "B": False, "C": False}
 _load_factor_sum: float = 0.0
 _load_factor_count: int = 0
 
+# Cached flight/pax counts for forecast features (updated in _ml_tick)
+_cached_flights_next_90: dict[str, int] = {"A": 0, "B": 0, "C": 0}
+_cached_pax_next_90: dict[str, float] = {"A": 0.0, "B": 0.0, "C": 0.0}
+
 # Alert history (in-memory, last 200)
 _alerts: list[dict] = []
 _MAX_ALERTS = 200
@@ -259,33 +263,53 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     _sim_day = payload.get("day_of_sim", 0)
 
     try:
-        # 1. Move checked_in passengers to security_queue when check-in closes
-        await _advance_checkin_to_security(sim_time)
-
-        # 2. Drain security queues
-        await _drain_security_queues(sim_time)
-
-        # 3. Move airside passengers to at_gate when dwells complete
-        await _advance_airside_to_gate(sim_time)
-
-        # 4. Board passengers at gates
-        await _advance_boarding(sim_time)
-
-        # 5. Advance arrival flow
-        await _advance_arrivals(sim_time)
-
-        # 6. Check connections
-        await _check_connections(sim_time)
-
-        # 7. ML: collect training data + check congestion
+        # 1. ML: collect training data + update cached flight/pax counts
+        #    (must run before security drain so forecast features are fresh)
         await _ml_tick(sim_time)
 
-        # 8. Maybe retrain model
+        # 2. Move checked_in passengers to security_queue when check-in closes
+        await _advance_checkin_to_security(sim_time)
+
+        # 3. Drain security queues
+        await _drain_security_queues(sim_time)
+
+        # 4. Move airside passengers to at_gate when dwells complete
+        await _advance_airside_to_gate(sim_time)
+
+        # 5. Board passengers at gates
+        await _advance_boarding(sim_time)
+
+        # 6. Advance arrival flow
+        await _advance_arrivals(sim_time)
+
+        # 7. Check connections
+        await _check_connections(sim_time)
+
+        # 8. Check congestion after drain
+        for terminal in ("A", "B", "C"):
+            cp = _security.get(terminal)
+            features = _build_context_features(terminal, sim_time)
+            forecast = predict(terminal, features)
+            wait = cp.wait_minutes(forecast or 0)
+            if check_congestion(terminal, wait):
+                event_payload = await emit_congestion_detected(
+                    terminal=terminal,
+                    wait_minutes=wait,
+                    queue_depth=cp.queue_depth,
+                    sim_time=sim_time,
+                )
+                if _ws_broadcast:
+                    await _ws_broadcast({
+                        "event_type": "SecurityCongestionDetected",
+                        "payload": event_payload,
+                    })
+
+        # 9. Maybe retrain model
         retrained = await maybe_retrain(_sim_day)
         if retrained:
             load_models()
 
-        # 9. Flush training data periodically
+        # 10. Flush training data periodically
         maybe_flush(sim_time)
 
         # 10. Update Prometheus gauges
@@ -424,19 +448,15 @@ def _build_context_features(terminal: str, sim_time: datetime) -> dict:
             adjacent[t] = wait > 20
     adjacent[terminal] = False
 
-    # Simple flight/pax estimates from in-memory state
-    flights_next = {"A": 0, "B": 0, "C": 0}
-    pax_next: dict[str, float] = {"A": 0, "B": 0, "C": 0}
-
-    # Use cached data if available (updated on tick)
+    # Use cached flight/pax data (updated in _ml_tick on every tick)
     load_factor = _load_factor_sum / _load_factor_count if _load_factor_count > 0 else 0.8
 
     return build_features(
         terminal=terminal,
         sim_time=sim_time,
         weather_category=_weather_category,
-        flights_next_90=flights_next,
-        pax_next_90=pax_next,
+        flights_next_90=_cached_flights_next_90,
+        pax_next_90=_cached_pax_next_90,
         load_factor_today=load_factor,
         incident_active=_active_incidents,
         adjacent_congested=adjacent,
@@ -653,7 +673,9 @@ async def _check_connections(sim_time: datetime) -> None:
 
 
 async def _ml_tick(sim_time: datetime) -> None:
-    """Collect training data and check congestion for all terminals."""
+    """Collect training data and update cached flight/pax counts."""
+    global _cached_flights_next_90, _cached_pax_next_90
+
     # Update flight/pax data for features
     try:
         flight_data = await get_departure_flights_in_window(sim_time, 90)
@@ -661,7 +683,7 @@ async def _ml_tick(sim_time: datetime) -> None:
         flight_data = []
 
     flights_next_90: dict[str, int] = {"A": 0, "B": 0, "C": 0}
-    pax_next_90: dict[str, float] = {"A": 0, "B": 0, "C": 0}
+    pax_next_90: dict[str, float] = {"A": 0.0, "B": 0.0, "C": 0.0}
 
     for fd in flight_data:
         tid = fd.get("terminal_id", "")
@@ -670,49 +692,14 @@ async def _ml_tick(sim_time: datetime) -> None:
             flights_next_90[terminal] += fd.get("flight_count", 0)
             pax_next_90[terminal] += float(fd.get("total_pax", 0))
 
+    # Cache for use by _build_context_features / _get_forecast_queues
+    _cached_flights_next_90 = flights_next_90
+    _cached_pax_next_90 = pax_next_90
+
     for terminal in ("A", "B", "C"):
         cp = _security.get(terminal)
-
-        # Build adjacent congestion
-        adjacent = {}
-        for t in ("A", "B", "C"):
-            if t != terminal:
-                wait = _security.get(t).wait_minutes(0)
-                adjacent[t] = wait > 20
-        adjacent[terminal] = False
-
-        load_factor = _load_factor_sum / _load_factor_count if _load_factor_count > 0 else 0.8
-
-        features = build_features(
-            terminal=terminal,
-            sim_time=sim_time,
-            weather_category=_weather_category,
-            flights_next_90=flights_next_90,
-            pax_next_90=pax_next_90,
-            load_factor_today=load_factor,
-            incident_active=_active_incidents,
-            adjacent_congested=adjacent,
-        )
-
-        # Add training row
+        features = _build_context_features(terminal, sim_time)
         add_training_row(terminal, features, cp.queue_depth, sim_time)
-
-        # Check congestion
-        forecast = predict(terminal, features)
-        wait = cp.wait_minutes(forecast or 0)
-
-        if check_congestion(terminal, wait):
-            event_payload = await emit_congestion_detected(
-                terminal=terminal,
-                wait_minutes=wait,
-                queue_depth=cp.queue_depth,
-                sim_time=sim_time,
-            )
-            if _ws_broadcast:
-                await _ws_broadcast({
-                    "event_type": "SecurityCongestionDetected",
-                    "payload": event_payload,
-                })
 
 
 # --- Flight event handlers ---

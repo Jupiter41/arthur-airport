@@ -50,9 +50,9 @@ function IncidentCard({
       <div className="text-xs text-gray-400 mt-1">
         {incident.location} · {formatRelativeTime(incident.started_at)}
       </div>
-      {incident.protocols.length > 0 && (
+      {(incident.protocols ?? []).length > 0 && (
         <div className="flex gap-1 mt-2">
-          {incident.protocols.map((p) => (
+          {(incident.protocols ?? []).map((p) => (
             <span
               key={p}
               className="text-[10px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded"
@@ -98,9 +98,9 @@ function CascadeTree({
         )}
       </div>
       {/* Arrow if has children */}
-      {node.children?.length > 0 && (
+      {(node.children ?? []).length > 0 && (
         <div className="ml-3 border-l border-gray-600 pl-3">
-          {node.children.map((child) => (
+          {(node.children ?? []).map((child) => (
             <CascadeTree key={child.id} node={child} depth={depth + 1} />
           ))}
         </div>
@@ -145,11 +145,11 @@ function CascadeVisualizerPanel({ incident }: { incident: Incident | null }) {
 
 /* ──────── Protocol Status Bar ──────── */
 function ProtocolBar({ incident }: { incident: Incident | null }) {
-  if (!incident || incident.protocols.length === 0) return null;
+  if (!incident || (incident.protocols ?? []).length === 0) return null;
 
   return (
     <div className="flex gap-2 flex-wrap">
-      {incident.protocols.map((p) => (
+      {(incident.protocols ?? []).map((p) => (
         <div key={p} className="bg-gray-700 rounded px-3 py-1.5 text-xs">
           <span className="text-amber-400 mr-1">●</span>
           <span className="text-white font-medium">{p}</span>

@@ -193,3 +193,12 @@ if child_depth > CASCADE_MAX_DEPTH:  # default 5
 | Simulation clock + cascade rules | `docs/skills/simulation.SKILL.md` |
 | LightGBM forecasting model | `docs/skills/forecasting.SKILL.md` |
 | Per-service state machines | `services/{name}/SKILL.md` |
+
+---
+
+## Testing gotchas
+
+- **All services share the `services/` top-level package name.** You cannot `import services.state_machine` from two different services in the same test session without clearing `sys.modules`. Use the `import_service_module()` helper in `tests/conftest.py`.
+- **Some service modules import `db.neo4j` at module level.** If the `neo4j` pip package is not installed (e.g., in CI unit tests), you must pre-install mock modules in `sys.modules` before importing the service module. See `tests/unit/test_incident_lifecycle.py` for the pattern.
+- **Pure-logic files are the best unit test targets.** State machines, transition validators, formatters, capacity calculators — anything in `services/*.py` that does not import from `db/` or `kafka/` can be tested without Docker.
+- **Integration tests auto-skip when infra is down.** REST and resilience tests use `pytest.mark.skipif` with an HTTP reachability check, so `pytest` always passes in CI even without Docker.

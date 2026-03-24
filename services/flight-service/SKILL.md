@@ -176,3 +176,9 @@ async def propagate_turnaround(flight_id: str, delay_min: int,
 - **State machine runs per-flight independently** — iterate all active flights on every tick.
 - **`actual_time` is only set on landed/departed** — do not read it on earlier states or it will be null.
 - **Boarding progress comes from passenger-service** — flight-service does not own passenger counts. Read from Neo4j via a cross-domain query or maintain a local counter updated by Kafka events.
+
+### Testing notes
+
+- **`evaluate_transition()` is a pure function** — it takes a flight dict, sim_time, and context flags and returns the next status or `None`. Perfect for unit testing without any infrastructure.
+- **Runway queue uses `heapq`** — test ordering by verifying that emergency flights dequeue before scheduled flights regardless of enqueue order.
+- **Boundary conditions to test:** boarding at exactly 95% threshold, delay at exactly 180 minutes, and time windows at exact minute boundaries (T-60, T-0, ETA-20).

@@ -202,3 +202,9 @@ async def on_incident_created(payload: dict, sim_time: datetime):
 - **`in_hold` bags cannot be offloaded mid-flight.** Only offload when `flight.status` transitions to `cancelled`. If flight is `airborne`, bags stay in `in_hold` until landing, then normal arrival flow.
 - **False positives still produce `BaggageFlagged`.** The distinction (`flag_reason: "false_positive"` vs `"dangerous_goods_detected"`) is in the payload — both go through the same review process.
 - **DG class 3 + make-up zone = potential fire.** Only trigger the probabilistic fire if the item is in `sorting` or `loaded` status, not just any DG class 3 item anywhere in the system.
+
+### Testing notes
+
+- **`screening.py` detection rates are pure math** — test that DG detection rates per class match spec values and that false positive rate stays within bounds.
+- **`conveyor.py` is stateful but side-effect-free** — `ConveyorSystem` manages zone queues in memory with no database calls. Test by simulating multi-tick pipelines and verifying items flow through zones correctly.
+- **Zone throughput map must cover all 31 zones** — a missing zone causes KeyError at runtime.

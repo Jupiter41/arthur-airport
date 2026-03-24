@@ -93,10 +93,13 @@ async def list_runways():
     runways = await get_all_runways()
     rq = get_runway_queue()
 
-    # Augment with in-memory queue counts
+    # Augment with in-memory queue counts and capacity
     for rw in runways:
         rw["arrivals_queued"] = rq.arrivals_queued
         rw["departures_queued"] = rq.departures_queued
+        rw["capacity_per_hour"] = rq.capacity_per_hour
+        rw["current_rate"] = rq.current_rate
+        rw["runway_id"] = rw.get("id", "")
     return runways
 
 

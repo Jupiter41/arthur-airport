@@ -1,6 +1,28 @@
 import { create } from "zustand";
 import type { Incident, IncidentAlert } from "../types";
 
+/**
+ * Normalize an incident object from the API or Kafka.
+ * The API returns `protocol` (singular string) but the frontend
+ * Incident type expects `protocols` (string[]). Also ensures all
+ * array fields default to [] and numeric fields default to 0.
+ */
+function normalizeIncident(raw: Record<string, unknown>): Incident {
+  const i = raw as Partial<Incident> & Record<string, unknown>;
+  // Map `protocol` (string from API) → `protocols` (array for frontend)
+  let protocols = i.protocols;
+  if (!Array.isArray(protocols)) {
+    const proto = (i as Record<string, unknown>).protocol;
+    protocols = typeof proto === "string" && proto ? [proto] : [];
+  }
+  return {
+    ...i,
+    protocols,
+    cascade_depth: i.cascade_depth ?? 0,
+    cascade_tree: i.cascade_tree ?? null,
+  } as Incident;
+}
+
 interface IncidentStoreState {
   incidents: Record<string, Incident>;
   alerts: IncidentAlert[];
@@ -24,10 +46,20 @@ export const useIncidentStore = create<IncidentStoreState>((set) => ({
   alerts: [],
 
   setIncidents: (list) =>
-    set({ incidents: Object.fromEntries(list.map((i) => [i.id, i])) }),
+    set({
+      incidents: Object.fromEntries(
+        list.map((i) => {
+          const n = normalizeIncident(i as unknown as Record<string, unknown>);
+          return [n.id, n];
+        }),
+      ),
+    }),
 
   upsertIncident: (i) =>
-    set((s) => ({ incidents: { ...s.incidents, [i.id]: i } })),
+    set((s) => {
+      const n = normalizeIncident(i as unknown as Record<string, unknown>);
+      return { incidents: { ...s.incidents, [n.id]: n } };
+    }),
 
   updateIncidentStatus: (id, status, patch) =>
     set((s) => {

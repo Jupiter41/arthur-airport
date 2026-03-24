@@ -508,37 +508,37 @@ curl -s http://localhost:9090/api/v1/alerts \
 
 #### Testing
 
-- [ ] Unit tests for each state machine (pure logic, no I/O)
-- [ ] Integration tests for each Kafka consumer handler
-- [ ] Integration tests for each REST endpoint (against live Neo4j + Kafka)
-- [ ] Idempotency tests — duplicate Kafka events produce no duplicate state changes
-- [ ] Cascade depth limit test — chain that would exceed 5 hops stops at 5
+- [x] Unit tests for each state machine (pure logic, no I/O)
+- [x] Integration tests for each Kafka consumer handler
+- [x] Integration tests for each REST endpoint (against live Neo4j + Kafka)
+- [x] Idempotency tests — duplicate Kafka events produce no duplicate state changes
+- [x] Cascade depth limit test — chain that would exceed 5 hops stops at 5
 
 #### Resilience
 
-- [ ] Service restarts cleanly after docker compose restart — state recovers from Neo4j
-- [ ] Kafka restart mid-sim — services reconnect and resume
-- [ ] Neo4j restart mid-sim — services reconnect, in-memory caches rebuild
+- [x] Service restarts cleanly after docker compose restart — state recovers from Neo4j
+- [x] Kafka restart mid-sim — services reconnect and resume
+- [x] Neo4j restart mid-sim — services reconnect, in-memory caches rebuild
 
 #### Documentation
 
-- [ ] Update any SPEC.md files where implementation deviated from spec
-- [ ] Update SKILL.md files with gotchas discovered during implementation
-- [ ] Add CHANGELOG.md
-- [ ] Verify all README links resolve
+- [x] Update any SPEC.md files where implementation deviated from spec
+- [x] Update SKILL.md files with gotchas discovered during implementation
+- [x] Add CHANGELOG.md
+- [x] Verify all README links resolve
 
 #### CI
 
-- [ ] Write .github/workflows/ci.yml — lint (ruff + eslint) + unit tests + docker compose build
+- [x] Write .github/workflows/ci.yml — lint (ruff + eslint) + unit tests + docker compose build
 
 #### Final smoke test
 
-- [ ] Clone repo on a clean machine
-- [ ] Run docker compose up --build
-- [ ] Wait 90 seconds — open http://localhost:5173
-- [ ] All 5 dashboards load with live data
-- [ ] Inject one of each incident type — all cascade correctly
-- [ ] Run at 3600x for 2 minutes — no errors, no OOM, no crashed containers
+- [x] Clone repo on a clean machine
+- [x] Run docker compose up --build
+- [x] Wait 90 seconds — open http://localhost:5173
+- [x] All 5 dashboards load with live data
+- [x] Inject one of each incident type — all cascade correctly
+- [x] Run at 3600x for 2 minutes — no errors, no OOM, no crashed containers
 
 ---
 

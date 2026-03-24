@@ -9,7 +9,7 @@ Arrivals take priority over departures during IMC/LIFR.
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from heapq import heappush, heappop
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,10 @@ class RunwayQueue:
         self._departure_rate: int = 32
         self._weather_category: str = "CAVOK"
         self._ils_required: bool = False
+
+        # Track recent assignments for current_rate calculation
+        self._recent_assignments: list[str] = []  # ISO timestamps
+        self._rate_window_minutes: int = 60
 
     def update_capacity(self, arrival_rate: int, departure_rate: int,
                         weather_category: str) -> None:
@@ -125,6 +129,16 @@ class RunwayQueue:
             })
             dep_assigned += 1
 
+        # Track assignments for current_rate
+        sim_iso = sim_time.isoformat()
+        for _ in assigned:
+            self._recent_assignments.append(sim_iso)
+        # Prune old assignments outside the window
+        cutoff = (sim_time - timedelta(minutes=self._rate_window_minutes)).isoformat()
+        self._recent_assignments = [
+            t for t in self._recent_assignments if t >= cutoff
+        ]
+
         return assigned
 
     @property
@@ -142,3 +156,21 @@ class RunwayQueue:
     @property
     def weather_category(self) -> str:
         return self._weather_category
+
+    @property
+    def arrival_rate(self) -> int:
+        return self._arrival_rate
+
+    @property
+    def departure_rate(self) -> int:
+        return self._departure_rate
+
+    @property
+    def capacity_per_hour(self) -> int:
+        """Total capacity (arrivals + departures) per hour."""
+        return self._arrival_rate + self._departure_rate
+
+    @property
+    def current_rate(self) -> int:
+        """Actual movements in the last 60 sim-minutes."""
+        return len(self._recent_assignments)

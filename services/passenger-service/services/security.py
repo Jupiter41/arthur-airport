@@ -59,7 +59,11 @@ class SecurityCheckpoint:
     def drain_per_tick(self, forecast_queue: int) -> int:
         """How many passengers to drain from main queue this tick (1 sim-minute)."""
         throughput = self.effective_throughput(forecast_queue)
-        return max(0, int(throughput / 60))
+        drain = max(0, int(throughput / 60))
+        # Guard: always drain at least 1 pax/tick if queue > 0 and not frozen
+        if drain == 0 and self.queue_depth > 0 and not self.frozen:
+            drain = 1
+        return drain
 
     def sa_drain_per_tick(self) -> int:
         """How many SA passengers to drain per tick."""

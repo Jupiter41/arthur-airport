@@ -425,3 +425,21 @@ async def _run_simple(query: str, **params) -> None:
     driver = get_driver()
     async with driver.session() as session:
         await session.run(query, **params)
+
+
+async def set_loaded_on_timestamp(
+    baggage_id: str, flight_id: str, sim_time: datetime
+) -> None:
+    """Set the loaded_at timestamp on the LOADED_ON relationship."""
+    driver = get_driver()
+    query = """
+    MATCH (b:Baggage {id: $bid})-[r:LOADED_ON]->(f:Flight {id: $fid})
+    SET r.loaded_at = $at
+    """
+    async with driver.session() as session:
+        await session.run(
+            query,
+            bid=baggage_id,
+            fid=flight_id,
+            at=sim_time.isoformat(),
+        )

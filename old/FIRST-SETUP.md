@@ -1,6 +1,6 @@
 # First Run — Guided Scenario
 
-You've built all 9 sprints. The stack is up. Now what?
+You've built all 9 base sprints. The stack is up. Now what?
 
 This guide walks you through a **20-minute live demo** that exercises every service, every
 dashboard, and the full incident cascade pipeline.

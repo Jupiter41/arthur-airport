@@ -280,3 +280,9 @@ async def build_report(incident_id: str, sim_time: datetime) -> dict:
 - **Cascade depth is tracked per-chain, not globally.** A runway incursion at depth 0 and a simultaneous security breach at depth 0 are separate chains — they do not share the depth counter.
 - **Do not produce a cascade child if depth >= CASCADE_MAX_DEPTH.** Still produce `IncidentAlert` but do not call `create_incident()` — this is the hard stop.
 - **`FULL_EVACUATION` protocol overrides all others.** If a critical security breach fires while another protocol is active, FULL_EVACUATION takes precedence.
+
+### Testing notes
+
+- **`lifecycle.py` imports `db.neo4j` at module level.** To unit test TTR ranges, protocol mappings, and transition validation, you must pre-install mock `db` and `db.neo4j` modules in `sys.modules` before importing. See `tests/unit/test_incident_lifecycle.py`.
+- **Cascade rules are a dictionary** — test by verifying no chain exceeds `CASCADE_MAX_DEPTH` (5), no circular references exist, and all primary incident types have entries.
+- **`sample_ttr()` returns `None` for `severe_weather` and `security_congestion`** — these types resolve externally, not by countdown.
