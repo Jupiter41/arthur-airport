@@ -215,14 +215,14 @@ System failures halt zones. Flight cancellations trigger offloads and carousel r
 
 ### Tasks
 
-- [ ] Implement `db/neo4j.py` — Baggage CRUD + append-only scan history
-- [ ] Implement `services/conveyor.py` — in-memory zone state + per-tick throughput drain
-- [ ] Implement `services/screening.py` — DG detection per class + false positive rate
-- [ ] Implement `services/offload.py` — cancellation handler + carousel assignment
-- [ ] Implement `kafka/consumer.py` — SimClockTick, FlightStatusChanged (delayed), FlightCancelled, IncidentCreated (system_failure), IncidentStatusChanged
-- [ ] Implement `kafka/producer.py` — BaggageStatusChanged, BaggageFlagged
-- [ ] Implement REST endpoints: GET /baggage, GET /baggage/{id}, GET /baggage/tag/{tag}, GET /flow/summary, GET /flow/map, GET /flagged
-- [ ] Implement WS /ws/baggage
+- [x] Implement `db/neo4j.py` — Baggage CRUD + append-only scan history
+- [x] Implement `services/conveyor.py` — in-memory zone state + per-tick throughput drain
+- [x] Implement `services/screening.py` — DG detection per class + false positive rate
+- [x] Implement `services/offload.py` — cancellation handler + carousel assignment
+- [x] Implement `kafka/consumer.py` — SimClockTick, FlightStatusChanged (delayed), FlightCancelled, IncidentCreated (system_failure), IncidentStatusChanged
+- [x] Implement `kafka/producer.py` — BaggageStatusChanged, BaggageFlagged
+- [x] Implement REST endpoints: GET /baggage, GET /baggage/{id}, GET /baggage/tag/{tag}, GET /flow/summary, GET /flow/map, GET /flagged
+- [x] Implement WS /ws/baggage
 
 ### Desired output
 
