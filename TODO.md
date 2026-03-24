@@ -167,15 +167,15 @@ conflicts resolve. All flight events flow on Kafka.
 
 ### Tasks
 
-- [ ] Implement `db/neo4j.py` — Flight CRUD + gate/runway relationship management
-- [ ] Implement `services/state_machine.py` — 9-state FSM with all transition conditions
-- [ ] Implement `services/runway_queue.py` — priority heap + slot assignment per tick
-- [ ] Implement `services/gate_resolver.py` — conflict detection + nearest available gate query
-- [ ] Implement `services/turnaround.py` — aircraft registration map + delay propagation with buffer subtraction
-- [ ] Implement `kafka/consumer.py` — SimClockTick, WeatherStateChanged, IncidentCreated, IncidentStatusChanged
-- [ ] Implement `kafka/producer.py` — FlightStatusChanged, FlightGateAssigned, FlightRunwayAssigned, FlightCancelled
-- [ ] Implement REST endpoints: GET /flights, GET /flights/{id}, GET /flights/{id}/cascade, GET /runways, GET /gates, POST /flights/{id}/hold, POST /flights/{id}/release
-- [ ] Implement WS /ws/flights
+- [x] Implement `db/neo4j.py` — Flight CRUD + gate/runway relationship management
+- [x] Implement `services/state_machine.py` — 9-state FSM with all transition conditions
+- [x] Implement `services/runway_queue.py` — priority heap + slot assignment per tick
+- [x] Implement `services/gate_resolver.py` — conflict detection + nearest available gate query
+- [x] Implement `services/turnaround.py` — aircraft registration map + delay propagation with buffer subtraction
+- [x] Implement `kafka/consumer.py` — SimClockTick, WeatherStateChanged, IncidentCreated, IncidentStatusChanged
+- [x] Implement `kafka/producer.py` — FlightStatusChanged, FlightGateAssigned, FlightRunwayAssigned, FlightCancelled
+- [x] Implement REST endpoints: GET /flights, GET /flights/{id}, GET /flights/{id}/cascade, GET /runways, GET /gates, POST /flights/{id}/hold, POST /flights/{id}/release
+- [x] Implement WS /ws/flights
 
 ### Desired output
 

@@ -1,0 +1,106 @@
+"""Pydantic domain models for flight-service."""
+
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+
+class FlightStatus(str, Enum):
+    SCHEDULED = "scheduled"
+    BOARDING = "boarding"
+    DELAYED = "delayed"
+    DEPARTED = "departed"
+    AIRBORNE = "airborne"
+    APPROACH = "approach"
+    LANDED = "landed"
+    TAXIING = "taxiing"
+    AT_GATE = "at_gate"
+    CANCELLED = "cancelled"
+
+
+class FlightDirection(str, Enum):
+    ARRIVAL = "arrival"
+    DEPARTURE = "departure"
+
+
+class FlightSummary(BaseModel):
+    id: str
+    flight_number: str
+    airline_code: str
+    direction: str
+    status: str
+    aircraft_type: str
+    origin_iata: str
+    destination_iata: str
+    gate_id: Optional[str] = None
+    runway_id: Optional[str] = None
+    scheduled_time: str
+    estimated_time: str
+    delay_minutes: int = 0
+    pax_count: int = 0
+    seat_capacity: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class FlightListResponse(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    flights: list[FlightSummary]
+
+
+class FlightDetail(BaseModel):
+    id: str
+    flight_number: str
+    airline_code: str
+    direction: str
+    status: str
+    aircraft_type: str
+    aircraft_registration: str
+    origin_iata: str
+    destination_iata: str
+    scheduled_time: str
+    estimated_time: str
+    actual_time: Optional[str] = None
+    delay_minutes: int = 0
+    delay_reason: Optional[str] = None
+    gate: Optional[dict] = None
+    runway: Optional[dict] = None
+    passengers: Optional[dict] = None
+    baggage: Optional[dict] = None
+    history: list[dict] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class RunwayInfo(BaseModel):
+    id: str
+    status: str
+    current_use: str
+    ils: bool
+    arrivals_queued: int = 0
+    departures_queued: int = 0
+
+
+class GateInfo(BaseModel):
+    id: str
+    terminal: str
+    status: str
+    flight_number: Optional[str] = None
+    occupied_until: Optional[str] = None
+    jetbridge: bool = False
+
+
+class HoldRequest(BaseModel):
+    reason: str
+    expected_duration_minutes: int
+
+
+class CascadeResponse(BaseModel):
+    flight_id: str
+    flight_number: str
+    delay_minutes: int
+    cascade: dict
