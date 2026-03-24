@@ -6,6 +6,7 @@ from datetime import datetime
 
 from services.fixtures import get_fixtures
 from kafka.producer import emit_inject_incident
+from metrics import sim_events_injected_total as m_events_injected
 
 logger = logging.getLogger(__name__)
 
@@ -90,4 +91,5 @@ async def evaluate_probabilistic_events(sim_time: datetime) -> None:
                 location=location,
                 trigger="probabilistic",
             )
+            m_events_injected.labels(type=event_type).inc()
             record_incident(sim_time)

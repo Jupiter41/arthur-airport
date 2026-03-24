@@ -49,6 +49,16 @@ from services.state_machine import (
     BOARDING_RATE_PAX_PER_MIN,
 )
 from services.zones import move_passenger, rebuild_from_neo4j, get_density
+from metrics import (
+    passengers_in_airport as m_pax_in_airport,
+    security_queue_depth as m_sec_queue_depth,
+    security_wait_minutes as m_sec_wait,
+    security_lanes_open as m_sec_lanes,
+    connections_at_risk as m_conn_at_risk,
+    connections_missed_total as m_conn_missed,
+    passenger_alerts_total as m_pax_alerts,
+    zone_load_pct as m_zone_load,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +287,21 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
 
         # 9. Flush training data periodically
         maybe_flush(sim_time)
+
+        # 10. Update Prometheus gauges
+        try:
+            status_counts = await get_status_counts()
+            for status, count in status_counts.items():
+                m_pax_in_airport.labels(status=status).set(count)
+        except Exception:
+            pass
+
+        for terminal in ("A", "B", "C"):
+            cp = _security.checkpoints.get(terminal)
+            if cp:
+                m_sec_queue_depth.labels(terminal=terminal).set(cp.queue_depth)
+                m_sec_wait.labels(terminal=terminal).set(round(cp.wait_minutes(0), 1))
+                m_sec_lanes.labels(terminal=terminal).set(cp.lanes_open)
 
     except Exception as e:
         logger.error("Error in clock tick processing: %s", e, exc_info=True)

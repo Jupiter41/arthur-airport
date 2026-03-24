@@ -464,16 +464,16 @@ fire correctly under simulated conditions.
 
 ### Tasks
 
-- [ ] Verify all 9 Prometheus targets scrape successfully
-- [ ] Build Grafana dashboard JSON — Simulation overview (7 panels)
-- [ ] Build Grafana dashboard JSON — Flight operations (9 panels)
-- [ ] Build Grafana dashboard JSON — Passenger and baggage (11 panels)
-- [ ] Build Grafana dashboard JSON — Weather and incidents (10 panels)
-- [ ] Build Grafana dashboard JSON — API gateway and system health (9 panels)
-- [ ] Test SimulationPaused alert — pause sim for 3 real minutes
-- [ ] Test CriticalIncidentActive alert — inject critical runway incursion
-- [ ] Test ConveyorZoneOffline alert — inject system_failure conveyor-sorting
-- [ ] Set Grafana home dashboard to sim-overview
+- [x] Verify all 9 Prometheus targets scrape successfully
+- [x] Build Grafana dashboard JSON — Simulation overview (7 panels)
+- [x] Build Grafana dashboard JSON — Flight operations (9 panels)
+- [x] Build Grafana dashboard JSON — Passenger and baggage (11 panels)
+- [x] Build Grafana dashboard JSON — Weather and incidents (10 panels)
+- [x] Build Grafana dashboard JSON — API gateway and system health (9 panels)
+- [x] Test SimulationPaused alert — pause sim for 3 real minutes
+- [x] Test CriticalIncidentActive alert — inject critical runway incursion
+- [x] Test ConveyorZoneOffline alert — inject system_failure conveyor-sorting
+- [x] Set Grafana home dashboard to sim-overview
 
 ### Desired output
 
@@ -534,7 +534,6 @@ curl -s http://localhost:9090/api/v1/alerts \
 #### Final smoke test
 
 - [ ] Clone repo on a clean machine
-- [ ] Run bash agents/deploy.sh
 - [ ] Run docker compose up --build
 - [ ] Wait 90 seconds — open http://localhost:5173
 - [ ] All 5 dashboards load with live data

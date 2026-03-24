@@ -1,6 +1,17 @@
 import { createProxyMiddleware, Options } from "http-proxy-middleware";
 import { Express } from "express";
 import { IncomingMessage, ServerResponse } from "http";
+import client from "prom-client";
+
+const upstreamErrors =
+  (client.register.getSingleMetric(
+    "gateway_upstream_errors_total",
+  ) as client.Counter) ??
+  new client.Counter({
+    name: "gateway_upstream_errors_total",
+    help: "Upstream errors by service",
+    labelNames: ["service"],
+  });
 
 export const UPSTREAM: Record<string, string> = {
   flights: process.env.FLIGHT_SERVICE_URL ?? "http://flight-service:8001",
@@ -28,6 +39,7 @@ export function setupProxy(app: Express): void {
           _req: IncomingMessage,
           res: ServerResponse | import("net").Socket,
         ) => {
+          upstreamErrors.inc({ service: key });
           if ("writeHead" in res && !res.headersSent) {
             res.writeHead(502, { "Content-Type": "application/json" });
             res.end(

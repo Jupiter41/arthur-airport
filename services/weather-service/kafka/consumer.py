@@ -16,6 +16,16 @@ from services.fsm import evaluate_transition
 from services.parameters import sample_params
 from services.metar import build_metar
 from services.capacity import compute_runway_capacity
+from metrics import (
+    weather_category as m_category,
+    weather_transitions_total as m_transitions,
+    visibility_m as m_visibility,
+    wind_speed_kt as m_wind_speed,
+    wind_gust_kt as m_wind_gust,
+    runway_arrival_rate as m_arr_rate,
+    runway_departure_rate as m_dep_rate,
+    CATEGORY_VALUES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +162,15 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         emit_metar_issued(sim_time, _current_metar)
         _last_fsm_hour = hour
         _last_metar_total_min = hour * 60 + minute
+
+        # Update Prometheus gauges
+        m_category.set(CATEGORY_VALUES.get(initial_category, 0))
+        m_visibility.set(_current_params.visibility_m)
+        m_wind_speed.set(_current_params.wind_speed_kt)
+        m_wind_gust.set(_current_params.wind_gust_kt or 0)
+        m_arr_rate.set(capacity.get("recommended_arrival_rate", 32))
+        m_dep_rate.set(capacity.get("recommended_departure_rate", 32))
+
         logger.info("Weather initialized: %s", initial_category)
         return
 
@@ -207,6 +226,15 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             )
 
             logger.info("Weather transition: %s -> %s", previous_category, new_category)
+
+            # Update Prometheus gauges
+            m_category.set(CATEGORY_VALUES.get(new_category, 0))
+            m_visibility.set(_current_params.visibility_m)
+            m_wind_speed.set(_current_params.wind_speed_kt)
+            m_wind_gust.set(_current_params.wind_gust_kt or 0)
+            m_arr_rate.set(capacity.get("recommended_arrival_rate", 32))
+            m_dep_rate.set(capacity.get("recommended_departure_rate", 32))
+            m_transitions.labels(from_cat=previous_category, to_cat=new_category).inc()
 
             # Broadcast to WebSocket clients
             if _ws_broadcast:

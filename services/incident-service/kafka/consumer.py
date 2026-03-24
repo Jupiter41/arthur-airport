@@ -31,6 +31,15 @@ from services.lifecycle import (
     tick_ttr,
 )
 from services.protocols import build_alert
+from metrics import (
+    incidents_active as m_active,
+    incidents_created_total as m_created,
+    incident_ttr_minutes as m_ttr,
+    cascade_events_total as m_cascade,
+    cascade_depth_max as m_cascade_depth,
+    protocols_activated_total as m_protocols,
+    flights_impacted_by_incidents_total as m_flights_impacted,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +76,9 @@ _current_weather_category: str = "CAVOK"
 RUNWAY_IDS = ["runway-09L", "runway-09R", "runway-27L", "runway-27R"]
 TERMINAL_IDS = ["terminal-A", "terminal-B", "terminal-C"]
 SYSTEM_SUBTYPES = ["conveyor_jam", "power_outage", "it_failure"]
+
+# Track max cascade depth in memory (since Gauge doesn't support "max" natively)
+_max_cascade_depth: int = 0
 
 # WebSocket broadcast callback
 _ws_broadcast = None
@@ -112,6 +124,25 @@ async def _on_incident_created(incident: dict, sim_time: datetime, parent_id: st
 
     if parent_id:
         emit_incident_cascaded(parent_id, incident, sim_time)
+        m_cascade.labels(parent_type=incident.get("type", "unknown")).inc()
+
+    # Update Prometheus
+    inc_type = incident.get("type", "unknown")
+    severity = incident.get("severity", "unknown")
+    trigger = incident.get("trigger", "unknown")
+    m_created.labels(type=inc_type, severity=severity, trigger=trigger).inc()
+    m_active.labels(type=inc_type, severity=severity).inc()
+
+    protocol = incident.get("protocol", "")
+    if protocol:
+        m_protocols.labels(protocol=protocol).inc()
+
+    depth = incident.get("cascade_depth", 0)
+    if depth > 0:
+        global _max_cascade_depth
+        if depth > _max_cascade_depth:
+            _max_cascade_depth = depth
+            m_cascade_depth.set(depth)
 
     # WebSocket broadcast
     if _ws_broadcast:
@@ -137,6 +168,21 @@ async def _on_incident_status_changed(
 
     alert = build_alert(incident, sim_time)
     _add_alert(alert)
+
+    # Update Prometheus
+    inc_type = incident.get("type", "unknown")
+    severity = incident.get("severity", "unknown")
+    if new_status == "resolved":
+        m_active.labels(type=inc_type, severity=severity).dec()
+        # Record TTR if available
+        started = incident.get("started_at")
+        if started:
+            try:
+                started_dt = datetime.fromisoformat(str(started))
+                ttr_min = (sim_time - started_dt).total_seconds() / 60
+                m_ttr.labels(type=inc_type).observe(ttr_min)
+            except (ValueError, TypeError):
+                pass
 
     if _ws_broadcast:
         await _ws_broadcast({

@@ -7,6 +7,13 @@ import time
 from datetime import datetime, timedelta
 
 from kafka.producer import emit_clock_tick
+from metrics import (
+    sim_tick_total as m_tick_total,
+    sim_tick_latency_ms as m_tick_latency,
+    sim_speed_multiplier as m_speed,
+    sim_day_number as m_day,
+    sim_paused as m_paused,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +133,13 @@ async def run_clock_loop() -> None:
 
     while _running:
         if _paused:
+            m_paused.set(1)
             await asyncio.sleep(0.1)
             continue
 
+        m_paused.set(0)
+        m_speed.set(_speed_multiplier)
+        m_day.set(_sim_day)
         tick_start = time.monotonic()
 
         _sim_time += timedelta(minutes=1)
@@ -141,6 +152,7 @@ async def run_clock_loop() -> None:
             day_of_sim=_sim_day,
         )
         _events_produced += 1
+        m_tick_total.inc()
 
         # Hour boundary check
         if _sim_time.minute == 0 and _on_hour_boundary:
@@ -163,6 +175,7 @@ async def run_clock_loop() -> None:
             logger.info("Day boundary: now day %d (%s)", _sim_day, _sim_time.date())
 
         tick_elapsed = (time.monotonic() - tick_start) * 1000  # ms
+        m_tick_latency.observe(tick_elapsed)
         _tick_latencies.append(tick_elapsed)
         if len(_tick_latencies) > 1000:
             _tick_latencies = _tick_latencies[-500:]

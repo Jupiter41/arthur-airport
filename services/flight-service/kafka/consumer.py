@@ -30,6 +30,15 @@ from services.state_machine import evaluate_transition, TERMINAL_STATES
 from services.runway_queue import RunwayQueue
 from services.gate_resolver import ensure_gate_assigned, check_and_resolve_conflict
 from services.turnaround import propagate_turnaround_delay
+from metrics import (
+    flight_status_transitions_total as m_transitions,
+    flights_active as m_active,
+    flights_delayed_current as m_delayed,
+    flights_cancelled_total as m_cancelled,
+    runway_queue_depth as m_rq_depth,
+    gate_conflicts_resolved_total as m_gate_conflicts,
+    turnaround_delay_minutes as m_turnaround_delay,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +208,18 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     # 3. Process each flight through the FSM
     for flight in flights:
         await _process_flight(flight, sim_time)
+
+    # 4. Update Prometheus gauges
+    status_counts: dict[str, int] = {}
+    delayed_count = 0
+    for flight in flights:
+        s = flight.get("status", "unknown")
+        status_counts[s] = status_counts.get(s, 0) + 1
+        if s == "delayed":
+            delayed_count += 1
+    for s, count in status_counts.items():
+        m_active.labels(status=s).set(count)
+    m_delayed.set(delayed_count)
 
 
 async def _process_flight(flight: dict, sim_time: datetime) -> None:
@@ -435,6 +456,12 @@ async def _execute_transition(
         runway_id=flight.get("runway_id"),
         delay_minutes=delay_minutes,
     )
+
+    # Update Prometheus counters
+    m_transitions.labels(from_status=previous_status, to_status=new_status).inc()
+    if new_status == "cancelled":
+        reason = update_kwargs.get("delay_reason", "unknown")
+        m_cancelled.labels(reason=reason).inc()
 
     # Broadcast to WebSocket
     if _ws_broadcast:

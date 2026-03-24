@@ -34,12 +34,6 @@ const requestDuration = new client.Histogram({
   buckets: [10, 50, 100, 250, 500, 1000, 2500, 5000],
 });
 
-const upstreamErrors = new client.Counter({
-  name: "gateway_upstream_errors_total",
-  help: "Upstream errors by service",
-  labelNames: ["service"],
-});
-
 // Request logging / metrics middleware
 app.use((req: Request, res: Response, next) => {
   const start = Date.now();

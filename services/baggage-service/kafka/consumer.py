@@ -30,6 +30,16 @@ from services.conveyor import (
 )
 from services.screening import screen_item
 from services.offload import offload_flight_baggage
+from metrics import (
+    baggage_in_system as m_in_system,
+    baggage_flagged_active as m_flagged,
+    conveyor_zone_utilisation_pct as m_zone_util,
+    conveyor_zone_status as m_zone_status,
+    baggage_transitions_total as m_transitions,
+    dangerous_goods_detected_total as m_dg_detected,
+    screening_false_positives_total as m_false_pos,
+    baggage_offloaded_total as m_offloaded,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +205,18 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             # Determine what happens to this bag now that it left the zone
             await _process_bag_exit(zone_id, bag, sim_time)
 
+    # 4. Update Prometheus gauges
+    try:
+        counts = await get_baggage_counts_by_status()
+        for status, count in counts.items():
+            m_in_system.labels(status=status).set(count)
+    except Exception:
+        pass
+    for z in _conveyor.get_zone_summary():
+        m_zone_util.labels(zone_id=z["zone_id"]).set(z["utilisation_pct"])
+        status_val = {"normal": 0, "degraded": 1, "offline": 2}.get(z["status"], 0)
+        m_zone_status.labels(zone_id=z["zone_id"]).set(status_val)
+
 
 async def _induct_new_bags(sim_time: datetime) -> None:
     """Pull dropped_off bags from Neo4j and add them to the induction belt.
@@ -346,6 +368,11 @@ async def _process_bag_exit(
                 if result == "flagged"
                 else "false_positive"
             )
+            if result == "flagged":
+                m_dg_detected.labels(dg_class=str(bag.dg_class or "unknown")).inc()
+                m_flagged.inc(1)
+            else:
+                m_false_pos.inc()
             await flag_baggage(
                 bag.baggage_id,
                 flag_reason,
@@ -554,6 +581,7 @@ async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
     affected_zones = FAILURE_IMPACT.get(location, [])
     for zone_id in affected_zones:
         _conveyor.set_zone_status(zone_id, "offline")
+        m_zone_status.labels(zone_id=zone_id).set(2)  # offline
         logger.warning(
             "Zone %s set OFFLINE due to system_failure at %s",
             zone_id, location,
@@ -570,6 +598,7 @@ async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None
     affected_zones = FAILURE_IMPACT.get(location, [])
     for zone_id in affected_zones:
         _conveyor.set_zone_status(zone_id, "normal")
+        m_zone_status.labels(zone_id=zone_id).set(0)  # normal
         logger.info(
             "Zone %s restored to NORMAL after incident resolved at %s",
             zone_id, location,
