@@ -1,3 +1,34 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-900 text-white antialiased;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  }
+
+  /* Scrollbar styling for dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgb(17 24 39);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(75 85 99);
+    border-radius: 3px;
+  }
+}
+
+@layer components {
+  /* Flash animation for flight row updates */
+  .flash-row {
+    animation: flash 1.5s ease-out;
+  }
+  @keyframes flash {
+    0% { background-color: rgba(59, 130, 246, 0.3); }
+    100% { background-color: transparent; }
+  }
+}

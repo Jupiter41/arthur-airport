@@ -428,28 +428,28 @@ Sim controls work. All animations render correctly.
 
 ### Tasks
 
-- [ ] Set up Zustand stores: simStore, flightStore, passengerStore, baggageStore, incidentStore, weatherStore
-- [ ] Implement useWebSocket hook — connects to gateway, dispatches events to stores
-- [ ] Implement useApi hooks — React Query wrappers per service
-- [ ] Implement shared components: SimClock, WeatherStrip, IncidentBadge, StatusBadge, SimControls
-- [ ] Implement Flight Board (/) — FIDS panels, FlightRow with boarding bar, FlightDetailDrawer, runway status, row flash animation, critical incident banner
-- [ ] Implement Baggage Tracker (/baggage) — SVG conveyor map, zone colour coding, loading progress bars, flagged items panel, search + drawer
-- [ ] Implement Passenger Flow (/passengers) — zone heatmap grid, CSS heat transitions, security queue cards, connection risk list, incident overlays
-- [ ] Implement Incident Console (/incidents) — incident cards with pulse animation, cascade tree visualizer, protocol bar, alert feed, injection modal with confirmation preview, report download
-- [ ] Implement Ground Ops (/ground-ops) — SVG airfield schematic, animated runway arrows, holding stack, weather compass rose, incident zone overlays
+- [x] Set up Zustand stores: simStore, flightStore, passengerStore, baggageStore, incidentStore, weatherStore
+- [x] Implement useWebSocket hook — connects to gateway, dispatches events to stores
+- [x] Implement useApi hooks — React Query wrappers per service
+- [x] Implement shared components: SimClock, WeatherStrip, IncidentBadge, StatusBadge, SimControls
+- [x] Implement Flight Board (/) — FIDS panels, FlightRow with boarding bar, FlightDetailDrawer, runway status, row flash animation, critical incident banner
+- [x] Implement Baggage Tracker (/baggage) — SVG conveyor map, zone colour coding, loading progress bars, flagged items panel, search + drawer
+- [x] Implement Passenger Flow (/passengers) — zone heatmap grid, CSS heat transitions, security queue cards, connection risk list, incident overlays
+- [x] Implement Incident Console (/incidents) — incident cards with pulse animation, cascade tree visualizer, protocol bar, alert feed, injection modal with confirmation preview, report download
+- [x] Implement Ground Ops (/ground-ops) — SVG airfield schematic, animated runway arrows, holding stack, weather compass rose, incident zone overlays
 
 ### Desired output
 
 Open http://localhost:5173
 
-- [ ] Flight board shows live flights — status updates flash on WebSocket events
-- [ ] Inject runway_incursion via injection modal → red banner appears < 2 seconds
-- [ ] Baggage tracker: inject system_failure (conveyor-sorting) → zone dims to gray on map
-- [ ] Passenger flow heatmap shows heat building at peak hours — animated transitions visible
-- [ ] Incident cascade tree shows depth-3 tree for a runway incursion
-- [ ] Resolved incident report download produces readable content
-- [ ] Ground ops airfield shows aircraft movement on runway strips
-- [ ] Sim speed change via dropdown — clock visibly accelerates
+- [x] Flight board shows live flights — status updates flash on WebSocket events
+- [x] Inject runway_incursion via injection modal → red banner appears < 2 seconds
+- [x] Baggage tracker: inject system_failure (conveyor-sorting) → zone dims to gray on map
+- [x] Passenger flow heatmap shows heat building at peak hours — animated transitions visible
+- [x] Incident cascade tree shows depth-3 tree for a runway incursion
+- [x] Resolved incident report download produces readable content
+- [x] Ground ops airfield shows aircraft movement on runway strips
+- [x] Sim speed change via dropdown — clock visibly accelerates
 
 ---
 

@@ -24,7 +24,7 @@ Improve the documentation by:
 - Adding docstrings to all functions and classes, explaining their purpose, inputs, outputs, and side effects.
 - Creating a high-level architecture diagram that shows how the different services, databases, and message queues interact with each other.
 - Writing a README for each service that explains its role, how to run it, and how to test it.
-- Improve the repo README to include an overview of the project, its goals, and how to get started. The interest of each service/link to doc should be explained so that users only interested in a specific part of the system can easily find the relevant information.
+- Improve the repo README to include an overview of the project, its goals, and how to get started. The interest of each service (with link to doc) should be explained so that users only interested in a specific part of the system can easily find the relevant information.
 
 ### Gap 1 — No physical layout
 
