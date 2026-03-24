@@ -371,14 +371,14 @@ all Kafka topics. The /airport aggregate endpoint works. Auth and rate limiting 
 
 ### Tasks
 
-- [ ] Implement JWT auth middleware (POST /auth/token + Bearer validation)
-- [ ] Implement proxy routes for all 6 upstream services (http-proxy-middleware)
-- [ ] Implement GET /api/v1/airport aggregate (Promise.allSettled pattern)
-- [ ] Implement GET /api/v1/health/services
-- [ ] Implement Kafka consumer — all 8 topics to internal event queue
-- [ ] Implement WebSocket server — subscription filter frames + 15s heartbeat
-- [ ] Implement rate limiting per route tier (express-rate-limit)
-- [ ] Implement graceful degradation on upstream failure (partial response with null fields)
+- [x] Implement JWT auth middleware (POST /auth/token + Bearer validation)
+- [x] Implement proxy routes for all 6 upstream services (http-proxy-middleware)
+- [x] Implement GET /api/v1/airport aggregate (Promise.allSettled pattern)
+- [x] Implement GET /api/v1/health/services
+- [x] Implement Kafka consumer — all 8 topics to internal event queue
+- [x] Implement WebSocket server — subscription filter frames + 15s heartbeat
+- [x] Implement rate limiting per route tier (express-rate-limit)
+- [x] Implement graceful degradation on upstream failure (partial response with null fields)
 
 ### Desired output
 
