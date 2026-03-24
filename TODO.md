@@ -317,15 +317,15 @@ auto-resolve after TTR, and generate downloadable incident reports.
 
 ### Tasks
 
-- [ ] Implement `db/neo4j.py` — Incident CRUD + AFFECTS + SPAWNED relationships
-- [ ] Implement `services/lifecycle.py` — create, contain, resolve, TTR countdown
-- [ ] Implement `services/cascade.py` — rule table + depth-limited child creation
-- [ ] Implement `services/protocols.py` — protocol activation + alert generation
-- [ ] Implement `services/reports.py` — auto-generated report builder
-- [ ] Implement `kafka/consumer.py` — SimClockTick (TTR countdown), incidents.inject, WeatherStateChanged (IMC/LIFR auto-create), BaggageFlagged (DG class 3), SecurityCongestionDetected
-- [ ] Implement `kafka/producer.py` — IncidentCreated, IncidentStatusChanged, IncidentCascaded, IncidentAlert
-- [ ] Implement REST endpoints: GET /incidents, GET /incidents/{id}, POST /incidents/inject, POST /incidents/{id}/contain, POST /incidents/{id}/resolve, GET /incidents/{id}/report, GET /alerts
-- [ ] Implement WS /ws/incidents
+- [x] Implement `db/neo4j.py` — Incident CRUD + AFFECTS + SPAWNED relationships
+- [x] Implement `services/lifecycle.py` — create, contain, resolve, TTR countdown
+- [x] Implement `services/cascade.py` — rule table + depth-limited child creation
+- [x] Implement `services/protocols.py` — protocol activation + alert generation
+- [x] Implement `services/reports.py` — auto-generated report builder
+- [x] Implement `kafka/consumer.py` — SimClockTick (TTR countdown), incidents.inject, WeatherStateChanged (IMC/LIFR auto-create), BaggageFlagged (DG class 3), SecurityCongestionDetected
+- [x] Implement `kafka/producer.py` — IncidentCreated, IncidentStatusChanged, IncidentCascaded, IncidentAlert
+- [x] Implement REST endpoints: GET /incidents, GET /incidents/{id}, POST /incidents/inject, POST /incidents/{id}/contain, POST /incidents/{id}/resolve, GET /incidents/{id}/report, GET /alerts
+- [x] Implement WS /ws/incidents
 
 ### Desired output
 
