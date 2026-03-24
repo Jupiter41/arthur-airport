@@ -5,3 +5,4 @@ neo4j>=5.20.0
 confluent-kafka>=2.4.0
 prometheus-fastapi-instrumentator>=6.1.0
 python-dotenv>=1.0.0
+websockets>=12.0

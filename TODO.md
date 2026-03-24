@@ -122,15 +122,15 @@ the REST endpoints return current conditions and history.
 
 ### Tasks
 
-- [ ] Implement `db/neo4j.py` — WeatherState node CRUD + chain pointer update (atomic Cypher tx)
-- [ ] Implement `services/fsm.py` — 4-state FSM with transition matrix + rejection of >1-step jumps
-- [ ] Implement `services/parameters.py` — meteorological parameter sampling per state
-- [ ] Implement `services/metar.py` — METAR string builder + simplified TAF generator
-- [ ] Implement `services/capacity.py` — runway capacity calculator with crosswind/tailwind reductions
-- [ ] Implement `kafka/consumer.py` — consume sim.clock, evaluate hourly FSM transition
-- [ ] Implement `kafka/producer.py` — produce WeatherStateChanged + METARIssued (every 30 sim-min)
-- [ ] Implement REST endpoints: current, metar (plain text), taf (plain text), history, impact
-- [ ] Implement WS /ws/weather
+- [x] Implement `db/neo4j.py` — WeatherState node CRUD + chain pointer update (atomic Cypher tx)
+- [x] Implement `services/fsm.py` — 4-state FSM with transition matrix + rejection of >1-step jumps
+- [x] Implement `services/parameters.py` — meteorological parameter sampling per state
+- [x] Implement `services/metar.py` — METAR string builder + simplified TAF generator
+- [x] Implement `services/capacity.py` — runway capacity calculator with crosswind/tailwind reductions
+- [x] Implement `kafka/consumer.py` — consume sim.clock, evaluate hourly FSM transition
+- [x] Implement `kafka/producer.py` — produce WeatherStateChanged + METARIssued (every 30 sim-min)
+- [x] Implement REST endpoints: current, metar (plain text), taf (plain text), history, impact
+- [x] Implement WS /ws/weather
 
 ### Desired output
 
