@@ -42,10 +42,14 @@ async def list_flights(
     offset: int = Query(0, ge=0),
 ):
     """List all flights for the current simulated day."""
+    sim_time = get_sim_time()
+    sim_date_prefix = sim_time.date().isoformat() if sim_time else None
+
     flights, total = await get_all_flights(
         status=status,
         direction=direction,
         airline=airline,
+        sim_date_prefix=sim_date_prefix,
         limit=limit,
         offset=offset,
     )

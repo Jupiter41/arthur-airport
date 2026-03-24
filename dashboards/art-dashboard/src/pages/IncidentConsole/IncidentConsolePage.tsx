@@ -469,10 +469,9 @@ export default function IncidentConsolePage() {
   const setAlerts = useIncidentStore((s) => s.setAlerts);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [injectOpen, setInjectOpen] = useState(false);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (loaded) return;
+    let cancelled = false;
     const load = async () => {
       try {
         const [activeData, resolvedData, alertData] = await Promise.all([
@@ -480,6 +479,9 @@ export default function IncidentConsolePage() {
           incidentsApi.list({ status: "resolved" }),
           incidentsApi.alerts(),
         ]);
+        if (cancelled) {
+          return;
+        }
         const active =
           (activeData as { incidents: Incident[] }).incidents ?? [];
         const resolved =
@@ -491,12 +493,20 @@ export default function IncidentConsolePage() {
             (Array.isArray(alertData) ? (alertData as IncidentAlert[]) : []),
         );
       } catch {
-        // Gateway may not be ready
+        // Keep existing state and retry on next interval tick.
       }
-      setLoaded(true);
     };
-    load();
-  }, [loaded, setIncidents, setAlerts]);
+
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [setIncidents, setAlerts]);
 
   const incidentList = Object.values(incidents);
   const activeIncidents = useMemo(
@@ -568,6 +578,7 @@ export default function IncidentConsolePage() {
 /* ──────── Utils ──────── */
 function formatRelativeTime(iso: string): string {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "unknown";
   const now = Date.now();
   const diff = Math.floor((now - d.getTime()) / 60000);
   if (diff < 1) return "just now";
@@ -577,5 +588,6 @@ function formatRelativeTime(iso: string): string {
 
 function formatSimTime(iso: string): string {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "--:--";
   return `${d.getUTCHours().toString().padStart(2, "0")}:${d.getUTCMinutes().toString().padStart(2, "0")}`;
 }

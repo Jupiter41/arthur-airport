@@ -96,6 +96,7 @@ async def get_all_flights(
     status: str | None = None,
     direction: str | None = None,
     airline: str | None = None,
+    sim_date_prefix: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict], int]:
@@ -115,6 +116,9 @@ async def get_all_flights(
     if airline:
         where_clauses.append("f.airline_code = $airline")
         params["airline"] = airline
+    if sim_date_prefix:
+        where_clauses.append("f.scheduled_time STARTS WITH $sim_date_prefix")
+        params["sim_date_prefix"] = sim_date_prefix
 
     where = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
@@ -123,6 +127,14 @@ async def get_all_flights(
     MATCH (f:Flight) {where}
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
     OPTIONAL MATCH (f)-[:USES_RUNWAY]->(r:Runway)
+    OPTIONAL MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
+    WITH f, g, r,
+         count(p) AS pax_total,
+         sum(CASE WHEN p.status = 'boarded' THEN 1 ELSE 0 END) AS pax_boarded
+    OPTIONAL MATCH (b:Baggage)-[:LOADED_ON]->(f)
+    WITH f, g, r, pax_total, pax_boarded,
+         count(b) AS baggage_count,
+         sum(CASE WHEN b.status IN ['loaded', 'in_hold', 'arrived', 'on_carousel', 'collected'] THEN 1 ELSE 0 END) AS baggage_loaded
     RETURN f {{
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .origin_iata, .destination_iata,
@@ -130,7 +142,11 @@ async def get_all_flights(
         .pax_count, .seat_capacity
     }} AS flight,
     g.id AS gate_id,
-    r.id AS runway_id
+    r.id AS runway_id,
+    pax_total,
+    pax_boarded,
+    baggage_count,
+    baggage_loaded
     ORDER BY f.scheduled_time ASC
     SKIP $offset LIMIT $limit
     """
@@ -148,6 +164,10 @@ async def get_all_flights(
         flight = dict(r["flight"])
         flight["gate_id"] = r["gate_id"]
         flight["runway_id"] = r["runway_id"]
+        flight["pax_count"] = flight.get("pax_count") or int(r.get("pax_total") or 0)
+        flight["pax_boarded"] = int(r.get("pax_boarded") or 0)
+        flight["baggage_count"] = int(r.get("baggage_count") or 0)
+        flight["baggage_loaded"] = int(r.get("baggage_loaded") or 0)
         flights.append(flight)
 
     return flights, total
@@ -160,6 +180,14 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
     MATCH (f:Flight {id: $id})
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
     OPTIONAL MATCH (f)-[:USES_RUNWAY]->(r:Runway)
+    OPTIONAL MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
+    WITH f, g, r,
+         count(p) AS pax_total,
+         sum(CASE WHEN p.status = 'boarded' THEN 1 ELSE 0 END) AS pax_boarded
+    OPTIONAL MATCH (b:Baggage)-[:LOADED_ON]->(f)
+    WITH f, g, r, pax_total, pax_boarded,
+         count(b) AS baggage_count,
+         sum(CASE WHEN b.status IN ['loaded', 'in_hold', 'arrived', 'on_carousel', 'collected'] THEN 1 ELSE 0 END) AS baggage_loaded
     RETURN f {
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
@@ -167,7 +195,11 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
         .delay_minutes, .delay_reason, .pax_count, .seat_capacity
     } AS flight,
     g { .id, .terminal_id, .jetbridge, .status } AS gate,
-    r { .id, .status, .ils } AS runway
+    r { .id, .status, .ils } AS runway,
+    pax_total,
+    pax_boarded,
+    baggage_count,
+    baggage_loaded
     """
     async with driver.session() as session:
         result = await session.run(query, id=flight_id)
@@ -175,6 +207,10 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
         if not record:
             return None
         flight = dict(record["flight"])
+        flight["pax_count"] = flight.get("pax_count") or int(record.get("pax_total") or 0)
+        flight["pax_boarded"] = int(record.get("pax_boarded") or 0)
+        flight["baggage_count"] = int(record.get("baggage_count") or 0)
+        flight["baggage_loaded"] = int(record.get("baggage_loaded") or 0)
         flight["gate"] = dict(record["gate"]) if record["gate"] else None
         flight["runway"] = dict(record["runway"]) if record["runway"] else None
         return flight

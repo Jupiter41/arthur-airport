@@ -119,24 +119,35 @@ def should_depart_airport(
 
 def get_terminal_from_gate(gate_id: str | None, terminal_id: str | None) -> str:
     """Extract terminal letter from gate or terminal_id."""
-    if terminal_id and len(str(terminal_id)) >= 3:
-        return str(terminal_id)[-1]
     if gate_id and len(gate_id) >= 1:
-        first = gate_id[0].upper()
+        first = str(gate_id)[0].upper()
         if first in ("A", "B", "C"):
             return first
+
+    if terminal_id:
+        tid = str(terminal_id).strip().upper()
+        if tid in ("A", "B", "C"):
+            return tid
+        if tid.startswith("T-") and len(tid) >= 3 and tid[-1] in ("A", "B", "C"):
+            return tid[-1]
+        if "TERMINAL" in tid:
+            for t in ("A", "B", "C"):
+                if tid.endswith(t):
+                    return t
+
     return "A"
 
 
 def get_terminal_for_flight(gate_id: str | None, terminal_id: str | None, flight_id: str | None) -> str:
     """Get terminal for a flight. Falls back to hash-based distribution if no gate assigned."""
-    terminal = get_terminal_from_gate(gate_id, terminal_id)
-    if terminal != "A" or (gate_id and gate_id.startswith("A")):
-        return terminal
-    # No gate assigned yet — distribute based on flight_id hash
+    if gate_id or terminal_id:
+        return get_terminal_from_gate(gate_id, terminal_id)
+
+    # No gate assigned yet — distribute based on flight_id hash.
     if flight_id:
         terminals = ["A", "B", "C"]
-        return terminals[hash(flight_id) % 3]
+        return terminals[hash(str(flight_id)) % 3]
+
     return "A"
 
 

@@ -1,7 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
 import { verifyTokenFromRequest } from "./auth";
-import { Request } from "express";
 import client from "prom-client";
 
 // Prometheus metrics
@@ -65,7 +64,7 @@ export function setupWebSocket(server: Server): void {
       info: { req: IncomingMessage },
       callback: (result: boolean, code?: number, message?: string) => void,
     ) => {
-      const valid = verifyTokenFromRequest(info.req as unknown as Request);
+      const valid = verifyTokenFromRequest(info.req);
       if (!valid) {
         callback(false, 401, "Unauthorized");
       } else {

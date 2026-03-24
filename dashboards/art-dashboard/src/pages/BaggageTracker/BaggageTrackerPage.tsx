@@ -68,8 +68,66 @@ function zoneColor(util: number, status: string): string {
   return "#ef4444"; // red
 }
 
+function toLayoutZoneId(zoneId: string): string {
+  const screening = /^screening-unit-(\d+)$/i.exec(zoneId);
+  if (screening) {
+    return `screening-${screening[1]}`;
+  }
+
+  const makeup = /^make-up-([ABC])-\d+$/i.exec(zoneId);
+  if (makeup) {
+    return `make-up-${makeup[1].toUpperCase()}`;
+  }
+
+  return zoneId;
+}
+
+function normalizeZoneStatus(status: string): "active" | "offline" | "idle" {
+  const normalized = status.toLowerCase();
+  if (normalized === "offline") return "offline";
+  if (normalized === "active" || normalized === "normal" || normalized === "degraded") {
+    return "active";
+  }
+  return "idle";
+}
+
+function aggregateForLayout(zones: BaggageZone[]): Record<string, BaggageZone> {
+  const map: Record<string, BaggageZone> = {};
+
+  for (const zone of zones) {
+    const layoutId = toLayoutZoneId(zone.zone_id);
+    const existing = map[layoutId];
+    const status = normalizeZoneStatus(zone.status);
+
+    if (!existing) {
+      map[layoutId] = {
+        ...zone,
+        zone_id: layoutId,
+        status,
+      };
+      continue;
+    }
+
+    existing.items += zone.items;
+    existing.capacity += zone.capacity;
+    existing.throughput_per_hour += zone.throughput_per_hour;
+    existing.status =
+      existing.status === "offline" || status === "offline"
+        ? "offline"
+        : existing.status === "active" || status === "active"
+          ? "active"
+          : "idle";
+    existing.utilisation_pct =
+      existing.capacity > 0
+        ? Math.round((existing.items / existing.capacity) * 100)
+        : Math.max(existing.utilisation_pct, zone.utilisation_pct);
+  }
+
+  return map;
+}
+
 function ConveyorMap({ zones }: { zones: BaggageZone[] }) {
-  const zoneMap = Object.fromEntries(zones.map((z) => [z.zone_id, z]));
+  const zoneMap = aggregateForLayout(zones);
 
   function getCenter(id: string) {
     const z = ZONE_LAYOUT.find((l) => l.id === id);
@@ -202,6 +260,16 @@ function ZoneStatsPanel({ zones }: { zones: BaggageZone[] }) {
 /* ──────── Flow Summary ──────── */
 function FlowSummaryPanel({ summary }: { summary: BaggageFlowSummary | null }) {
   if (!summary) return null;
+
+  const loadedCount =
+    summary.loaded_count ??
+    (summary.by_status?.loaded as number | undefined) ??
+    0;
+  const flaggedCount =
+    summary.flagged_count ??
+    (summary.by_status?.flagged as number | undefined) ??
+    0;
+
   return (
     <div className="space-y-2">
       <h3 className="text-xs text-gray-400 uppercase tracking-wide">
@@ -211,20 +279,18 @@ function FlowSummaryPanel({ summary }: { summary: BaggageFlowSummary | null }) {
         <div className="bg-gray-800 rounded p-2">
           <div className="text-xs text-gray-500">In System</div>
           <div className="font-bold text-white">
-            {summary.total_in_system.toLocaleString()}
+            {(summary.total_in_system ?? 0).toLocaleString()}
           </div>
         </div>
         <div className="bg-gray-800 rounded p-2">
           <div className="text-xs text-gray-500">Loaded</div>
           <div className="font-bold text-teal-400">
-            {summary.loaded_count.toLocaleString()}
+            {loadedCount.toLocaleString()}
           </div>
         </div>
         <div className="bg-gray-800 rounded p-2">
           <div className="text-xs text-gray-500">Flagged</div>
-          <div className="font-bold text-amber-400">
-            {summary.flagged_count}
-          </div>
+          <div className="font-bold text-amber-400">{flaggedCount}</div>
         </div>
       </div>
       {summary.by_status && (
@@ -342,7 +408,6 @@ export default function BaggageTrackerPage() {
   const setSummary = useBaggageStore((s) => s.setSummary);
   const setFlagged = useBaggageStore((s) => s.setFlagged);
   const [flights, setFlights] = useState<Flight[]>([]);
-  const [loaded, setLoaded] = useState(false);
 
   // Listen for incident-driven zone offline changes
   const incidents = useIncidentStore((s) => s.incidents);
@@ -376,7 +441,7 @@ export default function BaggageTrackerPage() {
   }, [incidents, zones, setZones]);
 
   useEffect(() => {
-    if (loaded) return;
+    let cancelled = false;
     const load = async () => {
       try {
         const [mapData, summaryData, flaggedData, flightsData] =
@@ -386,12 +451,26 @@ export default function BaggageTrackerPage() {
             baggageApi.flagged(),
             flightsApi.list({ direction: "departure", limit: "100" }),
           ]);
+        if (cancelled) {
+          return;
+        }
         const md = mapData as { zones?: BaggageZone[] };
         setZones(
           md.zones ??
             (Array.isArray(mapData) ? (mapData as BaggageZone[]) : []),
         );
-        setSummary(summaryData as BaggageFlowSummary);
+        const sd = summaryData as Record<string, unknown>;
+        setSummary({
+          total_in_system: (sd.total_in_system as number) ?? 0,
+          by_status: (sd.by_status as Record<string, number>) ?? {},
+          flagged_count:
+            (sd.flagged_count as number) ??
+            (sd.flagged_active as number) ??
+            0,
+          loaded_count:
+            (sd.loaded_count as number) ??
+            ((sd.by_status as Record<string, number> | undefined)?.loaded ?? 0),
+        });
         const fd = flaggedData as { flagged?: FlaggedBaggage[] };
         setFlagged(
           fd.flagged ??
@@ -402,12 +481,20 @@ export default function BaggageTrackerPage() {
         const fl = flightsData as { flights?: Flight[] };
         setFlights(fl.flights ?? []);
       } catch {
-        // Gateway may not be ready
+        // Keep existing state and retry on next interval tick.
       }
-      setLoaded(true);
     };
-    load();
-  }, [loaded, setZones, setSummary, setFlagged]);
+
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [setZones, setSummary, setFlagged]);
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">

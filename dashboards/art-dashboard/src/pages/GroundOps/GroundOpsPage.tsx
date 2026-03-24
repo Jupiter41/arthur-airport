@@ -398,10 +398,9 @@ export default function GroundOpsPage() {
   const setGates = useFlightStore((s) => s.setGates);
   const setCurrent = useWeatherStore((s) => s.setCurrent);
   const setIncidents = useIncidentStore((s) => s.setIncidents);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (loaded) return;
+    let cancelled = false;
     const load = async () => {
       try {
         const [rwData, gateData, flData, wxData, incData] = await Promise.all([
@@ -414,20 +413,32 @@ export default function GroundOpsPage() {
           weatherApi.current(),
           incidentsApi.list({ status: "active,contained" }),
         ]);
+        if (cancelled) {
+          return;
+        }
         setRunways(rwData as Runway[]);
-        setGates(gateData as Gate[]);
+        const gd = gateData as { gates?: Gate[] };
+        setGates(gd.gates ?? (Array.isArray(gateData) ? (gateData as Gate[]) : []));
         const fd = flData as { flights: Flight[] };
         setFlights(fd.flights ?? []);
         setCurrent(wxData as WeatherState);
         const id = incData as { incidents: Incident[] };
         setIncidents(id.incidents ?? []);
       } catch {
-        // Gateway may not be ready
+        // Keep existing state and retry on next interval tick.
       }
-      setLoaded(true);
     };
-    load();
-  }, [loaded, setRunways, setGates, setFlights, setCurrent, setIncidents]);
+
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [setRunways, setGates, setFlights, setCurrent, setIncidents]);
 
   const flightList = useMemo(() => Object.values(flights), [flights]);
   const activeIncidents = useMemo(

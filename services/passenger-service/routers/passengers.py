@@ -86,7 +86,7 @@ async def flow_summary():
     by_status = await get_status_counts()
 
     # Compute total in airport (active statuses only)
-    active = {"checked_in", "security_queue", "airside", "at_gate", "boarded",
+    active = {"checked_in", "security_queue", "airside", "at_gate",
               "deplaning", "baggage_claim"}
     total = sum(v for k, v in by_status.items() if k in active)
 
@@ -96,7 +96,24 @@ async def flow_summary():
         cp = security.get(terminal)
         forecast_queues[terminal] = cp.queue_depth  # use actual as fallback
 
-    sec_summary = security.get_summary(forecast_queues)
+    sec_summary_raw = security.get_summary(forecast_queues)
+    sec_summary = {
+        "A": {
+            "queue_length": sec_summary_raw.get("terminal_a", {}).get("queue_depth", 0),
+            "wait_minutes": sec_summary_raw.get("terminal_a", {}).get("wait_minutes", 0),
+            "lanes_open": sec_summary_raw.get("terminal_a", {}).get("lanes_open", 0),
+        },
+        "B": {
+            "queue_length": sec_summary_raw.get("terminal_b", {}).get("queue_depth", 0),
+            "wait_minutes": sec_summary_raw.get("terminal_b", {}).get("wait_minutes", 0),
+            "lanes_open": sec_summary_raw.get("terminal_b", {}).get("lanes_open", 0),
+        },
+        "C": {
+            "queue_length": sec_summary_raw.get("terminal_c", {}).get("queue_depth", 0),
+            "wait_minutes": sec_summary_raw.get("terminal_c", {}).get("wait_minutes", 0),
+            "lanes_open": sec_summary_raw.get("terminal_c", {}).get("lanes_open", 0),
+        },
+    }
 
     # Connection counts
     at_risk = get_at_risk_connections()

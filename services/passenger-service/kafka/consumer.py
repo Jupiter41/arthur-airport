@@ -48,7 +48,7 @@ from services.state_machine import (
     zone_for_status,
     BOARDING_RATE_PAX_PER_MIN,
 )
-from services.zones import move_passenger, rebuild_from_neo4j, get_density
+from services.zones import move_passenger, remove_passenger, rebuild_from_neo4j, get_density
 from metrics import (
     passengers_in_airport as m_pax_in_airport,
     security_queue_depth as m_sec_queue_depth,
@@ -529,8 +529,8 @@ async def _advance_boarding(sim_time: datetime) -> None:
 
         for pax in to_board:
             old_zone = pax.get("location_zone") or f"gate-{gate_id}"
-            # Don't update zone density for boarded — they're leaving the airport
-            move_passenger(old_zone, new_zone)
+            # Boarded passengers leave terminal waiting areas.
+            remove_passenger(old_zone)
 
             await emit_passenger_status_changed(
                 passenger_id=pax["id"],
@@ -584,7 +584,8 @@ async def _advance_arrivals(sim_time: datetime) -> None:
             old_zone = pax.get("location_zone") or "baggage-claim"
             new_zone = "arrivals-hall"
             await update_passenger_status(pid, "departed_airport", new_zone, sim_time)
-            move_passenger(old_zone, new_zone)
+            # Passenger has exited the airport footprint.
+            remove_passenger(old_zone)
             _baggage_collected.discard(pid)
             await emit_passenger_status_changed(
                 passenger_id=pid,
@@ -832,12 +833,7 @@ async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
         return
 
     location = payload.get("location", "")
-    # Extract terminal from location (e.g. "security-B" → "B")
-    terminal = None
-    for t in ("A", "B", "C"):
-        if t.lower() in location.lower() or f"-{t}" in location:
-            terminal = t
-            break
+    terminal = _extract_terminal_from_location(location)
 
     if terminal:
         _security.freeze_terminal(terminal)
@@ -852,11 +848,29 @@ async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None
         return
 
     location = payload.get("location", "")
-    for t in ("A", "B", "C"):
-        if t.lower() in location.lower() or f"-{t}" in location:
-            _security.unfreeze_terminal(t)
-            _active_incidents[t] = False
-            logger.info("Security resumed — terminal %s unfrozen", t)
+    terminal = _extract_terminal_from_location(location)
+    if terminal:
+        _security.unfreeze_terminal(terminal)
+        _active_incidents[terminal] = False
+        logger.info("Security resumed — terminal %s unfrozen", terminal)
+
+
+def _extract_terminal_from_location(location: str) -> str | None:
+    """Extract terminal from explicit location tokens like terminal-B or security-C."""
+    if not location:
+        return None
+
+    normalized = str(location).strip().upper()
+    for token in ("TERMINAL-", "SECURITY-", "AIRSIDE-", "CHECK-IN-"):
+        if normalized.startswith(token):
+            suffix = normalized[len(token):]
+            if suffix in ("A", "B", "C"):
+                return suffix
+
+    if normalized in ("A", "B", "C"):
+        return normalized
+
+    return None
 
 
 async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:

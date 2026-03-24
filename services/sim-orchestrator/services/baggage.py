@@ -78,6 +78,70 @@ async def generate_baggage(
     return len(all_baggage), all_baggage
 
 
+async def generate_arrival_baggage(
+    arrival_flights: list[dict],
+    seed: int | None = None,
+) -> tuple[int, list[dict]]:
+    """Generate inbound baggage for arrival flights.
+
+    Arrival baggage starts as already loaded in aircraft hold and will move
+    to carousel when the arrival reaches at_gate.
+    """
+    rng = random.Random(seed)
+    np_rng = np.random.default_rng(seed)
+    fixtures = get_fixtures()
+    dg_classes = fixtures["dg_classes"]
+    dg_class_ids = [d["class"] for d in dg_classes]
+
+    all_baggage: list[dict] = []
+    tag_counter = 5_000_000_000
+
+    for flight in arrival_flights:
+        seat_capacity = int(flight.get("seat_capacity") or 0)
+        if seat_capacity <= 0:
+            continue
+
+        # Synthetic inbound load factor around 80%.
+        load_factor = max(0.5, min(1.0, float(np_rng.normal(0.8, 0.12))))
+        pax_count = max(1, round(seat_capacity * load_factor))
+        bag_count = int(np_rng.poisson(max(1.0, pax_count * POISSON_LAMBDA)))
+        bag_count = max(1, min(bag_count, seat_capacity * 3))
+
+        for _ in range(bag_count):
+            bag_id = str(uuid4())
+            tag = _generate_tag(tag_counter)
+            tag_counter += 1
+
+            weight = float(np_rng.normal(WEIGHT_MEAN_KG, WEIGHT_STD_KG))
+            weight = max(WEIGHT_MIN_KG, min(WEIGHT_MAX_KG, round(weight, 1)))
+
+            is_dg = rng.random() < DG_PROBABILITY
+            dg_class = rng.choice(dg_class_ids) if is_dg else None
+
+            bag = {
+                "id": bag_id,
+                "tag": tag,
+                "weight_kg": weight,
+                "status": "in_hold",
+                "is_dangerous_goods": is_dg,
+                "dg_class": dg_class,
+                "last_scan_zone": "aircraft-hold",
+                "last_scan_at": None,
+                "carousel": None,
+                "flight_id": flight["id"],
+            }
+            all_baggage.append(bag)
+
+    await _persist_arrival_baggage(all_baggage)
+
+    logger.info(
+        "Generated %d inbound baggage items for %d arrival flights",
+        len(all_baggage),
+        len(arrival_flights),
+    )
+    return len(all_baggage), all_baggage
+
+
 async def _persist_baggage(baggage: list[dict]) -> None:
     """Batch-insert baggage into Neo4j and create relationships."""
     driver = get_driver()
@@ -103,6 +167,37 @@ async def _persist_baggage(baggage: list[dict]) -> None:
                     carousel: b.carousel
                 })
                 CREATE (pax)-[:CARRIES]->(bag)
+                CREATE (bag)-[:LOADED_ON]->(f)
+                """,
+                baggage=batch,
+            )
+
+
+async def _persist_arrival_baggage(baggage: list[dict]) -> None:
+    """Batch-insert inbound baggage linked directly to arrival flights."""
+    if not baggage:
+        return
+
+    driver = get_driver()
+    batch_size = 2000
+    for i in range(0, len(baggage), batch_size):
+        batch = baggage[i : i + batch_size]
+        async with driver.session() as session:
+            await session.run(
+                """
+                UNWIND $baggage AS b
+                MATCH (f:Flight {id: b.flight_id})
+                CREATE (bag:Baggage {
+                    id: b.id,
+                    tag: b.tag,
+                    weight_kg: b.weight_kg,
+                    status: b.status,
+                    is_dangerous_goods: b.is_dangerous_goods,
+                    dg_class: b.dg_class,
+                    last_scan_zone: b.last_scan_zone,
+                    last_scan_at: b.last_scan_at,
+                    carousel: b.carousel
+                })
                 CREATE (bag)-[:LOADED_ON]->(f)
                 """,
                 baggage=batch,

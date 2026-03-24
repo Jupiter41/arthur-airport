@@ -113,8 +113,10 @@ function AirportHeatmap({
                 (z) =>
                   z.zone_id
                     .toLowerCase()
-                    .startsWith(`gate-${term.toLowerCase()}`) ||
-                  z.zone_id.toLowerCase().startsWith(`${term.toLowerCase()}`),
+                    .startsWith("gate-") &&
+                  z.zone_id
+                    .toLowerCase()
+                    .startsWith(`gate-${term.toLowerCase()}`),
               );
               if (gateZones.length > 0) {
                 const totalDensity = gateZones.reduce(
@@ -372,7 +374,6 @@ export default function PassengerFlowPage() {
   const incidents = useIncidentStore((s) => s.incidents);
 
   const [selectedZone, setSelectedZone] = useState<ZoneDensity | null>(null);
-  const [loaded, setLoaded] = useState(false);
 
   // Determine locked zones from security incidents
   const lockedZones = useMemo(() => {
@@ -386,7 +387,7 @@ export default function PassengerFlowPage() {
   }, [incidents]);
 
   useEffect(() => {
-    if (loaded) return;
+    let cancelled = false;
     const load = async () => {
       try {
         const [heatData, summaryData, riskData] = await Promise.all([
@@ -394,6 +395,9 @@ export default function PassengerFlowPage() {
           passengersApi.summary(),
           passengersApi.atRisk(),
         ]);
+        if (cancelled) {
+          return;
+        }
         const hd = heatData as { zones?: ZoneDensity[] };
         setZones(
           hd.zones ??
@@ -406,12 +410,20 @@ export default function PassengerFlowPage() {
             (Array.isArray(riskData) ? (riskData as ConnectionAtRisk[]) : []),
         );
       } catch {
-        // Gateway may not be ready
+        // Keep existing state and retry on next interval tick.
       }
-      setLoaded(true);
     };
-    load();
-  }, [loaded, setZones, setSummary, setConnectionsAtRisk]);
+
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [setZones, setSummary, setConnectionsAtRisk]);
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">

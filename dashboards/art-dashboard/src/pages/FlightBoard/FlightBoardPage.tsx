@@ -406,27 +406,37 @@ export default function FlightBoardPage() {
   const setRunways = useFlightStore((s) => s.setRunways);
   const setCurrent = useWeatherStore((s) => s.setCurrent);
   const [selectedFlight, setSelectedFlight] = useState<Flight | null>(null);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (loaded) return;
+    let cancelled = false;
     const load = async () => {
       try {
         const [flightData, rwData, wxData] = await Promise.all([
-          flightsApi.list({ limit: "500" }),
+          flightsApi.list({ limit: "200" }),
           flightsApi.runways(),
           weatherApi.current(),
         ]);
+        if (cancelled) {
+          return;
+        }
         setFlights((flightData as { flights: Flight[] }).flights ?? []);
         setRunways(rwData as Runway[]);
         setCurrent(wxData as WeatherState);
       } catch {
-        // Gateway may not be ready yet — stores stay empty
+        // Keep existing state and retry on next interval tick.
       }
-      setLoaded(true);
     };
-    load();
-  }, [loaded, setFlights, setRunways, setCurrent]);
+
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [setFlights, setRunways, setCurrent]);
 
   const flightList = Object.values(flights);
   const departures = useMemo(

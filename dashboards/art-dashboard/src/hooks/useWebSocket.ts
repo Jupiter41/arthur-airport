@@ -6,11 +6,18 @@ import { useWeatherStore } from "../stores/weatherStore";
 import { useBaggageStore } from "../stores/baggageStore";
 import { useIncidentStore } from "../stores/incidentStore";
 import { usePassengerStore } from "../stores/passengerStore";
+import { getAuthToken } from "./auth";
+import { useConnectionStore } from "../stores/connectionStore";
+
+const RAW_WS_URL = (import.meta.env.VITE_WS_URL as string | undefined)
+  ?.trim()
+  .replace(/\/+$/, "");
 
 const WS_URL =
+  RAW_WS_URL ??
   (window.location.protocol === "https:" ? "wss://" : "ws://") +
-  window.location.host +
-  "/ws";
+    window.location.host +
+    "/ws";
 
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
@@ -26,7 +33,12 @@ export function useWebSocket() {
 
     // Sim clock
     if (event_type === "SimClockTick") {
-      useSimStore.getState().updateFromTick(sim_time);
+      const tickFromPayload = payload?.sim_time;
+      const nextTick =
+        typeof tickFromPayload === "string" ? tickFromPayload : sim_time;
+      if (nextTick) {
+        useSimStore.getState().updateFromTick(nextTick);
+      }
       return;
     }
 
@@ -138,74 +150,6 @@ export function useWebSocket() {
     }
   }, []);
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      reconnectAttempt.current = 0;
-      // Subscribe to all topics
-      ws.send(
-        JSON.stringify({
-          action: "subscribe",
-          topics: [
-            "flights",
-            "passengers",
-            "baggage",
-            "weather",
-            "incidents",
-            "alerts",
-          ],
-        }),
-      );
-      resetHeartbeat();
-    };
-
-    ws.onmessage = (ev) => {
-      let data: Record<string, unknown>;
-      try {
-        data = JSON.parse(ev.data as string);
-      } catch {
-        return;
-      }
-
-      // Ping/pong heartbeat
-      if (data.type === "ping") {
-        ws.send(JSON.stringify({ type: "pong" }));
-        resetHeartbeat();
-        // Also update sim time from ping
-        if (data.sim_time) {
-          useSimStore.getState().updateFromTick(data.sim_time as string);
-        }
-        return;
-      }
-
-      // Snapshot on connect
-      if (data.type === "snapshot") {
-        if (data.sim_time) {
-          useSimStore.getState().updateFromTick(data.sim_time as string);
-        }
-        return;
-      }
-
-      // Regular event envelope
-      if (data.event_type) {
-        dispatch(data as unknown as KafkaEvent);
-      }
-    };
-
-    ws.onclose = () => {
-      clearTimeout(heartbeatTimer.current);
-      scheduleReconnect();
-    };
-
-    ws.onerror = () => {
-      ws.close();
-    };
-  }, [dispatch]);
-
   const resetHeartbeat = useCallback(() => {
     clearTimeout(heartbeatTimer.current);
     heartbeatTimer.current = setTimeout(() => {
@@ -214,14 +158,104 @@ export function useWebSocket() {
     }, HEARTBEAT_TIMEOUT_MS);
   }, []);
 
-  const scheduleReconnect = useCallback(() => {
+  const scheduleReconnect = useCallback((connectFn: () => void) => {
     const delay = Math.min(
       RECONNECT_BASE_MS * 2 ** reconnectAttempt.current,
       RECONNECT_MAX_MS,
     );
     reconnectAttempt.current += 1;
-    setTimeout(connect, delay);
-  }, [connect]);
+    setTimeout(connectFn, delay);
+  }, []);
+
+  const connect = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (wsRef.current?.readyState === WebSocket.CONNECTING) return;
+
+    void getAuthToken()
+      .then((token) => {
+        const sep = WS_URL.includes("?") ? "&" : "?";
+        const ws = new WebSocket(
+          `${WS_URL}${sep}token=${encodeURIComponent(token)}`,
+        );
+
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          reconnectAttempt.current = 0;
+          useConnectionStore.getState().setWsConnected(true, null);
+          // Subscribe to all topics
+          ws.send(
+            JSON.stringify({
+              action: "subscribe",
+              topics: [
+                "flights",
+                "passengers",
+                "baggage",
+                "weather",
+                "incidents",
+                "alerts",
+              ],
+            }),
+          );
+          resetHeartbeat();
+        };
+
+        ws.onmessage = (ev) => {
+          let data: Record<string, unknown>;
+          try {
+            data = JSON.parse(ev.data as string);
+          } catch {
+            return;
+          }
+          useConnectionStore.getState().markWsMessage();
+
+          // Ping/pong heartbeat
+          if (data.type === "ping") {
+            ws.send(JSON.stringify({ type: "pong" }));
+            resetHeartbeat();
+            // Also update sim time from ping
+            if (data.sim_time) {
+              useSimStore.getState().updateFromTick(data.sim_time as string);
+            }
+            return;
+          }
+
+          // Snapshot on connect
+          if (data.type === "snapshot") {
+            if (data.sim_time) {
+              useSimStore.getState().updateFromTick(data.sim_time as string);
+            }
+            return;
+          }
+
+          // Regular event envelope
+          if (data.event_type) {
+            dispatch(data as unknown as KafkaEvent);
+          }
+        };
+
+        ws.onclose = () => {
+          clearTimeout(heartbeatTimer.current);
+          useConnectionStore
+            .getState()
+            .setWsConnected(false, "WebSocket connection closed");
+          scheduleReconnect(connect);
+        };
+
+        ws.onerror = () => {
+          useConnectionStore
+            .getState()
+            .setWsConnected(false, "WebSocket error");
+          ws.close();
+        };
+      })
+      .catch(() => {
+        useConnectionStore
+          .getState()
+          .setWsConnected(false, "WebSocket auth failed");
+        scheduleReconnect(connect);
+      });
+  }, [dispatch, resetHeartbeat, scheduleReconnect]);
 
   useEffect(() => {
     connect();

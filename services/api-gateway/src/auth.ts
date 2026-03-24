@@ -52,9 +52,23 @@ export function authMiddleware(
  * Extract and verify a JWT from a URL query string or Authorization header.
  * Used for WebSocket upgrade requests.
  */
-export function verifyTokenFromRequest(req: Request): boolean {
+type TokenRequest = {
+  headers: Request["headers"];
+  url?: string;
+};
+
+export function verifyTokenFromRequest(req: TokenRequest): boolean {
   const header = req.headers.authorization ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  let token = header.startsWith("Bearer ") ? header.slice(7) : "";
+
+  if (!token && req.url) {
+    try {
+      const url = new URL(req.url, "http://localhost");
+      token = url.searchParams.get("token") ?? "";
+    } catch {
+      token = "";
+    }
+  }
   if (!token) return false;
 
   try {

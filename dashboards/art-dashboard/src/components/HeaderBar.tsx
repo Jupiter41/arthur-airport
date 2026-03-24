@@ -3,6 +3,7 @@ import { SimClock } from "./SimClock";
 import { WeatherStrip } from "./WeatherStrip";
 import { IncidentBadge } from "./IncidentBadge";
 import { SimControls } from "./SimControls";
+import { ConnectionStatus } from "./ConnectionStatus";
 
 const NAV_ITEMS = [
   { path: "/", label: "Flights" },
@@ -28,6 +29,7 @@ export function HeaderBar() {
         </div>
 
         <div className="flex items-center gap-4">
+          <ConnectionStatus />
           <IncidentBadge />
           <SimClock />
           <SimControls />

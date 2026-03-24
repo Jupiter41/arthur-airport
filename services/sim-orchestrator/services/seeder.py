@@ -8,7 +8,7 @@ from db.neo4j import get_driver
 from services.clock import get_sim_time, get_sim_day, SIM_START_TIME
 from services.schedule import generate_schedule
 from services.passengers import generate_passengers
-from services.baggage import generate_baggage
+from services.baggage import generate_baggage, generate_arrival_baggage
 from kafka.producer import emit_flight_schedule_seeded, emit_weather_state_changed
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,10 @@ async def seed_day(sim_day: int) -> None:
     total_pax, passengers = await generate_passengers(departure_flights, seed=rng_seed + 1000)
 
     # 3. Generate baggage
-    total_bags, _ = await generate_baggage(passengers, seed=rng_seed + 2000)
+    total_bags_departure, _ = await generate_baggage(passengers, seed=rng_seed + 2000)
+    arrival_flights = [f for f in flights if f["direction"] == "arrival"]
+    total_bags_arrival, _ = await generate_arrival_baggage(arrival_flights, seed=rng_seed + 3000)
+    total_bags = total_bags_departure + total_bags_arrival
 
     # 4. Emit FlightScheduleSeeded event
     sim_time = get_sim_time() if get_sim_day() >= 1 else SIM_START_TIME

@@ -52,8 +52,11 @@ export async function setupKafka(): Promise<void> {
           const topicKey = TOPIC_KEY_MAP[topic] ?? topic;
 
           // Cache sim_time from clock ticks
-          if (event.event_type === "SimClockTick" && event.payload?.sim_time) {
-            setCurrentSimTime(event.payload.sim_time);
+          if (event.event_type === "SimClockTick") {
+            const tickSimTime = event.sim_time ?? event.payload?.sim_time;
+            if (typeof tickSimTime === "string") {
+              setCurrentSimTime(tickSimTime);
+            }
           }
 
           fanOut(topicKey, event);

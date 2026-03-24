@@ -19,6 +19,14 @@ CONNECTION_PROBABILITY = 0.20
 SPECIAL_ASSISTANCE_PROBABILITY = 0.05
 
 
+def _terminal_from_gate(gate_id: str | None) -> str:
+    if gate_id:
+        first = str(gate_id)[0].upper()
+        if first in ("A", "B", "C"):
+            return first
+    return "A"
+
+
 def _generate_pnr(rng: random.Random) -> str:
     """Generate a 6-character alphanumeric PNR."""
     chars = string.ascii_uppercase + string.digits
@@ -60,6 +68,7 @@ async def generate_passengers(
         load_factor = float(beta_rng.rvs(random_state=rng.randint(0, 2**31)))
         load_factor = max(0.5, min(1.0, load_factor))
         pax_count = round(seat_cap * load_factor)
+        terminal = _terminal_from_gate(flight.get("gate_id"))
 
         passengers = []
         for i in range(pax_count):
@@ -84,7 +93,7 @@ async def generate_passengers(
                 "pnr": pnr,
                 "nationality": nationality,
                 "status": "checked_in",
-                "location_zone": "check-in",
+                "location_zone": f"check-in-{terminal}",
                 "seat": seat,
                 "special_assistance": is_special,
                 "connection": is_connection,
