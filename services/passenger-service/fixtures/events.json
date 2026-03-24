@@ -1,0 +1,56 @@
+[
+  {
+    "name": "International Aviation Expo",
+    "start_month": 3,
+    "start_day": 15,
+    "end_month": 3,
+    "end_day": 20,
+    "pax_multiplier": 1.4,
+    "terminals": ["A", "B", "C"]
+  },
+  {
+    "name": "Summer Holiday Peak",
+    "start_month": 7,
+    "start_day": 1,
+    "end_month": 8,
+    "end_day": 31,
+    "pax_multiplier": 1.3,
+    "terminals": ["A", "B", "C"]
+  },
+  {
+    "name": "Winter Holiday Rush",
+    "start_month": 12,
+    "start_day": 18,
+    "end_month": 1,
+    "end_day": 5,
+    "pax_multiplier": 1.35,
+    "terminals": ["A", "B", "C"]
+  },
+  {
+    "name": "Tech Conference",
+    "start_month": 5,
+    "start_day": 10,
+    "end_month": 5,
+    "end_day": 14,
+    "pax_multiplier": 1.2,
+    "terminals": ["B"]
+  },
+  {
+    "name": "Spring Break",
+    "start_month": 3,
+    "start_day": 25,
+    "end_month": 4,
+    "end_day": 5,
+    "pax_multiplier": 1.25,
+    "terminals": ["A", "B", "C"]
+  },
+  {
+    "name": "Thanksgiving Travel",
+    "start_month": 11,
+    "start_day": 20,
+    "end_month": 11,
+    "end_day": 30,
+    "pax_multiplier": 1.45,
+    "terminals": ["A", "B", "C"]
+  }
+]

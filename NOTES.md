@@ -16,6 +16,16 @@ takes to get there_. The four gaps below define what "Phase 1 completeness" curr
 
 ---
 
+### Gap 0 - Better documentation
+
+As this project grew in complexity, the files are reparted in a lot of place and responsabilities are not super clear. A better documentation of the codebase and architecture is needed to make it easier to onboard new contributors and maintain a shared understanding of the system.
+Improve the documentation by:
+
+- Adding docstrings to all functions and classes, explaining their purpose, inputs, outputs, and side effects.
+- Creating a high-level architecture diagram that shows how the different services, databases, and message queues interact with each other.
+- Writing a README for each service that explains its role, how to run it, and how to test it.
+- Improve the repo README to include an overview of the project, its goals, and how to get started. The interest of each service/link to doc should be explained so that users only interested in a specific part of the system can easily find the relevant information.
+
 ### Gap 1 — No physical layout
 
 The airport has no spatial model. Gates, runways, taxiways, terminals, and carousels are abstract

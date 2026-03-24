@@ -263,19 +263,19 @@ model active. LightGBM trains after day 3 and produces forecasts. Congestion inc
 
 ### Tasks
 
-- [ ] Implement `db/neo4j.py` — Passenger CRUD + bulk zone density query
-- [ ] Implement `services/state_machine.py` — departure + arrival state machines
-- [ ] Implement `services/security.py` — base throughput + slowdown factor + special assistance lane
-- [ ] Implement `services/connections.py` — MCT monitoring + 3-tier risk level transitions
-- [ ] Implement `services/zones.py` — in-memory density tracker rebuilt from Neo4j on startup
-- [ ] Implement `ml/features.py` — all 12 features including events.json lookup
-- [ ] Implement `ml/training.py` — deque buffer + parquet flush + LightGBM training pipeline
-- [ ] Implement `ml/inference.py` — predict + day-1 fallback + hot-reload after retrain
-- [ ] Implement `ml/congestion.py` — consecutive-tick counter + SecurityCongestionDetected emitter
-- [ ] Implement `kafka/consumer.py` — SimClockTick, FlightStatusChanged, FlightGateAssigned, FlightCancelled, IncidentCreated, BaggageStatusChanged (collected)
-- [ ] Implement `kafka/producer.py` — PassengerStatusChanged, PassengerAlert, SecurityCongestionDetected
-- [ ] Implement REST endpoints: GET /passengers, GET /passengers/{id}, GET /passengers/search, GET /flow/summary, GET /flow/heatmap, GET /flow/forecast, GET /connections/at-risk, GET /alerts
-- [ ] Implement WS /ws/passengers
+- [x] Implement `db/neo4j.py` — Passenger CRUD + bulk zone density query
+- [x] Implement `services/state_machine.py` — departure + arrival state machines
+- [x] Implement `services/security.py` — base throughput + slowdown factor + special assistance lane
+- [x] Implement `services/connections.py` — MCT monitoring + 3-tier risk level transitions
+- [x] Implement `services/zones.py` — in-memory density tracker rebuilt from Neo4j on startup
+- [x] Implement `ml/features.py` — all 12 features including events.json lookup
+- [x] Implement `ml/training.py` — deque buffer + parquet flush + LightGBM training pipeline
+- [x] Implement `ml/inference.py` — predict + day-1 fallback + hot-reload after retrain
+- [x] Implement `ml/congestion.py` — consecutive-tick counter + SecurityCongestionDetected emitter
+- [x] Implement `kafka/consumer.py` — SimClockTick, FlightStatusChanged, FlightGateAssigned, FlightCancelled, IncidentCreated, BaggageStatusChanged (collected)
+- [x] Implement `kafka/producer.py` — PassengerStatusChanged, PassengerAlert, SecurityCongestionDetected
+- [x] Implement REST endpoints: GET /passengers, GET /passengers/{id}, GET /passengers/search, GET /flow/summary, GET /flow/heatmap, GET /flow/forecast, GET /connections/at-risk, GET /alerts
+- [x] Implement WS /ws/passengers
 
 ### Desired output
 
