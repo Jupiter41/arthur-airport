@@ -140,7 +140,7 @@ FAILURE_IMPACT: dict[str, list[str]] = {
 }
 
 
-def set_state.ws_broadcast(fn):
+def set_ws_broadcast(fn):
     _state.ws_broadcast = fn
 
 
