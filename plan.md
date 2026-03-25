@@ -8,6 +8,7 @@ Three interrelated symptoms:
    don't board fast enough. The flight-service FSM cancels at ≥180 min delay.
 2. **Passengers don't appear at gates** in the passenger flow dashboard.
 3. **Arrival carousel is always empty** — no arrival passengers exist in Neo4j.
+4. **Passenger-service consumer can't keep up with 60× sim speed** — growing lag of 8+ hours and services failing behind.
 
 ## Root-Cause Analysis
 
