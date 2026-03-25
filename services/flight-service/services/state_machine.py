@@ -1,10 +1,10 @@
 """Flight state machine — pure logic, no I/O.
 
-9-state FSM with explicit transition rules. All transitions depend on
+10-state FSM with explicit transition rules. All transitions depend on
 sim_time and contextual conditions (runway/gate availability, boarding %).
 
-States: scheduled, boarding, delayed, departed, airborne, approach, landed, taxiing, at_gate
-Terminal states: cancelled, at_gate (arrivals), airborne→completed (departures implicit)
+States: scheduled, boarding, delayed, departed, airborne, approach, landed, taxiing, at_gate, arrived
+Terminal states: cancelled, arrived (arrivals completed), airborne (departures completed)
 """
 
 import logging
@@ -25,12 +25,13 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
     "approach": {"landed", "delayed"},
     "landed": {"taxiing"},
     "taxiing": {"at_gate"},
-    "at_gate": set(),       # terminal state for arrivals
+    "at_gate": {"arrived"},  # arrivals complete operations then move to arrived
+    "arrived": set(),       # terminal state for arrivals
     "cancelled": set(),     # terminal state
 }
 
 # Terminal states — flights in these states are never processed by the FSM
-TERMINAL_STATES = {"at_gate", "cancelled"}
+TERMINAL_STATES = {"arrived", "cancelled"}
 
 # Active departure states (flight hasn't departed yet)
 PRE_DEPARTURE_STATES = {"scheduled", "boarding", "delayed"}
@@ -98,6 +99,9 @@ def evaluate_transition(
 
         case "taxiing":
             return _eval_taxiing(flight, sim_time, gate_available)
+
+        case "at_gate":
+            return _eval_at_gate(flight, sim_time, direction)
 
     return None
 
@@ -212,4 +216,17 @@ def _eval_taxiing(flight: dict, sim_time: datetime, gate_available: bool) -> str
     # ATA + 8 minutes → at_gate (if gate available)
     if sim_time >= actual_time + timedelta(minutes=8) and gate_available:
         return "at_gate"
+    return None
+
+
+def _eval_at_gate(flight: dict, sim_time: datetime, direction: str) -> str | None:
+    """Arrivals at the gate transition to 'arrived' after 30 minutes."""
+    if direction != "arrival":
+        return None
+    actual_time = _parse_time(flight.get("actual_time"))
+    if actual_time is None:
+        return None
+    # ATA + 30 minutes (deplaning + servicing complete) → arrived
+    if sim_time >= actual_time + timedelta(minutes=30):
+        return "arrived"
     return None

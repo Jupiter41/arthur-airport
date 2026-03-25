@@ -62,13 +62,25 @@ def produce_event(
         "payload": payload,
     }
 
-    _producer.produce(
-        topic=topic,
-        key=key.encode("utf-8") if key else None,
-        value=json.dumps(envelope).encode("utf-8"),
-        callback=_delivery_report,
-    )
-    _producer.poll(0)
+    value = json.dumps(envelope).encode("utf-8")
+
+    # Under high tick rates (for example 3600x), local producer buffers can
+    # fill briefly; poll and retry instead of letting BufferError kill callers.
+    for attempt in range(5):
+        try:
+            _producer.produce(
+                topic=topic,
+                key=key.encode("utf-8") if key else None,
+                value=value,
+                callback=_delivery_report,
+            )
+            _producer.poll(0)
+            return
+        except BufferError:
+            if attempt == 4:
+                logger.error("Kafka local buffer full after retries; dropping %s", event_type)
+                return
+            _producer.poll(0.05)
 
 
 def emit_clock_tick(

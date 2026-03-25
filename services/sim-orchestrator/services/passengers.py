@@ -42,6 +42,7 @@ def _generate_seat(row: int, rng: random.Random) -> str:
 async def generate_passengers(
     flights: list[dict],
     seed: int | None = None,
+    initial_status: str = "booked",
 ) -> tuple[int, list[dict]]:
     """Generate passengers for all flights and write to Neo4j.
 
@@ -92,7 +93,7 @@ async def generate_passengers(
                 "name": f"{first} {last}",
                 "pnr": pnr,
                 "nationality": nationality,
-                "status": "booked",
+                "status": initial_status,
                 "location_zone": None,
                 "seat": seat,
                 "special_assistance": is_special,

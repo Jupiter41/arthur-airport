@@ -168,14 +168,18 @@ async def run_clock_loop() -> None:
         _sim_time += timedelta(minutes=1)
         _tick_number += 1
 
-        emit_clock_tick(
-            sim_time=_sim_time,
-            speed_multiplier=_speed_multiplier,
-            tick_number=_tick_number,
-            day_of_sim=_sim_day,
-        )
-        _events_produced += 1
-        m_tick_total.inc()
+        try:
+            emit_clock_tick(
+                sim_time=_sim_time,
+                speed_multiplier=_speed_multiplier,
+                tick_number=_tick_number,
+                day_of_sim=_sim_day,
+            )
+            _events_produced += 1
+            m_tick_total.inc()
+        except Exception as e:
+            # Never let a transient Kafka write issue stop the simulation clock.
+            logger.error("Failed to emit SimClockTick at tick %d: %s", _tick_number, e)
 
         # Hour boundary check
         if _sim_time.minute == 0 and _on_hour_boundary:

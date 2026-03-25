@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import random
 from datetime import datetime
 from uuid import uuid4
 
@@ -10,6 +11,14 @@ from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient
 
 logger = logging.getLogger(__name__)
+
+_producer: Producer | None = None
+
+# During bulk tick processing, only a fraction of individual passenger events
+# are produced to Kafka to avoid overwhelming the bus.  Dashboard uses REST
+# APIs for authoritative counts; these events are observability / real-time hints.
+_tick_batch_mode: bool = False
+_TICK_EMIT_SAMPLE_RATE = 0.02  # emit ~2% of per-passenger events during tick
 
 _producer: Producer | None = None
 
@@ -32,6 +41,12 @@ def close_kafka_producer() -> None:
     if _producer:
         _producer.flush(timeout=10)
         logger.info("Kafka producer flushed and closed")
+
+
+def set_tick_batch_mode(enabled: bool) -> None:
+    """Toggle tick batch mode to throttle per-passenger event emission."""
+    global _tick_batch_mode
+    _tick_batch_mode = enabled
 
 
 def _delivery_report(err, msg):
@@ -77,7 +92,11 @@ async def emit_passenger_status_changed(
     flight_id: str | None = None,
     flight_number: str | None = None,
 ) -> dict:
-    """Emit PassengerStatusChanged event."""
+    """Emit PassengerStatusChanged event.
+
+    In tick batch mode, only a fraction of events are actually produced
+    to keep Kafka throughput manageable.
+    """
     payload = {
         "passenger_id": passenger_id,
         "name": name,
@@ -88,6 +107,8 @@ async def emit_passenger_status_changed(
         "location_zone": location_zone,
         "at": sim_time.isoformat(),
     }
+    if _tick_batch_mode and random.random() > _TICK_EMIT_SAMPLE_RATE:
+        return payload  # skip production
     _produce_event("PassengerStatusChanged", sim_time, payload, key=passenger_id)
     return payload
 

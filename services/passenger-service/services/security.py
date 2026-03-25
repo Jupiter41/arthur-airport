@@ -8,7 +8,7 @@ Special assistance lane: fixed 20 pax/hr, immune to congestion.
 import os
 
 
-LANES_PER_TERMINAL = int(os.getenv("SECURITY_LANES_OPEN", "4"))
+LANES_PER_TERMINAL = int(os.getenv("SECURITY_LANES_OPEN", "6"))
 BASE_THROUGHPUT_PER_LANE = 180  # pax/hr
 SA_LANE_THROUGHPUT = 20  # pax/hr — fixed, immune to congestion
 SA_LANE_BREACH_THROUGHPUT = 10  # pax/hr during security_breach
@@ -36,11 +36,13 @@ class SecurityCheckpoint:
     def sa_queue_depth(self) -> int:
         return len(self.sa_queue)
 
+    BREACH_THROUGHPUT_FRACTION = 0.25  # during breach, keep 25% capacity
+
     def effective_throughput(self, forecast_queue: int) -> float:
         """Compute effective throughput per hour with slowdown."""
-        if self.frozen:
-            return 0.0
         base = self.lanes_open * BASE_THROUGHPUT_PER_LANE
+        if self.frozen:
+            return base * self.BREACH_THROUGHPUT_FRACTION
         actual = self.queue_depth
         if forecast_queue > 0 and actual > forecast_queue * 1.3:
             slowdown = min(1.0, forecast_queue / actual)
@@ -66,8 +68,8 @@ class SecurityCheckpoint:
         """How many passengers to drain from main queue this tick (1 sim-minute)."""
         throughput = self.effective_throughput(forecast_queue)
         drain = max(0, int(throughput / 60))
-        # Guard: always drain at least 1 pax/tick if queue > 0 and not frozen
-        if drain == 0 and self.queue_depth > 0 and not self.frozen:
+        # Guard: always drain at least 1 pax/tick if queue > 0
+        if drain == 0 and self.queue_depth > 0:
             drain = 1
         return drain
 

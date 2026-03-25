@@ -26,6 +26,18 @@ DEPLANING_DELAY_MINUTES = 15
 BAGGAGE_CLAIM_TIMEOUT_MINUTES = 45
 
 
+def _to_naive_dt(value: str | datetime | None) -> datetime | None:
+    """Convert ISO string or datetime to a timezone-naive datetime."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    try:
+        return datetime.fromisoformat(str(value)).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
+
+
 def sample_dwell_minutes() -> int:
     """Sample per-passenger dwell time in airside zone."""
     raw = random.gauss(mu=25, sigma=12)
@@ -39,9 +51,10 @@ def should_move_to_security_queue(
     """Check if passengers on this flight should move to security queue.
     Trigger: sim_time >= scheduled_time - 45min (check-in cutoff).
     """
-    if isinstance(scheduled_time, str):
-        scheduled_time = datetime.fromisoformat(str(scheduled_time)).replace(tzinfo=None)
-    cutoff = scheduled_time - timedelta(minutes=CHECKIN_CUTOFF_MINUTES)
+    scheduled_dt = _to_naive_dt(scheduled_time)
+    if scheduled_dt is None:
+        return False
+    cutoff = scheduled_dt - timedelta(minutes=CHECKIN_CUTOFF_MINUTES)
     return sim_time >= cutoff
 
 
@@ -54,18 +67,20 @@ def should_move_to_at_gate(
     """Check if a passenger in airside should move to gate.
     Trigger: sim_time >= gate_open_time (T-30) AND dwell elapsed.
     """
-    if isinstance(estimated_time, str):
-        estimated_time = datetime.fromisoformat(str(estimated_time)).replace(tzinfo=None)
-    gate_open = estimated_time - timedelta(minutes=GATE_OPEN_MINUTES)
+    estimated_dt = _to_naive_dt(estimated_time)
+    if estimated_dt is None:
+        return False
+    gate_open = estimated_dt - timedelta(minutes=GATE_OPEN_MINUTES)
 
     if sim_time < gate_open:
         return False
 
     # Check dwell time elapsed
     if dwell_minutes is not None and airside_at is not None:
-        if isinstance(airside_at, str):
-            airside_at = datetime.fromisoformat(str(airside_at)).replace(tzinfo=None)
-        dwell_end = airside_at + timedelta(minutes=dwell_minutes)
+        airside_dt = _to_naive_dt(airside_at)
+        if airside_dt is None:
+            return False
+        dwell_end = airside_dt + timedelta(minutes=dwell_minutes)
         return sim_time >= dwell_end
 
     # No dwell info: move immediately when gate opens
@@ -85,9 +100,10 @@ def should_start_boarding(
     """Check if boarding should start (T-20 min before departure)."""
     if flight_status not in ("boarding", "scheduled", "delayed"):
         return False
-    if isinstance(estimated_time, str):
-        estimated_time = datetime.fromisoformat(str(estimated_time)).replace(tzinfo=None)
-    boarding_time = estimated_time - timedelta(minutes=BOARDING_CALL_MINUTES)
+    estimated_dt = _to_naive_dt(estimated_time)
+    if estimated_dt is None:
+        return False
+    boarding_time = estimated_dt - timedelta(minutes=BOARDING_CALL_MINUTES)
     return sim_time >= boarding_time
 
 
@@ -98,9 +114,10 @@ def should_move_to_baggage_claim(
     """Arrival: move from deplaning to baggage_claim T+15 min after deplaning started."""
     if deplaning_at is None:
         return False
-    if isinstance(deplaning_at, str):
-        deplaning_at = datetime.fromisoformat(str(deplaning_at)).replace(tzinfo=None)
-    return sim_time >= deplaning_at + timedelta(minutes=DEPLANING_DELAY_MINUTES)
+    deplaning_dt = _to_naive_dt(deplaning_at)
+    if deplaning_dt is None:
+        return False
+    return sim_time >= deplaning_dt + timedelta(minutes=DEPLANING_DELAY_MINUTES)
 
 
 def should_depart_airport(
@@ -113,9 +130,10 @@ def should_depart_airport(
         return True
     if baggage_claim_at is None:
         return False
-    if isinstance(baggage_claim_at, str):
-        baggage_claim_at = datetime.fromisoformat(str(baggage_claim_at)).replace(tzinfo=None)
-    return sim_time >= baggage_claim_at + timedelta(minutes=BAGGAGE_CLAIM_TIMEOUT_MINUTES)
+    baggage_claim_dt = _to_naive_dt(baggage_claim_at)
+    if baggage_claim_dt is None:
+        return False
+    return sim_time >= baggage_claim_dt + timedelta(minutes=BAGGAGE_CLAIM_TIMEOUT_MINUTES)
 
 
 def get_terminal_from_gate(gate_id: str | None, terminal_id: str | None) -> str:

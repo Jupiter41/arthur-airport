@@ -257,12 +257,16 @@ async def get_active_incidents_with_ttr() -> list[dict]:
         result = await session.run(
             """
             MATCH (i:Incident)
-            WHERE i.status = 'active' AND i.ttr_remaining IS NOT NULL
+            WHERE i.status = 'active'
             RETURN i
             """
         )
         records = await result.data()
-        return [dict(r["i"]) for r in records]
+        # Filter in application layer to avoid Neo4j property-existence warnings
+        return [
+            dict(r["i"]) for r in records
+            if r["i"].get("ttr_remaining") is not None
+        ]
 
 
 async def update_ttr_remaining(incident_id: str, ttr_remaining: int) -> None:

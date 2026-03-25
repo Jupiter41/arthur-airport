@@ -311,19 +311,14 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
     boarded_pct = 1.0
     if current_status == "boarding" and direction == "departure":
         boarded_pct = await get_boarded_percentage(flight_id)
-        # If passenger-service hasn't processed passengers yet, simulate progress
-        # based on time elapsed since boarding started
+        # Fallback only for true positioning flights with no passengers assigned.
+        # For normal flights, do not synthesize boarding progress from elapsed time,
+        # otherwise flights can depart with unrealistically low onboard counts.
         if boarded_pct < 0.01:
-            estimated = flight.get("estimated_time")
-            if estimated:
-                try:
-                    est = datetime.fromisoformat(str(estimated))
-                    boarding_start = est - timedelta(minutes=60)
-                    elapsed = (sim_time - boarding_start).total_seconds() / 60
-                    # Linear boarding assumption: 60 minutes to board all passengers
-                    boarded_pct = min(1.0, max(0.0, elapsed / 60.0))
-                except (ValueError, TypeError):
-                    boarded_pct = 1.0
+            pax_count = flight.get("pax_count", 0) or 0
+            if pax_count == 0:
+                # Positioning flight with no passengers — allow immediate departure.
+                boarded_pct = 1.0
 
     # For scheduled departures, ensure gate is assigned before boarding
     if current_status == "scheduled" and direction == "departure":
@@ -493,7 +488,9 @@ async def _execute_transition(
                         depth=0,
                         producer_callback=_emit_status_changed_callback,
                     )
-            # Release gate after arrival completes (frees it for the paired departure)
+
+        case "arrived":
+            # Arrival fully completed — release gate
             if direction == "arrival":
                 released = await release_gate(flight_id)
                 if released:

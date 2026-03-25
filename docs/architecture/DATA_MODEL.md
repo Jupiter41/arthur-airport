@@ -256,7 +256,12 @@ CREATE CONSTRAINT incident_id IF NOT EXISTS FOR (i:Incident) REQUIRE i.id IS UNI
 // Lookup indexes
 CREATE INDEX flight_number IF NOT EXISTS FOR (f:Flight) ON (f.flight_number);
 CREATE INDEX flight_status IF NOT EXISTS FOR (f:Flight) ON (f.status);
+CREATE INDEX flight_scheduled IF NOT EXISTS FOR (f:Flight) ON (f.scheduled_time);
+CREATE INDEX flight_direction IF NOT EXISTS FOR (f:Flight) ON (f.direction);
 CREATE INDEX passenger_pnr IF NOT EXISTS FOR (p:Passenger) ON (p.pnr);
+CREATE INDEX passenger_status IF NOT EXISTS FOR (p:Passenger) ON (p.status);
+CREATE INDEX passenger_location IF NOT EXISTS FOR (p:Passenger) ON (p.location_zone);
+CREATE INDEX passenger_flight IF NOT EXISTS FOR (p:Passenger) ON (p.flight_id);
 CREATE INDEX baggage_status IF NOT EXISTS FOR (b:Baggage) ON (b.status);
 CREATE INDEX incident_type IF NOT EXISTS FOR (i:Incident) ON (i.type);
 CREATE INDEX incident_status IF NOT EXISTS FOR (i:Incident) ON (i.status);

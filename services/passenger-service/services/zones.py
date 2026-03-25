@@ -77,15 +77,35 @@ def get_terminal_queue_depth(terminal: str) -> int:
 
 
 def get_heatmap_zones() -> list[dict]:
-    """Build heatmap zone list for REST API."""
+    """Build heatmap zone list for REST API.
+
+    Returns all predefined zones (even with 0 density) so the dashboard
+    always has a complete heatmap grid.
+    """
     zones = []
-    for zone_id, density in sorted(_zone_density.items()):
-        if density <= 0:
-            continue
+
+    # Predefined zones that the dashboard expects
+    expected_zones = list(ZONE_CAPACITIES.keys())
+    for n in range(1, 7):
+        expected_zones.append(f"carousel-{n}")
+
+    # Include predefined zones plus any dynamically populated ones (e.g. gate zones)
+    all_zone_ids = set(expected_zones) | set(_zone_density.keys())
+
+    for zone_id in sorted(all_zone_ids):
+        density = _zone_density.get(zone_id, 0)
         capacity = get_capacity(zone_id)
         load_pct = round((density / capacity) * 100, 1) if capacity > 0 else 0
+
+        # Derive zone_type and terminal from zone_id
+        parts = zone_id.rsplit("-", 1)
+        terminal = parts[-1] if len(parts) == 2 and parts[-1] in ("A", "B", "C") else ""
+        zone_type = parts[0] if terminal else zone_id.split("-")[0]
+
         zones.append({
             "zone_id": zone_id,
+            "zone_type": zone_type,
+            "terminal": terminal,
             "density": density,
             "capacity": capacity,
             "load_pct": load_pct,

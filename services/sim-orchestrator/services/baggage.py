@@ -138,9 +138,11 @@ async def generate_arrival_baggage(
 
     await _persist_arrival_baggage(all_baggage)
 
-    # Update pax_count on arrival Flight nodes (synthetic, no Passenger nodes)
-    if flight_pax_counts:
-        await _update_arrival_pax_counts(flight_pax_counts)
+    # Update pax_count on arrival Flight nodes only if no Passenger nodes were created.
+    # When generate_passengers has already seeded arrival Passenger nodes, the
+    # authoritative pax_count is set there — skip overwriting.
+    # if flight_pax_counts:
+    #     await _update_arrival_pax_counts(flight_pax_counts)
 
     logger.info(
         "Generated %d inbound baggage items for %d arrival flights",

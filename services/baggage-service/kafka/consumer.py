@@ -676,7 +676,7 @@ async def _on_flight_cancelled(payload: dict, sim_time: datetime) -> None:
     await offload_flight_baggage(
         flight_id=flight_id,
         sim_time=sim_time,
-        conveyor_system=_conveyor,
+        conveyor_system=_state.conveyor,
         produce_status_changed_fn=_emit_status_changed_with_metric,
     )
 

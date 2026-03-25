@@ -20,6 +20,8 @@ INDEXES = [
     "CREATE INDEX passenger_status IF NOT EXISTS FOR (p:Passenger) ON (p.status)",
     "CREATE INDEX passenger_location IF NOT EXISTS FOR (p:Passenger) ON (p.location_zone)",
     "CREATE INDEX passenger_flight IF NOT EXISTS FOR (p:Passenger) ON (p.flight_id)",
+    "CREATE INDEX flight_scheduled IF NOT EXISTS FOR (f:Flight) ON (f.scheduled_time)",
+    "CREATE INDEX flight_direction IF NOT EXISTS FOR (f:Flight) ON (f.direction)",
 ]
 
 
@@ -304,6 +306,23 @@ async def set_passenger_dwell(passenger_id: str, dwell_minutes: int) -> None:
         )
 
 
+async def bulk_set_dwell(items: list[tuple[str, int]]) -> None:
+    """Batch-set dwell_minutes for multiple passengers in one UNWIND query."""
+    if not items:
+        return
+    driver = get_driver()
+    rows = [{"id": pid, "dwell": dwell} for pid, dwell in items]
+    async with driver.session() as session:
+        await session.run(
+            """
+            UNWIND $rows AS r
+            MATCH (p:Passenger {id: r.id})
+            SET p.dwell_minutes = r.dwell
+            """,
+            rows=rows,
+        )
+
+
 async def set_connection_risk(passenger_id: str, risk: str) -> None:
     """Update connection risk level on a passenger node."""
     driver = get_driver()
@@ -340,30 +359,59 @@ async def get_zone_density() -> dict[str, int]:
     return {r["zone"]: r["n"] for r in records}
 
 
-async def get_passengers_by_status(status: str) -> list[dict]:
-    """Get all passengers with a given status."""
-    driver = get_driver()
-    query = """
-    MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f:Flight)
-    OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
-    RETURN p.id AS id, p.name AS name, f.id AS flight_id,
-           p.special_assistance AS special_assistance,
-           p.location_zone AS location_zone,
-           p.dwell_minutes AS dwell_minutes,
-           p.airside_at AS airside_at,
-           p.connection AS connection,
-           p.connection_flight_id AS connection_flight_id,
-           f.flight_number AS flight_number,
-           f.estimated_time AS estimated_time,
-           f.scheduled_time AS scheduled_time,
-           f.status AS flight_status,
-           f.direction AS direction,
-           g.id AS gate_id,
-           g.terminal_id AS terminal_id
+async def get_passengers_by_status(status: str, scheduled_before: str | None = None) -> list[dict]:
+    """Get all passengers with a given status.
+
+    If scheduled_before is provided (ISO datetime string), only returns passengers
+    on flights with scheduled_time <= that value. This dramatically reduces result
+    sets for statuses like 'booked' where most passengers are far from their flight.
     """
-    async with driver.session() as session:
-        result = await session.run(query, status=status)
-        return [dict(r) async for r in result]
+    driver = get_driver()
+    if scheduled_before:
+        query = """
+        MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f:Flight)
+        WHERE f.scheduled_time <= $before
+        OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
+        RETURN p.id AS id, p.name AS name, f.id AS flight_id,
+               p.special_assistance AS special_assistance,
+               p.location_zone AS location_zone,
+               p.dwell_minutes AS dwell_minutes,
+               p.airside_at AS airside_at,
+               p.connection AS connection,
+               p.connection_flight_id AS connection_flight_id,
+               f.flight_number AS flight_number,
+               f.estimated_time AS estimated_time,
+               f.scheduled_time AS scheduled_time,
+               f.status AS flight_status,
+               f.direction AS direction,
+               g.id AS gate_id,
+               g.terminal_id AS terminal_id
+        """
+        async with driver.session() as session:
+            result = await session.run(query, status=status, before=scheduled_before)
+            return [dict(r) async for r in result]
+    else:
+        query = """
+        MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f:Flight)
+        OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
+        RETURN p.id AS id, p.name AS name, f.id AS flight_id,
+               p.special_assistance AS special_assistance,
+               p.location_zone AS location_zone,
+               p.dwell_minutes AS dwell_minutes,
+               p.airside_at AS airside_at,
+               p.connection AS connection,
+               p.connection_flight_id AS connection_flight_id,
+               f.flight_number AS flight_number,
+               f.estimated_time AS estimated_time,
+               f.scheduled_time AS scheduled_time,
+               f.status AS flight_status,
+               f.direction AS direction,
+               g.id AS gate_id,
+               g.terminal_id AS terminal_id
+        """
+        async with driver.session() as session:
+            result = await session.run(query, status=status)
+            return [dict(r) async for r in result]
 
 
 async def get_passengers_by_flight(flight_id: str) -> list[dict]:

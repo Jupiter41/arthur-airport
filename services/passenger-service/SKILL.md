@@ -208,4 +208,51 @@ When this service starts (or restarts) while the simulation is already running:
 
 - **Connection risk tiers have exact MCT boundaries** — test the 4-tier classification (ok/watch/at_risk/missed) at exact boundary values (MCT, MCT+15, MCT+30).
 - **`SecurityCheckpoint` is a stateful pure-Python class** — it manages queue depth, throughput, and freeze state with no external dependencies. Ideal for unit testing.
+
+---
+
+## Performance tuning
+
+The passenger-service manages ~70K Passenger nodes per sim-day. At 60× sim speed (one
+tick per real second), the per-tick Kafka consumer budget is **<500ms**. Key design
+decisions to stay within this budget:
+
+### Neo4j query strategy
+
+- **Time-windowed queries for bulk statuses**: `get_passengers_by_status("booked")`
+  accepts a `scheduled_before` argument to limit results to flights within a time horizon
+  (e.g. 3 hours). This avoids scanning the entire 35K departure manifests every tick.
+- **Indexes matter**: `Passenger.status`, `Flight.scheduled_time`, and
+  `Flight.direction` are indexed. See `DATA_MODEL.md §5`.
+- **Batch writes over individual writes**: all state transitions use `bulk_update_status`
+  (one `UNWIND` query) rather than per-passenger `MATCH … SET`. The `bulk_set_dwell`
+  function does the same for dwell-time sampling.
+
+### Kafka event throttling
+
+- Per-passenger `PassengerStatusChanged` events are **sampled at ~5%** during tick-batch
+  processing. Dashboards use REST endpoints for authoritative counts; Kafka events are
+  real-time hints for the gateway WebSocket fan-out.
+- This is toggled via `set_tick_batch_mode(True/False)` in the producer module.
+
+### Tick frequency tiering
+
+Not all tick work needs to run every sim-minute:
+
+| Operation | Frequency | Rationale |
+|---|---|---|
+| Departure pipeline (check-in → board) | Every tick | Time-critical for boarding deadlines |
+| Arrival pipeline (deplaning → depart) | Every tick | Time-critical for carousel flow |
+| Security drain | Every tick | Must match in-memory queue state |
+| ML feature cache update | Every 5th tick | Flight window data changes slowly |
+| Congestion detection | Every 5th tick | 5-consecutive-tick threshold anyway |
+| Connection risk evaluation | Every 10th tick | Risk tiers are coarse |
+| ML model retraining | Every 30th tick | Heavy CPU, infrequent benefit |
+| Prometheus gauge refresh | Every 5th tick | Scrape interval is 15s |
+
+### Consumer catch-up
+
+When the consumer falls behind (processing time > tick interval), the consumer loop
+batch-reads up to 50 messages and processes only the **latest** `SimClockTick`, skipping
+stale ticks. Non-tick events (flight status changes, incidents) are always processed.
 - **`SecuritySystem` manages 3 terminal checkpoints** — test that `drain_all()` processes the correct number of passengers per tick across all terminals.

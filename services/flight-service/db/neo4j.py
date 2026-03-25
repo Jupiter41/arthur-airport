@@ -258,7 +258,7 @@ async def get_active_flights(sim_time: datetime) -> list[dict]:
     driver = get_driver()
     query = """
     MATCH (f:Flight)
-    WHERE f.status IN ['scheduled', 'boarding', 'delayed', 'departed', 'airborne', 'approach', 'landed', 'taxiing']
+    WHERE f.status IN ['scheduled', 'boarding', 'delayed', 'departed', 'airborne', 'approach', 'landed', 'taxiing', 'at_gate']
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
     OPTIONAL MATCH (f)-[:USES_RUNWAY]->(r:Runway)
     RETURN f {

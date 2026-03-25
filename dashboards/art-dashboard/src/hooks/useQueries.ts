@@ -152,7 +152,7 @@ export function useGroundOpsQueries() {
     queryKey: ["flights", "ground"],
     queryFn: async () => {
       const data = await flightsApi.list({
-        status: "approach,taxiing,boarding,at_gate,departed",
+        status: "approach,taxiing,boarding,at_gate,arrived,departed",
         limit: "200",
       });
       return (data as { flights: Flight[] }).flights ?? [];

@@ -40,6 +40,7 @@ export type FlightStatus =
   | "landed"
   | "taxiing"
   | "at_gate"
+  | "arrived"
   | "delayed"
   | "cancelled"
   | "diverted";

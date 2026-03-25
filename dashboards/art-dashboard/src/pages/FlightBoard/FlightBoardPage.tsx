@@ -73,7 +73,7 @@ function FlightRow({
           </div>
         )}
         {flight.direction === "arrival" &&
-          ["approach", "landed", "taxiing", "at_gate"].includes(
+          ["approach", "landed", "taxiing", "at_gate", "arrived"].includes(
             flight.status,
           ) && (
             <span className="text-xs text-gray-400">
