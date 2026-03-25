@@ -35,7 +35,15 @@ def _recent_incident(sim_time: datetime, window_hours: int = 2) -> bool:
 
 
 async def evaluate_probabilistic_events(sim_time: datetime) -> None:
-    """Evaluate whether to inject probabilistic events at this hour boundary."""
+    """Roll the dice for each incident type at this hour boundary.
+
+    Base probabilities are loaded from fixtures and modified by:
+    - Peak-hour multiplier (×1.8 during 07–09h and 17–19h)
+    - Recent-incident suppression (×0.3 if an incident occurred < 2h ago)
+
+    When an event fires, it emits an ``InjectIncident`` message on
+    ``incidents.inject`` for the incident-service to consume.
+    """
     global PEAK_HOURS
     fixtures = get_fixtures()
     events_config = fixtures["events"]

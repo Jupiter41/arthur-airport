@@ -49,6 +49,19 @@ async def ws_broadcast(message: dict) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI lifespan manager — initialises Neo4j, Kafka, and the consumer loop.
+
+    Startup sequence:
+        1. Connect to Neo4j (retry up to 12×)
+        2. Connect to Kafka (retry up to 12×)
+        3. Initialise Kafka producer
+        4. Create graph constraints/indexes
+        5. Register WS broadcast callback
+        6. Rebuild in-memory state from Neo4j
+        7. Start Kafka consumer background task
+
+    Shutdown: stops consumer, flushes producer, closes Neo4j driver.
+    """
     # 1. Wait for Neo4j
     await wait_for_neo4j(max_attempts=12, delay_s=5)
 
@@ -89,6 +102,12 @@ app.include_router(flights_router)
 
 @app.websocket("/ws/flights")
 async def websocket_flights(ws: WebSocket):
+    """WebSocket endpoint for real-time flight event streaming.
+
+    Sends a ``connected`` message on accept with the current sim_time,
+    then keeps the connection alive until the client disconnects.
+    All flight state changes are pushed via ``ws_broadcast``.
+    """
     await ws.accept()
     _ws_clients.add(ws)
     logger.info("WebSocket client connected (%d total)", len(_ws_clients))
@@ -116,11 +135,13 @@ async def websocket_flights(ws: WebSocket):
 
 @app.get("/health")
 async def health():
+    """Liveness probe — always returns 200 if the process is running."""
     return {"status": "ok"}
 
 
 @app.get("/ready")
 async def ready():
+    """Readiness probe — returns 200 only when Neo4j, Kafka, and the consumer are healthy."""
     neo4j_ok = await check_neo4j()
     kafka_ok = await check_kafka()
     consumer_ok = is_consumer_running()

@@ -111,27 +111,33 @@ def set_ws_broadcast(fn):
 
 
 def get_sim_time() -> datetime | None:
+    """Return the latest sim_time seen by the consumer, or None before the first tick."""
     return _state.sim_time
 
 
 def get_runway_queue() -> RunwayQueue:
+    """Return the in-memory runway queue used for slot scheduling."""
     return _state.runway_queue
 
 
 def get_held_flights() -> dict:
+    """Return the dict of manually held flights (flight_id → hold info)."""
     return _state.held_flights
 
 
 def is_consumer_running() -> bool:
+    """Return True if the Kafka consumer loop is actively polling."""
     return _consumer_running
 
 
 def stop_consumer() -> None:
+    """Signal the consumer loop to terminate after the current poll cycle."""
     global _consumer_running
     _consumer_running = False
 
 
 def _make_consumer() -> Consumer:
+    """Create a new confluent-kafka Consumer configured for the flight-svc group."""
     return Consumer({
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
         "group.id": "flight-svc",

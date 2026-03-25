@@ -216,10 +216,12 @@ async def fire_pending_cascades(sim_time: datetime) -> None:
 
 
 async def evaluate_cascades(parent: dict, sim_time: datetime) -> None:
-    """Evaluate cascade rules for a parent incident and create children.
+    """Evaluate cascade rules for a parent incident and spawn child incidents.
 
-    Rules with delay_sim_min > 0 are queued for later execution.
-    Rules with delay_sim_min == 0 fire immediately.
+    Each incident type maps to a list of cascade rules (see ``CASCADE_RULES``).
+    Rules with ``delay_sim_min > 0`` are queued; rules with ``0`` fire immediately.
+    Cascade depth is capped at ``CASCADE_MAX_DEPTH`` (default 5) to prevent runaway.
+    A cycle-prevention set ensures each incident cascades at most once.
     """
     depth = parent.get("cascade_depth", 0)
 

@@ -23,7 +23,10 @@ _feature_importances: dict[str, dict[str, float]] = {}
 
 
 def load_models() -> None:
-    """Load all trained models from disk. Call after retrain to hot-reload."""
+    """Load all trained LightGBM models from disk and extract feature importances.
+
+    Called at startup and after each retrain to hot-reload updated models.
+    """
     for terminal in ("A", "B", "C"):
         path = MODELS_DIR / f"forecast_{terminal}.lgbm"
         if path.exists():

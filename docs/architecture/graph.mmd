@@ -1,0 +1,110 @@
+graph TB
+    subgraph Frontend["React Dashboard :5173"]
+        FB[Flight Board]
+        PF[Passenger Flow]
+        BT[Baggage Tracker]
+        GO[Ground Ops]
+        IC[Incident Console]
+    end
+
+    subgraph Gateway["API Gateway · Node.js :3000"]
+        AUTH[JWT Auth]
+        PROXY[REST Proxy]
+        WSFAN[WS Fan-out]
+        AGG["/airport Aggregate"]
+        RL[Rate Limiter]
+    end
+
+    Frontend -->|REST + WebSocket| Gateway
+
+    subgraph Services["Domain Services · Python / FastAPI"]
+        FS["flight-service :8001<br/>9-state FSM · runway queue<br/>gate resolver · turnaround"]
+        PS["passenger-service :8002<br/>security queues · connection risk<br/>LightGBM forecast · zone density"]
+        BS["baggage-service :8003<br/>conveyor pipeline · DG screening<br/>offload · zone throughput"]
+        WS["weather-service :8004<br/>4-state FSM · METAR/TAF<br/>runway capacity"]
+        IS["incident-service :8005<br/>cascade engine · protocols<br/>TTR · reports"]
+        SO["sim-orchestrator :8006<br/>virtual clock · schedule seed<br/>probabilistic injection"]
+    end
+
+    Gateway -->|HTTP proxy| FS
+    Gateway -->|HTTP proxy| PS
+    Gateway -->|HTTP proxy| BS
+    Gateway -->|HTTP proxy| WS
+    Gateway -->|HTTP proxy| IS
+    Gateway -->|HTTP proxy| SO
+
+    subgraph Kafka["Apache Kafka :9092"]
+        SC[sim.clock]
+        FE[flights.events]
+        FSched[flights.schedule]
+        PE[passengers.events]
+        BE[baggage.events]
+        WE[weather.events]
+        IE[incidents.events]
+        IA[incidents.alerts]
+        II[incidents.inject]
+    end
+
+    SO -->|SimClockTick| SC
+    SO -->|FlightScheduleSeeded| FSched
+    SO -->|InjectIncident| II
+
+    FS -->|FlightStatusChanged<br/>FlightGateAssigned<br/>FlightCancelled| FE
+    PS -->|PassengerStatusChanged<br/>PassengerAlert| PE
+    BS -->|BaggageStatusChanged<br/>BaggageFlagged| BE
+    WS -->|WeatherStateChanged<br/>METARIssued| WE
+    IS -->|IncidentCreated<br/>IncidentStatusChanged| IE
+    IS -->|IncidentAlert| IA
+
+    SC -->|consumes| FS
+    SC -->|consumes| PS
+    SC -->|consumes| BS
+    SC -->|consumes| WS
+    SC -->|consumes| IS
+
+    WE -->|consumes| FS
+    IE -->|consumes| FS
+    FSched -->|consumes| FS
+
+    FE -->|consumes| PS
+    IE -->|consumes| PS
+
+    FE -->|consumes| BS
+    IE -->|consumes| BS
+
+    II -->|consumes| IS
+    WE -->|consumes| IS
+    BE -->|consumes| IS
+    PE -->|consumes| IS
+
+    SC -.->|Kafka consumer| Gateway
+    FE -.->|Kafka consumer| Gateway
+    PE -.->|Kafka consumer| Gateway
+    BE -.->|Kafka consumer| Gateway
+    WE -.->|Kafka consumer| Gateway
+    IE -.->|Kafka consumer| Gateway
+    IA -.->|Kafka consumer| Gateway
+
+    subgraph Storage["Neo4j :7687"]
+        N4J[(Graph DB<br/>Flights · Passengers<br/>Baggage · Gates<br/>Runways · Incidents)]
+    end
+
+    FS --> N4J
+    PS --> N4J
+    BS --> N4J
+    WS --> N4J
+    IS --> N4J
+    SO --> N4J
+
+    subgraph Observability["Observability"]
+        PROM[Prometheus :9090]
+        GRAF[Grafana :3001]
+    end
+
+    FS -.->|/metrics| PROM
+    PS -.->|/metrics| PROM
+    BS -.->|/metrics| PROM
+    WS -.->|/metrics| PROM
+    IS -.->|/metrics| PROM
+    SO -.->|/metrics| PROM
+    PROM --> GRAF

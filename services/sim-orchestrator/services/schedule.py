@@ -120,9 +120,20 @@ async def generate_schedule(
     target_departures: int = 210,
     seed: int | None = None,
 ) -> list[dict]:
-    """Generate a full day's flight schedule and write to Neo4j.
+    """Generate a full day's flight schedule and persist to Neo4j.
 
-    Returns list of flight dicts for Kafka emission.
+    Creates *target_departures* departure flights using a bimodal time
+    distribution (peaks at 07:30 and 17:30), plus a paired arrival for
+    each departure (90-minute turnaround). Each flight gets an airline,
+    destination, aircraft type, gate, and runway assigned.
+
+    Args:
+        sim_date: The simulated date for the schedule.
+        target_departures: Number of departures to generate (arrivals are equal).
+        seed: RNG seed for deterministic generation.
+
+    Returns:
+        List of flight dicts ready for Kafka emission.
     """
     _build_airline_lookup()
 

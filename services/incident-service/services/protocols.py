@@ -40,8 +40,9 @@ DASHBOARD_COLORS: dict[str, str] = {
 class ProtocolManager:
     """Tracks active emergency protocols with override semantics.
 
-    FULL_EVACUATION overrides all other protocols. When multiple protocols
-    are active, the highest-priority one is the effective protocol.
+    Multiple incidents can activate the same protocol. The effective protocol
+    is the highest-priority one currently active. ``FULL_EVACUATION`` overrides
+    all others.
     """
 
     def __init__(self) -> None:

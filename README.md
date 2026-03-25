@@ -68,15 +68,18 @@ FastAPI   FastAPI   FastAPI   FastAPI   FastAPI     Python
 
 ## Services
 
-| Service             | Language          | Port | Responsibility                                                            |
-| ------------------- | ----------------- | ---- | ------------------------------------------------------------------------- |
-| `flight-service`    | Python / FastAPI  | 8001 | Flight lifecycle · runway queue · gate conflicts · turnaround propagation |
-| `passenger-service` | Python / FastAPI  | 8002 | Passenger flow · security queues · connection risk · LightGBM forecast    |
-| `baggage-service`   | Python / FastAPI  | 8003 | Conveyor simulation · DG detection · system failure impact                |
-| `weather-service`   | Python / FastAPI  | 8004 | Weather FSM · METAR/TAF generation · runway capacity                      |
-| `incident-service`  | Python / FastAPI  | 8005 | Hazard lifecycle · cascade engine · emergency protocols · reports         |
-| `sim-orchestrator`  | Python            | 8006 | Virtual clock · schedule seeding · probabilistic event injection          |
-| `api-gateway`       | Node.js / Express | 3000 | REST proxy · WebSocket fan-out · JWT auth · rate limiting                 |
+Each service is independently deployable, has its own README with setup instructions, and a detailed specification document. Click the links below to go directly to the area you're interested in.
+
+| Service                                              | Port | What it does                                                                                                                                                                                                                                                                                                                                             | Docs                                                                                           |
+| ---------------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **[flight-service](services/flight-service/)**       | 8001 | Manages the full lifecycle of every flight at KART through a 9-state finite state machine. Handles runway slot scheduling via a priority-based queue, resolves gate conflicts when delays cause overlapping assignments, and propagates turnaround delays to paired outbound flights up to 5 cascading hops.                                             | [SPEC](docs/services/flight-service/SPEC.md) · [SKILL](services/flight-service/SKILL.md)       |
+| **[passenger-service](services/passenger-service/)** | 8002 | Tracks every passenger from check-in to boarding (departures) or landing to exit (arrivals). Simulates 3 terminal security checkpoints with congestion slowdown, detects at-risk connecting passengers, publishes zone density for the heatmap dashboard, and runs a **LightGBM forecasting model** that predicts security queue depth 90 minutes ahead. | [SPEC](docs/services/passenger-service/SPEC.md) · [SKILL](services/passenger-service/SKILL.md) |
+| **[baggage-service](services/baggage-service/)**     | 8003 | Simulates the full baggage handling chain through an in-memory conveyor pipeline with 30+ zones. Each zone has a throughput cap (600–1800 items/hr). Includes a probabilistic DG (dangerous goods) screening model with per-IATA-class detection rates, and handles flight-cancellation offload routing.                                                 | [SPEC](docs/services/baggage-service/SPEC.md) · [SKILL](services/baggage-service/SKILL.md)     |
+| **[weather-service](services/weather-service/)**     | 8004 | Runs a 4-state weather finite state machine (CAVOK → VMC → IMC → LIFR) with probabilistic hourly transitions. Samples realistic meteorological parameters, generates ICAO-format METAR and TAF strings, and computes runway capacity reductions from weather and wind conditions.                                                                        | [SPEC](docs/services/weather-service/SPEC.md) · [SKILL](services/weather-service/SKILL.md)     |
+| **[incident-service](services/incident-service/)**   | 8005 | Manages hazardous events from creation to resolution. Features a **rule-based cascade engine** that spawns child incidents (e.g. runway_incursion → ground_stop → gate_congestion), emergency protocol activation with override semantics, alert generation, and automated incident report creation.                                                     | [SPEC](docs/services/incident-service/SPEC.md) · [SKILL](services/incident-service/SKILL.md)   |
+| **[sim-orchestrator](services/sim-orchestrator/)**   | 8006 | The conductor — drives a virtual clock at configurable speed, seeds realistic daily schedules (420 flights, ~30K passengers, ~36K baggage items), and evaluates probabilistic hazardous event injection each simulated hour. See the [Simulation deep-dive](#simulation-deep-dive) section below.                                                        | [SPEC](docs/services/sim-orchestrator/SPEC.md) · [SKILL](services/sim-orchestrator/SKILL.md)   |
+| **[api-gateway](services/api-gateway/)**             | 3000 | Node.js/Express gateway — proxies REST to upstream services, fans out Kafka events to dashboard WebSocket clients, handles stub JWT auth, and provides an aggregate `/airport` endpoint.                                                                                                                                                                 | [SPEC](docs/services/api-gateway/SPEC.md) · [SKILL](services/api-gateway/SKILL.md)             |
+| **[dashboard](dashboards/art-dashboard/)**           | 5173 | React + TypeScript SPA with 5 operator views: Flight Board, Passenger Flow, Baggage Tracker, Ground Ops, Incident Console. Uses Zustand for state, React Query for REST, and native WebSocket for real-time updates.                                                                                                                                     | [Flight Board](docs/dashboards/FLIGHT_BOARD.md) · [All dashboards](docs/dashboards/)           |
 
 ### Simulation features
 
@@ -87,6 +90,53 @@ FastAPI   FastAPI   FastAPI   FastAPI   FastAPI     Python
 - **Dual-trigger incidents** — manually injectable via API or probabilistically fired by the sim engine
 - **LightGBM security queue forecasting** — 12-feature model trained on simulated history, predicts queue depth 90 sim-minutes ahead, triggers congestion incidents when demand exceeds forecast by 30%
 - **Special events calendar** — configurable demand multipliers per sim day (marathons, peaks, conferences)
+
+---
+
+## Simulation deep-dive
+
+> For full technical details, see [docs/architecture/SIMULATION.md](docs/architecture/SIMULATION.md)
+> For architectural diagrams, see [docs/architecture/ARCHITECTURE_DIAGRAM.md](docs/architecture/ARCHITECTURE_DIAGRAM.md)
+
+The simulation is the heart of the digital twin. It is entirely self-contained — no external data feeds are needed. Everything is generated, propagated, and visualised within the system.
+
+### What is simulated
+
+| Domain              | What's modelled                                                     | Hypothesis / model                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Flights**         | 420 daily movements through a 9-state lifecycle FSM                 | Bimodal departure distribution (peaks 07:30, 17:30). Turnaround = 90 min. Delay auto-cancels at 180 min.                                      |
+| **Passengers**      | ~30,000/day through check-in → security → airside → gate → boarding | Load factor ~ Beta(8,2) ≈ 80%. Security throughput = 180 pax/hr/lane. Dwell time ~ Normal(25, 12) min. 20% connecting, 5% special assistance. |
+| **Baggage**         | ~36,000 items/day through a 30+ zone conveyor pipeline              | Per-passenger bags ~ Poisson(λ=1.2). Weight ~ Normal(18kg, 4kg). DG rate = 0.2%. Zone throughput from IATA standards.                         |
+| **Weather**         | 4-state FSM with realistic meteorological parameter sampling        | Markov chain with hourly transitions. Visibility, wind, ceiling, QNH sampled per category. METAR/TAF in ICAO format.                          |
+| **Incidents**       | 5 hazard types with cascade trees up to depth 5                     | Per-type base probability/hr. Modifiers: ×1.8 peak, ×0.3 suppression. TTR sampled from type-specific ranges.                                  |
+| **Runway capacity** | 6–64 movements/hr depending on weather + wind                       | Category-based base cap. Crosswind > 25kt → ×0.85. Tailwind > 10kt → ×0.70. IMC/LIFR → single runway.                                         |
+
+### How cascading effects work
+
+The cascade engine is what makes the simulation feel realistic. A single event (e.g. a weather change) can ripple across the entire airport:
+
+```
+Weather degrades to IMC
+  → Runway capacity drops from 32/hr to 18/hr (weather-service)
+    → Departure queue builds up (flight-service)
+      → Gate assignments overlap (flight-service → gate conflict)
+        → Passengers get gate-change alerts (passenger-service)
+      → Connecting passengers miss MCT (passenger-service → missed_connection)
+    → Holding stack for arrivals (flight-service)
+  → incident-service creates severe_weather incident
+    → Cascade: capacity_reduction → holding_stack → ground_delay → flight_delays_cascade
+```
+
+Each service reacts independently to Kafka events — there are no orchestrated workflows. The emergent behaviour arises from the event-driven architecture.
+
+### Implementation example: security queue forecasting
+
+The passenger-service includes a LightGBM model for predicting queue depth:
+
+1. **Feature collection** (`ml/features.py`): 12 features including `hour_of_day`, `departures_next_90min`, `current_queue_depth`, `weather_category`, `incidents_active`
+2. **Training** (`ml/training.py`): rows accumulated in a deque (max 10K per terminal), flushed to Parquet hourly, model retrained every 3 sim-days using temporal split validation
+3. **Inference** (`ml/inference.py`): model predicts queue depth 90 minutes ahead. Before enough data exists (day 1–3), a simple fallback formula is used: `forecast = expected_pax × 0.35`
+4. **Congestion detection** (`ml/congestion.py`): when actual queue depth exceeds forecast by 30%, a `SecurityCongestionDetected` event is emitted, which the incident-service may escalate
 
 ---
 
@@ -311,14 +361,15 @@ arthur-airport/
 
 ## Documentation index
 
-| Document                                               | Description                                                    |
-| ------------------------------------------------------ | -------------------------------------------------------------- |
-| [Architecture Overview](docs/architecture/OVERVIEW.md) | System design, technology choices, 6 ADRs                      |
-| [Data Model](docs/architecture/DATA_MODEL.md)          | Neo4j graph schema, Cypher query patterns                      |
-| [Event Bus](docs/architecture/EVENT_BUS.md)            | 9 Kafka topics, full JSON event schemas                        |
-| [Simulation Engine](docs/architecture/SIMULATION.md)   | Time model, weather FSM, cascade rules, special events         |
-| [Monitoring](docs/infra/MONITORING.md)                 | 47 Prometheus metrics, 5 Grafana dashboards, alerting rules    |
-| [Docker](docs/infra/DOCKER.md)                         | Full docker-compose.yml, Dockerfile templates, useful commands |
+| Document                                                           | Description                                                             |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| [Architecture Overview](docs/architecture/OVERVIEW.md)             | System design, technology choices, 6 ADRs                               |
+| [Architecture Diagrams](docs/architecture/ARCHITECTURE_DIAGRAM.md) | Mermaid diagrams: system overview, event flow, state machines, cascades |
+| [Data Model](docs/architecture/DATA_MODEL.md)                      | Neo4j graph schema, Cypher query patterns                               |
+| [Event Bus](docs/architecture/EVENT_BUS.md)                        | 9 Kafka topics, full JSON event schemas                                 |
+| [Simulation Engine](docs/architecture/SIMULATION.md)               | Time model, weather FSM, cascade rules, special events                  |
+| [Monitoring](docs/infra/MONITORING.md)                             | 47 Prometheus metrics, 5 Grafana dashboards, alerting rules             |
+| [Docker](docs/infra/DOCKER.md)                                     | Full docker-compose.yml, Dockerfile templates, useful commands          |
 
 ---
 

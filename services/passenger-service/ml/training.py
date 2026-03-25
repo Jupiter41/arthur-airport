@@ -36,6 +36,7 @@ _last_flush_hour: int = -1
 
 
 def make_model() -> lgb.LGBMRegressor:
+    """Create a LightGBM regressor with tuned hyperparameters for queue depth prediction."""
     return lgb.LGBMRegressor(
         n_estimators=200,
         learning_rate=0.05,

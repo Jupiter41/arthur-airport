@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class FlightStatus(str, Enum):
+    """All possible states in the flight lifecycle FSM."""
     SCHEDULED = "scheduled"
     BOARDING = "boarding"
     DELAYED = "delayed"
@@ -20,11 +21,13 @@ class FlightStatus(str, Enum):
 
 
 class FlightDirection(str, Enum):
+    """Whether a flight is arriving at or departing from KART."""
     ARRIVAL = "arrival"
     DEPARTURE = "departure"
 
 
 class FlightSummary(BaseModel):
+    """Lightweight flight representation returned by the list endpoint."""
     id: str
     flight_number: str
     airline_code: str
@@ -45,6 +48,7 @@ class FlightSummary(BaseModel):
 
 
 class FlightListResponse(BaseModel):
+    """Paginated list of flight summaries."""
     total: int
     limit: int
     offset: int
@@ -52,6 +56,7 @@ class FlightListResponse(BaseModel):
 
 
 class FlightDetail(BaseModel):
+    """Full flight record with nested gate, runway, passenger, and baggage data."""
     id: str
     flight_number: str
     airline_code: str
@@ -76,6 +81,7 @@ class FlightDetail(BaseModel):
 
 
 class RunwayInfo(BaseModel):
+    """Current state of a single runway."""
     id: str
     status: str
     current_use: str
@@ -85,6 +91,7 @@ class RunwayInfo(BaseModel):
 
 
 class GateInfo(BaseModel):
+    """Current state of a single gate."""
     id: str
     terminal: str
     status: str
@@ -94,11 +101,13 @@ class GateInfo(BaseModel):
 
 
 class HoldRequest(BaseModel):
+    """Request body to manually hold a flight (delay it)."""
     reason: str
     expected_duration_minutes: int
 
 
 class CascadeResponse(BaseModel):
+    """Response showing the cascade tree of delay effects for a flight."""
     flight_id: str
     flight_number: str
     delay_minutes: int

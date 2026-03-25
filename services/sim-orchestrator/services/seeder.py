@@ -30,7 +30,12 @@ async def _day_already_seeded(sim_date) -> bool:
 
 
 async def seed_day(sim_day: int) -> None:
-    """Seed a full day's data: flights, passengers, baggage."""
+    """Seed a full simulated day: flights, passengers, and baggage.
+
+    Idempotent — skips if flights for the target date already exist in Neo4j.
+    Uses a deterministic RNG seed derived from the day number so repeated runs
+    produce identical data.
+    """
     sim_date = (SIM_START_TIME + timedelta(days=sim_day - 1)).date()
 
     if await _day_already_seeded(sim_date):

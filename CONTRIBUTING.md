@@ -53,6 +53,7 @@ infra/              Prometheus, Grafana, and Nginx config files
 ## Coding conventions
 
 **Python services**
+
 - FastAPI with async handlers throughout
 - Pydantic models for all request/response bodies
 - `confluent-kafka` for Kafka producer/consumer
@@ -60,12 +61,14 @@ infra/              Prometheus, Grafana, and Nginx config files
 - All endpoints documented with FastAPI's built-in OpenAPI support
 
 **Node.js gateway**
+
 - TypeScript strict mode
 - `ws` library for WebSocket server
 - `kafkajs` for Kafka consumer
 - No business logic in the gateway — it is a thin proxy + fan-out layer
 
 **React dashboard**
+
 - TypeScript strict mode
 - Zustand for global state
 - React Query for REST calls
@@ -74,6 +77,7 @@ infra/              Prometheus, Grafana, and Nginx config files
 
 ---
 
-## Simulated data only
+## Data privacy
 
-This project contains no real airport, airline, passenger, or flight data of any kind. All names, flight numbers, registrations, and records are procedurally generated. Do not introduce real data in pull requests.
+In the first stages the project only contained procedurally generated synthetic data for flight numbers, registrations, history etc.
+One of the future goals will be to add some real data from APIs or datasets, but when adding data in pull requests please ensure that it does not contain any personally identifiable information (PII) or real-world sensitive data. This project is intended for educational and portfolio purposes only, and should not include any real passenger data or other sensitive information.

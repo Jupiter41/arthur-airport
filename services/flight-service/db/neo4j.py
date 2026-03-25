@@ -24,6 +24,7 @@ INDEXES = [
 
 
 async def init_neo4j() -> None:
+    """Create the async Neo4j driver and verify connectivity."""
     global _driver
     _driver = AsyncGraphDatabase.driver(
         os.getenv("NEO4J_URI", "bolt://neo4j:7687"),
@@ -37,6 +38,7 @@ async def init_neo4j() -> None:
 
 
 async def close_neo4j() -> None:
+    """Close the Neo4j driver and release resources."""
     global _driver
     if _driver:
         await _driver.close()
@@ -45,12 +47,14 @@ async def close_neo4j() -> None:
 
 
 def get_driver() -> AsyncDriver:
+    """Return the initialised async Neo4j driver, or raise if not yet initialised."""
     if _driver is None:
         raise RuntimeError("Neo4j driver not initialised")
     return _driver
 
 
 async def check_neo4j() -> bool:
+    """Return True if the Neo4j driver can verify connectivity."""
     try:
         if _driver is None:
             return False
@@ -61,6 +65,11 @@ async def check_neo4j() -> bool:
 
 
 async def wait_for_neo4j(max_attempts: int = 12, delay_s: float = 5) -> None:
+    """Block until Neo4j is reachable, with exponential-ish backoff.
+
+    Raises:
+        RuntimeError: If Neo4j is still unreachable after *max_attempts* tries.
+    """
     for attempt in range(1, max_attempts + 1):
         try:
             await init_neo4j()
@@ -81,6 +90,7 @@ async def wait_for_neo4j(max_attempts: int = 12, delay_s: float = 5) -> None:
 
 
 async def create_constraints_and_indexes() -> None:
+    """Create uniqueness constraints and indexes for Flight, Gate, and Runway nodes."""
     driver = get_driver()
     async with driver.session() as session:
         for stmt in CONSTRAINTS + INDEXES:

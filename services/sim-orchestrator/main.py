@@ -33,17 +33,27 @@ logger = logging.getLogger("sim-orchestrator")
 
 
 async def _on_hour_boundary(sim_time):
-    """Called by clock on each simulated hour boundary."""
+    """Clock callback fired every simulated hour — evaluates probabilistic incident injection."""
     await evaluate_probabilistic_events(sim_time)
 
 
 async def _on_day_boundary(next_day: int, sim_time):
-    """Called by clock at 23:30 to seed next day."""
+    """Clock callback fired at 23:30 — seeds next day's flights, passengers, and baggage."""
     await seed_day(sim_day=next_day)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI lifespan manager for sim-orchestrator.
+
+    Startup sequence:
+        1. Load fixture data (airlines, destinations, aircraft types)
+        2. Connect Neo4j & Kafka
+        3. Seed airport structure (terminals, gates, runways)
+        4. Seed Day 1 schedule + passengers + baggage
+        5. Emit initial CAVOK weather
+        6. Start the virtual clock loop
+    """
     # 1. Load fixtures
     load_fixtures()
 

@@ -37,14 +37,23 @@ _on_day_boundary = None
 
 
 def configure_callbacks(on_hour=None, on_day=None) -> None:
-    """Set callbacks for hour and day boundary events."""
+    """Register callbacks for hour-boundary and day-boundary events.
+
+    Args:
+        on_hour: Async callable(sim_time) invoked every simulated hour.
+        on_day: Async callable(next_day, sim_time) invoked at 23:30 to seed the next day.
+    """
     global _on_hour_boundary, _on_day_boundary
     _on_hour_boundary = on_hour
     _on_day_boundary = on_day
 
 
 def get_state() -> dict:
-    """Return current clock state."""
+    """Return current clock state as a JSON-serialisable dict.
+
+    Includes: running, paused, sim_time, real_time, speed_multiplier,
+    day_number, tick_number.
+    """
     return {
         "running": _running,
         "paused": _paused,
@@ -89,18 +98,24 @@ def get_tick_latencies() -> list[float]:
 
 
 def set_speed(multiplier: int) -> None:
+    """Change the simulation speed multiplier at runtime.
+
+    Higher values make simulated time advance faster relative to wall-clock time.
+    """
     global _speed_multiplier
     _speed_multiplier = multiplier
     logger.info("Speed set to %dx", multiplier)
 
 
 def pause() -> None:
+    """Pause the simulation clock — no ticks are emitted while paused."""
     global _paused
     _paused = True
     logger.info("Simulation paused at %s", _sim_time)
 
 
 def resume() -> None:
+    """Resume a paused simulation clock."""
     global _paused
     _paused = False
     logger.info("Simulation resumed at %s", _sim_time)
@@ -126,7 +141,15 @@ def reset_to_start() -> None:
 
 
 async def run_clock_loop() -> None:
-    """Main simulation clock loop. Emits SimClockTick each simulated minute."""
+    """Main simulation clock loop.
+
+    Each iteration:
+        1. Advance sim_time by 1 minute
+        2. Emit SimClockTick to ``sim.clock``
+        3. Call hour-boundary callback if minute == 0
+        4. Call day-boundary callback at 23:30
+        5. Sleep for ``60 / speed_multiplier`` real seconds
+    """
     global _sim_time, _sim_day, _tick_number, _events_produced, _tick_latencies
 
     logger.info("Clock loop started at %s (speed: %dx)", _sim_time, _speed_multiplier)

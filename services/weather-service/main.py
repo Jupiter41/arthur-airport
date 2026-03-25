@@ -48,6 +48,10 @@ async def ws_broadcast(message: dict) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI lifespan manager for weather-service.
+
+    Startup: Neo4j → Kafka → producer → constraints → WS callback → consumer task.
+    """
     # 1. Wait for Neo4j
     await wait_for_neo4j(max_attempts=12, delay_s=5)
 

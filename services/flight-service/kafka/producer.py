@@ -18,6 +18,7 @@ TOPIC = "flights.events"
 
 
 def init_kafka_producer() -> None:
+    """Create the confluent-kafka Producer with delivery guarantees."""
     global _producer
     _producer = Producer({
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
@@ -29,6 +30,7 @@ def init_kafka_producer() -> None:
 
 
 def close_kafka_producer() -> None:
+    """Flush pending messages and shut down the producer."""
     if _producer:
         _producer.flush(timeout=10)
         logger.info("Kafka producer flushed and closed")
@@ -45,6 +47,14 @@ def _produce_event(
     payload: dict,
     key: str | None = None,
 ) -> None:
+    """Build a standard event envelope and produce it to the flights.events topic.
+
+    Args:
+        event_type: Event name (e.g. ``FlightStatusChanged``).
+        sim_time: Current simulation time for the envelope.
+        payload: Domain-specific event data.
+        key: Optional Kafka message key (typically flight_id) for partition affinity.
+    """
     if _producer is None:
         raise RuntimeError("Kafka producer not initialized")
 

@@ -15,7 +15,11 @@ SA_LANE_BREACH_THROUGHPUT = 10  # pax/hr during security_breach
 
 
 class SecurityCheckpoint:
-    """Per-terminal security checkpoint state."""
+    """Per-terminal security checkpoint with main and special-assistance lanes.
+
+    Models queue depth, throughput with congestion slowdown, and freeze
+    behaviour during security breaches.
+    """
 
     def __init__(self, terminal: str, lanes_open: int | None = None):
         self.terminal = terminal
@@ -109,7 +113,10 @@ class SecurityCheckpoint:
 
 
 class SecuritySystem:
-    """Manages all 3 terminal security checkpoints."""
+    """Manages all 3 terminal security checkpoints (A, B, C).
+
+    Provides unified enqueue, drain, freeze/unfreeze, and summary APIs.
+    """
 
     def __init__(self):
         self.checkpoints: dict[str, SecurityCheckpoint] = {

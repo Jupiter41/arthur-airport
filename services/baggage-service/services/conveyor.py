@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BagInZone:
-    """A baggage item currently queued in a zone."""
+    """A baggage item currently queued in a conveyor zone."""
     baggage_id: str
     tag: str
     flight_id: str
@@ -76,7 +76,13 @@ for z in ZONE_THROUGHPUT:
 
 
 class ConveyorSystem:
-    """In-memory conveyor pipeline with zone-based throughput and backpressure."""
+    """In-memory conveyor pipeline modelling the baggage handling system.
+
+    Items flow through zones in order:
+    induction → screening → sorting-matrix → make-up (loading).
+    Arrival belts handle incoming baggage for passenger collection.
+    Each zone has a throughput cap (items/hr) and can be degraded or offline.
+    """
 
     def __init__(self) -> None:
         self._zones: dict[str, ZoneState] = {}

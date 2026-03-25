@@ -115,7 +115,27 @@ async def create_incident(
     parent_id: str | None = None,
     subtype: str = "",
 ) -> dict:
-    """Create a new incident: write to Neo4j, produce events, trigger cascades."""
+    """Create a new incident, persist it, emit events, and trigger cascades.
+
+    Args:
+        type: Incident type (e.g. ``runway_incursion``, ``baggage_fire``).
+        severity: One of ``low``, ``medium``, ``high``, ``critical``.
+        location: Affected infrastructure (e.g. ``runway-09L``, ``gate-B07``).
+        trigger: How the incident was created (``manual``, ``probabilistic``, ``cascade``).
+        sim_time: Current simulation time.
+        description: Human-readable incident description.
+        cascade_depth: Current depth in the cascade tree (0 = root).
+        parent_id: ID of the parent incident if this is a cascade child.
+        subtype: Optional sub-classification.
+
+    Returns:
+        The created incident dict with all properties.
+
+    Side effects:
+        - Writes Incident node + AFFECTS relationships to Neo4j.
+        - Emits IncidentCreated + IncidentAlert via Kafka.
+        - Evaluates and fires cascade rules.
+    """
     incident_id = str(uuid4())
     ttr = sample_ttr(type)
 
@@ -185,7 +205,10 @@ async def create_incident(
 
 
 async def contain_incident(incident_id: str, sim_time: datetime, note: str = "") -> dict | None:
-    """Mark an incident as contained."""
+    """Mark an incident as contained (still active but impact limited).
+
+    Returns the updated incident dict, or None if the transition is invalid.
+    """
     incident = await get_incident_by_id(incident_id)
     if not incident:
         return None
@@ -204,7 +227,10 @@ async def contain_incident(incident_id: str, sim_time: datetime, note: str = "")
 
 
 async def resolve_incident(incident_id: str, sim_time: datetime, note: str = "") -> dict | None:
-    """Mark an incident as resolved and resolve all children."""
+    """Mark an incident as resolved, deactivate its protocol, and resolve all children.
+
+    Returns the updated incident dict, or None if the incident doesn't exist.
+    """
     incident = await get_incident_by_id(incident_id)
     if not incident:
         return None
@@ -236,7 +262,10 @@ async def resolve_incident(incident_id: str, sim_time: datetime, note: str = "")
 
 
 async def tick_ttr(sim_time: datetime) -> None:
-    """Advance TTR countdown for all active incidents. Auto-resolve when TTR reaches 0."""
+    """Advance TTR (time-to-resolve) countdown by 1 minute for all active incidents.
+
+    Auto-resolves any incident whose TTR reaches 0.
+    """
     active = await get_active_incidents_with_ttr()
     for incident in active:
         ttr = incident.get("ttr_remaining")
