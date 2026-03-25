@@ -34,12 +34,24 @@ const VALID_TOPICS = new Set([
 const clients = new Set<WsClient>();
 let currentSimTime: string | null = null;
 
+// Bootstrap state cache — stores the latest event per topic key
+// so newly connected clients get an immediate state snapshot
+const latestState: Record<string, object> = {};
+
 export function setCurrentSimTime(simTime: string): void {
   currentSimTime = simTime;
 }
 
 export function getCurrentSimTime(): string | null {
   return currentSimTime;
+}
+
+export function cacheLatestEvent(topicKey: string, event: object): void {
+  latestState[topicKey] = event;
+}
+
+export function getBootstrapState(): Record<string, object> {
+  return { ...latestState };
 }
 
 export function fanOut(topicKey: string, event: object): void {
@@ -82,11 +94,12 @@ export function setupWebSocket(server: Server): void {
     clients.add(client);
     wsConnectionsGauge.set(clients.size);
 
-    // Send initial snapshot
+    // Send initial snapshot with bootstrap state
     ws.send(
       JSON.stringify({
         type: "snapshot",
         sim_time: currentSimTime,
+        bootstrap: getBootstrapState(),
       }),
     );
 

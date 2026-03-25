@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useFlightStore } from "../../stores/flightStore";
 import { useWeatherStore } from "../../stores/weatherStore";
 import { useIncidentStore } from "../../stores/incidentStore";
-import { flightsApi, weatherApi, incidentsApi } from "../../hooks/useApi";
+import { useGroundOpsQueries } from "../../hooks/useQueries";
 import { StatusBadge } from "../../components/StatusBadge";
 import type { Flight, Runway, Gate, WeatherState, Incident } from "../../types";
 
@@ -399,46 +399,27 @@ export default function GroundOpsPage() {
   const setCurrent = useWeatherStore((s) => s.setCurrent);
   const setIncidents = useIncidentStore((s) => s.setIncidents);
 
+  const queries = useGroundOpsQueries();
+
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [rwData, gateData, flData, wxData, incData] = await Promise.all([
-          flightsApi.runways(),
-          flightsApi.gates(),
-          flightsApi.list({
-            status: "approach,taxiing,boarding,at_gate,departed",
-            limit: "200",
-          }),
-          weatherApi.current(),
-          incidentsApi.list({ status: "active,contained" }),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setRunways(rwData as Runway[]);
-        const gd = gateData as { gates?: Gate[] };
-        setGates(gd.gates ?? (Array.isArray(gateData) ? (gateData as Gate[]) : []));
-        const fd = flData as { flights: Flight[] };
-        setFlights(fd.flights ?? []);
-        setCurrent(wxData as WeatherState);
-        const id = incData as { incidents: Incident[] };
-        setIncidents(id.incidents ?? []);
-      } catch {
-        // Keep existing state and retry on next interval tick.
-      }
-    };
+    if (queries.runways.data) setRunways(queries.runways.data);
+  }, [queries.runways.data, setRunways]);
 
-    void load();
-    const interval = setInterval(() => {
-      void load();
-    }, 10000);
+  useEffect(() => {
+    if (queries.gates.data) setGates(queries.gates.data);
+  }, [queries.gates.data, setGates]);
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [setRunways, setGates, setFlights, setCurrent, setIncidents]);
+  useEffect(() => {
+    if (queries.flights.data) setFlights(queries.flights.data);
+  }, [queries.flights.data, setFlights]);
+
+  useEffect(() => {
+    if (queries.weather.data) setCurrent(queries.weather.data as WeatherState);
+  }, [queries.weather.data, setCurrent]);
+
+  useEffect(() => {
+    if (queries.incidents.data) setIncidents(queries.incidents.data);
+  }, [queries.incidents.data, setIncidents]);
 
   const flightList = useMemo(() => Object.values(flights), [flights]);
   const activeIncidents = useMemo(

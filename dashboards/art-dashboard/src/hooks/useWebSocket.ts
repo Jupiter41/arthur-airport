@@ -23,6 +23,114 @@ const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 const HEARTBEAT_TIMEOUT_MS = 20000;
 
+/* ──────── Event handler registry ──────── */
+type EventHandler = (payload: Record<string, unknown>, sim_time: string, event: KafkaEvent) => void;
+
+export const eventHandlers: Record<string, EventHandler> = {
+  SimClockTick: (payload, sim_time) => {
+    const tickFromPayload = payload?.sim_time;
+    const nextTick =
+      typeof tickFromPayload === "string" ? tickFromPayload : sim_time;
+    if (nextTick) {
+      useSimStore.getState().updateFromTick(nextTick);
+    }
+  },
+
+  FlightStatusChanged: (payload) => {
+    const { flight_id, new_status, delay_minutes } = payload;
+    useFlightStore
+      .getState()
+      .updateFlightStatus(
+        flight_id as string,
+        new_status as string,
+        delay_minutes as number | undefined,
+      );
+    useFlightStore.getState().flashRow(flight_id as string);
+    setTimeout(
+      () => useFlightStore.getState().clearFlash(flight_id as string),
+      1500,
+    );
+  },
+
+  FlightGateAssigned: (payload) => {
+    const { flight_id, gate_id } = payload;
+    useFlightStore
+      .getState()
+      .updateFlightGate(flight_id as string, gate_id as string);
+  },
+
+  FlightCancelled: (payload) => {
+    const { flight_id } = payload;
+    useFlightStore.getState().cancelFlight(flight_id as string);
+    useFlightStore.getState().flashRow(flight_id as string);
+    setTimeout(
+      () => useFlightStore.getState().clearFlash(flight_id as string),
+      1500,
+    );
+  },
+
+  WeatherStateChanged: (payload) => {
+    useWeatherStore.getState().updateFromEvent(payload);
+  },
+
+  BaggageStatusChanged: (payload) => {
+    const { zone_id, items } = payload;
+    if (zone_id && items !== undefined) {
+      useBaggageStore
+        .getState()
+        .updateZone(zone_id as string, { items: items as number });
+    }
+  },
+
+  BaggageFlagged: (payload) => {
+    useBaggageStore.getState().addFlagged(payload as never);
+  },
+
+  PassengerStatusChanged: (payload) => {
+    const { zone_id, density, load_pct } = payload;
+    if (zone_id) {
+      usePassengerStore
+        .getState()
+        .updateZoneDensity(
+          zone_id as string,
+          (density as number) ?? 0,
+          (load_pct as number) ?? 0,
+        );
+    }
+  },
+
+  IncidentCreated: (payload) => {
+    useIncidentStore.getState().upsertIncident(payload as never);
+  },
+
+  IncidentStatusChanged: (payload) => {
+    const { incident_id, new_status } = payload;
+    useIncidentStore
+      .getState()
+      .updateIncidentStatus(
+        incident_id as string,
+        new_status as "active" | "contained" | "resolved",
+      );
+  },
+
+  IncidentCascaded: (payload) => {
+    const { parent_id } = payload;
+    useIncidentStore
+      .getState()
+      .addCascade(parent_id as string, payload as never);
+  },
+
+  IncidentAlert: (payload, sim_time, event) => {
+    useIncidentStore.getState().addAlert({
+      id: event.event_id,
+      sim_time,
+      severity: (payload.severity as never) ?? "medium",
+      message: (payload.message as string) ?? "",
+      incident_id: (payload.incident_id as string) ?? "",
+    });
+  },
+};
+
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempt = useRef(0);
@@ -30,123 +138,9 @@ export function useWebSocket() {
 
   const dispatch = useCallback((event: KafkaEvent) => {
     const { event_type, payload, sim_time } = event;
-
-    // Sim clock
-    if (event_type === "SimClockTick") {
-      const tickFromPayload = payload?.sim_time;
-      const nextTick =
-        typeof tickFromPayload === "string" ? tickFromPayload : sim_time;
-      if (nextTick) {
-        useSimStore.getState().updateFromTick(nextTick);
-      }
-      return;
-    }
-
-    // Flight events
-    if (event_type === "FlightStatusChanged") {
-      const { flight_id, new_status, delay_minutes } = payload as Record<
-        string,
-        unknown
-      >;
-      useFlightStore
-        .getState()
-        .updateFlightStatus(
-          flight_id as string,
-          new_status as string,
-          delay_minutes as number | undefined,
-        );
-      useFlightStore.getState().flashRow(flight_id as string);
-      setTimeout(
-        () => useFlightStore.getState().clearFlash(flight_id as string),
-        1500,
-      );
-      return;
-    }
-    if (event_type === "FlightGateAssigned") {
-      const { flight_id, gate_id } = payload as Record<string, unknown>;
-      useFlightStore
-        .getState()
-        .updateFlightGate(flight_id as string, gate_id as string);
-      return;
-    }
-    if (event_type === "FlightCancelled") {
-      const { flight_id } = payload as Record<string, unknown>;
-      useFlightStore.getState().cancelFlight(flight_id as string);
-      useFlightStore.getState().flashRow(flight_id as string);
-      setTimeout(
-        () => useFlightStore.getState().clearFlash(flight_id as string),
-        1500,
-      );
-      return;
-    }
-
-    // Weather events
-    if (event_type === "WeatherStateChanged") {
-      useWeatherStore.getState().updateFromEvent(payload);
-      return;
-    }
-
-    // Baggage events
-    if (event_type === "BaggageStatusChanged") {
-      const { zone_id, items } = payload as Record<string, unknown>;
-      if (zone_id && items !== undefined) {
-        useBaggageStore
-          .getState()
-          .updateZone(zone_id as string, { items: items as number });
-      }
-      return;
-    }
-    if (event_type === "BaggageFlagged") {
-      useBaggageStore.getState().addFlagged(payload as never);
-      return;
-    }
-
-    // Passenger events
-    if (event_type === "PassengerStatusChanged") {
-      const { zone_id, density, load_pct } = payload as Record<string, unknown>;
-      if (zone_id) {
-        usePassengerStore
-          .getState()
-          .updateZoneDensity(
-            zone_id as string,
-            (density as number) ?? 0,
-            (load_pct as number) ?? 0,
-          );
-      }
-      return;
-    }
-
-    // Incident events
-    if (event_type === "IncidentCreated") {
-      useIncidentStore.getState().upsertIncident(payload as never);
-      return;
-    }
-    if (event_type === "IncidentStatusChanged") {
-      const { incident_id, new_status } = payload as Record<string, unknown>;
-      useIncidentStore
-        .getState()
-        .updateIncidentStatus(
-          incident_id as string,
-          new_status as "active" | "contained" | "resolved",
-        );
-      return;
-    }
-    if (event_type === "IncidentCascaded") {
-      const { parent_id } = payload as Record<string, unknown>;
-      useIncidentStore
-        .getState()
-        .addCascade(parent_id as string, payload as never);
-      return;
-    }
-    if (event_type === "IncidentAlert") {
-      useIncidentStore.getState().addAlert({
-        id: event.event_id,
-        sim_time,
-        severity: (payload.severity as never) ?? "medium",
-        message: (payload.message as string) ?? "",
-        incident_id: (payload.incident_id as string) ?? "",
-      });
-      return;
+    const handler = eventHandlers[event_type];
+    if (handler) {
+      handler(payload as Record<string, unknown>, sim_time, event);
     }
   }, []);
 
@@ -224,6 +218,17 @@ export function useWebSocket() {
           if (data.type === "snapshot") {
             if (data.sim_time) {
               useSimStore.getState().updateFromTick(data.sim_time as string);
+            }
+            // Process bootstrap state for faster reconnect
+            const bootstrap = data.bootstrap as
+              | Record<string, Record<string, unknown>>
+              | undefined;
+            if (bootstrap) {
+              for (const event of Object.values(bootstrap)) {
+                if (event.event_type) {
+                  dispatch(event as unknown as KafkaEvent);
+                }
+              }
             }
             return;
           }

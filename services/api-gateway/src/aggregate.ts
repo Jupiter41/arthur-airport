@@ -15,6 +15,16 @@ const AGGREGATE_ENDPOINTS: Record<string, string> = {
   incidents: "/api/v1/incidents?status=active",
 };
 
+// ── Short-TTL cache for aggregate endpoint ──────────────────────
+const CACHE_TTL_MS = parseInt(process.env.AGGREGATE_CACHE_TTL_MS ?? "8000", 10);
+
+interface CacheEntry {
+  data: Record<string, unknown>;
+  expiresAt: number;
+}
+
+let _cache: CacheEntry | null = null;
+
 async function fetchWithTimeout(
   url: string,
   timeoutMs: number,
@@ -36,6 +46,13 @@ export async function handleAggregate(
   _req: Request,
   res: Response,
 ): Promise<void> {
+  // Check cache first
+  const now = Date.now();
+  if (_cache && now < _cache.expiresAt) {
+    res.json(_cache.data);
+    return;
+  }
+
   const keys = Object.keys(AGGREGATE_ENDPOINTS);
   const promises = keys.map(async (key): Promise<FetchResult> => {
     const baseUrl = UPSTREAM[key];
@@ -68,7 +85,7 @@ export async function handleAggregate(
 
   const simData = dataMap.sim as Record<string, unknown> | null;
 
-  res.json({
+  const body = {
     sim_time: simData?.sim_time ?? null,
     airport: {
       iata: "ART",
@@ -83,5 +100,10 @@ export async function handleAggregate(
     incidents: dataMap.incidents ?? null,
     degraded_services:
       degradedServices.length > 0 ? degradedServices : undefined,
-  });
+  };
+
+  // Store in cache
+  _cache = { data: body, expiresAt: Date.now() + CACHE_TTL_MS };
+
+  res.json(body);
 }

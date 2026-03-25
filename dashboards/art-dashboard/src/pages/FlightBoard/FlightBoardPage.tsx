@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useFlightStore } from "../../stores/flightStore";
 import { useIncidentStore } from "../../stores/incidentStore";
-import { flightsApi, weatherApi } from "../../hooks/useApi";
+import { useFlightBoardQueries } from "../../hooks/useQueries";
 import { useWeatherStore } from "../../stores/weatherStore";
 import { StatusBadge } from "../../components/StatusBadge";
 import type { Flight, Runway, WeatherState } from "../../types";
@@ -415,36 +415,19 @@ export default function FlightBoardPage() {
   const setCurrent = useWeatherStore((s) => s.setCurrent);
   const [selectedFlight, setSelectedFlight] = useState<Flight | null>(null);
 
+  const queries = useFlightBoardQueries();
+
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [flightData, rwData, wxData] = await Promise.all([
-          flightsApi.list({ limit: "200" }),
-          flightsApi.runways(),
-          weatherApi.current(),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setFlights((flightData as { flights: Flight[] }).flights ?? []);
-        setRunways(rwData as Runway[]);
-        setCurrent(wxData as WeatherState);
-      } catch {
-        // Keep existing state and retry on next interval tick.
-      }
-    };
+    if (queries.flights.data) setFlights(queries.flights.data);
+  }, [queries.flights.data, setFlights]);
 
-    void load();
-    const interval = setInterval(() => {
-      void load();
-    }, 10000);
+  useEffect(() => {
+    if (queries.runways.data) setRunways(queries.runways.data);
+  }, [queries.runways.data, setRunways]);
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [setFlights, setRunways, setCurrent]);
+  useEffect(() => {
+    if (queries.weather.data) setCurrent(queries.weather.data as WeatherState);
+  }, [queries.weather.data, setCurrent]);
 
   const flightList = Object.values(flights);
   const departures = useMemo(

@@ -16,6 +16,20 @@ function limitHandler(tier: string) {
 }
 
 /**
+ * Extract rate-limit key: prefer JWT subject (per-token), fall back to IP.
+ * The authMiddleware sets `req.user` with the decoded JWT payload.
+ */
+function keyGenerator(req: Request): string {
+  const user = (req as unknown as Record<string, unknown>).user as
+    | { sub?: string }
+    | undefined;
+  if (user?.sub) {
+    return `token:${user.sub}`;
+  }
+  return `ip:${req.ip ?? "unknown"}`;
+}
+
+/**
  * Default rate limiter: 200 requests per 60 seconds
  */
 export const defaultLimiter = rateLimit({
@@ -23,6 +37,7 @@ export const defaultLimiter = rateLimit({
   limit: 200,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator,
   handler: limitHandler("default"),
 });
 
@@ -35,6 +50,7 @@ export const heavyLimiter = rateLimit({
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator,
   handler: limitHandler("heavy"),
 });
 
@@ -46,6 +62,7 @@ export const simResetLimiter = rateLimit({
   limit: 1,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator,
   handler: limitHandler("sim_reset"),
 });
 
@@ -57,5 +74,6 @@ export const injectLimiter = rateLimit({
   limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator,
   handler: limitHandler("inject"),
 });

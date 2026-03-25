@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HeaderBar } from "./components/HeaderBar";
 import { useWebSocket } from "./hooks/useWebSocket";
 import FlightBoardPage from "./pages/FlightBoard/FlightBoardPage";
@@ -6,6 +7,17 @@ import BaggageTrackerPage from "./pages/BaggageTracker/BaggageTrackerPage";
 import PassengerFlowPage from "./pages/PassengerFlow/PassengerFlowPage";
 import IncidentConsolePage from "./pages/IncidentConsole/IncidentConsolePage";
 import GroundOpsPage from "./pages/GroundOps/GroundOpsPage";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchInterval: 10_000,
+      retry: 2,
+      staleTime: 5_000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function AppShell() {
   useWebSocket();
@@ -28,9 +40,11 @@ function AppShell() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <AppShell />
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AppShell />
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
 

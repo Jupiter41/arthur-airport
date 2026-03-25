@@ -59,7 +59,7 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_LOG_RETENTION_HOURS: 168
     volumes:
       - kafka-data:/var/lib/kafka/data
@@ -88,6 +88,40 @@ services:
       KAFKA_CLUSTERS_0_NAME: art-cluster
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
 
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    networks: [art-net]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Creating Kafka topics..."
+        topics=(
+          "sim.clock:1:1"
+          "flights.events:6:1"
+          "flights.schedule:1:1"
+          "passengers.events:6:1"
+          "baggage.events:6:1"
+          "weather.events:1:1"
+          "incidents.events:3:1"
+          "incidents.alerts:3:1"
+          "incidents.inject:1:1"
+        )
+        for entry in "$${topics[@]}"; do
+          IFS=':' read -r topic partitions replication <<< "$$entry"
+          kafka-topics --bootstrap-server kafka:9092 \
+            --create --if-not-exists \
+            --topic "$$topic" \
+            --partitions "$$partitions" \
+            --replication-factor "$$replication" \
+            && echo "  ✓ $$topic ($$partitions partitions)" \
+            || echo "  ✗ $$topic failed"
+        done
+        echo "All topics created."
+
   kafka-exporter:
     image: danielqsj/kafka-exporter:latest
     restart: unless-stopped
@@ -111,6 +145,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
@@ -127,6 +163,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 10s
@@ -143,6 +181,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 10s
@@ -166,6 +206,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 10s
@@ -192,6 +234,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
       interval: 10s

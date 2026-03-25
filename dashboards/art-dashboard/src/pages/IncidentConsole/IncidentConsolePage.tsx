@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { incidentsApi } from "../../hooks/useApi";
+import { useIncidentConsoleQueries } from "../../hooks/useQueries";
 import { StatusBadge } from "../../components/StatusBadge";
 import type {
   Incident,
@@ -470,43 +471,19 @@ export default function IncidentConsolePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [injectOpen, setInjectOpen] = useState(false);
 
+  const queries = useIncidentConsoleQueries();
+
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [activeData, resolvedData, alertData] = await Promise.all([
-          incidentsApi.list({ status: "active,contained" }),
-          incidentsApi.list({ status: "resolved" }),
-          incidentsApi.alerts(),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        const active =
-          (activeData as { incidents: Incident[] }).incidents ?? [];
-        const resolved =
-          (resolvedData as { incidents: Incident[] }).incidents ?? [];
-        setIncidents([...active, ...resolved]);
-        const ad = alertData as { alerts?: IncidentAlert[] };
-        setAlerts(
-          ad.alerts ??
-            (Array.isArray(alertData) ? (alertData as IncidentAlert[]) : []),
-        );
-      } catch {
-        // Keep existing state and retry on next interval tick.
-      }
-    };
+    const active = queries.active.data ?? [];
+    const resolved = queries.resolved.data ?? [];
+    if (active.length > 0 || resolved.length > 0) {
+      setIncidents([...active, ...resolved]);
+    }
+  }, [queries.active.data, queries.resolved.data, setIncidents]);
 
-    void load();
-    const interval = setInterval(() => {
-      void load();
-    }, 10000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [setIncidents, setAlerts]);
+  useEffect(() => {
+    if (queries.alerts.data) setAlerts(queries.alerts.data);
+  }, [queries.alerts.data, setAlerts]);
 
   const incidentList = Object.values(incidents);
   const activeIncidents = useMemo(

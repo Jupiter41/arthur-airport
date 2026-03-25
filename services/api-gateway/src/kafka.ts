@@ -1,5 +1,5 @@
 import { Kafka, Consumer, EachMessagePayload } from "kafkajs";
-import { fanOut, setCurrentSimTime } from "./websocket";
+import { fanOut, setCurrentSimTime, cacheLatestEvent } from "./websocket";
 
 const TOPIC_KEY_MAP: Record<string, string> = {
   "sim.clock": "sim",
@@ -57,6 +57,11 @@ export async function setupKafka(): Promise<void> {
             if (typeof tickSimTime === "string") {
               setCurrentSimTime(tickSimTime);
             }
+          }
+
+          // Cache latest event per topic for bootstrap snapshots
+          if (topicKey !== "sim") {
+            cacheLatestEvent(topicKey, event);
           }
 
           fanOut(topicKey, event);

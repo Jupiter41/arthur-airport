@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useBaggageStore } from "../../stores/baggageStore";
 import { useIncidentStore } from "../../stores/incidentStore";
-import { baggageApi, flightsApi } from "../../hooks/useApi";
+import { useBaggageTrackerQueries } from "../../hooks/useQueries";
 import type {
   BaggageZone,
   BaggageFlowSummary,
@@ -453,60 +453,23 @@ export default function BaggageTrackerPage() {
     if (changed) setZones(updated);
   }, [incidents, zones, setZones]);
 
+  const queries = useBaggageTrackerQueries();
+
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [mapData, summaryData, flaggedData, flightsData] =
-          await Promise.all([
-            baggageApi.map(),
-            baggageApi.summary(),
-            baggageApi.flagged(),
-            flightsApi.list({ direction: "departure", limit: "100" }),
-          ]);
-        if (cancelled) {
-          return;
-        }
-        const md = mapData as { zones?: BaggageZone[] };
-        setZones(
-          md.zones ??
-            (Array.isArray(mapData) ? (mapData as BaggageZone[]) : []),
-        );
-        const sd = summaryData as Record<string, unknown>;
-        setSummary({
-          total_in_system: (sd.total_in_system as number) ?? 0,
-          by_status: (sd.by_status as Record<string, number>) ?? {},
-          flagged_count:
-            (sd.flagged_count as number) ?? (sd.flagged_active as number) ?? 0,
-          loaded_count:
-            (sd.loaded_count as number) ??
-            (sd.by_status as Record<string, number> | undefined)?.loaded ??
-            0,
-        });
-        const fd = flaggedData as { flagged?: FlaggedBaggage[] };
-        setFlagged(
-          fd.flagged ??
-            (Array.isArray(flaggedData)
-              ? (flaggedData as FlaggedBaggage[])
-              : []),
-        );
-        const fl = flightsData as { flights?: Flight[] };
-        setFlights(fl.flights ?? []);
-      } catch {
-        // Keep existing state and retry on next interval tick.
-      }
-    };
+    if (queries.map.data) setZones(queries.map.data);
+  }, [queries.map.data, setZones]);
 
-    void load();
-    const interval = setInterval(() => {
-      void load();
-    }, 10000);
+  useEffect(() => {
+    if (queries.summary.data) setSummary(queries.summary.data);
+  }, [queries.summary.data, setSummary]);
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [setZones, setSummary, setFlagged]);
+  useEffect(() => {
+    if (queries.flagged.data) setFlagged(queries.flagged.data);
+  }, [queries.flagged.data, setFlagged]);
+
+  useEffect(() => {
+    if (queries.flights.data) setFlights(queries.flights.data);
+  }, [queries.flights.data]);
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">

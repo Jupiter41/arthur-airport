@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { usePassengerStore } from "../../stores/passengerStore";
 import { useIncidentStore } from "../../stores/incidentStore";
-import { passengersApi } from "../../hooks/useApi";
+import { usePassengerFlowQueries } from "../../hooks/useQueries";
 import type {
   ZoneDensity,
   PassengerFlowSummary,
@@ -386,44 +386,19 @@ export default function PassengerFlowPage() {
     return set;
   }, [incidents]);
 
+  const queries = usePassengerFlowQueries();
+
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [heatData, summaryData, riskData] = await Promise.all([
-          passengersApi.heatmap(),
-          passengersApi.summary(),
-          passengersApi.atRisk(),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        const hd = heatData as { zones?: ZoneDensity[] };
-        setZones(
-          hd.zones ??
-            (Array.isArray(heatData) ? (heatData as ZoneDensity[]) : []),
-        );
-        setSummary(summaryData as PassengerFlowSummary);
-        const rd = riskData as { at_risk?: ConnectionAtRisk[] };
-        setConnectionsAtRisk(
-          rd.at_risk ??
-            (Array.isArray(riskData) ? (riskData as ConnectionAtRisk[]) : []),
-        );
-      } catch {
-        // Keep existing state and retry on next interval tick.
-      }
-    };
+    if (queries.heatmap.data) setZones(queries.heatmap.data);
+  }, [queries.heatmap.data, setZones]);
 
-    void load();
-    const interval = setInterval(() => {
-      void load();
-    }, 10000);
+  useEffect(() => {
+    if (queries.summary.data) setSummary(queries.summary.data);
+  }, [queries.summary.data, setSummary]);
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [setZones, setSummary, setConnectionsAtRisk]);
+  useEffect(() => {
+    if (queries.atRisk.data) setConnectionsAtRisk(queries.atRisk.data);
+  }, [queries.atRisk.data, setConnectionsAtRisk]);
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">

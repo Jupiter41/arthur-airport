@@ -23,7 +23,8 @@ Clean reproducibility
 
 GOAL
 
-Do all the tasks in P2 and P3 only.
+Do all the tasks in P4 and P5 only.
+Don't forget to run tests as you go.
 Then mark them as complete here.
 
 ## P0 — reliability and correctness
@@ -72,41 +73,41 @@ Then mark them as complete here.
 
 ## P2 — query and schema hardening
 
-- [ ] Build a Cypher compatibility checklist and lint script for Neo4j Community constraints.
+- [x] Build a Cypher compatibility checklist and lint script for Neo4j Community constraints.
   - Why: repeated syntax/behavior issues (`NOT x IN`, OPTIONAL MATCH aggregation, EXISTS scope).
   - Done when: CI runs query validation against Neo4j Community and blocks incompatible patterns.
 
-- [ ] Add schema contract tests for required node properties and relationship names from `DATA_MODEL.md`.
+- [x] Add schema contract tests for required node properties and relationship names from `DATA_MODEL.md`.
   - Why: missing properties and relationship-name drift caused downstream failures.
   - Done when: CI fails if any required property/relationship is absent or renamed.
 
-- [ ] Pre-create all Kafka topics in infrastructure bootstrap.
+- [x] Pre-create all Kafka topics in infrastructure bootstrap.
   - Why: avoid `UNKNOWN_TOPIC_OR_PART` startup noise and uncertain auto-create behavior.
   - Done when: no service logs missing-topic warnings during clean startup.
 
 ## P3 — gateway and dashboard redesign
 
-- [ ] Add short-TTL cache (5-10s) for gateway aggregate endpoint `/api/v1/airport`.
+- [x] Add short-TTL cache (5-10s) for gateway aggregate endpoint `/api/v1/airport`.
   - Why: each request fans out to multiple upstream services.
   - Done when: upstream request volume drops measurably with no stale-data regressions.
 
-- [ ] Upgrade gateway WebSocket snapshot to include multi-service bootstrap state, not only `sim_time`.
+- [x] Upgrade gateway WebSocket snapshot to include multi-service bootstrap state, not only `sim_time`.
   - Why: faster and safer client resync on reconnect.
   - Done when: dashboard reconnect restores usable state before first incremental events arrive.
 
-- [ ] Move rate limiting from per-IP to per-token (keep per-IP fallback).
+- [x] Move rate limiting from per-IP to per-token (keep per-IP fallback).
   - Why: better fairness in shared network environments.
   - Done when: token-scoped limits are enforced and observable in metrics.
 
-- [ ] Replace dashboard REST `fetch + useEffect` with React Query for hydration/caching/refetch.
+- [x] Replace dashboard REST `fetch + useEffect` with React Query for hydration/caching/refetch.
   - Why: reduce boilerplate and improve stale/loading/error handling.
   - Done when: all main dashboards use React Query with consistent query keys and retry policy.
 
-- [ ] Replace large WebSocket event `if/else` chains with registry-based dispatchers.
+- [x] Replace large WebSocket event `if/else` chains with registry-based dispatchers.
   - Why: easier extensibility and lower maintenance risk.
   - Done when: adding a new event type requires only handler registration.
 
-- [ ] Add unit tests for Zustand reducers/stores and component tests for critical dashboard flows.
+- [x] Add unit tests for Zustand reducers/stores and component tests for critical dashboard flows.
   - Why: sprint 8 identified testing gap.
   - Done when: CI includes store reducer coverage and API-mocked component flow tests.
 
@@ -141,3 +142,7 @@ Then mark them as complete here.
 - [ ] Add a reusable test harness for accelerated sim-speed alert validation.
   - Why: alert timing differs significantly at high simulation speed.
   - Done when: harness can run key alert scenarios at 1x and high speed with deterministic assertions.
+
+- [ ] Add a nice icon to the overall dashboard page and service-specific pages.
+  - Why: polish and easier visual identification.
+  - Done when: dashboard tabs show distinct icons representing the airport theme.
