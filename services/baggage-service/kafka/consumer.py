@@ -36,12 +36,28 @@ from metrics import (
     baggage_flagged_active as m_flagged,
     conveyor_zone_utilisation_pct as m_zone_util,
     conveyor_zone_status as m_zone_status,
+    baggage_transitions_total as m_transitions,
+    baggage_offloaded_total as m_offloaded,
     dangerous_goods_detected_total as m_dg_detected,
     screening_false_positives_total as m_false_pos,
     envelope_invalid_total as m_envelope_invalid,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _track_transition(from_status: str, to_status: str) -> None:
+    """Immediately update transition counter at mutation site."""
+    m_transitions.labels(from_status=from_status, to_status=to_status).inc()
+
+
+async def _emit_status_changed_with_metric(**kwargs) -> dict:
+    """Emit a BaggageStatusChanged event and track the transition metric."""
+    prev = kwargs.get("previous_status", "")
+    new = kwargs.get("new_status", "")
+    if prev and new:
+        _track_transition(prev, new)
+    return await emit_baggage_status_changed(**kwargs)
 
 
 # ── Class-based state holder ────────────────────────────────
@@ -316,7 +332,7 @@ async def _induct_new_bags(sim_time: datetime) -> None:
             await update_baggage_status(
                 bag_id, "in_hold", "aircraft-hold", sim_time
             )
-            await emit_baggage_status_changed(
+            await _emit_status_changed_with_metric(
                 baggage_id=bag_id,
                 tag=bag["tag"],
                 previous_status="dropped_off",
@@ -367,7 +383,7 @@ async def _induct_new_bags(sim_time: datetime) -> None:
         await update_baggage_status(bag_id, "inducted", zone_id, sim_time)
 
         # Emit BaggageStatusChanged event
-        event_payload = await emit_baggage_status_changed(
+        event_payload = await _emit_status_changed_with_metric(
             baggage_id=bag_id,
             tag=bag["tag"],
             previous_status="dropped_off",
@@ -401,7 +417,7 @@ async def _process_bag_exit(
             await update_baggage_status(
                 bag.baggage_id, "screening", screening_zone, sim_time
             )
-            event_payload = await emit_baggage_status_changed(
+            event_payload = await _emit_status_changed_with_metric(
                 baggage_id=bag.baggage_id,
                 tag=bag.tag,
                 previous_status="inducted",
@@ -461,7 +477,7 @@ async def _process_bag_exit(
             await update_baggage_status(
                 bag.baggage_id, "sorting", "sorting-matrix", sim_time
             )
-            event_payload = await emit_baggage_status_changed(
+            event_payload = await _emit_status_changed_with_metric(
                 baggage_id=bag.baggage_id,
                 tag=bag.tag,
                 previous_status="screening",
@@ -490,7 +506,7 @@ async def _process_bag_exit(
                 await set_loaded_on_timestamp(
                     bag.baggage_id, bag.flight_id, sim_time
                 )
-            event_payload = await emit_baggage_status_changed(
+            event_payload = await _emit_status_changed_with_metric(
                 baggage_id=bag.baggage_id,
                 tag=bag.tag,
                 previous_status="sorting",
@@ -519,7 +535,7 @@ async def _process_bag_exit(
             await set_loaded_on_timestamp(
                 bag.baggage_id, bag.flight_id, sim_time
             )
-        event_payload = await emit_baggage_status_changed(
+        event_payload = await _emit_status_changed_with_metric(
             baggage_id=bag.baggage_id,
             tag=bag.tag,
             previous_status="sorting",
@@ -540,7 +556,7 @@ async def _process_bag_exit(
         await update_baggage_status(
             bag.baggage_id, "collected", from_zone, sim_time
         )
-        event_payload = await emit_baggage_status_changed(
+        event_payload = await _emit_status_changed_with_metric(
             baggage_id=bag.baggage_id,
             tag=bag.tag,
             previous_status="on_carousel",
@@ -581,7 +597,7 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
             await update_baggage_status(
                 bag["id"], "in_hold", "aircraft-hold", sim_time
             )
-            event_payload = await emit_baggage_status_changed(
+            event_payload = await _emit_status_changed_with_metric(
                 baggage_id=bag["id"],
                 tag=bag["tag"],
                 previous_status="loaded",
@@ -630,7 +646,7 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
             from db.neo4j import set_baggage_carousel
             await set_baggage_carousel(bag["id"], carousel, sim_time)
 
-            event_payload = await emit_baggage_status_changed(
+            event_payload = await _emit_status_changed_with_metric(
                 baggage_id=bag["id"],
                 tag=bag["tag"],
                 previous_status="in_hold",
@@ -661,7 +677,7 @@ async def _on_flight_cancelled(payload: dict, sim_time: datetime) -> None:
         flight_id=flight_id,
         sim_time=sim_time,
         conveyor_system=_conveyor,
-        produce_status_changed_fn=emit_baggage_status_changed,
+        produce_status_changed_fn=_emit_status_changed_with_metric,
     )
 
 

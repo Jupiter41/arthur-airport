@@ -195,6 +195,21 @@ async def on_incident_created(payload: dict, sim_time: datetime):
 
 ---
 
+## Mid-simulation startup & restart convergence
+
+When this service starts (or restarts) while the simulation is already running:
+
+1. **Rebuild conveyor system** — `BaggageConsumerState.rebuild_from_neo4j()` loads all bags currently in the conveyor system (statuses: `inducted`, `screening`, `sorting`, `loaded`) and repopulates the zone queues.
+2. **Screening queue** — bags in `screening` status are re-enqueued into their respective zones. DG flags are preserved in Neo4j.
+3. **Inducted bag IDs set** — rebuilt from Neo4j to prevent re-induction of already-processed bags.
+4. **Conveyor zone status** — zone health (normal/degraded/offline) is stored in Neo4j and restored on rebuild.
+5. **Metric reconciliation** — `_on_clock_tick` resets `baggage_in_system`, `conveyor_zone_utilisation_pct`, and `conveyor_zone_status` from in-memory conveyor state (which was just rebuilt from Neo4j).
+6. **Offload tracking** — no in-memory state; offloads query Neo4j for the flight's loaded bags.
+
+**Tests:** `tests/integration/test_resilience.py::TestRestartRebuild::test_baggage_service_conveyor_rebuild`
+
+---
+
 ## Gotchas
 
 - **Scan history is append-only.** Never overwrite the last scan — add a new record each time. Use a `scans` list property on the Baggage node or a separate `BaggageScan` node pattern.

@@ -279,6 +279,21 @@ async def evaluate_probabilistic_events():
 
 ---
 
+## Mid-simulation startup & restart convergence
+
+When this service starts (or restarts) while the simulation is already running:
+
+1. **Resume sim_time from Neo4j** — on startup, the orchestrator reads the last persisted `sim_time` from the `SimState` node. The clock loop resumes from that point.
+2. **Speed / pause state** — `sim_speed_multiplier` and `sim_paused` are persisted in Neo4j and restored on restart.
+3. **Day boundary** — `sim_day_number` is recalculated from the current `sim_time`.
+4. **Event injection** — probabilistic event injection resumes based on sim_time; some events may have been skipped during downtime, but this is acceptable (they are probabilistic).
+5. **No catch-up ticking** — the orchestrator does NOT fast-forward through missed ticks. It resumes at the stored sim_time and continues forward.
+6. **Service health check** — before resuming the clock, the orchestrator checks `/ready` on all domain services.
+
+**Tests:** `tests/integration/test_resilience.py::TestAllServicesRestart::test_full_restart`
+
+---
+
 ## Gotchas
 
 - **Wait for ALL domain services to be healthy before starting the clock.** Check `/ready` on each service with a timeout before calling `asyncio.create_task(run_clock_loop())`.

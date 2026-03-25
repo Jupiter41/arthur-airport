@@ -29,11 +29,19 @@ const makeFlight = (overrides: Partial<Flight> = {}): Flight =>
 
 describe("flightStore", () => {
   beforeEach(() => {
-    useFlightStore.setState({ flights: {}, runways: [], gates: [], flashIds: new Set() });
+    useFlightStore.setState({
+      flights: {},
+      runways: [],
+      gates: [],
+      flashIds: new Set(),
+    });
   });
 
   it("setFlights indexes by id", () => {
-    const list = [makeFlight({ id: "fl-001" }), makeFlight({ id: "fl-002", flight_number: "ART102" })];
+    const list = [
+      makeFlight({ id: "fl-001" }),
+      makeFlight({ id: "fl-002", flight_number: "ART102" }),
+    ];
     useFlightStore.getState().setFlights(list);
     const flights = useFlightStore.getState().flights;
     expect(Object.keys(flights)).toHaveLength(2);
@@ -43,7 +51,9 @@ describe("flightStore", () => {
 
   it("upsertFlight adds or replaces a flight", () => {
     useFlightStore.getState().setFlights([makeFlight()]);
-    useFlightStore.getState().upsertFlight(makeFlight({ id: "fl-001", status: "boarding" }));
+    useFlightStore
+      .getState()
+      .upsertFlight(makeFlight({ id: "fl-001", status: "boarding" }));
     expect(useFlightStore.getState().flights["fl-001"].status).toBe("boarding");
   });
 
@@ -76,7 +86,9 @@ describe("flightStore", () => {
   it("cancelFlight sets status to cancelled", () => {
     useFlightStore.getState().setFlights([makeFlight()]);
     useFlightStore.getState().cancelFlight("fl-001");
-    expect(useFlightStore.getState().flights["fl-001"].status).toBe("cancelled");
+    expect(useFlightStore.getState().flights["fl-001"].status).toBe(
+      "cancelled",
+    );
   });
 
   it("flashRow and clearFlash manage flashIds set", () => {
@@ -88,16 +100,25 @@ describe("flightStore", () => {
   });
 
   it("setRunways replaces runway list", () => {
-    useFlightStore.getState().setRunways([
-      { runway_id: "09L", status: "open", arrivals_queued: 0, departures_queued: 2 },
-    ] as never[]);
+    useFlightStore
+      .getState()
+      .setRunways([
+        {
+          runway_id: "09L",
+          status: "open",
+          arrivals_queued: 0,
+          departures_queued: 2,
+        },
+      ] as never[]);
     expect(useFlightStore.getState().runways).toHaveLength(1);
   });
 
   it("setGates replaces gate list", () => {
-    useFlightStore.getState().setGates([
-      { gate_id: "A-01", terminal: "A", status: "available" },
-    ] as never[]);
+    useFlightStore
+      .getState()
+      .setGates([
+        { gate_id: "A-01", terminal: "A", status: "available" },
+      ] as never[]);
     expect(useFlightStore.getState().gates).toHaveLength(1);
   });
 });

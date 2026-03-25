@@ -236,6 +236,21 @@ CREATE (a)-[:CURRENT_WEATHER]->(w)
 
 ---
 
+## Mid-simulation startup & restart convergence
+
+When this service starts (or restarts) while the simulation is already running:
+
+1. **Restore current weather state** — `WeatherConsumerState.rebuild_from_neo4j()` loads the latest `WeatherState` node (category, visibility, wind, rates) and sets all in-memory fields.
+2. **FSM position** — the current weather category is the FSM state; restored from Neo4j. No transition history is needed in memory.
+3. **Capacity rates** — `runway_arrival_rate` and `runway_departure_rate` gauges are set during rebuild.
+4. **METAR generation** — resumes on the next 30-minute sim boundary; no catch-up needed.
+5. **Metric reconciliation** — all weather gauges (`weather_category`, `visibility_m`, `wind_speed_kt`, `wind_gust_kt`, holding stack) are set from Neo4j during rebuild.
+6. **Holding stack** — `holding_stack_depth` is recomputed from Neo4j, not held in memory.
+
+**Tests:** `tests/integration/test_resilience.py::TestServiceRestart::test_weather_service_restart`
+
+---
+
 ## Gotchas
 
 - **Evaluate FSM only on hour boundary** — check `sim_time.minute == 0`, not every tick.

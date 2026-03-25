@@ -319,6 +319,21 @@ export const strictLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 
 ---
 
+## Mid-simulation startup & restart convergence
+
+When the gateway starts (or restarts) while the simulation is already running:
+
+1. **Kafka consumer reconnects** — `setupKafka()` connects to all 7 topics. Messages missed during downtime are replayed from the consumer group offset.
+2. **WebSocket bootstrap snapshot** — on client reconnect, the gateway sends cached latest events per topic. These caches are populated as Kafka messages arrive.
+3. **Freshness probe** — `lastMessageAt` is updated on every Kafka message. Readiness check requires a message within the last 30 seconds.
+4. **Upstream health** — readiness requires at least one upstream service to respond to `/health`.
+5. **Aggregate cache** — the `/api/v1/airport` cache (5-10s TTL) self-heals as upstream services respond.
+6. **Rate limit state** — rate limit counters are in-memory and reset on restart (users get a fresh quota).
+
+**Tests:** Gateway restart is covered by the full-stack smoke test (`scripts/smoke-test.sh`).
+
+---
+
 ## Gotchas
 
 - **No business logic in the gateway.** If you find yourself adding domain rules, move them to the relevant service.

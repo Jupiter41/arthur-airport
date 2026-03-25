@@ -24,7 +24,11 @@ const RECONNECT_MAX_MS = 30000;
 const HEARTBEAT_TIMEOUT_MS = 20000;
 
 /* ──────── Event handler registry ──────── */
-type EventHandler = (payload: Record<string, unknown>, sim_time: string, event: KafkaEvent) => void;
+type EventHandler = (
+  payload: Record<string, unknown>,
+  sim_time: string,
+  event: KafkaEvent,
+) => void;
 
 export const eventHandlers: Record<string, EventHandler> = {
   SimClockTick: (payload, sim_time) => {

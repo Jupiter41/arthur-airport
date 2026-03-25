@@ -19,13 +19,18 @@ describe("eventHandlers registry", () => {
 
   it("has handlers for all known event types", () => {
     for (const eventType of EXPECTED_EVENTS) {
-      expect(eventHandlers[eventType], `missing handler for ${eventType}`).toBeTypeOf("function");
+      expect(
+        eventHandlers[eventType],
+        `missing handler for ${eventType}`,
+      ).toBeTypeOf("function");
     }
   });
 
   it("every registered handler is a function", () => {
     for (const [key, handler] of Object.entries(eventHandlers)) {
-      expect(handler, `handler for ${key} is not a function`).toBeTypeOf("function");
+      expect(handler, `handler for ${key} is not a function`).toBeTypeOf(
+        "function",
+      );
     }
   });
 

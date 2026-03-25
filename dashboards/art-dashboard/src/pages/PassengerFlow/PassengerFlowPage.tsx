@@ -111,9 +111,7 @@ function AirportHeatmap({
             if (col === "gate" && matching.length === 0) {
               const gateZones = zones.filter(
                 (z) =>
-                  z.zone_id
-                    .toLowerCase()
-                    .startsWith("gate-") &&
+                  z.zone_id.toLowerCase().startsWith("gate-") &&
                   z.zone_id
                     .toLowerCase()
                     .startsWith(`gate-${term.toLowerCase()}`),

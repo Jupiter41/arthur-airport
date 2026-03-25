@@ -522,6 +522,10 @@ async def _execute_transition(
         reason = update_kwargs.get("delay_reason", "unknown")
         m_cancelled.labels(reason=reason).inc()
 
+    # Immediately update alert-critical gauges at mutation site
+    m_active.labels(status=previous_status).dec()
+    m_active.labels(status=new_status).inc()
+
     # Broadcast to WebSocket
     if _state.ws_broadcast:
         try:

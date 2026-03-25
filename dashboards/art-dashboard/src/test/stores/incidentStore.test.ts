@@ -23,15 +23,21 @@ describe("incidentStore", () => {
   });
 
   it("setIncidents indexes by id", () => {
-    useIncidentStore.getState().setIncidents([
-      makeIncident({ id: "inc-001" }),
-      makeIncident({ id: "inc-002", type: "baggage_fire" }),
-    ]);
+    useIncidentStore
+      .getState()
+      .setIncidents([
+        makeIncident({ id: "inc-001" }),
+        makeIncident({ id: "inc-002", type: "baggage_fire" }),
+      ]);
     expect(Object.keys(useIncidentStore.getState().incidents)).toHaveLength(2);
   });
 
   it("setIncidents normalizes protocol → protocols", () => {
-    const raw = { ...makeIncident(), protocols: undefined, protocol: "GROUND_STOP" };
+    const raw = {
+      ...makeIncident(),
+      protocols: undefined,
+      protocol: "GROUND_STOP",
+    };
     useIncidentStore.getState().setIncidents([raw as unknown as Incident]);
     const inc = useIncidentStore.getState().incidents["inc-001"];
     expect(inc.protocols).toEqual(["GROUND_STOP"]);
@@ -39,20 +45,28 @@ describe("incidentStore", () => {
 
   it("upsertIncident adds or replaces", () => {
     useIncidentStore.getState().setIncidents([makeIncident()]);
-    useIncidentStore.getState().upsertIncident(makeIncident({ id: "inc-001", status: "contained" }));
-    expect(useIncidentStore.getState().incidents["inc-001"].status).toBe("contained");
+    useIncidentStore
+      .getState()
+      .upsertIncident(makeIncident({ id: "inc-001", status: "contained" }));
+    expect(useIncidentStore.getState().incidents["inc-001"].status).toBe(
+      "contained",
+    );
   });
 
   it("updateIncidentStatus changes status", () => {
     useIncidentStore.getState().setIncidents([makeIncident()]);
     useIncidentStore.getState().updateIncidentStatus("inc-001", "resolved");
-    expect(useIncidentStore.getState().incidents["inc-001"].status).toBe("resolved");
+    expect(useIncidentStore.getState().incidents["inc-001"].status).toBe(
+      "resolved",
+    );
   });
 
   it("updateIncidentStatus is a no-op for unknown id", () => {
     useIncidentStore.getState().setIncidents([makeIncident()]);
     useIncidentStore.getState().updateIncidentStatus("unknown", "resolved");
-    expect(useIncidentStore.getState().incidents["inc-001"].status).toBe("active");
+    expect(useIncidentStore.getState().incidents["inc-001"].status).toBe(
+      "active",
+    );
   });
 
   it("addAlert prepends and caps at 200", () => {
@@ -90,9 +104,17 @@ describe("incidentStore", () => {
   });
 
   it("setAlerts replaces entire list", () => {
-    useIncidentStore.getState().setAlerts([
-      { id: "a1", sim_time: "", severity: "medium", message: "test", incident_id: "" },
-    ] as IncidentAlert[]);
+    useIncidentStore
+      .getState()
+      .setAlerts([
+        {
+          id: "a1",
+          sim_time: "",
+          severity: "medium",
+          message: "test",
+          incident_id: "",
+        },
+      ] as IncidentAlert[]);
     expect(useIncidentStore.getState().alerts).toHaveLength(1);
   });
 });

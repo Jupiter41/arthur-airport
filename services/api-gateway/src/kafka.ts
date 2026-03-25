@@ -15,9 +15,21 @@ const ALL_TOPICS = Object.keys(TOPIC_KEY_MAP);
 
 let consumer: Consumer | null = null;
 let connected = false;
+let lastMessageAt: number | null = null;
+
+const FRESHNESS_THRESHOLD_MS = 30_000; // 30 seconds
 
 export function isKafkaConnected(): boolean {
   return connected;
+}
+
+export function isKafkaFresh(): boolean {
+  if (!connected || lastMessageAt === null) return false;
+  return Date.now() - lastMessageAt < FRESHNESS_THRESHOLD_MS;
+}
+
+export function getLastMessageAt(): number | null {
+  return lastMessageAt;
 }
 
 export async function setupKafka(): Promise<void> {
@@ -44,6 +56,7 @@ export async function setupKafka(): Promise<void> {
 
     await consumer.run({
       eachMessage: async ({ topic, message }: EachMessagePayload) => {
+        lastMessageAt = Date.now();
         try {
           const value = message.value?.toString();
           if (!value) return;

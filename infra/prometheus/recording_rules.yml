@@ -1,0 +1,78 @@
+# recording_rules.yml — pre-computed aggregates for Grafana dashboards
+# Reduces query-time CPU in Prometheus for high-frequency dashboard panels.
+
+groups:
+  - name: flight_aggregates
+    interval: 5s
+    rules:
+      - record: job:flights_active:sum
+        expr: sum(flights_active) by (status)
+
+      - record: job:flights_active:total
+        expr: sum(flights_active)
+
+      - record: job:flights_delayed_current:sum
+        expr: flights_delayed_current
+
+      - record: job:flight_status_transitions:rate5m
+        expr: sum(rate(flight_status_transitions_total[5m])) by (to_status)
+
+  - name: passenger_aggregates
+    interval: 5s
+    rules:
+      - record: job:passengers_in_airport:sum
+        expr: sum(passengers_in_airport) by (status)
+
+      - record: job:passengers_in_airport:total
+        expr: sum(passengers_in_airport)
+
+      - record: job:connections_at_risk:sum
+        expr: sum(connections_at_risk) by (risk_level)
+
+      - record: job:connections_at_risk:total
+        expr: sum(connections_at_risk)
+
+      - record: job:security_wait_minutes:max
+        expr: max(security_wait_minutes) by (terminal)
+
+  - name: baggage_aggregates
+    interval: 5s
+    rules:
+      - record: job:baggage_in_system:sum
+        expr: sum(baggage_in_system) by (status)
+
+      - record: job:baggage_in_system:total
+        expr: sum(baggage_in_system)
+
+      - record: job:baggage_flagged_active:sum
+        expr: baggage_flagged_active
+
+  - name: incident_aggregates
+    interval: 5s
+    rules:
+      - record: job:incidents_active:sum
+        expr: sum(incidents_active) by (type, severity)
+
+      - record: job:incidents_active:total
+        expr: sum(incidents_active)
+
+      - record: job:cascade_depth_max:max
+        expr: cascade_depth_max
+
+  - name: sim_aggregates
+    interval: 5s
+    rules:
+      - record: job:sim_tick:rate1m
+        expr: rate(sim_tick_total[1m])
+
+      - record: job:sim_tick_latency_ms:p99
+        expr: histogram_quantile(0.99, rate(sim_tick_latency_ms_bucket[5m]))
+
+  - name: gateway_aggregates
+    interval: 10s
+    rules:
+      - record: job:gateway_requests:rate1m
+        expr: sum(rate(gateway_requests_total[1m])) by (status)
+
+      - record: job:gateway_request_duration_ms:p95
+        expr: histogram_quantile(0.95, sum(rate(gateway_request_duration_ms_bucket[5m])) by (le, path))

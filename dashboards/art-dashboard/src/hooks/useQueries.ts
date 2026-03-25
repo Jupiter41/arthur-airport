@@ -1,5 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { flightsApi, weatherApi, passengersApi, baggageApi, incidentsApi } from "./useApi";
+import {
+  flightsApi,
+  weatherApi,
+  passengersApi,
+  baggageApi,
+  incidentsApi,
+} from "./useApi";
 import type {
   Flight,
   Runway,
@@ -61,7 +67,9 @@ export function usePassengerFlowQueries() {
     queryFn: async () => {
       const data = await passengersApi.atRisk();
       const rd = data as { at_risk?: ConnectionAtRisk[] };
-      return rd.at_risk ?? (Array.isArray(data) ? (data as ConnectionAtRisk[]) : []);
+      return (
+        rd.at_risk ?? (Array.isArray(data) ? (data as ConnectionAtRisk[]) : [])
+      );
     },
   });
 
@@ -92,7 +100,8 @@ export function useBaggageTrackerQueries() {
           (sd.flagged_count as number) ?? (sd.flagged_active as number) ?? 0,
         loaded_count:
           (sd.loaded_count as number) ??
-          (sd.by_status as Record<string, number> | undefined)?.loaded ?? 0,
+          (sd.by_status as Record<string, number> | undefined)?.loaded ??
+          0,
       } as BaggageFlowSummary;
     },
   });
@@ -102,14 +111,19 @@ export function useBaggageTrackerQueries() {
     queryFn: async () => {
       const data = await baggageApi.flagged();
       const fd = data as { flagged?: FlaggedBaggage[] };
-      return fd.flagged ?? (Array.isArray(data) ? (data as FlaggedBaggage[]) : []);
+      return (
+        fd.flagged ?? (Array.isArray(data) ? (data as FlaggedBaggage[]) : [])
+      );
     },
   });
 
   const flights = useQuery({
     queryKey: ["flights", "departures"],
     queryFn: async () => {
-      const data = await flightsApi.list({ direction: "departure", limit: "100" });
+      const data = await flightsApi.list({
+        direction: "departure",
+        limit: "100",
+      });
       return (data as { flights?: Flight[] }).flights ?? [];
     },
   });
@@ -185,7 +199,9 @@ export function useIncidentConsoleQueries() {
     queryFn: async () => {
       const data = await incidentsApi.alerts();
       const ad = data as { alerts?: IncidentAlert[] };
-      return ad.alerts ?? (Array.isArray(data) ? (data as IncidentAlert[]) : []);
+      return (
+        ad.alerts ?? (Array.isArray(data) ? (data as IncidentAlert[]) : [])
+      );
     },
   });
 

@@ -180,6 +180,21 @@ as `dwell_minutes`. Do not re-sample on subsequent ticks.
 
 ---
 
+## Mid-simulation startup & restart convergence
+
+When this service starts (or restarts) while the simulation is already running:
+
+1. **Rebuild security queues** — `rebuild_security_from_neo4j()` loads passengers in `in_security` status and repopulates the terminal queue deques.
+2. **Connection risk state** — recalculated on every tick from Neo4j data; no persistent in-memory state to rebuild.
+3. **Zone density tracking** — zone counts are re-derived from Neo4j passenger locations on the first tick after restart.
+4. **Dwell time timers** — individual timers are lost on restart, but passengers still advance via the state machine on the next tick based on their current status and timestamps.
+5. **Metric reconciliation** — `_on_clock_tick` resets `passengers_in_airport`, `security_queue_depth`, `security_wait_minutes`, `security_lanes_open` from Neo4j, self-correcting within one tick.
+6. **Boarding progress** — boarding counts are computed from Neo4j on each tick, so no persistent counter is needed.
+
+**Tests:** `tests/integration/test_resilience.py::TestRestartRebuild::test_passenger_service_security_rebuild`
+
+---
+
 ## Gotchas
 
 - **Dwell time is per-passenger, not per-flight.** Sample individually for each passenger — do not use a shared value for all passengers on the same flight.

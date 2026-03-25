@@ -5,6 +5,7 @@ global:
 
 rule_files:
   - "alerts.yml"
+  - "recording_rules.yml"
 
 scrape_configs:
   - job_name: flight-service

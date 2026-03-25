@@ -55,6 +55,10 @@ from metrics import (
     security_queue_depth as m_sec_queue_depth,
     security_wait_minutes as m_sec_wait,
     security_lanes_open as m_sec_lanes,
+    connections_at_risk as m_connections_at_risk,
+    connections_missed_total as m_connections_missed,
+    passenger_alerts_total as m_passenger_alerts,
+    zone_load_pct as m_zone_load,
     envelope_invalid_total as m_envelope_invalid,
 )
 
@@ -806,6 +810,7 @@ async def _check_connections(sim_time: datetime) -> None:
             await set_connection_risk(r["id"], new_risk)
 
             if new_risk == "at_risk":
+                m_passenger_alerts.labels(type="connection_at_risk").inc()
                 alert = await emit_passenger_alert(
                     alert_type="connection_at_risk",
                     message=f"Connection at risk: {r['inbound_flight']} → {r['connection_flight']}",
@@ -818,6 +823,8 @@ async def _check_connections(sim_time: datetime) -> None:
                     await _ws_broadcast({"event_type": "PassengerAlert", "payload": alert})
 
             elif new_risk == "missed":
+                m_connections_missed.inc()
+                m_passenger_alerts.labels(type="connection_missed").inc()
                 await update_passenger_status(
                     r["id"], "missed_connection",
                     "arrivals-hall", sim_time,
@@ -837,6 +844,14 @@ async def _check_connections(sim_time: datetime) -> None:
             new_at_risk.append(r)
 
     _at_risk_connections = new_at_risk
+
+    # Immediately update connection risk gauges at mutation site
+    at_risk_count = sum(1 for r in new_at_risk if r["risk_level"] == "at_risk")
+    watch_count = sum(1 for r in new_at_risk if r["risk_level"] == "watch")
+    missed_count = sum(1 for r in results if r.get("risk_level") == "missed")
+    m_connections_at_risk.labels(risk_level="at_risk").set(at_risk_count)
+    m_connections_at_risk.labels(risk_level="watch").set(watch_count)
+    m_connections_at_risk.labels(risk_level="missed").set(missed_count)
 
 
 async def _ml_tick(sim_time: datetime) -> None:

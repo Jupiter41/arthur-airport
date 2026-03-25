@@ -6,11 +6,11 @@ import { SimControls } from "./SimControls";
 import { ConnectionStatus } from "./ConnectionStatus";
 
 const NAV_ITEMS = [
-  { path: "/", label: "Flights" },
-  { path: "/baggage", label: "Baggage" },
-  { path: "/passengers", label: "Passengers" },
-  { path: "/incidents", label: "Incidents" },
-  { path: "/ground-ops", label: "Ground Ops" },
+  { path: "/", label: "Flights", icon: "✈️" },
+  { path: "/baggage", label: "Baggage", icon: "🧳" },
+  { path: "/passengers", label: "Passengers", icon: "👥" },
+  { path: "/incidents", label: "Incidents", icon: "🚨" },
+  { path: "/ground-ops", label: "Ground Ops", icon: "🎛️" },
 ];
 
 export function HeaderBar() {
@@ -20,6 +20,7 @@ export function HeaderBar() {
       <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
+            <span className="text-lg">✈️</span>
             <span className="text-lg font-bold text-blue-400">KART</span>
             <span className="text-sm text-gray-400">
               Arthur International Airport
@@ -51,6 +52,7 @@ export function HeaderBar() {
             }
             end={item.path === "/"}
           >
+            <span className="mr-1">{item.icon}</span>
             {item.label}
           </NavLink>
         ))}

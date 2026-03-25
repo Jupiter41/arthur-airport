@@ -1,7 +1,8 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
-const gatewayHttpTarget = process.env.VITE_GATEWAY_PROXY_TARGET || "http://localhost:3000";
+const gatewayHttpTarget =
+  process.env.VITE_GATEWAY_PROXY_TARGET || "http://localhost:3000";
 const gatewayWsTarget = gatewayHttpTarget.replace(/^http/, "ws");
 
 export default defineConfig({

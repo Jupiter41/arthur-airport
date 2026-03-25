@@ -273,6 +273,21 @@ async def build_report(incident_id: str, sim_time: datetime) -> dict:
 
 ---
 
+## Mid-simulation startup & restart convergence
+
+When this service starts (or restarts) while the simulation is already running:
+
+1. **Rebuild active incidents** — `IncidentConsumerState.rebuild_from_neo4j()` loads all `Incident` nodes with status `active` or `mitigating` and populates the in-memory lifecycle manager.
+2. **Pending cascades** — the cascade scheduler rebuilds from Neo4j `CASCADED_FROM` relationships and re-enqueues pending child incidents with their remaining delay.
+3. **Protocol state** — active protocols are loaded from `Protocol` nodes in Neo4j.
+4. **TTR timers** — resolution timers are recalculated from `created_at` timestamps; incidents that should have resolved are resolved on the first tick.
+5. **Alert cache** — rebuilt from Neo4j incident data; stale alerts are not replayed.
+6. **Impact links** — `AFFECTS` relationships between incidents and flights/gates/runways are already in Neo4j and are re-queried as needed.
+
+**Tests:** `tests/integration/test_resilience.py::TestServiceRestart` (covered indirectly via full restart)
+
+---
+
 ## Gotchas
 
 - **Always produce `IncidentAlert` on every status change** — not just on creation. Dashboards rely on alerts to update their notification panels.

@@ -113,36 +113,36 @@ Then mark them as complete here.
 
 ## P4 — observability and operations
 
-- [ ] Standardize metric updates at mutation sites plus periodic reconciliation.
+- [x] Standardize metric updates at mutation sites plus periodic reconciliation.
   - Why: tick-only metric updates missed transient states.
   - Done when: alert-critical metrics are emitted immediately on state change in all services.
 
-- [ ] Add metric contract tests (names, labels, and cardinality guards).
+- [x] Add metric contract tests (names, labels, and cardinality guards).
   - Why: prevent dashboard/alert drift and high-cardinality regressions.
   - Done when: CI validates expected metric families and bounded label dimensions.
 
-- [ ] Add Kafka consumer freshness probe (last-message timestamp) for gateway readiness.
+- [x] Add Kafka consumer freshness probe (last-message timestamp) for gateway readiness.
   - Why: boolean "connected" is insufficient for real readiness.
   - Done when: readiness fails when consumer stalls beyond threshold.
 
-- [ ] Add recording rules for high-frequency dashboard aggregates.
+- [x] Add recording rules for high-frequency dashboard aggregates.
   - Why: reduce query-time CPU in Prometheus and Grafana.
   - Done when: top dashboard queries read from recording rules with equivalent outputs.
 
 ## P5 — developer experience and process
 
-- [ ] Add lint rule/check for module-level augmented assignment misuse (`+=`, `-=`, etc.) in functions.
+- [x] Add lint rule/check for module-level augmented assignment misuse (`+=`, `-=`, etc.) in functions.
   - Why: recurring Python scoping bug pattern across sprints.
   - Done when: CI flags potential `UnboundLocalError` patterns before merge.
 
-- [ ] Add "mid-simulation startup" and "restart convergence" checklists to service SKILL docs.
+- [x] Add "mid-simulation startup" and "restart convergence" checklists to service SKILL docs.
   - Why: this failure mode appears repeatedly in domain services.
   - Done when: each service SKILL has explicit startup-convergence guidance and tests linked.
 
-- [ ] Add a reusable test harness for accelerated sim-speed alert validation.
+- [x] Add a reusable test harness for accelerated sim-speed alert validation.
   - Why: alert timing differs significantly at high simulation speed.
   - Done when: harness can run key alert scenarios at 1x and high speed with deterministic assertions.
 
-- [ ] Add a nice icon to the overall dashboard page and service-specific pages.
+- [x] Add a nice icon to the overall dashboard page and service-specific pages.
   - Why: polish and easier visual identification.
   - Done when: dashboard tabs show distinct icons representing the airport theme.

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { UPSTREAM } from "./proxy";
-import { isKafkaConnected } from "./kafka";
+import { isKafkaConnected, isKafkaFresh, getLastMessageAt } from "./kafka";
 
 const SERVICE_KEYS: Record<string, string> = {
   flight_service: "flights",
@@ -49,12 +49,18 @@ export async function handleServicesHealth(
   }
 
   result.kafka = isKafkaConnected() ? "ok" : "unavailable";
+  const lma = getLastMessageAt();
+  result.kafka_fresh = isKafkaFresh() ? "ok" : "stale";
+  if (lma !== null) {
+    result.kafka_last_message_age_ms = String(Date.now() - lma);
+  }
 
   res.json(result);
 }
 
 export async function handleReady(_req: Request, res: Response): Promise<void> {
   const kafkaOk = isKafkaConnected();
+  const kafkaFresh = isKafkaFresh();
 
   // Check at least one upstream is reachable
   let anyUpstreamOk = false;
@@ -66,14 +72,20 @@ export async function handleReady(_req: Request, res: Response): Promise<void> {
     }
   }
 
-  if (!kafkaOk || !anyUpstreamOk) {
+  if (!kafkaOk || !kafkaFresh || !anyUpstreamOk) {
     res.status(503).json({
       status: "not ready",
       kafka: kafkaOk,
+      kafka_fresh: kafkaFresh,
       upstream: anyUpstreamOk,
     });
     return;
   }
 
-  res.json({ status: "ready", kafka: kafkaOk, upstream: anyUpstreamOk });
+  res.json({
+    status: "ready",
+    kafka: kafkaOk,
+    kafka_fresh: kafkaFresh,
+    upstream: anyUpstreamOk,
+  });
 }

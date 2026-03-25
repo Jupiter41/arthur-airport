@@ -42,7 +42,11 @@ describe("weatherStore", () => {
       cloud_layers: ["BKN020"],
       phenomena: ["RA"],
       metar_raw: "KART ...",
-      runway_impact: { category: "reduced", arrival_rate: 20, departure_rate: 18 },
+      runway_impact: {
+        category: "reduced",
+        arrival_rate: 20,
+        departure_rate: 18,
+      },
       sim_time: "2025-01-01T07:00:00Z",
     });
     const wx = useWeatherStore.getState().current!;
