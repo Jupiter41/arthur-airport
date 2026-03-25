@@ -377,10 +377,12 @@ async def get_flight_baggage(flight_id: str, statuses: list[str] | None = None) 
         status_filter = "AND b.status IN $statuses"
         params["statuses"] = statuses
     query = f"""
-    MATCH (b:Baggage)-[:LOADED_ON]->(f:Flight {{id: $fid}})
+        MATCH (b:Baggage)-[:LOADED_ON]->(f:Flight {{id: $fid}})
+        OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
     WHERE true {status_filter}
     RETURN b.id AS id, b.tag AS tag, b.status AS status,
-           b.last_scan_zone AS last_scan_zone
+            b.last_scan_zone AS last_scan_zone,
+            p.id AS passenger_id
     """
     async with driver.session() as session:
         result = await session.run(query, **params)
@@ -413,7 +415,7 @@ async def get_dropped_off_baggage_for_departures(sim_time: datetime) -> list[dic
 
 async def set_baggage_carousel(baggage_id: str, carousel: int, sim_time: datetime) -> None:
     """Set the carousel number for a baggage item."""
-    driver = get_driver()
+    get_driver()
     await _run_simple(
         "MATCH (b:Baggage {id: $id}) SET b.carousel = $carousel",
         id=baggage_id,
@@ -430,10 +432,12 @@ async def _run_simple(query: str, **params) -> None:
 async def set_loaded_on_timestamp(
     baggage_id: str, flight_id: str, sim_time: datetime
 ) -> None:
-    """Set the loaded_at timestamp on the LOADED_ON relationship."""
+    """Set loaded_at on LOADED_ON, creating the relationship if needed."""
     driver = get_driver()
     query = """
-    MATCH (b:Baggage {id: $bid})-[r:LOADED_ON]->(f:Flight {id: $fid})
+    MATCH (b:Baggage {id: $bid})
+    MATCH (f:Flight {id: $fid})
+    MERGE (b)-[r:LOADED_ON]->(f)
     SET r.loaded_at = $at
     """
     async with driver.session() as session:
@@ -443,3 +447,18 @@ async def set_loaded_on_timestamp(
             fid=flight_id,
             at=sim_time.isoformat(),
         )
+
+
+async def get_baggage_in_pipeline() -> list[dict]:
+    """Return bags currently in the conveyor pipeline (inducted/screening/sorting/loaded/in_hold/flagged)."""
+    driver = get_driver()
+    query = """
+    MATCH (b:Baggage)
+    WHERE b.status IN ['inducted', 'screening', 'sorting', 'loaded', 'in_hold', 'flagged']
+    OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
+    RETURN b.id AS id, b.status AS status, b.current_zone AS current_zone,
+           b.last_scan_at AS last_scan_at, f.id AS flight_id
+    """
+    async with driver.session() as session:
+        result = await session.run(query)
+        return [dict(record) async for record in result]

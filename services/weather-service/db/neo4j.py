@@ -100,6 +100,7 @@ async def persist_weather_state(
     qnh_hpa: int,
     phenomena: list[str],
     runway_impact: str,
+    previous_category: str | None = None,
 ) -> None:
     """Create a new WeatherState node and update the chain atomically.
 
@@ -120,13 +121,20 @@ async def persist_weather_state(
         wind_direction: $wind_direction,
         wind_speed_kt: $wind_speed_kt,
         wind_gust_kt: $wind_gust_kt,
-        ceiling_ft: $ceiling_ft,
         temperature_c: $temperature_c,
         dew_point_c: $dew_point_c,
         qnh_hpa: $qnh_hpa,
         phenomena: $phenomena,
         runway_impact: $runway_impact
     })
+    // Set ceiling_ft only when not null (Neo4j omits null properties)
+    FOREACH (_ IN CASE WHEN $ceiling_ft IS NOT NULL THEN [1] ELSE [] END |
+        SET w.ceiling_ft = $ceiling_ft
+    )
+    // Set previous_category only when not null
+    FOREACH (_ IN CASE WHEN $previous_category IS NOT NULL THEN [1] ELSE [] END |
+        SET w.previous_category = $previous_category
+    )
     WITH w
     // Find the airport node
     MATCH (a:Airport {icao: 'KART'})
@@ -154,7 +162,8 @@ async def persist_weather_state(
             wind_direction=wind_direction,
             wind_speed_kt=wind_speed_kt,
             wind_gust_kt=wind_gust_kt,
-            ceiling_ft=ceiling_ft if ceiling_ft is not None else -1,
+            ceiling_ft=ceiling_ft,
+            previous_category=previous_category,
             temperature_c=temperature_c,
             dew_point_c=dew_point_c,
             qnh_hpa=qnh_hpa,
@@ -171,8 +180,10 @@ async def get_current_weather() -> dict | None:
     MATCH (a:Airport {icao: 'KART'})-[:CURRENT_WEATHER]->(w:WeatherState)
     RETURN w {
         .id, .category, .visibility_m, .wind_direction, .wind_speed_kt,
-        .wind_gust_kt, .ceiling_ft, .temperature_c, .dew_point_c,
+        .wind_gust_kt, .temperature_c, .dew_point_c,
         .qnh_hpa, .phenomena, .runway_impact,
+        ceiling_ft: w.ceiling_ft,
+        previous_category: w.previous_category,
         timestamp: toString(w.timestamp)
     } AS weather
     """
@@ -181,11 +192,7 @@ async def get_current_weather() -> dict | None:
         record = await result.single()
         if record is None:
             return None
-        w = dict(record["weather"])
-        # Fix ceiling_ft sentinel
-        if w.get("ceiling_ft") == -1:
-            w["ceiling_ft"] = None
-        return w
+        return dict(record["weather"])
 
 
 async def get_weather_history(hours: int = 12) -> list[dict]:
@@ -201,8 +208,10 @@ async def get_weather_history(hours: int = 12) -> list[dict]:
     WHERE state.timestamp >= current.timestamp - duration({hours: $hours})
     RETURN state {
         .id, .category, .visibility_m, .wind_direction, .wind_speed_kt,
-        .wind_gust_kt, .ceiling_ft, .temperature_c, .dew_point_c,
+        .wind_gust_kt, .temperature_c, .dew_point_c,
         .qnh_hpa, .phenomena, .runway_impact,
+        ceiling_ft: state.ceiling_ft,
+        previous_category: state.previous_category,
         timestamp: toString(state.timestamp)
     } AS weather
     ORDER BY state.timestamp ASC
@@ -210,10 +219,4 @@ async def get_weather_history(hours: int = 12) -> list[dict]:
     async with driver.session() as session:
         result = await session.run(query, hours=hours)
         records = [record async for record in result]
-        states = []
-        for record in records:
-            w = dict(record["weather"])
-            if w.get("ceiling_ft") == -1:
-                w["ceiling_ft"] = None
-            states.append(w)
-        return states
+        return [dict(record["weather"]) for record in records]

@@ -1,12 +1,10 @@
 """REST control API for sim-orchestrator."""
 
 import logging
-import os
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from services import clock
 from services.schedule import get_schedule_from_neo4j

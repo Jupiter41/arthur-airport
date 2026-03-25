@@ -23,7 +23,7 @@ from kafka.consumer import (
 )
 from ml.features import build_features
 from ml.inference import is_model_trained, predict, get_feature_importance
-from services.zones import get_heatmap_zones, get_density
+from services.zones import get_heatmap_zones
 
 logger = logging.getLogger(__name__)
 

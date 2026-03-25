@@ -1,7 +1,6 @@
 """Incident lifecycle — create, contain, resolve, TTR countdown."""
 
 import logging
-import os
 import random
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -9,8 +8,11 @@ from uuid import uuid4
 from db.neo4j import (
     create_incident_node,
     create_spawned_relationship,
+    create_affects_relationship,
     get_active_incidents_with_ttr,
     get_incident_by_id,
+    get_flights_at_gate,
+    get_flights_on_runway,
     resolve_children,
     update_incident_status,
     update_ttr_remaining,
@@ -152,6 +154,14 @@ async def create_incident(
     # Persist to Neo4j
     await create_incident_node(incident)
 
+    # Create AFFECTS relationships for impacted infrastructure and flights
+    await _link_affects(incident_id, location, type)
+
+    # Activate protocol in the protocol lifecycle manager
+    if protocol:
+        from services.protocols import get_protocol_manager
+        get_protocol_manager().activate(protocol, incident_id)
+
     # Create SPAWNED relationship if this is a cascade child
     if parent_id:
         await create_spawned_relationship(
@@ -203,6 +213,12 @@ async def resolve_incident(incident_id: str, sim_time: datetime, note: str = "")
 
     updated = await update_incident_status(incident_id, "resolved", sim_time, note)
 
+    # Deactivate protocol in the protocol lifecycle manager
+    protocol = incident.get("protocol")
+    if protocol:
+        from services.protocols import get_protocol_manager
+        get_protocol_manager().deactivate(protocol, incident_id)
+
     # Resolve children
     child_ids = await resolve_children(incident_id, sim_time)
     for child_id in child_ids:
@@ -232,3 +248,30 @@ async def tick_ttr(sim_time: datetime) -> None:
             await resolve_incident(
                 incident["id"], sim_time, note="Auto-resolved: TTR elapsed"
             )
+
+
+async def _link_affects(incident_id: str, location: str, incident_type: str) -> None:
+    """Create AFFECTS relationships from incident to impacted infrastructure and flights."""
+    loc_lower = location.lower()
+    impact = incident_type.replace("_", " ")
+
+    try:
+        if "runway" in loc_lower:
+            runway_id = location.replace("runway-", "")
+            await create_affects_relationship(incident_id, "Runway", runway_id, impact)
+            flight_ids = await get_flights_on_runway(runway_id)
+            for fid in flight_ids:
+                await create_affects_relationship(incident_id, "Flight", fid, impact)
+            if flight_ids:
+                logger.info("Incident %s AFFECTS runway %s + %d flights", incident_id[:8], runway_id, len(flight_ids))
+
+        if "gate" in loc_lower:
+            gate_id = location.replace("gate-", "")
+            await create_affects_relationship(incident_id, "Gate", gate_id, impact)
+            flight_ids = await get_flights_at_gate(gate_id)
+            for fid in flight_ids:
+                await create_affects_relationship(incident_id, "Flight", fid, impact)
+            if flight_ids:
+                logger.info("Incident %s AFFECTS gate %s + %d flights", incident_id[:8], gate_id, len(flight_ids))
+    except Exception as e:
+        logger.error("Failed to create AFFECTS links for incident %s: %s", incident_id[:8], e)

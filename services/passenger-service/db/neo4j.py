@@ -314,6 +314,17 @@ async def set_connection_risk(passenger_id: str, risk: str) -> None:
         )
 
 
+async def update_passenger_location(passenger_id: str, new_zone: str) -> None:
+    """Update only location_zone for a passenger without changing status timestamps."""
+    driver = get_driver()
+    async with driver.session() as session:
+        await session.run(
+            "MATCH (p:Passenger {id: $id}) SET p.location_zone = $zone",
+            id=passenger_id,
+            zone=new_zone,
+        )
+
+
 async def get_zone_density() -> dict[str, int]:
     """Get passenger count per location_zone."""
     driver = get_driver()
@@ -335,7 +346,7 @@ async def get_passengers_by_status(status: str) -> list[dict]:
     query = """
     MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f:Flight)
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
-    RETURN p.id AS id, p.name AS name, p.flight_id AS flight_id,
+    RETURN p.id AS id, p.name AS name, f.id AS flight_id,
            p.special_assistance AS special_assistance,
            p.location_zone AS location_zone,
            p.dwell_minutes AS dwell_minutes,

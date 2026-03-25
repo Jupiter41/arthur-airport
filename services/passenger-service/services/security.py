@@ -40,6 +40,8 @@ class SecurityCheckpoint:
         actual = self.queue_depth
         if forecast_queue > 0 and actual > forecast_queue * 1.3:
             slowdown = min(1.0, forecast_queue / actual)
+            # Floor: never drop below 50% of base throughput
+            slowdown = max(0.5, slowdown)
             return base * slowdown
         return float(base)
 

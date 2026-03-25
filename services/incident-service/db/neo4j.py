@@ -149,10 +149,15 @@ async def create_spawned_relationship(
         )
 
 
+_ALLOWED_AFFECTS_LABELS = frozenset({"Flight", "Gate", "Runway"})
+
+
 async def create_affects_relationship(
     incident_id: str, entity_label: str, entity_id: str, impact: str
 ) -> None:
     """Create (:Incident)-[:AFFECTS]->(Entity) relationship."""
+    if entity_label not in _ALLOWED_AFFECTS_LABELS:
+        raise ValueError(f"Invalid entity label: {entity_label}")
     async with get_driver().session() as session:
         await session.run(
             f"""
@@ -165,6 +170,34 @@ async def create_affects_relationship(
             entity_id=entity_id,
             impact=impact,
         )
+
+
+async def get_flights_at_gate(gate_id: str) -> list[str]:
+    """Return flight IDs currently assigned to a gate."""
+    async with get_driver().session() as session:
+        result = await session.run(
+            """
+            MATCH (f:Flight)-[:ASSIGNED_TO]->(g:Gate {id: $gate_id})
+            WHERE NOT f.status IN ['departed', 'airborne', 'cancelled']
+            RETURN f.id AS id
+            """,
+            gate_id=gate_id,
+        )
+        return [r["id"] async for r in result]
+
+
+async def get_flights_on_runway(runway_id: str) -> list[str]:
+    """Return flight IDs currently using a runway."""
+    async with get_driver().session() as session:
+        result = await session.run(
+            """
+            MATCH (f:Flight)-[:USES_RUNWAY]->(r:Runway {id: $runway_id})
+            WHERE f.status IN ['approach', 'landed', 'taxiing', 'departed']
+            RETURN f.id AS id
+            """,
+            runway_id=runway_id,
+        )
+        return [r["id"] async for r in result]
 
 
 async def get_incident_by_id(incident_id: str) -> dict | None:

@@ -5,7 +5,7 @@ Risk levels: ok → watch → at_risk → missed.
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 MCT_MINUTES = int(os.getenv("MIN_CONNECTION_TIME_MIN", "45"))
 

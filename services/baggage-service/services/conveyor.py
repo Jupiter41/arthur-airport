@@ -7,7 +7,6 @@ Items flow: induction → screening → sorting → make-up (loading) → arriva
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -237,9 +236,9 @@ class ConveyorSystem:
             zone = self._zones[zone_id]
             utilisation = 0
             if zone.throughput_per_hr > 0:
-                # Utilisation = items queued vs items that could be processed per minute
-                capacity_per_min = max(1, zone.throughput_per_hr // 60)
-                utilisation = min(100, int(zone.items / capacity_per_min * 100)) if zone.items > 0 else 0
+                # Queue capacity = 5 minutes of throughput (reasonable buffer)
+                queue_capacity = max(1, (zone.throughput_per_hr * 5) // 60)
+                utilisation = min(100, int(zone.items / queue_capacity * 100)) if zone.items > 0 else 0
             result.append({
                 "zone_id": zone_id,
                 "items": zone.items,

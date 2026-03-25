@@ -72,6 +72,14 @@ function FlightRow({
             </span>
           </div>
         )}
+        {flight.direction === "arrival" &&
+          ["approach", "landed", "taxiing", "at_gate"].includes(
+            flight.status,
+          ) && (
+            <span className="text-xs text-gray-400">
+              {flight.pax_count > 0 ? `${flight.pax_count} pax` : "—"}
+            </span>
+          )}
       </td>
     </tr>
   );

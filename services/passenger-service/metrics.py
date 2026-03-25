@@ -48,3 +48,9 @@ zone_load_pct = Gauge(
     "Load percent per zone",
     ["zone_id"],
 )
+
+envelope_invalid_total = Counter(
+    "envelope_invalid_total",
+    "Rejected Kafka envelopes",
+    ["reason"],
+)

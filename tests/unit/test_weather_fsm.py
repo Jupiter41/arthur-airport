@@ -71,7 +71,7 @@ class TestEvaluateTransition:
 
     def test_stays_in_cavok_most_often(self):
         """CAVOK has 0.85 self-transition probability — should stay most of the time."""
-        rng = random.Random(100)
+        random.Random(100)
         results = [evaluate_transition("CAVOK", random.Random(i)) for i in range(1000)]
         cavok_count = results.count("CAVOK")
         # Should be roughly 850/1000 — allow generous tolerance

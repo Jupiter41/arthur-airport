@@ -61,7 +61,7 @@ async def generate_passengers(
 
     # Seed scipy RNG
     beta_rng = beta_dist(LOAD_FACTOR_ALPHA, LOAD_FACTOR_BETA)
-    beta_rng_state = rng.getstate()  # sync
+    rng.getstate()  # sync
 
     for flight in flights:
         seat_cap = flight["seat_capacity"]
@@ -92,8 +92,8 @@ async def generate_passengers(
                 "name": f"{first} {last}",
                 "pnr": pnr,
                 "nationality": nationality,
-                "status": "checked_in",
-                "location_zone": f"check-in-{terminal}",
+                "status": "booked",
+                "location_zone": None,
                 "seat": seat,
                 "special_assistance": is_special,
                 "connection": is_connection,

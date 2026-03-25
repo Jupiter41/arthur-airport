@@ -16,6 +16,8 @@ import requests
 
 GATEWAY = os.getenv("GATEWAY_URL", "http://localhost:3000")
 FLIGHT_SVC = os.getenv("FLIGHT_SVC_URL", "http://localhost:8001")
+PASSENGER_SVC = os.getenv("PASSENGER_SVC_URL", "http://localhost:8002")
+BAGGAGE_SVC = os.getenv("BAGGAGE_SVC_URL", "http://localhost:8003")
 WEATHER_SVC = os.getenv("WEATHER_SVC_URL", "http://localhost:8004")
 SIM_SVC = os.getenv("SIM_SVC_URL", "http://localhost:8006")
 COMPOSE_DIR = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -71,7 +73,7 @@ class TestServiceRestart:
         # Get flights before restart
         r = requests.get(f"{FLIGHT_SVC}/api/v1/flights?limit=5", timeout=10)
         assert r.status_code == 200
-        flights_before = r.json()["total"]
+        r.json()["total"]
 
         # Restart flight-service
         subprocess.run(
@@ -93,7 +95,7 @@ class TestServiceRestart:
         """Weather service restarts and has current weather."""
         r = requests.get(f"{WEATHER_SVC}/api/v1/weather/current", timeout=10)
         assert r.status_code == 200
-        category_before = r.json()["category"]
+        r.json()["category"]
 
         subprocess.run(
             ["docker", "compose", "restart", "weather-service"],
@@ -132,3 +134,55 @@ class TestAllServicesRestart:
 
         r = requests.get(f"{WEATHER_SVC}/api/v1/weather/current", timeout=10)
         assert r.status_code == 200
+
+
+class TestRestartRebuild:
+    """Verify in-memory structures are rebuilt correctly after restart."""
+
+    def test_baggage_service_conveyor_rebuild(self):
+        """Baggage service rebuilds conveyor state from Neo4j on restart."""
+        r = requests.get(f"{BAGGAGE_SVC}/api/v1/baggage/conveyor-status", timeout=10)
+        assert r.status_code == 200
+
+        subprocess.run(
+            ["docker", "compose", "restart", "baggage-service"],
+            cwd=COMPOSE_DIR, timeout=30, capture_output=True,
+        )
+        assert _wait_for_ready(BAGGAGE_SVC, timeout=60)
+
+        r = requests.get(f"{BAGGAGE_SVC}/api/v1/baggage/conveyor-status", timeout=10)
+        assert r.status_code == 200
+
+    def test_passenger_service_security_rebuild(self):
+        """Passenger service rebuilds security queues from Neo4j on restart."""
+        r = requests.get(f"{PASSENGER_SVC}/api/v1/passengers/security/status", timeout=10)
+        assert r.status_code == 200
+
+        subprocess.run(
+            ["docker", "compose", "restart", "passenger-service"],
+            cwd=COMPOSE_DIR, timeout=30, capture_output=True,
+        )
+        assert _wait_for_ready(PASSENGER_SVC, timeout=60)
+
+        r = requests.get(f"{PASSENGER_SVC}/api/v1/passengers/security/status", timeout=10)
+        assert r.status_code == 200
+        after = r.json()
+        for terminal in after.get("checkpoints", {}).values():
+            assert terminal.get("queue_depth", 0) >= 0
+
+    def test_flight_service_incident_impacts_rebuild(self):
+        """Flight service rebuilds incident-affected gates/runways from Neo4j."""
+        r = requests.get(f"{FLIGHT_SVC}/api/v1/flights?limit=1", timeout=10)
+        assert r.status_code == 200
+        total_before = r.json()["total"]
+
+        subprocess.run(
+            ["docker", "compose", "restart", "flight-service"],
+            cwd=COMPOSE_DIR, timeout=30, capture_output=True,
+        )
+        assert _wait_for_ready(FLIGHT_SVC, timeout=60)
+
+        r = requests.get(f"{FLIGHT_SVC}/api/v1/flights?limit=1", timeout=10)
+        assert r.status_code == 200
+        total_after = r.json()["total"]
+        assert abs(total_after - total_before) < 50

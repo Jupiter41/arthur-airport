@@ -22,7 +22,7 @@ async def current_weather():
     """Current weather conditions at KART."""
     state = get_current_state()
     params = state.get("params")
-    sim_time = state.get("sim_time")
+    state.get("sim_time")
 
     if params is None:
         raise HTTPException(status_code=503, detail="Weather state not yet initialized")
@@ -118,6 +118,7 @@ async def weather_history(hours: int = Query(default=12, ge=1, le=48)):
 
         states.append({
             "category": s["category"],
+            "previous_category": s.get("previous_category"),
             "from": from_time,
             "to": to_time,
             "duration_minutes": max(0, duration_minutes),

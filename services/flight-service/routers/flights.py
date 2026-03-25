@@ -1,7 +1,6 @@
 """REST API router for flight-service."""
 
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -18,15 +17,7 @@ from kafka.consumer import (
     get_sim_time,
     get_runway_queue,
 )
-from models.domain import (
-    FlightListResponse,
-    FlightSummary,
-    FlightDetail,
-    RunwayInfo,
-    GateInfo,
-    HoldRequest,
-    CascadeResponse,
-)
+from models.domain import HoldRequest
 
 logger = logging.getLogger(__name__)
 
@@ -95,10 +86,11 @@ async def list_runways():
 
     # Augment with in-memory queue counts and capacity
     for rw in runways:
-        rw["arrivals_queued"] = rq.arrivals_queued
-        rw["departures_queued"] = rq.departures_queued
+        rw["arrivals_queued"] = max(int(rw.get("arrivals_queued") or 0), rq.arrivals_queued)
+        rw["departures_queued"] = max(int(rw.get("departures_queued") or 0), rq.departures_queued)
         rw["capacity_per_hour"] = rq.capacity_per_hour
-        rw["current_rate"] = rq.current_rate
+        observed = rw["arrivals_queued"] + rw["departures_queued"]
+        rw["current_rate"] = max(int(rq.current_rate), int(observed))
         rw["runway_id"] = rw.get("id", "")
     return runways
 

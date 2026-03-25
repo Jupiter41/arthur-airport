@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta
 
-import pytest
 
 from tests.conftest import import_service_module
 
@@ -177,6 +176,13 @@ class TestTerminalHelpers:
             terminals.add(t)
         # Should distribute across all 3 terminals
         assert len(terminals) == 3
+
+    def test_get_terminal_for_flight_is_deterministic(self):
+        """Fallback terminal assignment must be stable for reproducibility."""
+        flight_id = "7c1784c3-f80e-4f95-9333-a09f24eb90cf"
+        first = get_terminal_for_flight(None, None, flight_id)
+        for _ in range(10):
+            assert get_terminal_for_flight(None, None, flight_id) == first
 
 
 # ── Zone mapping ─────────────────────────────────────────────────

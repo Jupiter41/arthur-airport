@@ -9,11 +9,13 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
+from typing import Callable, Awaitable
 
 from confluent_kafka import Consumer
 
 from db.neo4j import (
     get_active_flights,
+    get_active_incident_locations,
     update_flight_status,
     get_boarded_percentage,
     assign_flight_to_runway,
@@ -26,59 +28,98 @@ from kafka.producer import (
     emit_flight_runway_assigned,
     emit_flight_cancelled,
 )
-from services.state_machine import evaluate_transition, TERMINAL_STATES
+from services.state_machine import evaluate_transition
 from services.runway_queue import RunwayQueue
-from services.gate_resolver import ensure_gate_assigned, check_and_resolve_conflict
+from services.gate_resolver import ensure_gate_assigned
 from services.turnaround import propagate_turnaround_delay
 from metrics import (
     flight_status_transitions_total as m_transitions,
     flights_active as m_active,
     flights_delayed_current as m_delayed,
     flights_cancelled_total as m_cancelled,
-    runway_queue_depth as m_rq_depth,
-    gate_conflicts_resolved_total as m_gate_conflicts,
-    turnaround_delay_minutes as m_turnaround_delay,
+    envelope_invalid_total as m_envelope_invalid,
 )
 
 logger = logging.getLogger(__name__)
 
+
+# ── Class-based state holder ────────────────────────────────
+
+
+class FlightConsumerState:
+    """Holds all mutable runtime state for the flight consumer.
+
+    Eliminates module-level globals that caused repeated UnboundLocalError
+    bugs (sprints 1, 3, 6) due to Python's `global` scoping rules.
+    """
+
+    def __init__(self) -> None:
+        self.sim_time: datetime | None = None
+        self.runway_queue = RunwayQueue()
+        self.held_flights: dict[str, dict] = {}
+        self.incident_affected_gates: set[str] = set()
+        self.incident_affected_runways: set[str] = set()
+        self.processed_events: set[str] = set()
+        self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
+
+    MAX_PROCESSED = 10000
+
+    def check_idempotency(self, event_id: str) -> bool:
+        """Returns True if the event has already been processed (duplicate)."""
+        if not event_id:
+            return False
+        if event_id in self.processed_events:
+            return True
+        self.processed_events.add(event_id)
+        if len(self.processed_events) > self.MAX_PROCESSED:
+            excess = len(self.processed_events) - self.MAX_PROCESSED
+            for _ in range(excess):
+                self.processed_events.pop()
+        return False
+
+    async def rebuild_from_neo4j(self) -> None:
+        """Rebuild in-memory incident impact sets from Neo4j on startup."""
+        try:
+            locations = await get_active_incident_locations()
+        except Exception as e:
+            logger.error("Failed to rebuild incident impacts: %s", e)
+            return
+
+        for location in locations:
+            if "runway" in location.lower():
+                runway_id = location.replace("runway-", "")
+                self.incident_affected_runways.add(runway_id)
+            if "gate" in location.lower():
+                gate_id = location.replace("gate-", "")
+                self.incident_affected_gates.add(gate_id)
+
+        logger.info(
+            "Rebuilt flight state from Neo4j: %d affected runways, %d affected gates",
+            len(self.incident_affected_runways),
+            len(self.incident_affected_gates),
+        )
+
+
+# Module-level singleton
+_state = FlightConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
 
-# --- In-memory state ---
-_sim_time: datetime | None = None
-_runway_queue = RunwayQueue()
-
-# Manual holds: flight_id -> {reason, expected_duration_minutes, held_at}
-_held_flights: dict[str, dict] = {}
-
-# Incident-affected entities: set of gate_ids and runway_ids currently impacted
-_incident_affected_gates: set[str] = set()
-_incident_affected_runways: set[str] = set()
-
-# Idempotency: track processed event IDs
-_processed_events: set[str] = set()
-_MAX_PROCESSED = 10000
-
-# WebSocket broadcast callback
-_ws_broadcast = None
-
 
 def set_ws_broadcast(fn):
-    global _ws_broadcast
-    _ws_broadcast = fn
+    _state.ws_broadcast = fn
 
 
 def get_sim_time() -> datetime | None:
-    return _sim_time
+    return _state.sim_time
 
 
 def get_runway_queue() -> RunwayQueue:
-    return _runway_queue
+    return _state.runway_queue
 
 
 def get_held_flights() -> dict:
-    return _held_flights
+    return _state.held_flights
 
 
 def is_consumer_running() -> bool:
@@ -130,32 +171,46 @@ async def run_consumer() -> None:
         logger.info("Kafka consumer stopped")
 
 
-async def _dispatch(envelope: dict) -> None:
-    """Route events to handlers based on event_type."""
-    global _processed_events
-
-    event_id = envelope.get("event_id", "")
+def _validate_envelope(envelope: dict) -> tuple[str | None, dict, datetime | None]:
+    """Validate event envelope. Returns (event_type, payload, sim_time) or Nones on failure."""
     event_type = envelope.get("event_type")
-    payload = envelope.get("payload", {})
-
-    # Idempotency check
-    if event_id in _processed_events:
-        return
-    _processed_events.add(event_id)
-    if len(_processed_events) > _MAX_PROCESSED:
-        # Trim oldest (approximate — set doesn't preserve order, but prevents unbounded growth)
-        excess = len(_processed_events) - _MAX_PROCESSED
-        for _ in range(excess):
-            _processed_events.pop()
+    if not isinstance(event_type, str):
+        m_envelope_invalid.labels(reason="missing_event_type").inc()
+        logger.warning("Invalid envelope: missing or non-string event_type")
+        return None, {}, None
 
     sim_time_str = envelope.get("sim_time")
     if not sim_time_str:
-        return
+        m_envelope_invalid.labels(reason="missing_sim_time").inc()
+        logger.warning("Invalid envelope: missing sim_time (event_type=%s)", event_type)
+        return None, {}, None
+
     try:
-        sim_time = datetime.fromisoformat(sim_time_str)
-        # Strip timezone to keep all comparisons naive
-        sim_time = sim_time.replace(tzinfo=None)
+        sim_time = datetime.fromisoformat(str(sim_time_str)).replace(tzinfo=None)
     except (ValueError, TypeError):
+        m_envelope_invalid.labels(reason="invalid_sim_time").inc()
+        logger.warning("Invalid envelope: unparseable sim_time=%r", sim_time_str)
+        return None, {}, None
+
+    payload = envelope.get("payload")
+    if not isinstance(payload, dict):
+        m_envelope_invalid.labels(reason="invalid_payload").inc()
+        logger.warning("Invalid envelope: payload is not a dict (event_type=%s)", event_type)
+        return None, {}, None
+
+    return event_type, payload, sim_time
+
+
+async def _dispatch(envelope: dict) -> None:
+    """Route events to handlers based on event_type."""
+    event_id = envelope.get("event_id", "")
+
+    # Idempotency check
+    if _state.check_idempotency(event_id):
+        return
+
+    event_type, payload, sim_time = _validate_envelope(envelope)
+    if event_type is None:
         return
 
     match event_type:
@@ -175,16 +230,15 @@ async def _dispatch(envelope: dict) -> None:
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Process a SimClockTick — advance all active flights through the FSM."""
-    global _sim_time
-    _sim_time = sim_time
+    _state.sim_time = sim_time
 
     # 1. Get all active flights
     flights = await get_active_flights(sim_time)
 
     # 2. Assign runway slots from the queue
-    runway_assignments = _runway_queue.assign_slots(sim_time)
+    runway_assignments = _state.runway_queue.assign_slots(sim_time)
     for assignment in runway_assignments:
-        runway_id = await get_open_runway(ils_required=_runway_queue.ils_required)
+        runway_id = await get_open_runway(ils_required=_state.runway_queue.ils_required)
         if runway_id:
             await assign_flight_to_runway(
                 assignment["flight_id"],
@@ -229,22 +283,22 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
     direction = flight.get("direction", "departure")
 
     # Check manual hold
-    has_hold = flight_id in _held_flights
+    has_hold = flight_id in _state.held_flights
 
     # Check gate availability
     gate_id = flight.get("gate_id")
     gate_available = True
-    if gate_id and gate_id in _incident_affected_gates:
+    if gate_id and gate_id in _state.incident_affected_gates:
         gate_available = False
 
     # Check runway availability
     runway_available = True
     runway_id = flight.get("runway_id")
-    if runway_id and runway_id in _incident_affected_runways:
+    if runway_id and runway_id in _state.incident_affected_runways:
         runway_available = False
     # Also check if any runway at all is available
     if not runway_id:
-        open_rw = await get_open_runway(ils_required=_runway_queue.ils_required)
+        open_rw = await get_open_runway(ils_required=_state.runway_queue.ils_required)
         runway_available = open_rw is not None
 
     # Get boarding percentage for departure flights in boarding state
@@ -293,7 +347,7 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
         try:
             est = datetime.fromisoformat(str(estimated))
             if sim_time >= est - timedelta(minutes=35):
-                _runway_queue.enqueue_arrival(flight_id, str(estimated))
+                _state.runway_queue.enqueue_arrival(flight_id, str(estimated))
         except (ValueError, TypeError):
             pass
 
@@ -301,7 +355,7 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
     if current_status == "boarding" and direction == "departure" and not flight.get("runway_id"):
         estimated = flight.get("estimated_time", "")
         if boarded_pct >= 0.95:
-            _runway_queue.enqueue_departure(flight_id, str(estimated))
+            _state.runway_queue.enqueue_departure(flight_id, str(estimated))
 
     # Evaluate FSM transition
     new_status = evaluate_transition(
@@ -391,11 +445,11 @@ async def _execute_transition(
         case "delayed":
             # Check if it's a weather/incident delay
             reason = flight.get("delay_reason", "")
-            if flight_id in _held_flights:
-                reason = _held_flights[flight_id].get("reason", "manual_hold")
-            elif flight.get("runway_id") in _incident_affected_runways:
+            if flight_id in _state.held_flights:
+                reason = _state.held_flights[flight_id].get("reason", "manual_hold")
+            elif flight.get("runway_id") in _state.incident_affected_runways:
                 reason = "runway_incident"
-            elif flight.get("gate_id") in _incident_affected_gates:
+            elif flight.get("gate_id") in _state.incident_affected_gates:
                 reason = "gate_incident"
             else:
                 reason = reason or "operational"
@@ -404,9 +458,9 @@ async def _execute_transition(
         case "cancelled":
             update_kwargs["delay_reason"] = "delay_exceeded_180min"
             # Remove from runway queue
-            _runway_queue.remove(flight_id)
+            _state.runway_queue.remove(flight_id)
             # Remove hold
-            _held_flights.pop(flight_id, None)
+            _state.held_flights.pop(flight_id, None)
             # Release gate
             await release_gate(flight_id)
             # Emit cancellation event
@@ -433,9 +487,14 @@ async def _execute_transition(
                         depth=0,
                         producer_callback=_emit_status_changed_callback,
                     )
+            # Release gate after arrival completes (frees it for the paired departure)
+            if direction == "arrival":
+                released = await release_gate(flight_id)
+                if released:
+                    logger.info("Gate %s released by arrived flight %s", released, flight_number)
 
     # Update Neo4j
-    updated = await update_flight_status(
+    await update_flight_status(
         flight_id=flight_id,
         new_status=new_status,
         sim_time=sim_time,
@@ -464,9 +523,9 @@ async def _execute_transition(
         m_cancelled.labels(reason=reason).inc()
 
     # Broadcast to WebSocket
-    if _ws_broadcast:
+    if _state.ws_broadcast:
         try:
-            asyncio.create_task(_ws_broadcast({
+            asyncio.create_task(_state.ws_broadcast({
                 "type": "FlightStatusChanged",
                 "flight_id": flight_id,
                 "flight_number": flight_number,
@@ -505,28 +564,27 @@ async def _emit_status_changed_callback(
 
 async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
     """Handle WeatherStateChanged — update runway capacity."""
-    global _sim_time
-    _sim_time = sim_time
+    _state.sim_time = sim_time
 
     category = payload.get("new_category", "CAVOK")
     arrival_rate = payload.get("recommended_arrival_rate", 32)
     departure_rate = payload.get("recommended_departure_rate", 32)
     runway_impact = payload.get("runway_impact", "none")
 
-    _runway_queue.update_capacity(arrival_rate, departure_rate, category)
+    _state.runway_queue.update_capacity(arrival_rate, departure_rate, category)
 
     # If severe weather, close affected runways
     if runway_impact == "closed":
-        _incident_affected_runways.update(["09L", "27R", "09R", "27L"])
+        _state.incident_affected_runways.update(["09L", "27R", "09R", "27L"])
     elif runway_impact == "single_runway":
         # Only ILS runways remain open — close non-ILS
-        _incident_affected_runways.discard("09L")
-        _incident_affected_runways.discard("27R")
-        _incident_affected_runways.add("09R")
-        _incident_affected_runways.add("27L")
+        _state.incident_affected_runways.discard("09L")
+        _state.incident_affected_runways.discard("27R")
+        _state.incident_affected_runways.add("09R")
+        _state.incident_affected_runways.add("27L")
     else:
         # Clear weather-related runway closures
-        _incident_affected_runways.clear()
+        _state.incident_affected_runways.clear()
 
     logger.info(
         "Weather updated: %s (arr=%d/hr, dep=%d/hr, impact=%s)",
@@ -537,19 +595,18 @@ async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
 async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
     """Handle IncidentCreated — hold flights on affected runway or gate."""
     location = payload.get("location", "")
-    severity = payload.get("severity", "low")
     incident_type = payload.get("type", "")
 
     # Runway incident
     if "runway" in location.lower():
         runway_id = location.replace("runway-", "")
-        _incident_affected_runways.add(runway_id)
+        _state.incident_affected_runways.add(runway_id)
         logger.info("Incident: runway %s affected (%s)", runway_id, incident_type)
 
     # Gate incident
     if "gate" in location.lower():
         gate_id = location.replace("gate-", "")
-        _incident_affected_gates.add(gate_id)
+        _state.incident_affected_gates.add(gate_id)
         logger.info("Incident: gate %s affected (%s)", gate_id, incident_type)
 
 
@@ -561,11 +618,11 @@ async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None
     if new_status in ("resolved", "contained"):
         if "runway" in location.lower():
             runway_id = location.replace("runway-", "")
-            _incident_affected_runways.discard(runway_id)
+            _state.incident_affected_runways.discard(runway_id)
             logger.info("Incident resolved: runway %s restored", runway_id)
         if "gate" in location.lower():
             gate_id = location.replace("gate-", "")
-            _incident_affected_gates.discard(gate_id)
+            _state.incident_affected_gates.discard(gate_id)
             logger.info("Incident resolved: gate %s restored", gate_id)
 
 
@@ -580,7 +637,7 @@ async def _on_schedule_seeded(payload: dict, sim_time: datetime) -> None:
 
 async def hold_flight(flight_id: str, reason: str, duration_min: int, sim_time: datetime) -> dict | None:
     """Place a manual hold on a flight."""
-    _held_flights[flight_id] = {
+    _state.held_flights[flight_id] = {
         "reason": reason,
         "expected_duration_minutes": duration_min,
         "held_at": sim_time.isoformat(),
@@ -618,9 +675,9 @@ async def hold_flight(flight_id: str, reason: str, duration_min: int, sim_time: 
         )
 
         # Broadcast to WebSocket
-        if _ws_broadcast:
+        if _state.ws_broadcast:
             try:
-                asyncio.create_task(_ws_broadcast({
+                asyncio.create_task(_state.ws_broadcast({
                     "type": "FlightStatusChanged",
                     "flight_id": flight_id,
                     "flight_number": updated.get("flight_number", ""),
@@ -636,7 +693,7 @@ async def hold_flight(flight_id: str, reason: str, duration_min: int, sim_time: 
 
 async def release_flight(flight_id: str, sim_time: datetime) -> dict | None:
     """Release a manual hold on a flight."""
-    _held_flights.pop(flight_id, None)
+    _state.held_flights.pop(flight_id, None)
     from db.neo4j import get_flight_by_id, update_flight_status
     flight = await get_flight_by_id(flight_id)
     if not flight:

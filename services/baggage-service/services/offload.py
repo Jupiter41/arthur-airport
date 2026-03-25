@@ -58,7 +58,7 @@ async def offload_flight_baggage(
 
     # Assign a return carousel (deterministic based on flight_id)
     carousel = (hash(flight_id) % 6) + 1
-    sim_time_str = sim_time.isoformat()
+    sim_time.isoformat()
 
     offloaded: list[dict] = []
     for bag in bags:

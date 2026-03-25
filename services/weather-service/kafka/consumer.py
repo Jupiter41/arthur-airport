@@ -6,6 +6,7 @@ import logging
 import os
 import random
 from datetime import datetime
+from typing import Callable, Awaitable
 from uuid import uuid4
 
 from confluent_kafka import Consumer
@@ -13,8 +14,8 @@ from confluent_kafka import Consumer
 from db.neo4j import persist_weather_state, get_current_weather
 from kafka.producer import emit_weather_state_changed, emit_metar_issued
 from services.fsm import evaluate_transition
-from services.parameters import sample_params
-from services.metar import build_metar
+from services.parameters import sample_params, WeatherParams
+from services.metar import build_metar, build_taf
 from services.capacity import compute_runway_capacity
 from metrics import (
     weather_category as m_category,
@@ -25,41 +26,234 @@ from metrics import (
     runway_arrival_rate as m_arr_rate,
     runway_departure_rate as m_dep_rate,
     CATEGORY_VALUES,
+    envelope_invalid_total as m_envelope_invalid,
 )
 
 logger = logging.getLogger(__name__)
 
+
+# ── Class-based state holder ────────────────────────────────
+
+
+class WeatherConsumerState:
+    """Holds all mutable runtime state for the weather consumer.
+
+    Eliminates module-level globals that caused repeated UnboundLocalError
+    bugs across sprints 1–3 and 6 due to Python's `global` scoping rules.
+    """
+
+    def __init__(self) -> None:
+        self.current_category: str = "CAVOK"
+        self.current_params: WeatherParams | None = None
+        self.current_metar: str = ""
+        self.current_taf: str = ""
+        self.sim_time: datetime | None = None
+        self.last_metar_total_min: int = -1
+        self.last_fsm_hour: int = -1
+        self.rng = random.Random(42)
+        self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
+
+    def get_current_state(self) -> dict:
+        """Return current in-memory weather state for fast access."""
+        return {
+            "category": self.current_category,
+            "params": self.current_params,
+            "metar": self.current_metar,
+            "taf": self.current_taf,
+            "sim_time": self.sim_time,
+        }
+
+    async def initialize_from_neo4j(self) -> None:
+        """Load current weather state from Neo4j on startup."""
+        weather = await get_current_weather()
+        if weather:
+            self.current_category = weather["category"]
+            self.sim_time = datetime.fromisoformat(weather["timestamp"])
+            self.current_params = WeatherParams(
+                category=weather["category"],
+                visibility_m=weather["visibility_m"],
+                wind_direction=weather["wind_direction"],
+                wind_speed_kt=weather["wind_speed_kt"],
+                wind_gust_kt=weather["wind_gust_kt"],
+                ceiling_ft=weather["ceiling_ft"],
+                temperature_c=weather["temperature_c"],
+                dew_point_c=weather["dew_point_c"],
+                qnh_hpa=weather["qnh_hpa"],
+                phenomena=weather["phenomena"],
+            )
+            self.current_metar = build_metar(self.current_params, self.sim_time)
+            self.current_taf = build_taf(self.current_params, self.sim_time)
+            self._update_gauges(self.current_category, self.current_params)
+            logger.info("Restored weather state from Neo4j: %s", self.current_category)
+        else:
+            logger.info("No weather state in Neo4j — will initialize on first clock tick")
+
+    def _params_dict(self, params: WeatherParams) -> dict:
+        return {
+            "visibility_m": params.visibility_m,
+            "wind_direction": params.wind_direction,
+            "wind_speed_kt": params.wind_speed_kt,
+            "wind_gust_kt": params.wind_gust_kt,
+            "ceiling_ft": params.ceiling_ft,
+            "temperature_c": params.temperature_c,
+            "phenomena": params.phenomena,
+        }
+
+    def _update_gauges(self, category: str, params: WeatherParams, capacity: dict | None = None) -> None:
+        m_category.set(CATEGORY_VALUES.get(category, 0))
+        m_visibility.set(params.visibility_m)
+        m_wind_speed.set(params.wind_speed_kt)
+        m_wind_gust.set(params.wind_gust_kt or 0)
+        if capacity:
+            m_arr_rate.set(capacity.get("recommended_arrival_rate", capacity.get("arrival_rate", 32)))
+            m_dep_rate.set(capacity.get("recommended_departure_rate", capacity.get("departure_rate", 32)))
+
+    async def on_clock_tick(self, payload: dict, sim_time: datetime) -> None:
+        """Process a SimClockTick event."""
+        self.sim_time = sim_time
+        hour = sim_time.hour
+        minute = sim_time.minute
+
+        # --- Initialize if first tick ---
+        if self.current_params is None:
+            await self._initialize_first_tick(sim_time, hour, minute)
+            return
+
+        # --- Hourly FSM evaluation (minute == 0 and not same hour) ---
+        if minute == 0 and hour != self.last_fsm_hour:
+            self.last_fsm_hour = hour
+            previous_category = self.current_category
+            new_category = evaluate_transition(self.current_category, self.rng)
+
+            if new_category != previous_category:
+                await self._apply_transition(previous_category, new_category, sim_time)
+
+        # --- METAR every 30 simulated minutes (0 and 30) ---
+        metar_interval = int(os.getenv("METAR_INTERVAL_SIM_MINUTES", "30"))
+        total_min = hour * 60 + minute
+        if minute % metar_interval == 0 and total_min != self.last_metar_total_min:
+            self.last_metar_total_min = total_min
+            self.current_metar = build_metar(self.current_params, sim_time)
+            self.current_taf = build_taf(self.current_params, sim_time)
+
+            emit_metar_issued(sim_time, self.current_metar)
+
+            if self.ws_broadcast:
+                await self.ws_broadcast({
+                    "event_type": "METARIssued",
+                    "raw": self.current_metar,
+                    "sim_time": sim_time.isoformat(),
+                })
+
+    async def _initialize_first_tick(self, sim_time: datetime, hour: int, minute: int) -> None:
+        initial_category = os.getenv("INITIAL_WEATHER_CATEGORY", "CAVOK")
+        self.current_category = initial_category
+        self.current_params = sample_params(initial_category, self.rng)
+        self.current_metar = build_metar(self.current_params, sim_time)
+        self.current_taf = build_taf(self.current_params, sim_time)
+
+        weather_id = str(uuid4())
+        capacity = compute_runway_capacity(self.current_params)
+
+        await persist_weather_state(
+            weather_id=weather_id,
+            category=initial_category,
+            sim_time=sim_time,
+            visibility_m=self.current_params.visibility_m,
+            wind_direction=self.current_params.wind_direction,
+            wind_speed_kt=self.current_params.wind_speed_kt,
+            wind_gust_kt=self.current_params.wind_gust_kt,
+            ceiling_ft=self.current_params.ceiling_ft,
+            temperature_c=self.current_params.temperature_c,
+            dew_point_c=self.current_params.dew_point_c,
+            qnh_hpa=self.current_params.qnh_hpa,
+            phenomena=self.current_params.phenomena,
+            runway_impact=capacity["runway_impact"],
+            previous_category=None,
+        )
+
+        emit_weather_state_changed(
+            sim_time=sim_time,
+            weather_id=weather_id,
+            previous_category=None,
+            new_category=initial_category,
+            params=self._params_dict(self.current_params),
+            capacity=capacity,
+        )
+        emit_metar_issued(sim_time, self.current_metar)
+        self.last_fsm_hour = hour
+        self.last_metar_total_min = hour * 60 + minute
+
+        self._update_gauges(initial_category, self.current_params, capacity)
+        logger.info("Weather initialized: %s", initial_category)
+
+    async def _apply_transition(
+        self, previous_category: str, new_category: str, sim_time: datetime
+    ) -> None:
+        self.current_category = new_category
+        self.current_params = sample_params(new_category, self.rng)
+        self.current_metar = build_metar(self.current_params, sim_time)
+        self.current_taf = build_taf(self.current_params, sim_time)
+
+        weather_id = str(uuid4())
+        capacity = compute_runway_capacity(self.current_params)
+
+        await persist_weather_state(
+            weather_id=weather_id,
+            category=new_category,
+            sim_time=sim_time,
+            visibility_m=self.current_params.visibility_m,
+            wind_direction=self.current_params.wind_direction,
+            wind_speed_kt=self.current_params.wind_speed_kt,
+            wind_gust_kt=self.current_params.wind_gust_kt,
+            ceiling_ft=self.current_params.ceiling_ft,
+            temperature_c=self.current_params.temperature_c,
+            dew_point_c=self.current_params.dew_point_c,
+            qnh_hpa=self.current_params.qnh_hpa,
+            phenomena=self.current_params.phenomena,
+            runway_impact=capacity["runway_impact"],
+            previous_category=previous_category,
+        )
+
+        emit_weather_state_changed(
+            sim_time=sim_time,
+            weather_id=weather_id,
+            previous_category=previous_category,
+            new_category=new_category,
+            params=self._params_dict(self.current_params),
+            capacity=capacity,
+        )
+
+        logger.info("Weather transition: %s -> %s", previous_category, new_category)
+
+        self._update_gauges(new_category, self.current_params, capacity)
+        m_transitions.labels(from_cat=previous_category, to_cat=new_category).inc()
+
+        if self.ws_broadcast:
+            await self.ws_broadcast({
+                "event_type": "WeatherStateChanged",
+                "previous_category": previous_category,
+                "new_category": new_category,
+                "sim_time": sim_time.isoformat(),
+            })
+
+
+# Module-level singleton — used by router and main.py
+_state = WeatherConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
 
-# In-memory state for weather engine
-_current_category: str = "CAVOK"
-_current_params = None
-_current_metar: str = ""
-_current_taf: str = ""
-_sim_time: datetime | None = None
-_last_metar_total_min: int = -1
-_last_fsm_hour: int = -1
-_rng = random.Random(42)
-
-# WebSocket broadcast callback (set by main.py)
-_ws_broadcast = None
-
 
 def set_ws_broadcast(fn):
-    global _ws_broadcast
-    _ws_broadcast = fn
+    _state.ws_broadcast = fn
 
 
 def get_current_state() -> dict:
-    """Return current in-memory weather state for fast access."""
-    return {
-        "category": _current_category,
-        "params": _current_params,
-        "metar": _current_metar,
-        "taf": _current_taf,
-        "sim_time": _sim_time,
-    }
+    return _state.get_current_state()
+
+
+def get_sim_time() -> datetime | None:
+    return _state.sim_time
 
 
 def _make_consumer() -> Consumer:
@@ -72,209 +266,45 @@ def _make_consumer() -> Consumer:
     })
 
 
-async def _initialize_state() -> None:
-    """Load current weather state from Neo4j on startup."""
-    global _current_category, _current_params, _current_metar, _sim_time
+def _validate_envelope(envelope: dict) -> tuple[str | None, dict, datetime | None]:
+    """Validate event envelope. Returns (event_type, payload, sim_time) or Nones on failure."""
+    event_type = envelope.get("event_type")
+    if not isinstance(event_type, str):
+        m_envelope_invalid.labels(reason="missing_event_type").inc()
+        logger.warning("Invalid envelope: missing or non-string event_type")
+        return None, {}, None
 
-    weather = await get_current_weather()
-    if weather:
-        _current_category = weather["category"]
-        _sim_time = datetime.fromisoformat(weather["timestamp"])
-        # Reconstruct params from stored state
-        from services.parameters import WeatherParams
-        _current_params = WeatherParams(
-            category=weather["category"],
-            visibility_m=weather["visibility_m"],
-            wind_direction=weather["wind_direction"],
-            wind_speed_kt=weather["wind_speed_kt"],
-            wind_gust_kt=weather["wind_gust_kt"],
-            ceiling_ft=weather["ceiling_ft"],
-            temperature_c=weather["temperature_c"],
-            dew_point_c=weather["dew_point_c"],
-            qnh_hpa=weather["qnh_hpa"],
-            phenomena=weather["phenomena"],
-        )
-        _current_metar = build_metar(_current_params, _sim_time)
-        logger.info("Restored weather state from Neo4j: %s", _current_category)
-    else:
-        logger.info("No weather state in Neo4j — will initialize on first clock tick")
+    sim_time_str = envelope.get("sim_time")
+    if not sim_time_str:
+        m_envelope_invalid.labels(reason="missing_sim_time").inc()
+        logger.warning("Invalid envelope: missing sim_time (event_type=%s)", event_type)
+        return None, {}, None
 
+    try:
+        sim_time = datetime.fromisoformat(str(sim_time_str)).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        m_envelope_invalid.labels(reason="invalid_sim_time").inc()
+        logger.warning("Invalid envelope: unparseable sim_time=%r", sim_time_str)
+        return None, {}, None
 
-async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
-    """Process a SimClockTick event.
+    payload = envelope.get("payload")
+    if not isinstance(payload, dict):
+        m_envelope_invalid.labels(reason="invalid_payload").inc()
+        logger.warning("Invalid envelope: payload is not a dict (event_type=%s)", event_type)
+        return None, {}, None
 
-    - Every simulated hour (minute==0): evaluate FSM transition
-    - Every 30 simulated minutes (minute==0 or minute==30): emit METARIssued
-    """
-    global _current_category, _current_params, _current_metar, _current_taf
-    global _sim_time, _last_metar_total_min, _last_fsm_hour
-
-    _sim_time = sim_time
-    hour = sim_time.hour
-    minute = sim_time.minute
-
-    # --- Initialize if first tick ---
-    if _current_params is None:
-        initial_category = os.getenv("INITIAL_WEATHER_CATEGORY", "CAVOK")
-        _current_category = initial_category
-        _current_params = sample_params(initial_category, _rng)
-        _current_metar = build_metar(_current_params, sim_time)
-
-        from services.metar import build_taf
-        _current_taf = build_taf(_current_params, sim_time)
-
-        weather_id = str(uuid4())
-        capacity = compute_runway_capacity(_current_params)
-
-        await persist_weather_state(
-            weather_id=weather_id,
-            category=initial_category,
-            sim_time=sim_time,
-            visibility_m=_current_params.visibility_m,
-            wind_direction=_current_params.wind_direction,
-            wind_speed_kt=_current_params.wind_speed_kt,
-            wind_gust_kt=_current_params.wind_gust_kt,
-            ceiling_ft=_current_params.ceiling_ft,
-            temperature_c=_current_params.temperature_c,
-            dew_point_c=_current_params.dew_point_c,
-            qnh_hpa=_current_params.qnh_hpa,
-            phenomena=_current_params.phenomena,
-            runway_impact=capacity["runway_impact"],
-        )
-
-        params_dict = {
-            "visibility_m": _current_params.visibility_m,
-            "wind_direction": _current_params.wind_direction,
-            "wind_speed_kt": _current_params.wind_speed_kt,
-            "wind_gust_kt": _current_params.wind_gust_kt,
-            "ceiling_ft": _current_params.ceiling_ft,
-            "temperature_c": _current_params.temperature_c,
-            "phenomena": _current_params.phenomena,
-        }
-        emit_weather_state_changed(
-            sim_time=sim_time,
-            weather_id=weather_id,
-            previous_category=None,
-            new_category=initial_category,
-            params=params_dict,
-            capacity=capacity,
-        )
-        emit_metar_issued(sim_time, _current_metar)
-        _last_fsm_hour = hour
-        _last_metar_total_min = hour * 60 + minute
-
-        # Update Prometheus gauges
-        m_category.set(CATEGORY_VALUES.get(initial_category, 0))
-        m_visibility.set(_current_params.visibility_m)
-        m_wind_speed.set(_current_params.wind_speed_kt)
-        m_wind_gust.set(_current_params.wind_gust_kt or 0)
-        m_arr_rate.set(capacity.get("recommended_arrival_rate", 32))
-        m_dep_rate.set(capacity.get("recommended_departure_rate", 32))
-
-        logger.info("Weather initialized: %s", initial_category)
-        return
-
-    # --- Hourly FSM evaluation (minute == 0 and not same hour) ---
-    if minute == 0 and hour != _last_fsm_hour:
-        _last_fsm_hour = hour
-        previous_category = _current_category
-        new_category = evaluate_transition(_current_category, _rng)
-
-        if new_category != previous_category:
-            _current_category = new_category
-            _current_params = sample_params(new_category, _rng)
-            _current_metar = build_metar(_current_params, sim_time)
-
-            from services.metar import build_taf
-            _current_taf = build_taf(_current_params, sim_time)
-
-            weather_id = str(uuid4())
-            capacity = compute_runway_capacity(_current_params)
-
-            await persist_weather_state(
-                weather_id=weather_id,
-                category=new_category,
-                sim_time=sim_time,
-                visibility_m=_current_params.visibility_m,
-                wind_direction=_current_params.wind_direction,
-                wind_speed_kt=_current_params.wind_speed_kt,
-                wind_gust_kt=_current_params.wind_gust_kt,
-                ceiling_ft=_current_params.ceiling_ft,
-                temperature_c=_current_params.temperature_c,
-                dew_point_c=_current_params.dew_point_c,
-                qnh_hpa=_current_params.qnh_hpa,
-                phenomena=_current_params.phenomena,
-                runway_impact=capacity["runway_impact"],
-            )
-
-            params_dict = {
-                "visibility_m": _current_params.visibility_m,
-                "wind_direction": _current_params.wind_direction,
-                "wind_speed_kt": _current_params.wind_speed_kt,
-                "wind_gust_kt": _current_params.wind_gust_kt,
-                "ceiling_ft": _current_params.ceiling_ft,
-                "temperature_c": _current_params.temperature_c,
-                "phenomena": _current_params.phenomena,
-            }
-            emit_weather_state_changed(
-                sim_time=sim_time,
-                weather_id=weather_id,
-                previous_category=previous_category,
-                new_category=new_category,
-                params=params_dict,
-                capacity=capacity,
-            )
-
-            logger.info("Weather transition: %s -> %s", previous_category, new_category)
-
-            # Update Prometheus gauges
-            m_category.set(CATEGORY_VALUES.get(new_category, 0))
-            m_visibility.set(_current_params.visibility_m)
-            m_wind_speed.set(_current_params.wind_speed_kt)
-            m_wind_gust.set(_current_params.wind_gust_kt or 0)
-            m_arr_rate.set(capacity.get("recommended_arrival_rate", 32))
-            m_dep_rate.set(capacity.get("recommended_departure_rate", 32))
-            m_transitions.labels(from_cat=previous_category, to_cat=new_category).inc()
-
-            # Broadcast to WebSocket clients
-            if _ws_broadcast:
-                await _ws_broadcast({
-                    "event_type": "WeatherStateChanged",
-                    "previous_category": previous_category,
-                    "new_category": new_category,
-                    "sim_time": sim_time.isoformat(),
-                })
-
-    # --- METAR every 30 simulated minutes (0 and 30) ---
-    metar_interval = int(os.getenv("METAR_INTERVAL_SIM_MINUTES", "30"))
-    total_min = hour * 60 + minute
-    if minute % metar_interval == 0 and total_min != _last_metar_total_min:
-        _last_metar_total_min = total_min
-        _current_metar = build_metar(_current_params, sim_time)
-
-        from services.metar import build_taf
-        _current_taf = build_taf(_current_params, sim_time)
-
-        emit_metar_issued(sim_time, _current_metar)
-
-        # Broadcast to WebSocket clients
-        if _ws_broadcast:
-            await _ws_broadcast({
-                "event_type": "METARIssued",
-                "raw": _current_metar,
-                "sim_time": sim_time.isoformat(),
-            })
+    return event_type, payload, sim_time
 
 
 async def _dispatch(envelope: dict) -> None:
     """Route incoming Kafka messages to the appropriate handler."""
-    event_type = envelope.get("event_type")
-    payload = envelope.get("payload", {})
-    sim_time = datetime.fromisoformat(envelope["sim_time"])
+    event_type, payload, sim_time = _validate_envelope(envelope)
+    if event_type is None:
+        return
 
     match event_type:
         case "SimClockTick":
-            await _on_clock_tick(payload, sim_time)
+            await _state.on_clock_tick(payload, sim_time)
         case _:
             pass  # ignore unknown events
 
@@ -283,7 +313,7 @@ async def run_consumer() -> None:
     """Main consumer loop — runs as a background asyncio task."""
     global _consumer, _consumer_running
 
-    await _initialize_state()
+    await _state.initialize_from_neo4j()
 
     _consumer = _make_consumer()
     _consumer.subscribe(["sim.clock"])

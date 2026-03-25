@@ -47,3 +47,9 @@ baggage_offloaded_total = Counter(
     "Offloads by reason",
     ["reason"],
 )
+
+envelope_invalid_total = Counter(
+    "envelope_invalid_total",
+    "Rejected Kafka envelopes",
+    ["reason"],
+)

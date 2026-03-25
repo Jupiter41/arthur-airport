@@ -1,6 +1,32 @@
 import { create } from "zustand";
 import type { Incident, IncidentAlert } from "../types";
 
+function normalizeCascadeNode(node: unknown): Incident["cascade_tree"] {
+  if (!node || typeof node !== "object") {
+    return null;
+  }
+  const raw = node as Record<string, unknown>;
+  const children = Array.isArray(raw.children)
+    ? raw.children
+        .map((child) => normalizeCascadeNode(child))
+        .filter(
+          (child): child is NonNullable<Incident["cascade_tree"]> =>
+            child !== null,
+        )
+    : [];
+
+  return {
+    id: String(raw.id ?? ""),
+    type: String(raw.type ?? ""),
+    severity: (raw.severity as Incident["severity"]) ?? "low",
+    status: (raw.status as Incident["status"]) ?? "active",
+    description: String(raw.description ?? ""),
+    affected_count: Number(raw.affected_count ?? 0),
+    depth: Number(raw.depth ?? 0),
+    children,
+  };
+}
+
 /**
  * Normalize an incident object from the API or Kafka.
  * The API returns `protocol` (singular string) but the frontend
@@ -17,9 +43,9 @@ function normalizeIncident(raw: Record<string, unknown>): Incident {
   }
   return {
     ...i,
-    protocols,
+    protocols: Array.isArray(protocols) ? protocols : [],
     cascade_depth: i.cascade_depth ?? 0,
-    cascade_tree: i.cascade_tree ?? null,
+    cascade_tree: normalizeCascadeNode(i.cascade_tree),
   } as Incident;
 }
 

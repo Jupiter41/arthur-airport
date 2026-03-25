@@ -11,7 +11,6 @@ from db.neo4j import (
     get_incident_by_id,
     get_incidents,
     count_incidents,
-    get_all_active_incidents,
 )
 from kafka.consumer import get_active_alerts, get_sim_time
 from models.domain import (
@@ -21,13 +20,14 @@ from models.domain import (
     ContainRequest,
     IncidentDetail,
     IncidentListResponse,
-    IncidentReport,
     IncidentSummary,
     InjectRequest,
+    ProtocolStatusResponse,
     ResolveRequest,
     TimelineEntry,
 )
 from services.lifecycle import contain_incident, create_incident, resolve_incident
+from services.protocols import get_protocol_manager, PROTOCOL_ACTIONS
 from services.reports import build_report
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ async def get_incident_detail(incident_id: str) -> IncidentDetail:
 
     # Build cascade tree
     cascade_nodes = await get_cascade_tree(incident_id)
-    cascade_tree = _build_cascade_tree(cascade_nodes) if cascade_nodes else None
+    cascade_tree = _build_cascade_tree(cascade_nodes, incident)
 
     # Get affected flights
     affected = await get_affected_flights(incident_id)
@@ -114,8 +114,8 @@ async def get_incident_detail(incident_id: str) -> IncidentDetail:
         estimated_resolution_at=estimated_resolution,
         ttr_remaining=incident.get("ttr_remaining"),
         cascade_tree=cascade_tree,
-        affected_flights=affected,
-        timeline=timeline,
+        affected_flights=affected or [],
+        timeline=timeline or [],
     )
 
 
@@ -219,13 +219,35 @@ async def list_alerts() -> AlertsResponse:
     return AlertsResponse(alerts=items)
 
 
+# ── Protocols ─────────────────────────────────────────────────
+
+
+@router.get("/protocols")
+async def protocol_status() -> ProtocolStatusResponse:
+    pm = get_protocol_manager()
+    effective = pm.effective_protocol()
+    return ProtocolStatusResponse(
+        effective_protocol=effective,
+        effective_description=PROTOCOL_ACTIONS.get(effective, "") if effective else "",
+        active_protocols=pm.get_active_protocols(),
+        evacuation_active=pm.is_evacuation_active(),
+    )
+
+
 # ── Helper functions ─────────────────────────────────────────
 
 
-def _build_cascade_tree(nodes: list[dict]) -> CascadeTreeNode | None:
+def _build_cascade_tree(nodes: list[dict], incident: dict) -> CascadeTreeNode:
     """Build a nested cascade tree from flat list of nodes with depth."""
     if not nodes:
-        return None
+        return CascadeTreeNode(
+            id=incident.get("id", ""),
+            type=incident.get("type", ""),
+            severity=incident.get("severity", ""),
+            status=incident.get("status", ""),
+            description=incident.get("description", ""),
+            children=[],
+        )
 
     # Build lookup by id
     node_map: dict[str, CascadeTreeNode] = {}
@@ -263,7 +285,14 @@ def _build_cascade_tree(nodes: list[dict]) -> CascadeTreeNode | None:
     # Root node
     root_node = node_map.get(root_id)
     if not root_node:
-        return None
+        return CascadeTreeNode(
+            id=incident.get("id", ""),
+            type=incident.get("type", ""),
+            severity=incident.get("severity", ""),
+            status=incident.get("status", ""),
+            description=incident.get("description", ""),
+            children=[],
+        )
 
     # For depth > 0, attach to all parents at depth - 1
     # This is approximate but works for linear cascade chains

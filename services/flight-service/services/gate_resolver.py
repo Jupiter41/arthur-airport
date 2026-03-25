@@ -48,7 +48,7 @@ async def check_and_resolve_conflict(
         None if no conflict
         {"new_gate": "C12", "reason": "cascade_delay_reassignment"} if reassigned
     """
-    occupied = await is_gate_occupied(gate_id)
+    occupied = await is_gate_occupied(gate_id, exclude_flight_id=flight_id)
     if not occupied:
         return None
 
@@ -56,12 +56,12 @@ async def check_and_resolve_conflict(
 
     # Try same terminal first
     terminal = _gate_to_terminal(gate_id)
-    new_gate = await get_available_gate(terminal)
+    new_gate = await get_available_gate(terminal, exclude_flight_id=flight_id)
 
     # Try fallback terminals
     if not new_gate:
         for fallback_terminal in TERMINAL_FALLBACK.get(terminal, []):
-            new_gate = await get_available_gate(fallback_terminal)
+            new_gate = await get_available_gate(fallback_terminal, exclude_flight_id=flight_id)
             if new_gate:
                 break
 
@@ -103,10 +103,10 @@ async def ensure_gate_assigned(
     if not terminal.startswith("T-"):
         terminal = f"T-{terminal}"
 
-    gate = await get_available_gate(terminal)
+    gate = await get_available_gate(terminal, exclude_flight_id=flight_id)
     if not gate:
         for fallback in TERMINAL_FALLBACK.get(terminal, []):
-            gate = await get_available_gate(fallback)
+            gate = await get_available_gate(fallback, exclude_flight_id=flight_id)
             if gate:
                 break
 

@@ -4,6 +4,7 @@ Pure logic: no I/O, no Kafka, no Neo4j. Deterministic given inputs.
 """
 
 import random
+from hashlib import sha1
 from datetime import datetime, timedelta
 
 
@@ -143,10 +144,11 @@ def get_terminal_for_flight(gate_id: str | None, terminal_id: str | None, flight
     if gate_id or terminal_id:
         return get_terminal_from_gate(gate_id, terminal_id)
 
-    # No gate assigned yet — distribute based on flight_id hash.
+    # No gate assigned yet — use stable hash for deterministic distribution.
     if flight_id:
         terminals = ["A", "B", "C"]
-        return terminals[hash(str(flight_id)) % 3]
+        digest = sha1(str(flight_id).encode("utf-8")).digest()
+        return terminals[digest[0] % 3]
 
     return "A"
 
@@ -165,7 +167,7 @@ def zone_for_status(status: str, terminal: str, gate_id: str | None = None) -> s
         case "boarded":
             return f"gate-{gate_id}" if gate_id else f"airside-{terminal}"
         case "deplaning":
-            return f"gate-{gate_id}" if gate_id else f"arrivals-hall"
+            return f"gate-{gate_id}" if gate_id else "arrivals-hall"
         case "baggage_claim":
             return "baggage-claim"
         case "departed_airport":

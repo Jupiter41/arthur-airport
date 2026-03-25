@@ -1,6 +1,5 @@
 """Unit tests for incident-service cascade engine — pure logic + depth limit."""
 
-import pytest
 
 from tests.conftest import import_service_module
 

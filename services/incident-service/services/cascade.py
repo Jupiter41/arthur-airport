@@ -1,9 +1,9 @@
-"""Cascade engine — rule-based child incident spawning with depth limit."""
+"""Cascade engine — rule-based child incident spawning with depth limit and delay support."""
 
 import logging
 import os
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,9 @@ CASCADE_RULES: dict[str, list[dict]] = {
 _cascaded_incidents: set[str] = set()
 _MAX_CASCADE_TRACKING = 50000
 
+# Pending delayed cascades: list of (fire_at: datetime, rule, parent_dict)
+_pending_cascades: list[tuple[datetime, dict, dict]] = []
+
 
 def _check_and_mark_cascaded(incident_id: str) -> bool:
     """Returns True if already cascaded (duplicate). Marks as cascaded if not."""
@@ -175,8 +178,49 @@ def _check_and_mark_cascaded(incident_id: str) -> bool:
     return False
 
 
+def get_pending_cascades() -> list[tuple[datetime, dict, dict]]:
+    """Return the pending cascades list (for inspection/testing)."""
+    return _pending_cascades
+
+
+async def fire_pending_cascades(sim_time: datetime) -> None:
+    """Fire any pending cascades whose delay has elapsed. Called on each tick."""
+    fired = []
+    remaining = []
+    for fire_at, rule, parent in _pending_cascades:
+        if sim_time >= fire_at:
+            fired.append((rule, parent))
+        else:
+            remaining.append((fire_at, rule, parent))
+    _pending_cascades.clear()
+    _pending_cascades.extend(remaining)
+
+    for rule, parent in fired:
+        from services.lifecycle import create_incident
+        depth = parent.get("cascade_depth", 0)
+        await create_incident(
+            type=rule["child_type"],
+            severity=rule["child_severity"],
+            location=parent["location"],
+            trigger="cascade",
+            sim_time=sim_time,
+            description=f"Cascade from {parent['type']} at {parent['location']}",
+            cascade_depth=depth + 1,
+            parent_id=parent["id"],
+        )
+        logger.info(
+            "Delayed cascade fired: %s → %s (depth %d → %d, delay=%dm)",
+            parent["type"], rule["child_type"], depth, depth + 1,
+            rule.get("delay_sim_min", 0),
+        )
+
+
 async def evaluate_cascades(parent: dict, sim_time: datetime) -> None:
-    """Evaluate cascade rules for a parent incident and create children."""
+    """Evaluate cascade rules for a parent incident and create children.
+
+    Rules with delay_sim_min > 0 are queued for later execution.
+    Rules with delay_sim_min == 0 fire immediately.
+    """
     depth = parent.get("cascade_depth", 0)
 
     if depth >= CASCADE_MAX_DEPTH:
@@ -202,21 +246,31 @@ async def evaluate_cascades(parent: dict, sim_time: datetime) -> None:
         if parent_severity_rank < min_rank:
             continue
 
-        # Import here to avoid circular import
-        from services.lifecycle import create_incident
+        delay = rule.get("delay_sim_min", 0)
 
-        child = await create_incident(
-            type=rule["child_type"],
-            severity=rule["child_severity"],
-            location=parent["location"],
-            trigger="cascade",
-            sim_time=sim_time,
-            description=f"Cascade from {parent['type']} at {parent['location']}",
-            cascade_depth=depth + 1,
-            parent_id=parent["id"],
-        )
+        if delay > 0:
+            fire_at = sim_time + timedelta(minutes=delay)
+            _pending_cascades.append((fire_at, rule, parent))
+            logger.info(
+                "Cascade queued: %s → %s in %dm (fires at %s)",
+                parent["type"], rule["child_type"], delay, fire_at.isoformat(),
+            )
+        else:
+            # Immediate cascade
+            from services.lifecycle import create_incident
 
-        logger.info(
-            "Cascade: %s → %s (depth %d → %d)",
-            parent["type"], rule["child_type"], depth, depth + 1,
-        )
+            await create_incident(
+                type=rule["child_type"],
+                severity=rule["child_severity"],
+                location=parent["location"],
+                trigger="cascade",
+                sim_time=sim_time,
+                description=f"Cascade from {parent['type']} at {parent['location']}",
+                cascade_depth=depth + 1,
+                parent_id=parent["id"],
+            )
+
+            logger.info(
+                "Cascade: %s → %s (depth %d → %d)",
+                parent["type"], rule["child_type"], depth, depth + 1,
+            )

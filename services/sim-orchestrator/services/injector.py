@@ -59,11 +59,11 @@ async def evaluate_probabilistic_events(sim_time: datetime) -> None:
             effective_prob *= peak_multiplier
 
         # Weather modifier (simplified — no weather state available yet)
-        weather_mults = events_config.get("weather_multiplier", {})
+        events_config.get("weather_multiplier", {})
         # Will be enhanced when weather service is active
 
         # High throughput modifier (simplified)
-        throughput_mults = events_config.get("high_throughput_multiplier", {})
+        events_config.get("high_throughput_multiplier", {})
 
         # Suppression window
         if _recent_incident(sim_time, window_hours=suppression_window):

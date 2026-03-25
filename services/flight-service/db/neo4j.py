@@ -363,8 +363,9 @@ async def assign_flight_to_gate(flight_id: str, gate_id: str, sim_time: datetime
     driver = get_driver()
     query = """
     MATCH (f:Flight {id: $flight_id})
-    OPTIONAL MATCH (f)-[old:ASSIGNED_TO]->(:Gate)
+    OPTIONAL MATCH (f)-[old:ASSIGNED_TO]->(old_gate:Gate)
     DELETE old
+    SET old_gate.status = 'available'
     WITH f
     MATCH (g:Gate {id: $gate_id})
     MERGE (f)-[r:ASSIGNED_TO]->(g)
@@ -396,22 +397,22 @@ async def release_gate(flight_id: str) -> str | None:
         return record["gate_id"] if record else None
 
 
-async def get_available_gate(terminal_id: str) -> str | None:
+async def get_available_gate(terminal_id: str, exclude_flight_id: str | None = None) -> str | None:
     """Find an available gate in the specified terminal."""
     driver = get_driver()
     query = """
     MATCH (t:Terminal {id: $terminal_id})-[:HAS_GATE]->(g:Gate)
-    WHERE g.status = 'available'
-      AND NOT EXISTS {
+    WHERE NOT EXISTS {
         MATCH (fl:Flight)-[:ASSIGNED_TO]->(g)
-        WHERE fl.status IN ['boarding', 'delayed', 'scheduled']
+        WHERE fl.status IN ['boarding', 'delayed', 'scheduled', 'landed', 'taxiing', 'at_gate']
+          AND ($exclude_id IS NULL OR fl.id <> $exclude_id)
       }
     RETURN g.id AS gate_id
     ORDER BY g.id
     LIMIT 1
     """
     async with driver.session() as session:
-        result = await session.run(query, terminal_id=terminal_id)
+        result = await session.run(query, terminal_id=terminal_id, exclude_id=exclude_flight_id)
         record = await result.single()
         return record["gate_id"] if record else None
 
@@ -454,16 +455,17 @@ async def get_all_gates(terminal: str | None = None) -> list[dict]:
     return gates
 
 
-async def is_gate_occupied(gate_id: str) -> bool:
-    """Check if a gate currently has an active flight assigned."""
+async def is_gate_occupied(gate_id: str, exclude_flight_id: str | None = None) -> bool:
+    """Check if a gate currently has an active flight assigned (excluding the requesting flight)."""
     driver = get_driver()
     query = """
     MATCH (f:Flight)-[:ASSIGNED_TO]->(g:Gate {id: $gate_id})
     WHERE f.status IN ['boarding', 'delayed', 'scheduled', 'landed', 'taxiing', 'at_gate']
+      AND ($exclude_id IS NULL OR f.id <> $exclude_id)
     RETURN count(f) AS count
     """
     async with driver.session() as session:
-        result = await session.run(query, gate_id=gate_id)
+        result = await session.run(query, gate_id=gate_id, exclude_id=exclude_flight_id)
         record = await result.single()
         return record["count"] > 0 if record else False
 
@@ -647,3 +649,16 @@ async def get_cascade_info(flight_id: str) -> dict:
         cascade["turnaround_delay"] = turnaround
 
     return cascade
+
+
+async def get_active_incident_locations() -> list[str]:
+    """Return locations of active (non-resolved) incidents for startup rebuild."""
+    driver = get_driver()
+    query = """
+    MATCH (i:Incident)
+    WHERE NOT i.status IN ['resolved', 'contained']
+    RETURN i.location AS location
+    """
+    async with driver.session() as session:
+        result = await session.run(query)
+        return [r["location"] async for r in result if r["location"]]

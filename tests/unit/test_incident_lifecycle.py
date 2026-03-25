@@ -1,12 +1,10 @@
 """Unit tests for incident-service lifecycle — pure logic, no I/O."""
 
-import importlib
 import sys
 import os
 import types
 from unittest.mock import MagicMock
 
-import pytest
 
 # We need to import lifecycle.py which depends on db.neo4j (neo4j driver).
 # Since this is a unit test, we mock the db layer before importing.
@@ -29,7 +27,9 @@ _mock_db = types.ModuleType("db")
 _mock_db_neo4j = types.ModuleType("db.neo4j")
 for fn_name in [
     "create_incident_node", "create_spawned_relationship",
+    "create_affects_relationship",
     "get_active_incidents_with_ttr", "get_incident_by_id",
+    "get_flights_at_gate", "get_flights_on_runway",
     "resolve_children", "update_incident_status", "update_ttr_remaining",
 ]:
     setattr(_mock_db_neo4j, fn_name, MagicMock())
@@ -37,7 +37,7 @@ _mock_db.neo4j = _mock_db_neo4j
 sys.modules["db"] = _mock_db
 sys.modules["db.neo4j"] = _mock_db_neo4j
 
-from services.lifecycle import (
+from services.lifecycle import (  # noqa: E402
     VALID_TRANSITIONS,
     TTR_RANGES,
     DEFAULT_DESCRIPTIONS,

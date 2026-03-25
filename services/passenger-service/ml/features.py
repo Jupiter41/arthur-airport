@@ -5,7 +5,6 @@ Uses FEATURE_COLS list to enforce column order.
 """
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 

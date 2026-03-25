@@ -2,7 +2,6 @@
 
 import logging
 import random
-import string
 from datetime import date, datetime, time, timedelta
 from uuid import uuid4
 
@@ -248,7 +247,7 @@ async def _persist_flights(flights: list[dict]) -> None:
                     scheduled_time: f.scheduled_time,
                     estimated_time: f.estimated_time,
                     delay_minutes: f.delay_minutes,
-                    delay_reason: null,
+                    delay_reason: '',
                     seat_capacity: f.seat_capacity,
                     pax_count: f.pax_count
                 })

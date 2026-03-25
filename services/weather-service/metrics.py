@@ -51,3 +51,9 @@ flights_delayed_by_weather_total = Counter(
     "Weather-caused delays",
     ["category"],
 )
+
+envelope_invalid_total = Counter(
+    "envelope_invalid_total",
+    "Invalid Kafka event envelopes dropped",
+    ["reason"],
+)

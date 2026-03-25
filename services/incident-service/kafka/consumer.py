@@ -14,10 +14,11 @@ import logging
 import os
 import random
 from datetime import datetime
+from typing import Callable, Awaitable
 
 from confluent_kafka import Consumer
 
-from db.neo4j import find_active_incident_by_type_and_location, get_incident_by_id
+from db.neo4j import find_active_incident_by_type_and_location
 from kafka.producer import (
     emit_incident_alert,
     emit_incident_cascaded,
@@ -30,6 +31,7 @@ from services.lifecycle import (
     set_lifecycle_callbacks,
     tick_ttr,
 )
+from services.cascade import fire_pending_cascades
 from services.protocols import build_alert
 from metrics import (
     incidents_active as m_active,
@@ -38,25 +40,15 @@ from metrics import (
     cascade_events_total as m_cascade,
     cascade_depth_max as m_cascade_depth,
     protocols_activated_total as m_protocols,
-    flights_impacted_by_incidents_total as m_flights_impacted,
+    envelope_invalid_total as m_envelope_invalid,
 )
 
 logger = logging.getLogger(__name__)
 
-_consumer: Consumer | None = None
-_consumer_running = False
-_sim_time: datetime | None = None
+# ── Constants (not mutated) ──────────────────────────────────
 
-# Idempotency
-_processed_events: set[str] = set()
-_MAX_PROCESSED = 20000
-
-# Probabilistic event evaluation — track hourly + suppression
-_last_prob_hour: int = -1
-_last_incident_times: dict[str, datetime] = {}
 SUPPRESSION_WINDOW_HRS = float(os.getenv("INCIDENT_SUPPRESSION_WINDOW_HRS", "2"))
 
-# Probabilistic base rates (per simulated hour)
 BASE_PROBABILITIES = {
     "runway_incursion": float(os.getenv("PROB_RUNWAY_INCURSION_PER_HR", "0.005")),
     "baggage_fire": float(os.getenv("PROB_BAGGAGE_FIRE_PER_HR", "0.008")),
@@ -65,50 +57,73 @@ BASE_PROBABILITIES = {
 }
 
 PEAK_HOURS = {7, 8, 9, 17, 18, 19}
-
-# Track weather category for probability modifiers
-_current_weather_category: str = "CAVOK"
-
-# Security congestion consecutive-tick counter is in passenger-service;
-# we just react to the emitted event here.
-
-# Locations for probabilistic events
 RUNWAY_IDS = ["runway-09L", "runway-09R", "runway-27L", "runway-27R"]
 TERMINAL_IDS = ["terminal-A", "terminal-B", "terminal-C"]
 SYSTEM_SUBTYPES = ["conveyor_jam", "power_outage", "it_failure"]
 
-# Track max cascade depth in memory (since Gauge doesn't support "max" natively)
-_max_cascade_depth: int = 0
 
-# WebSocket broadcast callback
-_ws_broadcast = None
+# ── Class-based state holder ────────────────────────────────
 
-# In-memory active alerts for /alerts endpoint
-_active_alerts: list[dict] = []
-_MAX_ALERTS = 200
+
+class IncidentConsumerState:
+    """Holds all mutable runtime state for the incident consumer.
+
+    Eliminates module-level globals that caused UnboundLocalError bugs
+    (sprints 1–3, 6) due to Python's `global` scoping rules.
+    """
+
+    MAX_PROCESSED = 20000
+    MAX_ALERTS = 200
+
+    def __init__(self) -> None:
+        self.sim_time: datetime | None = None
+        self.processed_events: set[str] = set()
+        self.last_prob_hour: int = -1
+        self.last_incident_times: dict[str, datetime] = {}
+        self.current_weather_category: str = "CAVOK"
+        self.max_cascade_depth: int = 0
+        self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
+        self.active_alerts: list[dict] = []
+
+    def check_idempotency(self, event_id: str) -> bool:
+        """Returns True if the event has already been processed (duplicate)."""
+        if not event_id:
+            return False
+        if event_id in self.processed_events:
+            return True
+        self.processed_events.add(event_id)
+        if len(self.processed_events) > self.MAX_PROCESSED:
+            to_remove = list(self.processed_events)[:self.MAX_PROCESSED // 2]
+            for item in to_remove:
+                self.processed_events.discard(item)
+        return False
+
+    def add_alert(self, alert: dict) -> None:
+        self.active_alerts.insert(0, alert)
+        if len(self.active_alerts) > self.MAX_ALERTS:
+            self.active_alerts.pop()
+
+
+# Module-level singleton
+_state = IncidentConsumerState()
+_consumer: Consumer | None = None
+_consumer_running = False
 
 
 def set_ws_broadcast(fn):
-    global _ws_broadcast
-    _ws_broadcast = fn
+    _state.ws_broadcast = fn
 
 
 def get_sim_time() -> datetime | None:
-    return _sim_time
+    return _state.sim_time
 
 
 def get_active_alerts() -> list[dict]:
-    return list(_active_alerts)
+    return list(_state.active_alerts)
 
 
 def is_consumer_running() -> bool:
     return _consumer_running
-
-
-def _add_alert(alert: dict) -> None:
-    _active_alerts.insert(0, alert)
-    if len(_active_alerts) > _MAX_ALERTS:
-        _active_alerts.pop()
 
 
 # ── Lifecycle callbacks (wired at startup) ───────────────────
@@ -120,7 +135,7 @@ async def _on_incident_created(incident: dict, sim_time: datetime, parent_id: st
     emit_incident_alert(incident, sim_time)
 
     alert = build_alert(incident, sim_time)
-    _add_alert(alert)
+    _state.add_alert(alert)
 
     if parent_id:
         emit_incident_cascaded(parent_id, incident, sim_time)
@@ -139,14 +154,13 @@ async def _on_incident_created(incident: dict, sim_time: datetime, parent_id: st
 
     depth = incident.get("cascade_depth", 0)
     if depth > 0:
-        global _max_cascade_depth
-        if depth > _max_cascade_depth:
-            _max_cascade_depth = depth
+        if depth > _state.max_cascade_depth:
+            _state.max_cascade_depth = depth
             m_cascade_depth.set(depth)
 
     # WebSocket broadcast
-    if _ws_broadcast:
-        await _ws_broadcast({
+    if _state.ws_broadcast:
+        await _state.ws_broadcast({
             "type": "IncidentCreated",
             "sim_time": sim_time.isoformat(),
             "payload": {
@@ -167,7 +181,7 @@ async def _on_incident_status_changed(
     emit_incident_alert(incident, sim_time)
 
     alert = build_alert(incident, sim_time)
-    _add_alert(alert)
+    _state.add_alert(alert)
 
     # Update Prometheus
     inc_type = incident.get("type", "unknown")
@@ -184,8 +198,8 @@ async def _on_incident_status_changed(
             except (ValueError, TypeError):
                 pass
 
-    if _ws_broadcast:
-        await _ws_broadcast({
+    if _state.ws_broadcast:
+        await _state.ws_broadcast({
             "type": "IncidentStatusChanged",
             "sim_time": sim_time.isoformat(),
             "payload": {
@@ -258,25 +272,45 @@ def stop_consumer() -> None:
 # ── Dispatch ─────────────────────────────────────────────────
 
 
-async def _dispatch(envelope: dict) -> None:
+def _validate_envelope(envelope: dict) -> tuple[str | None, dict, datetime | None]:
+    """Validate event envelope. Returns (event_type, payload, sim_time) or Nones on failure."""
     event_type = envelope.get("event_type")
-    event_id = envelope.get("event_id", "")
-    payload = envelope.get("payload", {})
+    if not isinstance(event_type, str):
+        m_envelope_invalid.labels(reason="missing_event_type").inc()
+        logger.warning("Invalid envelope: missing or non-string event_type")
+        return None, {}, None
 
-    # Idempotency
-    if event_id:
-        if event_id in _processed_events:
-            return
-        _processed_events.add(event_id)
-        if len(_processed_events) > _MAX_PROCESSED:
-            to_remove = list(_processed_events)[:_MAX_PROCESSED // 2]
-            for item in to_remove:
-                _processed_events.discard(item)
+    sim_time_str = envelope.get("sim_time")
+    if not sim_time_str:
+        m_envelope_invalid.labels(reason="missing_sim_time").inc()
+        logger.warning("Invalid envelope: missing sim_time (event_type=%s)", event_type)
+        return None, {}, None
 
     try:
-        sim_time = datetime.fromisoformat(envelope.get("sim_time", ""))
+        sim_time = datetime.fromisoformat(str(sim_time_str)).replace(tzinfo=None)
     except (ValueError, TypeError):
-        logger.warning("Invalid sim_time in event %s — skipping", event_type)
+        m_envelope_invalid.labels(reason="invalid_sim_time").inc()
+        logger.warning("Invalid envelope: unparseable sim_time=%r", sim_time_str)
+        return None, {}, None
+
+    payload = envelope.get("payload")
+    if not isinstance(payload, dict):
+        m_envelope_invalid.labels(reason="invalid_payload").inc()
+        logger.warning("Invalid envelope: payload is not a dict (event_type=%s)", event_type)
+        return None, {}, None
+
+    return event_type, payload, sim_time
+
+
+async def _dispatch(envelope: dict) -> None:
+    event_id = envelope.get("event_id", "")
+
+    # Idempotency
+    if _state.check_idempotency(event_id):
+        return
+
+    event_type, payload, sim_time = _validate_envelope(envelope)
+    if event_type is None:
         return
 
     match event_type:
@@ -298,20 +332,22 @@ async def _dispatch(envelope: dict) -> None:
 
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
-    global _sim_time, _last_prob_hour
-    _sim_time = sim_time
+    _state.sim_time = sim_time
 
     # 1. TTR countdown
     await tick_ttr(sim_time)
 
+    # 1b. Fire any pending delayed cascades
+    await fire_pending_cascades(sim_time)
+
     # 2. Probabilistic event evaluation (once per simulated hour)
     hour = sim_time.hour
-    if hour != _last_prob_hour:
-        _last_prob_hour = hour
+    if hour != _state.last_prob_hour:
+        _state.last_prob_hour = hour
         await _evaluate_probabilistic_events(sim_time)
 
     # 3. Update alert ages
-    for alert in _active_alerts:
+    for alert in _state.active_alerts:
         try:
             alert_time = datetime.fromisoformat(alert["at"])
             delta = sim_time - alert_time
@@ -341,11 +377,9 @@ async def _on_inject(payload: dict, sim_time: datetime) -> None:
 
 async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
     """Auto-create severe_weather incident on IMC/LIFR."""
-    global _current_weather_category
-
     new_category = payload.get("new_category", "CAVOK")
     previous_category = payload.get("previous_category", "CAVOK")
-    _current_weather_category = new_category
+    _state.current_weather_category = new_category
 
     if new_category in ("IMC", "LIFR"):
         # Check if there's already an active severe_weather incident
@@ -432,12 +466,12 @@ def _effective_probability(event_type: str, sim_time: datetime) -> float:
         prob *= 1.8
 
     # Weather multiplier for runway incursions
-    if _current_weather_category in ("IMC", "LIFR"):
+    if _state.current_weather_category in ("IMC", "LIFR"):
         if event_type == "runway_incursion":
             prob *= 2.0
 
     # Suppression window — reduce probability if same type fired recently
-    last_time = _last_incident_times.get(event_type)
+    last_time = _state.last_incident_times.get(event_type)
     if last_time:
         hours_since = (sim_time - last_time).total_seconds() / 3600
         if hours_since < SUPPRESSION_WINDOW_HRS:
@@ -476,7 +510,7 @@ async def _evaluate_probabilistic_events(sim_time: datetime) -> None:
                 subtype=subtype,
             )
 
-            _last_incident_times[event_type] = sim_time
+            _state.last_incident_times[event_type] = sim_time
             logger.info(
                 "Probabilistic incident fired: %s severity=%s at %s",
                 event_type, severity, location,

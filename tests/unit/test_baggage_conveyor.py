@@ -1,6 +1,5 @@
 """Unit tests for baggage-service conveyor system — pure logic, no I/O."""
 
-import pytest
 
 from tests.conftest import import_service_module
 

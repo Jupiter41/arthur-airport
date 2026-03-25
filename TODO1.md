@@ -1,53 +1,76 @@
 # TODO — Redesign and hardening backlog (from sprint lessons)
 
 Derived from:
+
 - docs/lessons-learned/sprint-0.md to docs/lessons-learned/sprint-9.md
+
+BEFORE WRITING ANY CODE
+
+Read these files in order:
+
+TODO1.md — this backlog and prioritization
+CLAUDE.md — architecture rules and constraints
+docs/skills/SKILL.md — cross-cutting patterns
+docs/lessons-learned/\*.md — all accumulated lessons
+
+Focus especially on:
+
+System-wide consistency
+Failure recovery behavior
+Test coverage of critical logic
+Developer experience (DX)
+Clean reproducibility
+
+GOAL
+
+Do all the tasks in P2 and P3 only.
+Then mark them as complete here.
 
 ## P0 — reliability and correctness
 
-- [ ] Replace module-level mutable runtime state with class-based state holders in `weather-service`, `flight-service`, and `incident-service`.
+- [x] Replace module-level mutable runtime state with class-based state holders in `weather-service`, `flight-service`, and `incident-service`.
   - Why: repeated `global`/`UnboundLocalError` failures in multiple sprints.
   - Done when: no service runtime path depends on Python `global` for mutable shared state.
 
-- [ ] Add startup catch-up logic for all services that process timeline transitions (`flight`, `baggage`, `passenger`).
+- [x] Add startup catch-up logic for all services that process timeline transitions (`flight`, `baggage`, `passenger`).
   - Why: services may start mid-simulation with already-advanced entity states.
   - Done when: restart during active simulation converges to correct state without manual reset.
 
-- [ ] Enforce strict event envelope validation and logging at all Kafka consumers.
+- [x] Enforce strict event envelope validation and logging at all Kafka consumers.
   - Why: malformed envelopes (for example missing `sim_time`) were silently dropped.
   - Done when: invalid envelopes are counted, logged, and exported as metrics; valid events still process.
 
-- [ ] Add integration tests for idempotency and duplicate event handling on all consumers.
+- [x] Add integration tests for idempotency and duplicate event handling on all consumers.
   - Why: several services rely on in-memory dedup sets and event-order assumptions.
   - Done when: replaying duplicate messages does not create duplicate state mutations/events.
 
-- [ ] Add restart-rebuild tests for every in-memory structure (queues, zone maps, runway queue, alert caches).
+- [x] Add restart-rebuild tests for every in-memory structure (queues, zone maps, runway queue, alert caches).
   - Why: Neo4j is source of truth; in-memory state must be rebuildable.
   - Done when: cold restart test suite passes with no divergence in aggregate state.
 
 ## P1 — data model and event flow redesign
 
-- [ ] Implement incident-to-flight impact linking (`AFFECTS`) with clear ownership and write path.
+- [x] Implement incident-to-flight impact linking (`AFFECTS`) with clear ownership and write path.
   - Why: incident reports currently show zero affected flights in many cases.
   - Done when: incident reports return non-zero affected flights where runway/gate impact is expected.
 
-- [ ] Implement delayed incident cascades using `delay_sim_min` and a pending-cascade scheduler.
+- [x] Implement delayed incident cascades using `delay_sim_min` and a pending-cascade scheduler.
   - Why: cascade rules currently fire instantly.
   - Done when: cascades occur at configured simulated delay and remain deterministic across restarts.
 
-- [ ] Add protocol lifecycle manager with global override rules (including `FULL_EVACUATION` precedence).
+- [x] Add protocol lifecycle manager with global override rules (including `FULL_EVACUATION` precedence).
   - Why: protocol conflicts are not currently resolved globally.
   - Done when: active protocol state is queryable and override semantics are enforced.
 
-- [ ] Replace weather `ceiling_ft = -1` sentinel with proper nullable modeling.
+- [x] Replace weather `ceiling_ft = -1` sentinel with proper nullable modeling.
   - Why: sentinel values add conversion risk and query ambiguity.
   - Done when: storage/query paths handle null ceiling consistently without sentinel conversions.
 
-- [ ] Add `previous_category` persistence for weather transitions in Neo4j.
+- [x] Add `previous_category` persistence for weather transitions in Neo4j.
   - Why: simplifies transition analytics without replaying event history.
   - Done when: transition history endpoint can return previous/new category per state transition directly.
 
-## P1 — query and schema hardening
+## P2 — query and schema hardening
 
 - [ ] Build a Cypher compatibility checklist and lint script for Neo4j Community constraints.
   - Why: repeated syntax/behavior issues (`NOT x IN`, OPTIONAL MATCH aggregation, EXISTS scope).
@@ -61,7 +84,7 @@ Derived from:
   - Why: avoid `UNKNOWN_TOPIC_OR_PART` startup noise and uncertain auto-create behavior.
   - Done when: no service logs missing-topic warnings during clean startup.
 
-## P2 — gateway and dashboard redesign
+## P3 — gateway and dashboard redesign
 
 - [ ] Add short-TTL cache (5-10s) for gateway aggregate endpoint `/api/v1/airport`.
   - Why: each request fans out to multiple upstream services.
@@ -87,7 +110,7 @@ Derived from:
   - Why: sprint 8 identified testing gap.
   - Done when: CI includes store reducer coverage and API-mocked component flow tests.
 
-## P2 — observability and operations
+## P4 — observability and operations
 
 - [ ] Standardize metric updates at mutation sites plus periodic reconciliation.
   - Why: tick-only metric updates missed transient states.
@@ -105,7 +128,7 @@ Derived from:
   - Why: reduce query-time CPU in Prometheus and Grafana.
   - Done when: top dashboard queries read from recording rules with equivalent outputs.
 
-## P3 — developer experience and process
+## P5 — developer experience and process
 
 - [ ] Add lint rule/check for module-level augmented assignment misuse (`+=`, `-=`, etc.) in functions.
   - Why: recurring Python scoping bug pattern across sprints.

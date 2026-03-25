@@ -95,6 +95,7 @@ async def generate_arrival_baggage(
 
     all_baggage: list[dict] = []
     tag_counter = 5_000_000_000
+    flight_pax_counts: dict[str, int] = {}
 
     for flight in arrival_flights:
         seat_capacity = int(flight.get("seat_capacity") or 0)
@@ -106,6 +107,9 @@ async def generate_arrival_baggage(
         pax_count = max(1, round(seat_capacity * load_factor))
         bag_count = int(np_rng.poisson(max(1.0, pax_count * POISSON_LAMBDA)))
         bag_count = max(1, min(bag_count, seat_capacity * 3))
+
+        # Track pax_count to update the arrival Flight node
+        flight_pax_counts[flight["id"]] = pax_count
 
         for _ in range(bag_count):
             bag_id = str(uuid4())
@@ -133,6 +137,10 @@ async def generate_arrival_baggage(
             all_baggage.append(bag)
 
     await _persist_arrival_baggage(all_baggage)
+
+    # Update pax_count on arrival Flight nodes (synthetic, no Passenger nodes)
+    if flight_pax_counts:
+        await _update_arrival_pax_counts(flight_pax_counts)
 
     logger.info(
         "Generated %d inbound baggage items for %d arrival flights",
@@ -201,4 +209,22 @@ async def _persist_arrival_baggage(baggage: list[dict]) -> None:
                 CREATE (bag)-[:LOADED_ON]->(f)
                 """,
                 baggage=batch,
+            )
+
+
+async def _update_arrival_pax_counts(counts: dict[str, int]) -> None:
+    """Update pax_count on arrival Flight nodes (synthetic — no Passenger nodes exist)."""
+    driver = get_driver()
+    items = [{"id": fid, "pax_count": cnt} for fid, cnt in counts.items()]
+    batch_size = 200
+    for i in range(0, len(items), batch_size):
+        batch = items[i : i + batch_size]
+        async with driver.session() as session:
+            await session.run(
+                """
+                UNWIND $items AS item
+                MATCH (f:Flight {id: item.id})
+                SET f.pax_count = item.pax_count
+                """,
+                items=batch,
             )

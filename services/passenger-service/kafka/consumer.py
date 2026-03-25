@@ -11,6 +11,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
+from typing import Callable, Awaitable
 
 from confluent_kafka import Consumer
 
@@ -24,6 +25,7 @@ from db.neo4j import (
     get_connecting_passengers,
     get_departure_flights_in_window,
     get_status_counts,
+    update_passenger_location,
 )
 from kafka.producer import (
     emit_passenger_status_changed,
@@ -32,12 +34,11 @@ from kafka.producer import (
 )
 from ml.congestion import check_congestion
 from ml.features import build_features
-from ml.inference import is_model_trained, load_models, predict, get_feature_importance
+from ml.inference import load_models, predict
 from ml.training import add_training_row, maybe_flush, maybe_retrain
 from services.connections import evaluate_connecting_passengers
 from services.security import SecuritySystem
 from services.state_machine import (
-    get_terminal_from_gate,
     get_terminal_for_flight,
     sample_dwell_minutes,
     should_move_to_at_gate,
@@ -48,64 +49,68 @@ from services.state_machine import (
     zone_for_status,
     BOARDING_RATE_PAX_PER_MIN,
 )
-from services.zones import move_passenger, remove_passenger, rebuild_from_neo4j, get_density
+from services.zones import move_passenger, remove_passenger
 from metrics import (
     passengers_in_airport as m_pax_in_airport,
     security_queue_depth as m_sec_queue_depth,
     security_wait_minutes as m_sec_wait,
     security_lanes_open as m_sec_lanes,
-    connections_at_risk as m_conn_at_risk,
-    connections_missed_total as m_conn_missed,
-    passenger_alerts_total as m_pax_alerts,
-    zone_load_pct as m_zone_load,
+    envelope_invalid_total as m_envelope_invalid,
 )
 
 logger = logging.getLogger(__name__)
 
+
+# ── Class-based state holder ────────────────────────────────
+
+
+class PassengerConsumerState:
+    """Holds all mutable runtime state for the passenger consumer."""
+
+    MAX_PROCESSED = 20000
+    MAX_ALERTS = 200
+
+    def __init__(self) -> None:
+        self.sim_time: datetime | None = None
+        self.sim_day: int = 0
+        self.security = SecuritySystem()
+        self.weather_category: str = "CAVOK"
+        self.active_incidents: dict[str, bool] = {"A": False, "B": False, "C": False}
+        self.load_factor_sum: float = 0.0
+        self.load_factor_count: int = 0
+        self.cached_flights_next_90: dict[str, int] = {"A": 0, "B": 0, "C": 0}
+        self.cached_pax_next_90: dict[str, float] = {"A": 0.0, "B": 0.0, "C": 0.0}
+        self.alerts: list[dict] = []
+        self.at_risk_connections: list[dict] = []
+        self.processed_events: set[str] = set()
+        self.security_enqueued: set[str] = set()
+        self.airside_transitioned: set[str] = set()
+        self.baggage_collected: set[str] = set()
+        self.passengers_at_carousel: set[str] = set()
+        self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
+
+    def check_idempotency(self, event_id: str) -> bool:
+        if not event_id:
+            return False
+        if event_id in self.processed_events:
+            return True
+        self.processed_events.add(event_id)
+        if len(self.processed_events) > self.MAX_PROCESSED:
+            excess = len(self.processed_events) - self.MAX_PROCESSED
+            for _ in range(excess):
+                self.processed_events.pop()
+        return False
+
+    def add_alert(self, alert: dict) -> None:
+        self.alerts.append(alert)
+        if len(self.alerts) > self.MAX_ALERTS:
+            self.alerts = self.alerts[-self.MAX_ALERTS:]
+
+
+# Module-level singleton
+_state = PassengerConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
-
-# --- State ---
-_sim_time: datetime | None = None
-_sim_day: int = 0
-_security = SecuritySystem()
-
-# Weather category cache (from weather.events)
-_weather_category: str = "CAVOK"
-
-# Active incidents per terminal
-_active_incidents: dict[str, bool] = {"A": False, "B": False, "C": False}
-
-# Load factor tracking
-_load_factor_sum: float = 0.0
-_load_factor_count: int = 0
-
-# Cached flight/pax counts for forecast features (updated in _ml_tick)
-_cached_flights_next_90: dict[str, int] = {"A": 0, "B": 0, "C": 0}
-_cached_pax_next_90: dict[str, float] = {"A": 0.0, "B": 0.0, "C": 0.0}
-
-# Alert history (in-memory, last 200)
-_alerts: list[dict] = []
-_MAX_ALERTS = 200
-
-# At-risk connections cache
-_at_risk_connections: list[dict] = []
-
-# Idempotency
-_processed_events: set[str] = set()
-_MAX_PROCESSED = 20000
-
-# Track which passengers have been enqueued in security
-_security_enqueued: set[str] = set()
-
-# Passengers we've already transitioned to airside
-_airside_transitioned: set[str] = set()
-
-# Baggage collected set — passenger IDs whose bags are collected
-_baggage_collected: set[str] = set()
-
-# WebSocket broadcast callback
-_ws_broadcast = None
 
 
 async def rebuild_security_from_neo4j() -> None:
@@ -133,32 +138,31 @@ async def rebuild_security_from_neo4j() -> None:
                 pax.get("gate_id"), pax.get("terminal_id"), pax.get("flight_id") or ""
             )
         is_sa = bool(pax.get("special_assistance"))
-        _security.enqueue(terminal, pid, is_sa)
-        _security_enqueued.add(pid)
+        _state.security.enqueue(terminal, pid, is_sa)
+        _state.security_enqueued.add(pid)
         count += 1
 
     logger.info("Rebuilt security queues from Neo4j: %d passengers loaded", count)
 
 
 def set_ws_broadcast(fn):
-    global _ws_broadcast
-    _ws_broadcast = fn
+    _state.ws_broadcast = fn
 
 
 def get_sim_time() -> datetime | None:
-    return _sim_time
+    return _state.sim_time
 
 
 def get_security() -> SecuritySystem:
-    return _security
+    return _state.security
 
 
 def get_alerts() -> list[dict]:
-    return _alerts
+    return _state.alerts
 
 
 def get_at_risk_connections() -> list[dict]:
-    return _at_risk_connections
+    return _state.at_risk_connections
 
 
 def is_consumer_running() -> bool:
@@ -185,11 +189,19 @@ async def run_consumer() -> None:
     global _consumer, _consumer_running
 
     _consumer = _make_consumer()
-    _consumer.subscribe(["sim.clock", "flights.events", "incidents.events", "baggage.events"])
+    _consumer.subscribe([
+        "sim.clock",
+        "flights.events",
+        "incidents.events",
+        "baggage.events",
+        "weather.events",
+    ])
     _consumer_running = True
 
     loop = asyncio.get_event_loop()
-    logger.info("Kafka consumer started (topics: sim.clock, flights.events, incidents.events, baggage.events)")
+    logger.info(
+        "Kafka consumer started (topics: sim.clock, flights.events, incidents.events, baggage.events, weather.events)"
+    )
 
     try:
         while _consumer_running:
@@ -210,30 +222,47 @@ async def run_consumer() -> None:
         logger.info("Kafka consumer stopped")
 
 
-async def _dispatch(envelope: dict) -> None:
-    """Route events to handlers based on event_type."""
-    event_id = envelope.get("event_id", "")
+def _validate_envelope(envelope: dict) -> tuple[str, datetime, dict] | None:
+    """Validate Kafka envelope structure. Returns (event_type, sim_time, payload) or None."""
     event_type = envelope.get("event_type")
-    payload = envelope.get("payload", {})
-
-    # Idempotency check (skip for clock ticks)
-    if event_type != "SimClockTick":
-        if event_id in _processed_events:
-            return
-        _processed_events.add(event_id)
-        if len(_processed_events) > _MAX_PROCESSED:
-            excess = len(_processed_events) - _MAX_PROCESSED
-            for _ in range(excess):
-                _processed_events.pop()
+    if not isinstance(event_type, str):
+        m_envelope_invalid.labels(reason="missing_event_type").inc()
+        logger.warning("Invalid envelope: missing/non-string event_type")
+        return None
 
     sim_time_str = envelope.get("sim_time")
     if not sim_time_str:
-        logger.debug("Event dropped: missing sim_time")
-        return
+        m_envelope_invalid.labels(reason="missing_sim_time").inc()
+        logger.warning("Invalid envelope: missing sim_time for %s", event_type)
+        return None
     try:
-        sim_time = datetime.fromisoformat(sim_time_str).replace(tzinfo=None)
+        sim_time = datetime.fromisoformat(str(sim_time_str)).replace(tzinfo=None)
     except (ValueError, TypeError):
+        m_envelope_invalid.labels(reason="unparseable_sim_time").inc()
+        logger.warning("Invalid envelope: unparseable sim_time '%s'", sim_time_str)
+        return None
+
+    payload = envelope.get("payload")
+    if not isinstance(payload, dict):
+        m_envelope_invalid.labels(reason="missing_payload").inc()
+        logger.warning("Invalid envelope: missing/non-dict payload for %s", event_type)
+        return None
+
+    return event_type, sim_time, payload
+
+
+async def _dispatch(envelope: dict) -> None:
+    """Route events to handlers based on event_type."""
+    validated = _validate_envelope(envelope)
+    if validated is None:
         return
+    event_type, sim_time, payload = validated
+
+    # Idempotency check (skip for clock ticks)
+    if event_type != "SimClockTick":
+        event_id = envelope.get("event_id", "")
+        if _state.check_idempotency(event_id):
+            return
 
     match event_type:
         case "SimClockTick":
@@ -258,14 +287,16 @@ async def _dispatch(envelope: dict) -> None:
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Main tick handler — advance all passenger state machines."""
-    global _sim_time, _sim_day
-    _sim_time = sim_time
-    _sim_day = payload.get("day_of_sim", 0)
+    _state.sim_time = sim_time
+    _state.sim_day = payload.get("day_of_sim", 0)
 
     try:
         # 1. ML: collect training data + update cached flight/pax counts
         #    (must run before security drain so forecast features are fresh)
         await _ml_tick(sim_time)
+
+        # 1b. Move booked passengers to checked_in at T-120
+        await _advance_booked_to_checkin(sim_time)
 
         # 2. Move checked_in passengers to security_queue when check-in closes
         await _advance_checkin_to_security(sim_time)
@@ -331,8 +362,84 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         logger.error("Error in clock tick processing: %s", e, exc_info=True)
 
 
+CHECKIN_OPEN_MINUTES = 120  # Passengers arrive at check-in T-120 min before departure
+
+
+async def _advance_booked_to_checkin(sim_time: datetime) -> None:
+    """Move booked passengers to checked_in at T-120 (check-in opens).
+
+    Batched: up to MAX_CHECKIN_PER_TICK passengers per tick to simulate
+    gradual arrival at the airport.
+    """
+    MAX_CHECKIN_PER_TICK = 50
+
+    try:
+        pax_list = await get_passengers_by_status("booked")
+    except Exception as e:
+        logger.error("Failed to get booked passengers: %s", e)
+        return
+
+    # Group by flight
+    flights: dict[str, list[dict]] = {}
+    for pax in pax_list:
+        fid = pax.get("flight_id") or ""
+        flights.setdefault(fid, []).append(pax)
+
+    total_moved = 0
+
+    for flight_id, pax_group in flights.items():
+        if not pax_group:
+            continue
+        if total_moved >= MAX_CHECKIN_PER_TICK:
+            break
+        sample = pax_group[0]
+        scheduled = sample.get("scheduled_time") or sample.get("estimated_time")
+        if not scheduled:
+            continue
+        direction = sample.get("direction", "departure")
+        if direction != "departure":
+            continue
+
+        try:
+            sched_dt = datetime.fromisoformat(str(scheduled)).replace(tzinfo=None)
+        except (ValueError, TypeError):
+            continue
+
+        if sim_time < sched_dt - timedelta(minutes=CHECKIN_OPEN_MINUTES):
+            continue
+
+        terminal = get_terminal_for_flight(
+            sample.get("gate_id"), sample.get("terminal_id"), flight_id
+        )
+        new_zone = f"check-in-{terminal}"
+
+        remaining = MAX_CHECKIN_PER_TICK - total_moved
+        batch = pax_group[:remaining]
+        ids = [p["id"] for p in batch]
+        await bulk_update_status(ids, "checked_in", new_zone, sim_time)
+        for pax in batch:
+            move_passenger(None, new_zone)
+            await emit_passenger_status_changed(
+                passenger_id=pax["id"],
+                name=pax.get("name", ""),
+                previous_status="booked",
+                new_status="checked_in",
+                location_zone=new_zone,
+                sim_time=sim_time,
+                flight_id=flight_id,
+                flight_number=pax.get("flight_number"),
+            )
+        total_moved += len(batch)
+
+
 async def _advance_checkin_to_security(sim_time: datetime) -> None:
-    """Move checked_in passengers to security_queue at T-45."""
+    """Move checked_in passengers to security_queue at T-45.
+
+    Batched: moves up to MAX_CHECKIN_TO_SECURITY_PER_TICK passengers per tick
+    across all flights to prevent security queue overload.
+    """
+    MAX_CHECKIN_TO_SECURITY_PER_TICK = 40  # ~40 pax/min realistic check-in close rate
+
     try:
         pax_list = await get_passengers_by_status("checked_in")
     except Exception as e:
@@ -344,6 +451,14 @@ async def _advance_checkin_to_security(sim_time: datetime) -> None:
     for pax in pax_list:
         fid = pax.get("flight_id") or ""
         flights.setdefault(fid, []).append(pax)
+
+    total_moved = 0
+
+    for flight_id, pax_group in flights.items():
+        if not pax_group:
+            continue
+        if total_moved >= MAX_CHECKIN_TO_SECURITY_PER_TICK:
+            break
 
     for flight_id, pax_group in flights.items():
         if not pax_group:
@@ -369,6 +484,8 @@ async def _advance_checkin_to_security(sim_time: datetime) -> None:
 
         ids_to_move = []
         for pax in pax_group:
+            if total_moved >= MAX_CHECKIN_TO_SECURITY_PER_TICK:
+                break
             pid = pax["id"]
             if pid in _security_enqueued:
                 continue
@@ -376,6 +493,7 @@ async def _advance_checkin_to_security(sim_time: datetime) -> None:
             is_sa = bool(pax.get("special_assistance"))
             _security.enqueue(terminal, pid, is_sa)
             ids_to_move.append(pid)
+            total_moved += 1
 
         if ids_to_move:
             new_zone = f"security-{terminal}"
@@ -399,6 +517,7 @@ async def _advance_checkin_to_security(sim_time: datetime) -> None:
 
 async def _drain_security_queues(sim_time: datetime) -> None:
     """Drain security checkpoints and move passengers to airside."""
+    zone_by_pid = await _sync_security_from_db()
     forecast_queues = _get_forecast_queues(sim_time)
     drained = _security.drain_all(forecast_queues)
 
@@ -408,11 +527,12 @@ async def _drain_security_queues(sim_time: datetime) -> None:
             continue
 
         new_zone = f"airside-{terminal}"
-        old_zone = f"security-{terminal}"
+        default_old_zone = f"security-{terminal}"
 
         await bulk_update_status(all_drained, "airside", new_zone, sim_time)
 
         for pid in all_drained:
+            old_zone = zone_by_pid.get(pid, default_old_zone)
             move_passenger(old_zone, new_zone)
             # Sample dwell time for each passenger
             dwell = sample_dwell_minutes()
@@ -426,6 +546,45 @@ async def _drain_security_queues(sim_time: datetime) -> None:
                 location_zone=new_zone,
                 sim_time=sim_time,
             )
+
+
+async def _sync_security_from_db() -> dict[str, str]:
+    """Reconcile in-memory security queues against Neo4j before drain.
+
+    This prevents stuck passengers when the service restarts mid-simulation
+    or if events were missed.
+    """
+    try:
+        pax_list = await get_passengers_by_status("security_queue")
+    except Exception as e:
+        logger.error("Failed to sync security queues from Neo4j: %s", e)
+        return {}
+
+    zone_by_pid: dict[str, str] = {}
+    security_ids: set[str] = set()
+    for pax in pax_list:
+        pid = pax["id"]
+        security_ids.add(pid)
+        zone_by_pid[pid] = pax.get("location_zone") or ""
+
+        if pid in _airside_transitioned:
+            continue
+
+        if pid not in _security_enqueued:
+            terminal = _extract_terminal_from_location(zone_by_pid[pid])
+            if terminal is None:
+                terminal = get_terminal_for_flight(
+                    pax.get("gate_id"), pax.get("terminal_id"), pax.get("flight_id") or ""
+                )
+            _security.enqueue(terminal, pid, bool(pax.get("special_assistance")))
+            _security_enqueued.add(pid)
+
+    # Remove stale IDs from in-memory queues when they are no longer in security_queue.
+    for cp in _security.checkpoints.values():
+        cp.queue = [pid for pid in cp.queue if pid in security_ids]
+        cp.sa_queue = [pid for pid in cp.sa_queue if pid in security_ids]
+
+    return zone_by_pid
 
 
 def _get_forecast_queues(sim_time: datetime) -> dict[str, int]:
@@ -485,7 +644,11 @@ async def _advance_airside_to_gate(sim_time: datetime) -> None:
             continue
 
         gate_id = pax.get("gate_id")
-        terminal = get_terminal_from_gate(gate_id, pax.get("terminal_id"))
+        terminal = get_terminal_for_flight(
+            gate_id,
+            pax.get("terminal_id"),
+            pax.get("flight_id"),
+        )
         new_zone = zone_for_status("at_gate", terminal, gate_id)
         old_zone = pax.get("location_zone") or f"airside-{terminal}"
 
@@ -542,7 +705,11 @@ async def _advance_boarding(sim_time: datetime) -> None:
 
         ids = [p["id"] for p in to_board]
         gate_id = sample.get("gate_id")
-        terminal = get_terminal_from_gate(gate_id, sample.get("terminal_id"))
+        terminal = get_terminal_for_flight(
+            gate_id,
+            sample.get("terminal_id"),
+            flight_id,
+        )
         new_zone = zone_for_status("boarded", terminal, gate_id)
 
         await bulk_update_status(ids, "boarded", new_zone, sim_time)
@@ -607,6 +774,7 @@ async def _advance_arrivals(sim_time: datetime) -> None:
             # Passenger has exited the airport footprint.
             remove_passenger(old_zone)
             _baggage_collected.discard(pid)
+            _passengers_at_carousel.discard(pid)
             await emit_passenger_status_changed(
                 passenger_id=pid,
                 name=pax.get("name", ""),
@@ -621,7 +789,6 @@ async def _advance_arrivals(sim_time: datetime) -> None:
 
 async def _check_connections(sim_time: datetime) -> None:
     """Evaluate all connecting passengers and emit alerts on risk change."""
-    global _at_risk_connections
     try:
         conn_pax = await get_connecting_passengers()
     except Exception as e:
@@ -634,7 +801,7 @@ async def _check_connections(sim_time: datetime) -> None:
     for r in results:
         if r["risk_changed"]:
             new_risk = r["risk_level"]
-            old_risk = r["old_risk_level"]
+            r["old_risk_level"]
 
             await set_connection_risk(r["id"], new_risk)
 
@@ -674,7 +841,6 @@ async def _check_connections(sim_time: datetime) -> None:
 
 async def _ml_tick(sim_time: datetime) -> None:
     """Collect training data and update cached flight/pax counts."""
-    global _cached_flights_next_90, _cached_pax_next_90
 
     # Update flight/pax data for features
     try:
@@ -721,7 +887,7 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
         for pax in pax_list:
             if pax.get("status") in ("checked_in", "airborne"):
                 gate_id = payload.get("gate_id")
-                terminal = get_terminal_from_gate(gate_id, None)
+                terminal = get_terminal_for_flight(gate_id, None, flight_id)
                 new_zone = zone_for_status("deplaning", terminal, gate_id)
                 old_zone = pax.get("location_zone")
                 await update_passenger_status(pax["id"], "deplaning", new_zone, sim_time)
@@ -741,10 +907,9 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
 
     # Delay: update load factor
     if new_status == "delayed":
-        delay_min = payload.get("delay_minutes", 0)
-        global _load_factor_sum, _load_factor_count
-        _load_factor_sum += 0.7  # delayed flights have lower effective load
-        _load_factor_count += 1
+        payload.get("delay_minutes", 0)
+        _state.load_factor_sum += 0.7  # delayed flights have lower effective load
+        _state.load_factor_count += 1
 
 
 async def _on_flight_gate_assigned(payload: dict, sim_time: datetime) -> None:
@@ -862,7 +1027,6 @@ def _extract_terminal_from_location(location: str) -> str | None:
 
 async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
     """Update cached weather category."""
-    global _weather_category
     cat = payload.get("category") or payload.get("new_category")
     if cat:
         _weather_category = cat
@@ -871,16 +1035,42 @@ async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
 async def _on_baggage_status_changed(payload: dict, sim_time: datetime) -> None:
     """Track baggage collection for arrival passengers."""
     new_status = payload.get("new_status")
-    if new_status != "collected":
+    if new_status not in ("on_carousel", "collected"):
         return
+
     passenger_id = payload.get("passenger_id")
-    if passenger_id:
+    flight_id = payload.get("flight_id")
+
+    if new_status == "on_carousel":
+        scan_zone = str(payload.get("scan_zone") or "")
+        if not scan_zone.startswith("arrival-belt-"):
+            return
+        belt_num = scan_zone.rsplit("-", 1)[-1]
+        carousel_zone = f"carousel-{belt_num}"
+
+        if passenger_id and passenger_id not in _passengers_at_carousel:
+            # Departure bag with known passenger
+            move_passenger("baggage-claim", carousel_zone)
+            _passengers_at_carousel.add(passenger_id)
+            await update_passenger_location(passenger_id, carousel_zone)
+        elif not passenger_id and flight_id:
+            # Arrival bag — no CARRIES relationship; move all baggage_claim
+            # passengers on this flight to the carousel zone.
+            try:
+                pax_list = await get_passengers_by_flight(flight_id)
+            except Exception:
+                pax_list = []
+            for pax in pax_list:
+                pid = pax["id"]
+                if pax.get("status") == "baggage_claim" and pid not in _passengers_at_carousel:
+                    move_passenger("baggage-claim", carousel_zone)
+                    _passengers_at_carousel.add(pid)
+                    await update_passenger_location(pid, carousel_zone)
+
+    if new_status == "collected" and passenger_id:
         _baggage_collected.add(passenger_id)
 
 
 def _add_alert(alert: dict) -> None:
     """Add alert to in-memory history."""
-    global _alerts
-    _alerts.append(alert)
-    if len(_alerts) > _MAX_ALERTS:
-        _alerts = _alerts[-_MAX_ALERTS:]
+    _state.add_alert(alert)

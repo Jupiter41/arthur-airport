@@ -48,6 +48,12 @@ gate_conflicts_resolved_total = Counter(
     "Gate reassignments",
 )
 
+envelope_invalid_total = Counter(
+    "envelope_invalid_total",
+    "Invalid Kafka event envelopes dropped",
+    ["reason"],
+)
+
 turnaround_delay_minutes = Histogram(
     "turnaround_delay_minutes",
     "Turnaround delay distribution",

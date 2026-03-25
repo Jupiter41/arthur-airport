@@ -1,8 +1,6 @@
 """Unit tests for baggage-service screening — pure logic, no I/O."""
 
-import random
 
-import pytest
 
 from tests.conftest import import_service_module
 

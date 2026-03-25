@@ -10,6 +10,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
+from typing import Callable, Awaitable
 
 from confluent_kafka import Consumer
 
@@ -18,6 +19,7 @@ from db.neo4j import (
     update_baggage_status,
     flag_baggage,
     get_baggage_counts_by_status,
+    get_baggage_in_pipeline,
 )
 from kafka.producer import (
     emit_baggage_status_changed,
@@ -26,7 +28,6 @@ from kafka.producer import (
 from services.conveyor import (
     ConveyorSystem,
     BagInZone,
-    ZONE_TO_STATUS,
 )
 from services.screening import screen_item
 from services.offload import offload_flight_baggage
@@ -35,29 +36,77 @@ from metrics import (
     baggage_flagged_active as m_flagged,
     conveyor_zone_utilisation_pct as m_zone_util,
     conveyor_zone_status as m_zone_status,
-    baggage_transitions_total as m_transitions,
     dangerous_goods_detected_total as m_dg_detected,
     screening_false_positives_total as m_false_pos,
-    baggage_offloaded_total as m_offloaded,
+    envelope_invalid_total as m_envelope_invalid,
 )
 
 logger = logging.getLogger(__name__)
 
+
+# ── Class-based state holder ────────────────────────────────
+
+
+class BaggageConsumerState:
+    """Holds all mutable runtime state for the baggage consumer."""
+
+    MAX_PROCESSED = 20000
+
+    def __init__(self) -> None:
+        self.sim_time: datetime | None = None
+        self.conveyor = ConveyorSystem()
+        self.processed_events: set[str] = set()
+        self.inducted_bag_ids: set[str] = set()
+        self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
+
+    def check_idempotency(self, event_id: str) -> bool:
+        if not event_id:
+            return False
+        if event_id in self.processed_events:
+            return True
+        self.processed_events.add(event_id)
+        if len(self.processed_events) > self.MAX_PROCESSED:
+            excess = len(self.processed_events) - self.MAX_PROCESSED
+            for _ in range(excess):
+                self.processed_events.pop()
+        return False
+
+    async def rebuild_from_neo4j(self) -> None:
+        """Rebuild in-memory state from Neo4j on startup (catch-up)."""
+        bags = await get_baggage_in_pipeline()
+        inducted = 0
+        for bag in bags:
+            tag = bag["id"]
+            status = bag.get("status", "dropped_off")
+            if status in ("inducted", "screening", "sorting"):
+                zone_id = bag.get("current_zone")
+                if zone_id:
+                    zone = self.conveyor.get_zone(zone_id)
+                    if zone:
+                        zone.queue.append(BagInZone(
+                            baggage_id=tag,
+                            tag="",
+                            flight_id=bag.get("flight_id", ""),
+                            is_dg=False,
+                            dg_class=None,
+                            passenger_id=None,
+                            terminal="A",
+                            entered_at=bag.get("last_scan_at") or "",
+                        ))
+                self.inducted_bag_ids.add(tag)
+                inducted += 1
+            elif status in ("loaded", "in_hold", "flagged"):
+                self.inducted_bag_ids.add(tag)
+        logger.info("Rebuilt conveyor state from Neo4j: %d bags in pipeline, %d inducted total",
+                     inducted, len(self.inducted_bag_ids))
+
+
+# Module-level singleton
+_state = BaggageConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
 
-# --- State ---
-_sim_time: datetime | None = None
-_conveyor = ConveyorSystem()
-
-# Idempotency: track processed event IDs
-_processed_events: set[str] = set()
-_MAX_PROCESSED = 20000
-
-# Track bags already inducted (by baggage_id) to avoid re-induction
-_inducted_bag_ids: set[str] = set()
-
-# System failure impact mapping (from SKILL.md)
+# System failure impact mapping (constant, from SKILL.md)
 FAILURE_IMPACT: dict[str, list[str]] = {
     "conveyor-sorting": ["sorting-matrix"],
     "conveyor-induction-A": ["induction-A"],
@@ -74,21 +123,17 @@ FAILURE_IMPACT: dict[str, list[str]] = {
     "screening-unit-6": ["screening-unit-6"],
 }
 
-# WebSocket broadcast callback
-_ws_broadcast = None
 
-
-def set_ws_broadcast(fn):
-    global _ws_broadcast
-    _ws_broadcast = fn
+def set_state.ws_broadcast(fn):
+    _state.ws_broadcast = fn
 
 
 def get_sim_time() -> datetime | None:
-    return _sim_time
+    return _state.sim_time
 
 
 def get_conveyor() -> ConveyorSystem:
-    return _conveyor
+    return _state.conveyor
 
 
 def is_consumer_running() -> bool:
@@ -142,33 +187,47 @@ async def run_consumer() -> None:
         logger.info("Kafka consumer stopped")
 
 
-async def _dispatch(envelope: dict) -> None:
-    """Route events to handlers based on event_type."""
-    global _processed_events
-
-    event_id = envelope.get("event_id", "")
+def _validate_envelope(envelope: dict) -> tuple[str, datetime, dict] | None:
+    """Validate Kafka envelope structure. Returns (event_type, sim_time, payload) or None."""
     event_type = envelope.get("event_type")
-    payload = envelope.get("payload", {})
-
-    # Idempotency check (skip for clock ticks — they're always unique)
-    if event_type != "SimClockTick":
-        if event_id in _processed_events:
-            return
-        _processed_events.add(event_id)
-        if len(_processed_events) > _MAX_PROCESSED:
-            excess = len(_processed_events) - _MAX_PROCESSED
-            for _ in range(excess):
-                _processed_events.pop()
+    if not isinstance(event_type, str):
+        m_envelope_invalid.labels(reason="missing_event_type").inc()
+        logger.warning("Invalid envelope: missing/non-string event_type")
+        return None
 
     sim_time_str = envelope.get("sim_time")
     if not sim_time_str:
-        return
+        m_envelope_invalid.labels(reason="missing_sim_time").inc()
+        logger.warning("Invalid envelope: missing sim_time for %s", event_type)
+        return None
     try:
-        sim_time = datetime.fromisoformat(sim_time_str)
-        # Strip timezone to keep all comparisons naive (lesson from sprint-3)
-        sim_time = sim_time.replace(tzinfo=None)
+        sim_time = datetime.fromisoformat(str(sim_time_str)).replace(tzinfo=None)
     except (ValueError, TypeError):
+        m_envelope_invalid.labels(reason="unparseable_sim_time").inc()
+        logger.warning("Invalid envelope: unparseable sim_time '%s'", sim_time_str)
+        return None
+
+    payload = envelope.get("payload")
+    if not isinstance(payload, dict):
+        m_envelope_invalid.labels(reason="missing_payload").inc()
+        logger.warning("Invalid envelope: missing/non-dict payload for %s", event_type)
+        return None
+
+    return event_type, sim_time, payload
+
+
+async def _dispatch(envelope: dict) -> None:
+    """Route events to handlers based on event_type."""
+    validated = _validate_envelope(envelope)
+    if validated is None:
         return
+    event_type, sim_time, payload = validated
+
+    # Idempotency check (skip for clock ticks — they're always unique)
+    if event_type != "SimClockTick":
+        event_id = envelope.get("event_id", "")
+        if _state.check_idempotency(event_id):
+            return
 
     match event_type:
         case "SimClockTick":
@@ -187,8 +246,7 @@ async def _dispatch(envelope: dict) -> None:
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Process SimClockTick — induct new bags and advance conveyor pipeline."""
-    global _sim_time
-    _sim_time = sim_time
+    _state.sim_time = sim_time
 
     sim_time_str = sim_time.isoformat()
 
@@ -197,13 +255,15 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     await _induct_new_bags(sim_time)
 
     # 2. Advance conveyor pipeline
-    outputs = _conveyor.advance_tick(sim_time_str)
+    outputs = _state.conveyor.advance_tick(sim_time_str)
 
     # 3. Process zone outputs
     for zone_id, bags in outputs.items():
         for bag in bags:
-            # Determine what happens to this bag now that it left the zone
-            await _process_bag_exit(zone_id, bag, sim_time)
+            try:
+                await _process_bag_exit(zone_id, bag, sim_time)
+            except Exception as e:
+                logger.error("Failed to process bag %s exiting %s: %s", bag.baggage_id, zone_id, e)
 
     # 4. Update Prometheus gauges
     try:
@@ -212,7 +272,7 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             m_in_system.labels(status=status).set(count)
     except Exception:
         pass
-    for z in _conveyor.get_zone_summary():
+    for z in _state.conveyor.get_zone_summary():
         m_zone_util.labels(zone_id=z["zone_id"]).set(z["utilisation_pct"])
         status_val = {"normal": 0, "degraded": 1, "offline": 2}.get(z["status"], 0)
         m_zone_status.labels(zone_id=z["zone_id"]).set(status_val)
@@ -244,14 +304,14 @@ async def _induct_new_bags(sim_time: datetime) -> None:
         bag_id = bag["id"]
 
         # Skip if already inducted
-        if bag_id in _inducted_bag_ids:
+        if bag_id in _state.inducted_bag_ids:
             continue
 
         flight_status = bag.get("flight_status", "scheduled")
 
         # For flights already departed/airborne — fast-track to in_hold
         if flight_status in ("departed", "airborne"):
-            _inducted_bag_ids.add(bag_id)
+            _state.inducted_bag_ids.add(bag_id)
             batch_count += 1
             await update_baggage_status(
                 bag_id, "in_hold", "aircraft-hold", sim_time
@@ -278,7 +338,7 @@ async def _induct_new_bags(sim_time: datetime) -> None:
             except (ValueError, TypeError):
                 pass
 
-        _inducted_bag_ids.add(bag_id)
+        _state.inducted_bag_ids.add(bag_id)
         batch_count += 1
 
         # Determine terminal from gate assignment (fallback to round-robin)
@@ -301,7 +361,7 @@ async def _induct_new_bags(sim_time: datetime) -> None:
             entered_at=sim_time_str,
         )
 
-        zone_id = _conveyor.induct_bag(bag_in_zone, sim_time_str)
+        zone_id = _state.conveyor.induct_bag(bag_in_zone, sim_time_str)
 
         # Update Neo4j: status → inducted
         await update_baggage_status(bag_id, "inducted", zone_id, sim_time)
@@ -319,8 +379,8 @@ async def _induct_new_bags(sim_time: datetime) -> None:
         )
 
         # Broadcast to WebSocket
-        if _ws_broadcast:
-            await _ws_broadcast({
+        if _state.ws_broadcast:
+            await _state.ws_broadcast({
                 "event_type": "BaggageStatusChanged",
                 "payload": event_payload,
             })
@@ -330,7 +390,7 @@ async def _process_bag_exit(
     from_zone: str, bag: BagInZone, sim_time: datetime
 ) -> None:
     """Handle a bag exiting a zone — screen, flag, or advance status."""
-    sim_time_str = sim_time.isoformat()
+    sim_time.isoformat()
 
     if from_zone.startswith("induction"):
         # Bag exits induction → now entering screening
@@ -351,8 +411,8 @@ async def _process_bag_exit(
                 passenger_id=bag.passenger_id,
                 flight_id=bag.flight_id,
             )
-            if _ws_broadcast:
-                await _ws_broadcast({
+            if _state.ws_broadcast:
+                await _state.ws_broadcast({
                     "event_type": "BaggageStatusChanged",
                     "payload": event_payload,
                 })
@@ -389,13 +449,13 @@ async def _process_bag_exit(
                 passenger_id=bag.passenger_id,
                 flight_id=bag.flight_id,
             )
-            if _ws_broadcast:
-                await _ws_broadcast({
+            if _state.ws_broadcast:
+                await _state.ws_broadcast({
                     "event_type": "BaggageFlagged",
                     "payload": event_payload,
                 })
             # Remove from sorting queue (it was already placed there by advance_tick)
-            _conveyor.remove_bag_from_all_zones(bag.baggage_id)
+            _state.conveyor.remove_bag_from_all_zones(bag.baggage_id)
         else:
             # Clear — bag moves to sorting (already placed by advance_tick)
             await update_baggage_status(
@@ -411,8 +471,8 @@ async def _process_bag_exit(
                 passenger_id=bag.passenger_id,
                 flight_id=bag.flight_id,
             )
-            if _ws_broadcast:
-                await _ws_broadcast({
+            if _state.ws_broadcast:
+                await _state.ws_broadcast({
                     "event_type": "BaggageStatusChanged",
                     "payload": event_payload,
                 })
@@ -440,8 +500,8 @@ async def _process_bag_exit(
                 passenger_id=bag.passenger_id,
                 flight_id=bag.flight_id,
             )
-            if _ws_broadcast:
-                await _ws_broadcast({
+            if _state.ws_broadcast:
+                await _state.ws_broadcast({
                     "event_type": "BaggageStatusChanged",
                     "payload": event_payload,
                 })
@@ -469,8 +529,8 @@ async def _process_bag_exit(
             passenger_id=bag.passenger_id,
             flight_id=bag.flight_id,
         )
-        if _ws_broadcast:
-            await _ws_broadcast({
+        if _state.ws_broadcast:
+            await _state.ws_broadcast({
                 "event_type": "BaggageStatusChanged",
                 "payload": event_payload,
             })
@@ -490,8 +550,8 @@ async def _process_bag_exit(
             passenger_id=bag.passenger_id,
             flight_id=bag.flight_id,
         )
-        if _ws_broadcast:
-            await _ws_broadcast({
+        if _state.ws_broadcast:
+            await _state.ws_broadcast({
                 "event_type": "BaggageStatusChanged",
                 "payload": event_payload,
             })
@@ -499,7 +559,7 @@ async def _process_bag_exit(
 
 def _find_bag_current_zone(baggage_id: str) -> str | None:
     """Find which zone a bag is currently in (in-memory lookup)."""
-    for zone_id, zone in _conveyor.get_all_zones().items():
+    for zone_id, zone in _state.conveyor.get_all_zones().items():
         for bag in zone.queue:
             if bag.baggage_id == baggage_id:
                 return zone_id
@@ -528,9 +588,11 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
                 new_status="in_hold",
                 scan_zone="aircraft-hold",
                 sim_time=sim_time,
+                passenger_id=bag.get("passenger_id"),
+                flight_id=flight_id,
             )
-            if _ws_broadcast:
-                await _ws_broadcast({
+            if _state.ws_broadcast:
+                await _state.ws_broadcast({
                     "event_type": "BaggageStatusChanged",
                     "payload": event_payload,
                 })
@@ -554,11 +616,11 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
                 flight_id=flight_id,
                 is_dg=False,
                 dg_class=None,
-                passenger_id=None,
+                passenger_id=bag.get("passenger_id"),
                 terminal="A",
                 entered_at=sim_time.isoformat(),
             )
-            arrival_zone = _conveyor.get_zone(f"arrival-belt-{carousel}")
+            arrival_zone = _state.conveyor.get_zone(f"arrival-belt-{carousel}")
             if arrival_zone:
                 arrival_zone.queue.append(bag_in_zone)
 
@@ -575,9 +637,11 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
                 new_status="on_carousel",
                 scan_zone=f"arrival-belt-{carousel}",
                 sim_time=sim_time,
+                passenger_id=bag.get("passenger_id"),
+                flight_id=flight_id,
             )
-            if _ws_broadcast:
-                await _ws_broadcast({
+            if _state.ws_broadcast:
+                await _state.ws_broadcast({
                     "event_type": "BaggageStatusChanged",
                     "payload": event_payload,
                 })
@@ -610,7 +674,7 @@ async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
     location = payload.get("location", "")
     affected_zones = FAILURE_IMPACT.get(location, [])
     for zone_id in affected_zones:
-        _conveyor.set_zone_status(zone_id, "offline")
+        _state.conveyor.set_zone_status(zone_id, "offline")
         m_zone_status.labels(zone_id=zone_id).set(2)  # offline
         logger.warning(
             "Zone %s set OFFLINE due to system_failure at %s",
@@ -627,7 +691,7 @@ async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None
     location = payload.get("location", "")
     affected_zones = FAILURE_IMPACT.get(location, [])
     for zone_id in affected_zones:
-        _conveyor.set_zone_status(zone_id, "normal")
+        _state.conveyor.set_zone_status(zone_id, "normal")
         m_zone_status.labels(zone_id=zone_id).set(0)  # normal
         logger.info(
             "Zone %s restored to NORMAL after incident resolved at %s",

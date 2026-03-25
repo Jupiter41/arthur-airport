@@ -38,6 +38,12 @@ protocols_activated_total = Counter(
     ["protocol"],
 )
 
+envelope_invalid_total = Counter(
+    "envelope_invalid_total",
+    "Invalid Kafka event envelopes dropped",
+    ["reason"],
+)
+
 flights_impacted_by_incidents_total = Counter(
     "flights_impacted_by_incidents_total",
     "Flights affected",

@@ -1,6 +1,5 @@
 """Pydantic domain models for incident-service."""
 
-from datetime import datetime
 from enum import Enum
 from typing import Optional
 
@@ -51,7 +50,7 @@ class CascadeTreeNode(BaseModel):
     status: str = ""
     description: str = ""
     affected_count: int = 0
-    children: list["CascadeTreeNode"] = []
+    children: list["CascadeTreeNode"] = Field(default_factory=list)
 
 
 class TimelineEntry(BaseModel):
@@ -92,8 +91,8 @@ class IncidentDetail(BaseModel):
     estimated_resolution_at: Optional[str] = None
     ttr_remaining: Optional[int] = None
     cascade_tree: Optional[CascadeTreeNode] = None
-    affected_flights: list[dict] = []
-    timeline: list[TimelineEntry] = []
+    affected_flights: list[dict] = Field(default_factory=list)
+    timeline: list[TimelineEntry] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -108,7 +107,7 @@ class AlertItem(BaseModel):
     severity: str
     title: str
     short_message: str
-    affected_zones: list[str] = []
+    affected_zones: list[str] = Field(default_factory=list)
     dashboard_color: str = "yellow"
     sound_alert: bool = False
     age_minutes: int = 0
@@ -130,5 +129,14 @@ class IncidentReport(BaseModel):
     total_flights_affected: int = 0
     total_delay_minutes_caused: int = 0
     cascade_events: int = 0
-    protocols_activated: list[str] = []
-    recommendations: list[str] = []
+    protocols_activated: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+
+
+class ProtocolStatusResponse(BaseModel):
+    """Active emergency protocol status."""
+
+    effective_protocol: str | None = None
+    effective_description: str = ""
+    active_protocols: dict[str, list[str]] = Field(default_factory=dict)
+    evacuation_active: bool = False

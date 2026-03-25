@@ -43,7 +43,7 @@ async def ws_broadcast(message: dict) -> None:
             await ws.send_text(data)
         except Exception:
             disconnected.add(ws)
-    _ws_clients -= disconnected
+    _ws_clients.difference_update(disconnected)
 
 
 @asynccontextmanager

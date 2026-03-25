@@ -23,12 +23,12 @@ const ZONE_LAYOUT: {
   { id: "induction-B", x: 140, y: 20, w: 100, h: 50, label: "Induction B" },
   { id: "induction-C", x: 260, y: 20, w: 100, h: 50, label: "Induction C" },
   // Screening
-  { id: "screening-1", x: 20, y: 100, w: 80, h: 40, label: "Screen 1" },
-  { id: "screening-2", x: 110, y: 100, w: 80, h: 40, label: "Screen 2" },
-  { id: "screening-3", x: 200, y: 100, w: 80, h: 40, label: "Screen 3" },
-  { id: "screening-4", x: 290, y: 100, w: 80, h: 40, label: "Screen 4" },
-  { id: "screening-5", x: 380, y: 100, w: 80, h: 40, label: "Screen 5" },
-  { id: "screening-6", x: 470, y: 100, w: 80, h: 40, label: "Screen 6" },
+  { id: "screening-unit-1", x: 20, y: 100, w: 80, h: 40, label: "Screen 1" },
+  { id: "screening-unit-2", x: 110, y: 100, w: 80, h: 40, label: "Screen 2" },
+  { id: "screening-unit-3", x: 200, y: 100, w: 80, h: 40, label: "Screen 3" },
+  { id: "screening-unit-4", x: 290, y: 100, w: 80, h: 40, label: "Screen 4" },
+  { id: "screening-unit-5", x: 380, y: 100, w: 80, h: 40, label: "Screen 5" },
+  { id: "screening-unit-6", x: 470, y: 100, w: 80, h: 40, label: "Screen 6" },
   // Sorting matrix
   {
     id: "sorting-matrix",
@@ -52,13 +52,27 @@ const ZONE_LAYOUT: {
 ];
 
 const ARROWS: [string, string][] = [
-  ["induction-A", "screening-1"],
-  ["induction-B", "screening-3"],
-  ["induction-C", "screening-5"],
-  ["screening-3", "sorting-matrix"],
+  ["induction-A", "screening-unit-1"],
+  ["induction-A", "screening-unit-2"],
+  ["induction-B", "screening-unit-3"],
+  ["induction-B", "screening-unit-4"],
+  ["induction-C", "screening-unit-5"],
+  ["induction-C", "screening-unit-6"],
+  ["screening-unit-1", "sorting-matrix"],
+  ["screening-unit-2", "sorting-matrix"],
+  ["screening-unit-3", "sorting-matrix"],
+  ["screening-unit-4", "sorting-matrix"],
+  ["screening-unit-5", "sorting-matrix"],
+  ["screening-unit-6", "sorting-matrix"],
   ["sorting-matrix", "make-up-A"],
   ["sorting-matrix", "make-up-B"],
   ["sorting-matrix", "make-up-C"],
+  ["make-up-A", "arrival-belt-1"],
+  ["make-up-A", "arrival-belt-2"],
+  ["make-up-B", "arrival-belt-3"],
+  ["make-up-B", "arrival-belt-4"],
+  ["make-up-C", "arrival-belt-5"],
+  ["make-up-C", "arrival-belt-6"],
 ];
 
 function zoneColor(util: number, status: string): string {
@@ -69,11 +83,6 @@ function zoneColor(util: number, status: string): string {
 }
 
 function toLayoutZoneId(zoneId: string): string {
-  const screening = /^screening-unit-(\d+)$/i.exec(zoneId);
-  if (screening) {
-    return `screening-${screening[1]}`;
-  }
-
   const makeup = /^make-up-([ABC])-\d+$/i.exec(zoneId);
   if (makeup) {
     return `make-up-${makeup[1].toUpperCase()}`;
@@ -85,7 +94,11 @@ function toLayoutZoneId(zoneId: string): string {
 function normalizeZoneStatus(status: string): "active" | "offline" | "idle" {
   const normalized = status.toLowerCase();
   if (normalized === "offline") return "offline";
-  if (normalized === "active" || normalized === "normal" || normalized === "degraded") {
+  if (
+    normalized === "active" ||
+    normalized === "normal" ||
+    normalized === "degraded"
+  ) {
     return "active";
   }
   return "idle";
@@ -464,12 +477,11 @@ export default function BaggageTrackerPage() {
           total_in_system: (sd.total_in_system as number) ?? 0,
           by_status: (sd.by_status as Record<string, number>) ?? {},
           flagged_count:
-            (sd.flagged_count as number) ??
-            (sd.flagged_active as number) ??
-            0,
+            (sd.flagged_count as number) ?? (sd.flagged_active as number) ?? 0,
           loaded_count:
             (sd.loaded_count as number) ??
-            ((sd.by_status as Record<string, number> | undefined)?.loaded ?? 0),
+            (sd.by_status as Record<string, number> | undefined)?.loaded ??
+            0,
         });
         const fd = flaggedData as { flagged?: FlaggedBaggage[] };
         setFlagged(

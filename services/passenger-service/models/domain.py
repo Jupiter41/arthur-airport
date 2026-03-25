@@ -1,10 +1,9 @@
 """Pydantic domain models for passenger-service."""
 
-from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class PassengerStatus(str, Enum):

@@ -13,7 +13,7 @@ from db.neo4j import (
     create_constraints_and_indexes,
     wait_for_neo4j,
 )
-from kafka.consumer import run_consumer, stop_consumer, is_consumer_running, set_ws_broadcast
+from kafka.consumer import run_consumer, stop_consumer, is_consumer_running, set_ws_broadcast, _state as consumer_state
 from kafka.producer import (
     check_kafka,
     close_kafka_producer,
@@ -64,7 +64,10 @@ async def lifespan(app: FastAPI):
     # 5. Register WebSocket broadcast callback
     set_ws_broadcast(ws_broadcast)
 
-    # 6. Start Kafka consumer as background task
+    # 6. Rebuild in-memory state from Neo4j (startup catch-up)
+    await consumer_state.rebuild_from_neo4j()
+
+    # 7. Start Kafka consumer as background task
     asyncio.create_task(run_consumer())
 
     logger.info("flight-service startup complete")

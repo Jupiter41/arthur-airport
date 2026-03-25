@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta
 
-import pytest
 
 from tests.conftest import import_service_module
 
