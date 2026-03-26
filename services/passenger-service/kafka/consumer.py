@@ -212,7 +212,7 @@ async def run_consumer() -> None:
     try:
         while _consumer_running:
             # Batch-consume to allow tick skipping when behind
-            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(50, timeout=1.0))
+            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(500, timeout=1.0))
             if not msgs:
                 continue
 
@@ -323,6 +323,74 @@ async def _dispatch(envelope: dict) -> None:
 _tick_counter: int = 0
 
 
+async def _warm_start_departures(sim_time: datetime) -> None:
+    """Pre-advance departure passengers for flights near departure at sim start.
+
+    At sim start all departure passengers are 'booked'.  For flights departing
+    within the next 2 hours, advance passengers to realistic pipeline states
+    as if the airport had already been operating.  This prevents the startup
+    burst from cascading into mass cancellations.
+    """
+    cutoff = (sim_time + timedelta(hours=2)).isoformat()
+    try:
+        pax_list = await get_passengers_by_status("booked", scheduled_before=cutoff)
+    except Exception as e:
+        logger.error("Warm-start query failed: %s", e)
+        return
+
+    flights: dict[str, list[dict]] = {}
+    for pax in pax_list:
+        fid = pax.get("flight_id") or ""
+        flights.setdefault(fid, []).append(pax)
+
+    total_advanced = 0
+    for flight_id, pax_group in flights.items():
+        if not pax_group:
+            continue
+        sample = pax_group[0]
+        if sample.get("direction", "departure") != "departure":
+            continue
+        scheduled = sample.get("scheduled_time") or sample.get("estimated_time")
+        if not scheduled:
+            continue
+        try:
+            sched_dt = datetime.fromisoformat(str(scheduled)).replace(tzinfo=None)
+        except (ValueError, TypeError):
+            continue
+
+        minutes_until = (sched_dt - sim_time).total_seconds() / 60
+        terminal = get_terminal_for_flight(
+            sample.get("gate_id"), sample.get("terminal_id"), flight_id,
+        )
+        gate_id = sample.get("gate_id")
+        ids = [p["id"] for p in pax_group]
+
+        if minutes_until <= 0:
+            # Past departure → boarded
+            zone = zone_for_status("boarded", terminal, gate_id)
+            await bulk_update_status(ids, "boarded", zone, sim_time)
+        elif minutes_until <= 30:
+            # Departs in <30 min → at gate
+            zone = zone_for_status("at_gate", terminal, gate_id)
+            await bulk_update_status(ids, "at_gate", zone, sim_time)
+        elif minutes_until <= 90:
+            # Departs in 30-90 min → airside (through security already)
+            zone = f"airside-{terminal}"
+            await bulk_update_status(ids, "airside", zone, sim_time)
+            dwell_items = [(pid, 0) for pid in ids]
+            await bulk_set_dwell(dwell_items)
+        elif minutes_until <= 120:
+            # Departs in 90-120 min → checked in (arriving at airport)
+            zone = f"check-in-{terminal}"
+            await bulk_update_status(ids, "checked_in", zone, sim_time)
+        else:
+            continue
+
+        total_advanced += len(ids)
+
+    logger.info("Warm-start: advanced %d departure passengers to pipeline states", total_advanced)
+
+
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Main tick handler — advance all passenger state machines."""
     global _tick_counter
@@ -332,6 +400,10 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
 
     set_tick_batch_mode(True)
     try:
+        # Warm-start: pre-advance early departure passengers on first tick
+        if _tick_counter == 1:
+            await _warm_start_departures(sim_time)
+
         # === Critical path (every tick) ===
 
         # 1. ML feature cache (cheap — one query, needed for security forecast)
@@ -490,7 +562,7 @@ async def _advance_checkin_to_security(sim_time: datetime) -> None:
     Batched: moves up to MAX_CHECKIN_TO_SECURITY_PER_TICK passengers per tick
     across all flights to prevent security queue overload.
     """
-    MAX_CHECKIN_TO_SECURITY_PER_TICK = 50  # ~50 pax/min across all terminals
+    MAX_CHECKIN_TO_SECURITY_PER_TICK = 80  # ~80 pax/min across all terminals
 
     # Only query checked_in passengers whose flights depart within next 2 hours
     cutoff = (sim_time + timedelta(hours=2)).isoformat()
@@ -567,7 +639,11 @@ async def _advance_checkin_to_security(sim_time: datetime) -> None:
 
 async def _drain_security_queues(sim_time: datetime) -> None:
     """Drain security checkpoints and move passengers to airside."""
-    zone_by_pid = await _sync_security_from_db()
+    # Periodic DB sync (every 60 ticks) to catch missed events/restarts.
+    # On normal ticks, in-memory queues are authoritative.
+    if _tick_counter % 60 == 0:
+        await _sync_security_from_db()
+
     forecast_queues = _get_forecast_queues(sim_time)
     drained = _state.security.drain_all(forecast_queues)
 
@@ -585,8 +661,7 @@ async def _drain_security_queues(sim_time: datetime) -> None:
         await bulk_set_dwell(dwell_items)
 
         for pid in all_drained:
-            old_zone = zone_by_pid.get(pid, default_old_zone)
-            move_passenger(old_zone, new_zone)
+            move_passenger(default_old_zone, new_zone)
             await emit_passenger_status_changed(
                 passenger_id=pid,
                 name="",
@@ -673,8 +748,10 @@ def _build_context_features(terminal: str, sim_time: datetime) -> dict:
 
 async def _advance_airside_to_gate(sim_time: datetime) -> None:
     """Move airside passengers to at_gate when dwell completes and gate opens."""
+    # Time-window: only passengers with flights departing within next 2 hours
+    cutoff = (sim_time + timedelta(hours=2)).isoformat()
     try:
-        pax_list = await get_passengers_by_status("airside")
+        pax_list = await get_passengers_by_status("airside", scheduled_before=cutoff)
     except Exception as e:
         logger.error("Failed to get airside passengers: %s", e)
         return
@@ -725,8 +802,10 @@ async def _advance_airside_to_gate(sim_time: datetime) -> None:
 
 async def _advance_boarding(sim_time: datetime) -> None:
     """Board passengers at_gate → boarded, progressive at BOARDING_RATE."""
+    # Time-window: only passengers with flights departing within next 1.5 hours
+    cutoff = (sim_time + timedelta(hours=1, minutes=30)).isoformat()
     try:
-        pax_list = await get_passengers_by_status("at_gate")
+        pax_list = await get_passengers_by_status("at_gate", scheduled_before=cutoff)
     except Exception as e:
         logger.error("Failed to get at_gate passengers: %s", e)
         return

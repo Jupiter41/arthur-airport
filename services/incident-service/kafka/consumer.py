@@ -246,17 +246,42 @@ async def run_consumer() -> None:
     loop = asyncio.get_event_loop()
     try:
         while _consumer_running:
-            msg = await loop.run_in_executor(None, _consumer.poll, 1.0)
-            if msg is None:
+            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(200, timeout=1.0))
+            if not msgs:
                 continue
-            if msg.error():
-                logger.error("Consumer error: %s", msg.error())
-                continue
-            try:
-                envelope = json.loads(msg.value().decode("utf-8"))
-                await _dispatch(envelope)
-            except Exception as e:
-                logger.error("Consumer processing error: %s", e, exc_info=True)
+
+            latest_tick_envelope = None
+            other_envelopes: list[dict] = []
+            skipped_ticks = 0
+
+            for msg in msgs:
+                if msg is None or msg.error():
+                    continue
+                try:
+                    envelope = json.loads(msg.value().decode("utf-8"))
+                except Exception:
+                    continue
+                if envelope.get("event_type") == "SimClockTick":
+                    if latest_tick_envelope is not None:
+                        skipped_ticks += 1
+                    latest_tick_envelope = envelope
+                else:
+                    other_envelopes.append(envelope)
+
+            if skipped_ticks > 0:
+                logger.debug("Skipped %d stale clock ticks", skipped_ticks)
+
+            for envelope in other_envelopes:
+                try:
+                    await _dispatch(envelope)
+                except Exception as e:
+                    logger.error("Consumer processing error: %s", e, exc_info=True)
+
+            if latest_tick_envelope is not None:
+                try:
+                    await _dispatch(latest_tick_envelope)
+                except Exception as e:
+                    logger.error("Consumer processing error: %s", e, exc_info=True)
     finally:
         if _consumer:
             _consumer.close()

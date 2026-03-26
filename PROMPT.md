@@ -1,0 +1,19 @@
+# Example prompt to use after creating a new markdown with tasks
+
+Before doing any edit, do this:
+
+- Read all SPEC and skill files.
+- Read _file_name_ fully.
+- NEVER implement any roundabout fix. For any very complex thing, write a plan file and then implement it step by step.
+- ALWAYS take the elegant solution, even if it takes more time. Don't do quick and dirty fixes.
+- ALWAYS run tests and validate along the way the behaviour of the services by rebuilding the container, doing curls requests etc.
+- ALWAYS keep interesting scripts you write for testing for example to evaluate flights, passengers etc. in this project folder in the `scripts/` folder, and document how to use them in a README in the folder.
+- ALWAYS fix all bugs you see along the way, even if they are not in the original plan. If you see something that can be improved, do it.
+- ALWAYS save into a tmp file the output of the logs or the curl requests to make your processing easier.
+- ALWAYS clean any temporary file you created during the process.
+- NEVER commit any temporary file.
+- NEVER write code that you don't understand. If you don't understand something, ask for help or write a plan to investigate and understand it before writing the code.
+- NEVER use sleep in terminal commands, precise to the user to wait before accepting the command.
+- ALWAYS write a final summary of the changes you made, the issues you fixed, the tests you ran and the results you got.
+
+Fix all the issues specified in the file.

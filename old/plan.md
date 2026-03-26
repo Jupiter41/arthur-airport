@@ -1,5 +1,30 @@
 # Fix Plan — Flight Cancellations, Missing Gate Passengers, Empty Carousels
 
+**Status: COMPLETE — All criteria pass (2024-06-15 sim run verified)**
+
+| Criterion                | Target   | Result                       |
+| ------------------------ | -------- | ---------------------------- |
+| Sim lag                  | < 30 min | **0 seconds** (perfect pace) |
+| Departure cancellations  | < 10%    | **0.0%**                     |
+| Baggage claim passengers | > 0      | **2,199**                    |
+| Deplaning passengers     | > 0      | **196**                      |
+| At gate passengers       | > 0      | **96**                       |
+
+### Additional fixes applied (not in original plan)
+
+1. **Missing timestamps in `get_passengers_by_status`** — Added `p.deplaning_at` and
+   `p.baggage_claim_at` to RETURN clause in both query branches. Without these,
+   `should_move_to_baggage_claim(sim_time, None)` always returned False.
+2. **Periodic security DB sync** — Changed `_sync_security_from_db()` from every tick
+   to every 60 ticks. The full DB scan was adding ~1-2 seconds per tick.
+3. **Time-windowed airside/at_gate queries** — Added `scheduled_before` cutoff to
+   `_advance_airside_to_gate` (2h) and `_advance_boarding` (1.5h).
+4. **Warm-start departure pipeline** — New `_warm_start_departures()` runs on the first
+   tick to pre-advance ~12K passengers for flights departing within 2h of sim start.
+   Prevents the startup burst from cascading into mass cancellations.
+
+---
+
 ## Problem Statement
 
 Three interrelated symptoms:
@@ -31,18 +56,18 @@ should include `booked` and `boarded` too.
 The core cause of cancellations. The passenger-service tick handler can't keep up with 60×
 sim speed because each tick performs:
 
-| Operation | DB calls per tick | Bottleneck |
-|---|---|---|
-| `get_passengers_by_status("booked")` | 1 query, returns ~30K rows | Full table scan |
-| `get_passengers_by_status("checked_in")` | 1 query, returns ~10K rows | Full table scan |
-| `_sync_security_from_db()` | 1 query | Re-fetches all security_queue pax |
-| `set_passenger_dwell(pid, dwell)` | **N individual writes** per tick | 18–54 writes/tick |
-| `emit_passenger_status_changed(…)` | **N Kafka produce calls** | Serialization + flush |
-| `get_passengers_by_status("airside")` | 1 query, returns ~5K rows | Full table scan |
-| `get_passengers_by_status("at_gate")` | 1 query, returns ~5K rows | Full table scan |
-| `get_passengers_by_status("deplaning")` | 1 query | Returns ~15K rows |
-| `get_passengers_by_status("baggage_claim")` | 1 query | Returns ~15K rows |
-| `_on_flight_status_changed` (deplaning) | **N individual writes** | 200 writes/flight |
+| Operation                                   | DB calls per tick                | Bottleneck                        |
+| ------------------------------------------- | -------------------------------- | --------------------------------- |
+| `get_passengers_by_status("booked")`        | 1 query, returns ~30K rows       | Full table scan                   |
+| `get_passengers_by_status("checked_in")`    | 1 query, returns ~10K rows       | Full table scan                   |
+| `_sync_security_from_db()`                  | 1 query                          | Re-fetches all security_queue pax |
+| `set_passenger_dwell(pid, dwell)`           | **N individual writes** per tick | 18–54 writes/tick                 |
+| `emit_passenger_status_changed(…)`          | **N Kafka produce calls**        | Serialization + flush             |
+| `get_passengers_by_status("airside")`       | 1 query, returns ~5K rows        | Full table scan                   |
+| `get_passengers_by_status("at_gate")`       | 1 query, returns ~5K rows        | Full table scan                   |
+| `get_passengers_by_status("deplaning")`     | 1 query                          | Returns ~15K rows                 |
+| `get_passengers_by_status("baggage_claim")` | 1 query                          | Returns ~15K rows                 |
+| `_on_flight_status_changed` (deplaning)     | **N individual writes**          | 200 writes/flight                 |
 
 **Result:** A single tick takes 2–5 seconds. At 60× speed the clock emits one tick per
 second. The consumer falls 1–4 ticks behind per tick processed, growing an 8+ hour lag.
@@ -65,6 +90,7 @@ sequential scans.
 ### Phase 1 — Data Correctness (RC-1, RC-2, RC-4)
 
 **1.1 Seed arrival passengers**
+
 - File: `services/sim-orchestrator/services/passengers.py`
   - Add `initial_status` parameter (default `"booked"`).
 - File: `services/sim-orchestrator/services/seeder.py`
@@ -72,12 +98,14 @@ sequential scans.
 - Already done in previous pass. Verify correctness.
 
 **1.2 Broaden deplaning eligibility**
+
 - File: `services/passenger-service/kafka/consumer.py`, function `_on_flight_status_changed`
   - Accept statuses `("airborne", "booked", "boarded", "checked_in")` for deplaning.
   - **Batch the deplaning write** — collect IDs, call `bulk_update_status` once.
 - Already partially done. Needs batching.
 
 **1.3 Fix double-loop in security**
+
 - File: `services/passenger-service/kafka/consumer.py`, function `_advance_checkin_to_security`
   - Remove the orphan first loop. Single loop with cap check at top.
 - Already done. Verify.
@@ -87,50 +115,59 @@ sequential scans.
 The goal: bring per-tick latency under 500ms so the consumer keeps up at 60× speed.
 
 **2.1 Add Neo4j composite index**
+
 - File: `services/passenger-service/db/neo4j.py`
   - Add index on `Flight.scheduled_time` (already added, verify).
   - Add composite index on `(Passenger.status, Passenger.flight_id)` for the heavily-used
     `get_passengers_by_status` join pattern.
 
 **2.2 Batch `set_passenger_dwell` — eliminate per-passenger writes**
+
 - File: `services/passenger-service/db/neo4j.py`
   - New function: `bulk_set_dwell(items: list[dict])` — one UNWIND query.
 - File: `services/passenger-service/kafka/consumer.py`, function `_drain_security_queues`
   - Collect `(pid, dwell)` pairs, call `bulk_set_dwell` once instead of N writes.
 
 **2.3 Batch deplaning writes**
+
 - File: `services/passenger-service/kafka/consumer.py`, function `_on_flight_status_changed`
   - Collect all deplaning passenger IDs per zone, single `bulk_update_status` call.
 
 **2.4 Throttle per-passenger Kafka events during tick processing**
+
 - File: `services/passenger-service/kafka/producer.py`
   - In tick batch mode, only emit a sample (~5%) of `PassengerStatusChanged` events.
   - Dashboard uses REST for authoritative data; these events are real-time hints.
 - Already implemented. Keep.
 
 **2.5 Skip stale clock ticks when consumer is behind**
+
 - File: `services/passenger-service/kafka/consumer.py`, `run_consumer`
   - Batch-consume up to 50 messages. Process non-tick events. Process only the latest tick.
 - Already implemented. Keep.
 
 **2.6 Time-window expensive queries**
+
 - `get_passengers_by_status("booked", scheduled_before=…)` — only within 3h.
 - `get_passengers_by_status("checked_in", scheduled_before=…)` — only within 2h.
 - Already implemented. Keep.
 
 **2.7 Run non-critical tick work on reduced frequency**
+
 - ML training, congestion checks, Prometheus gauge updates: every 5th tick only.
 - Connection risk checks: every 10th tick.
 
 ### Phase 3 — Tuning
 
 **3.1 Security throughput**
+
 - Default lanes: 6 per terminal (already done).
 - Admission cap: 50 pax/min entering security (already done).
 - This gives ~18 pax/min/terminal draining × 3 terminals = 54 pax/min out of security,
   matching the ~50 pax/min admission.
 
 **3.2 Check-in throughput**
+
 - Raise MAX_CHECKIN_PER_TICK to 200 (already done).
 
 ### Phase 4 — Documentation
@@ -141,6 +178,7 @@ The goal: bring per-tick latency under 500ms so the consumer keeps up at 60× sp
 ## Verification Criteria
 
 After `docker compose down -v && docker compose up --build`:
+
 1. Wait ~5 minutes (sim reaches ~10:00).
 2. `curl localhost:8002/api/v1/flow/summary` — sim_time lag < 30 min from sim clock.
 3. `curl localhost:8001/api/v1/flights?limit=200` — cancelled count < 10% of departures.

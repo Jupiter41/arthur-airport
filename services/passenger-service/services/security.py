@@ -8,7 +8,7 @@ Special assistance lane: fixed 20 pax/hr, immune to congestion.
 import os
 
 
-LANES_PER_TERMINAL = int(os.getenv("SECURITY_LANES_OPEN", "6"))
+LANES_PER_TERMINAL = int(os.getenv("SECURITY_LANES_OPEN", "8"))
 BASE_THROUGHPUT_PER_LANE = 180  # pax/hr
 SA_LANE_THROUGHPUT = 20  # pax/hr — fixed, immune to congestion
 SA_LANE_BREACH_THROUGHPUT = 10  # pax/hr during security_breach

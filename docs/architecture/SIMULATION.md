@@ -355,16 +355,16 @@ This section makes explicit the simplifications and assumptions underlying the s
 
 ### Passenger flow
 
-| Assumption                                                  | Rationale                                                              |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Load factor ~ Beta(8,2), mean ~80%                          | Realistic for mid-size hub; Beta distribution avoids impossible values |
-| Security throughput = 180 pax/hr/lane, 4 lanes per terminal | Based on IATA Level of Service standards                               |
-| Passengers move to security queue at T−45 min               | Captures typical check-in cutoff                                       |
-| Dwell time in airside ~ Normal(25min, 12min), clamp [5, 90] | Captures shopping/waiting behaviour                                    |
-| 20% of passengers have connecting flights                   | Realistic for a hub airport                                            |
-| Connection minimum time (MCT) = 45 min                      | Standard minimum connection time                                       |
-| Boarding rate = 10 pax/min                                  | Consistent with single-aisle + dual-aisle average                      |
-| Special assistance = 5%, fixed 20 pax/hr lane               | Low-throughput dedicated lane                                          |
+| Assumption                                                  | Rationale                                                               |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Load factor ~ Beta(8,2), mean ~80%                          | Realistic for mid-size hub; Beta distribution avoids impossible values  |
+| Security throughput = 180 pax/hr/lane, 8 lanes per terminal | Based on IATA Level of Service standards (scaled for 420 movements/day) |
+| Passengers move to security queue at T−45 min               | Captures typical check-in cutoff                                        |
+| Dwell time in airside ~ Normal(25min, 12min), clamp [5, 90] | Captures shopping/waiting behaviour                                     |
+| 20% of passengers have connecting flights                   | Realistic for a hub airport                                             |
+| Connection minimum time (MCT) = 45 min                      | Standard minimum connection time                                        |
+| Boarding rate = 10 pax/min                                  | Consistent with single-aisle + dual-aisle average                       |
+| Special assistance = 5%, fixed 20 pax/hr lane               | Low-throughput dedicated lane                                           |
 
 ### Baggage handling
 

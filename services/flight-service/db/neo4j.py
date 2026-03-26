@@ -151,7 +151,7 @@ async def get_all_flights(
         .scheduled_time, .estimated_time, .delay_minutes,
         .pax_count, .seat_capacity
     }} AS flight,
-    g.id AS gate_id,
+    COALESCE(g.id, f.gate_id) AS gate_id,
     r.id AS runway_id,
     pax_total,
     pax_boarded,
@@ -208,7 +208,7 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
-        .delay_minutes, .delay_reason, .pax_count, .seat_capacity
+        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id
     } AS flight,
     g { .id, .terminal_id, .jetbridge, .status } AS gate,
     r { .id, .status, .ils } AS runway,
@@ -249,6 +249,8 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
         flight["baggage_count"] = int(record.get("baggage_count") or 0)
         flight["baggage_loaded"] = int(record.get("baggage_loaded") or 0)
         flight["gate"] = dict(record["gate"]) if record["gate"] else None
+        # Fall back to stored gate_id when gate relationship has been released
+        flight["gate_id"] = (record["gate"]["id"] if record["gate"] else None) or flight.get("gate_id")
         flight["runway"] = dict(record["runway"]) if record["runway"] else None
         return flight
 
@@ -265,9 +267,9 @@ async def get_active_flights(sim_time: datetime) -> list[dict]:
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
-        .delay_minutes, .delay_reason, .pax_count, .seat_capacity
+        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id
     } AS flight,
-    g.id AS gate_id,
+    COALESCE(g.id, f.gate_id) AS gate_id,
     r.id AS runway_id
     """
     async with driver.session() as session:
@@ -319,7 +321,7 @@ async def update_flight_status(
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
-        .delay_minutes, .delay_reason, .pax_count, .seat_capacity
+        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id
     }} AS flight
     """
     async with driver.session() as session:
@@ -349,7 +351,7 @@ async def apply_delay(
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
-        .delay_minutes, .delay_reason, .pax_count, .seat_capacity
+        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id
     } AS flight
     """
     async with driver.session() as session:
@@ -393,10 +395,15 @@ async def assign_flight_to_gate(flight_id: str, gate_id: str, sim_time: datetime
 
 
 async def release_gate(flight_id: str) -> str | None:
-    """Remove ASSIGNED_TO relationship when flight departs. Returns released gate_id."""
+    """Remove ASSIGNED_TO relationship when flight departs. Returns released gate_id.
+
+    Stores gate_id as a property on the Flight node so the gate is still
+    visible in queries after the relationship is deleted.
+    """
     driver = get_driver()
     query = """
     MATCH (f:Flight {id: $flight_id})-[r:ASSIGNED_TO]->(g:Gate)
+    SET f.gate_id = g.id
     DELETE r
     SET g.status = 'available'
     RETURN g.id AS gate_id

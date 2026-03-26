@@ -11,6 +11,7 @@ build/
 .env
 .env.*
 !.env.example
+.ruffle_cache/
 
 # Node
 node_modules/
