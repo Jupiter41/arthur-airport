@@ -1,0 +1,38 @@
+name: "Connection crisis"
+description: >
+  Three delayed inbound flights arrive during two connecting departure
+  banks. Tests the system's ability to identify at-risk connections,
+  propagate delays through the turnaround chain, and track missed
+  connection passengers.
+
+sim_speed: 600
+start_time: "2024-06-15T10:00:00"
+duration_sim_minutes: 150
+
+seed_overrides:
+  weather: VMC
+  daily_flights: 420
+  load_factor: 0.85
+
+events:
+  - at_sim_offset_minutes: 30
+    type: runway_incursion
+    severity: high
+    location: runway-09L
+    trigger: manual
+    description: "Brief runway incursion delays 3 inbound flights by 30+ minutes"
+
+  - at_sim_offset_minutes: 90
+    type: system_failure
+    severity: low
+    location: gate-B07
+    trigger: manual
+    description: "Jetbridge malfunction at B07 delays deplaning by 15 minutes"
+
+expected_outcomes:
+  - metric: flights_delayed_current
+    condition: ">= 5"
+    within_sim_minutes: 60
+  - metric: missed_connections
+    condition: ">= 0"
+    within_sim_minutes: 150

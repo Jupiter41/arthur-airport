@@ -1,0 +1,34 @@
+name: "Morning peak storm"
+description: >
+  LIFR weather hits during the 07:30 peak departure bank. Tests cascade
+  propagation through reduced runway capacity, holding stack buildup, and
+  downstream departure delays. Expected: significant holding stack and
+  widespread delays across the morning bank.
+
+sim_speed: 600
+start_time: "2024-06-15T06:00:00"
+duration_sim_minutes: 180
+
+seed_overrides:
+  weather: CAVOK
+  daily_flights: 420
+  load_factor: 0.85
+
+events:
+  - at_sim_offset_minutes: 90
+    type: severe_weather
+    severity: critical
+    location: runway-09L
+    trigger: manual
+    description: "LIFR conditions develop rapidly — visibility drops below 1500m, ceiling 400ft"
+
+expected_outcomes:
+  - metric: holding_stack_depth
+    condition: ">= 2"
+    within_sim_minutes: 120
+  - metric: flights_delayed_current
+    condition: ">= 8"
+    within_sim_minutes: 150
+  - metric: avg_delay_minutes
+    condition: ">= 10"
+    within_sim_minutes: 180

@@ -78,8 +78,8 @@ async def seed_day(sim_day: int) -> None:
     )
 
 
-async def emit_initial_weather() -> None:
-    """Emit initial CAVOK weather state."""
+async def emit_initial_weather(category: str = "CAVOK") -> None:
+    """Emit initial weather state (default CAVOK, overridable for scenarios)."""
     sim_time = get_sim_time()
-    emit_weather_state_changed(sim_time, "CAVOK")
-    logger.info("Initial weather state emitted: CAVOK")
+    emit_weather_state_changed(sim_time, category)
+    logger.info("Initial weather state emitted: %s", category)

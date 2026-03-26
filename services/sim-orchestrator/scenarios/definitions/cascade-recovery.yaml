@@ -1,0 +1,32 @@
+name: "Cascade recovery"
+description: >
+  A critical runway incursion occurs and resolves after 30 minutes.
+  Measures how quickly the system recovers to normal operations — the
+  key metric is time-to-normal after the incident resolves. Tests
+  incident lifecycle from active through contained to resolved, and
+  the gradual clearing of delay backlog.
+
+sim_speed: 600
+start_time: "2024-06-15T09:00:00"
+duration_sim_minutes: 180
+
+seed_overrides:
+  weather: CAVOK
+  daily_flights: 420
+  load_factor: 0.80
+
+events:
+  - at_sim_offset_minutes: 30
+    type: runway_incursion
+    severity: critical
+    location: runway-09L
+    trigger: manual
+    description: "Vehicle on runway 09L — immediate closure, all departures held"
+
+expected_outcomes:
+  - metric: flights_delayed_current
+    condition: ">= 5"
+    within_sim_minutes: 60
+  - metric: incident_count_active
+    condition: ">= 1"
+    within_sim_minutes: 40

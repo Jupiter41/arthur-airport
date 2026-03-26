@@ -1,0 +1,41 @@
+name: "Double disruption"
+description: >
+  Severe weather (IMC conditions) and a conveyor system failure strike
+  simultaneously during the morning peak. This is a stress test for the
+  system's ability to handle compounded disruptions — reduced runway
+  capacity plus degraded baggage handling at the same time.
+
+sim_speed: 600
+start_time: "2024-06-15T06:30:00"
+duration_sim_minutes: 180
+
+seed_overrides:
+  weather: CAVOK
+  daily_flights: 420
+  load_factor: 0.85
+
+events:
+  - at_sim_offset_minutes: 60
+    type: severe_weather
+    severity: high
+    location: runway-09L
+    trigger: manual
+    description: "IMC conditions developing — ceiling dropping to 800ft, visibility 3km"
+
+  - at_sim_offset_minutes: 65
+    type: system_failure
+    severity: high
+    location: conveyor-sorting
+    trigger: manual
+    description: "Main sorting belt failure — baggage handling throughput reduced by 60%"
+
+expected_outcomes:
+  - metric: flights_delayed_current
+    condition: ">= 15"
+    within_sim_minutes: 120
+  - metric: holding_stack_depth
+    condition: ">= 3"
+    within_sim_minutes: 90
+  - metric: incident_count_active
+    condition: ">= 2"
+    within_sim_minutes: 70

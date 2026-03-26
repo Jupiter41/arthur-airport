@@ -1,0 +1,31 @@
+name: "Baggage fire chain reaction"
+description: >
+  A dangerous goods class 3 (flammable liquid) ignites in make-up area B
+  during peak hour. The fire suppression system activates, shutting down
+  the Terminal B baggage handling zone. Tests baggage rerouting, flight
+  loading delays, and downstream departure impacts.
+
+sim_speed: 600
+start_time: "2024-06-15T07:00:00"
+duration_sim_minutes: 150
+
+seed_overrides:
+  weather: CAVOK
+  daily_flights: 420
+  load_factor: 0.80
+
+events:
+  - at_sim_offset_minutes: 60
+    type: baggage_fire
+    severity: high
+    location: make-up-area-B
+    trigger: manual
+    description: "DG class 3 ignition in Terminal B make-up carousel — fire suppression activated"
+
+expected_outcomes:
+  - metric: flights_delayed_current
+    condition: ">= 5"
+    within_sim_minutes: 90
+  - metric: incident_count_active
+    condition: ">= 1"
+    within_sim_minutes: 70

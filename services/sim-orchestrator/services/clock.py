@@ -34,18 +34,21 @@ _events_produced: int = 0
 # Callbacks
 _on_hour_boundary = None
 _on_day_boundary = None
+_on_tick = None
 
 
-def configure_callbacks(on_hour=None, on_day=None) -> None:
-    """Register callbacks for hour-boundary and day-boundary events.
+def configure_callbacks(on_hour=None, on_day=None, on_tick=None) -> None:
+    """Register callbacks for hour-boundary, day-boundary, and per-tick events.
 
     Args:
         on_hour: Async callable(sim_time) invoked every simulated hour.
         on_day: Async callable(next_day, sim_time) invoked at 23:30 to seed the next day.
+        on_tick: Async callable(sim_time) invoked every simulated minute.
     """
-    global _on_hour_boundary, _on_day_boundary
+    global _on_hour_boundary, _on_day_boundary, _on_tick
     _on_hour_boundary = on_hour
     _on_day_boundary = on_day
+    _on_tick = on_tick
 
 
 def get_state() -> dict:
@@ -199,6 +202,13 @@ async def run_clock_loop() -> None:
                     await _on_day_boundary(_sim_day + 1, _sim_time)
                 except Exception as e:
                     logger.error("Day boundary callback error: %s", e)
+
+            # Per-tick callback (scenario engine)
+            if _on_tick:
+                try:
+                    await _on_tick(_sim_time)
+                except Exception as e:
+                    logger.error("Tick callback error: %s", e)
 
             # Detect day rollover
             prev = _sim_time - timedelta(minutes=1)

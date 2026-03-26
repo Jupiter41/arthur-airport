@@ -19,4 +19,7 @@ Before doing any edit, do this:
 - ALWAYS mark issues as completed in the relevant file if needed.
 
 Following ROADMAP.md planning, do this:
-| 3 | Phase 2 — scenario engine + YAML runner | High | High — makes project demonstrable |
+
+- Create a new endpoint (or link to dashboards, do what you think is best) with an UI to create, run, inspect, see results of scenarios defined in YAML files.
+  | 4 | Fix Gap 1 — spatial layout (taxi times) | Medium | Medium — physical realism |
+  | 5 | Fix Gap 4 — conveyor spatial model | Medium | Medium — baggage realism |

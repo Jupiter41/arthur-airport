@@ -1,0 +1,40 @@
+name: "Runway incursion during peak hour"
+description: >
+  A vehicle enters runway 09L at 08:15 during the peak departure bank.
+  Tests cascade propagation: ground stop, holding stack, gate congestion,
+  cascading departure delays. Expected: 12-18 flights delayed 20-45 min.
+
+sim_speed: 600
+start_time: "2024-06-15T07:30:00"
+duration_sim_minutes: 120
+
+seed_overrides:
+  weather: CAVOK
+  daily_flights: 420
+  load_factor: 0.85
+
+events:
+  - at_sim_offset_minutes: 45
+    type: runway_incursion
+    severity: critical
+    location: runway-09L
+    trigger: manual
+    description: "Vehicle detected on active runway 09L during peak departure sequence"
+
+  - at_sim_offset_minutes: 80
+    type: system_failure
+    severity: medium
+    location: conveyor-sorting
+    trigger: manual
+    description: "Baggage sorting system intermittent failure during recovery phase"
+
+expected_outcomes:
+  - metric: flights_delayed_current
+    condition: ">= 10"
+    within_sim_minutes: 60
+  - metric: holding_stack_depth
+    condition: ">= 2"
+    within_sim_minutes: 60
+  - metric: cascade_depth_max
+    condition: ">= 1"
+    within_sim_minutes: 90

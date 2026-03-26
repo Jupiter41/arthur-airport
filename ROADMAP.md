@@ -236,8 +236,10 @@ Phase 1 (current)   Operational correctness
                     ⬜ Fix gaps 1–4 above
 
 Phase 2             Scenario engine
-                    Predefined + user-created scenarios
-                    Visual, documented, reproducible
+                    ✅ Predefined + user-created scenarios
+                    ✅ Visual, documented, reproducible
+                    ✅ 8 YAML scenario definitions
+                    ✅ REST API + CLI runner
 
 Phase 3             Physical environment
                     Spatial model, layout, real distances
@@ -255,6 +257,8 @@ Phase 6             Geospatial digital twin
 ---
 
 ## Phase 2 — Scenario engine
+
+> **Status: DONE** — 8 YAML scenario definitions, full REST API (7 endpoints), CLI runner script, gateway proxy, clock integration with on_tick callbacks. Scenarios run to completion with metric collection and outcome evaluation.
 
 A scenario is a **named, reproducible sequence of events** injected into the simulation at defined sim-time offsets, producing a documented expected outcome.
 
@@ -364,6 +368,7 @@ Special assistance: multiply all walking times × 2.5.
 ## Phase 4 — Simulation settings UI
 
 A dedicated settings panel in the React dashboard exposing all simulation parameters as interactive controls, each change sending a `PATCH` to the sim-orchestrator via the API gateway.
+Maybe Link it to the scenario page.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -905,19 +910,19 @@ The `sim-orchestrator` reads this file at startup and generates all fixtures dyn
 
 ## Priority order summary
 
-| Priority | Phase                                   | Effort | Impact                            |
-| -------- | --------------------------------------- | ------ | --------------------------------- |
-| 1        | Fix Gap 2 — turnaround task graph       | Medium | High — makes delays realistic     |
-| 2        | Fix Gap 3 — flight type distinction     | Low    | Medium — domestic vs intl realism |
-| 3        | Phase 2 — scenario engine + YAML runner | High   | High — makes project demonstrable |
-| 4        | Fix Gap 1 — spatial layout (taxi times) | Medium | Medium — physical realism         |
-| 5        | Fix Gap 4 — conveyor spatial model      | Medium | Medium — baggage realism          |
-| 6        | Gap 0.5 — better dashboards             | Medium | High — usability                  |
-| 7        | Phase 4 — settings UI                   | Medium | High — interactive demonstrations |
-| 8        | Phase 3 — full physical environment     | High   | High — wow factor                 |
-| 9        | Phase 5 — real weather API              | Low    | Medium — easy win                 |
-| 10       | Phase 5 — real schedule CSV loader      | Medium | High — real-world credibility     |
-| 11       | Phase 6.1–6.7 — Mapbox geospatial twin  | High   | High — visual credibility         |
-| 12       | Phase 6.8 — CesiumJS 3D globe           | Medium | High — wow factor (globe)         |
-| 13       | HOW-TO + airport config system          | Medium | High — community adoption         |
-| 14       | Adapt README & LICENSE & CONTRIBUTING   | Medium | High — community adoption & legal |
+| Priority | Phase                                      | Effort | Impact                            |
+| -------- | ------------------------------------------ | ------ | --------------------------------- |
+| 0        | ✅ Gap 0.5 — better dashboards             | Medium | High — usability                  |
+| 1        | ✅ Fix Gap 2 — turnaround task graph       | Medium | High — makes delays realistic     |
+| 2        | ✅ Fix Gap 3 — flight type distinction     | Low    | Medium — domestic vs intl realism |
+| 3        | ✅ Phase 2 — scenario engine + YAML runner | High   | High — makes project demonstrable |
+| 4        | Fix Gap 1 — spatial layout (taxi times)    | Medium | Medium — physical realism         |
+| 5        | Fix Gap 4 — conveyor spatial model         | Medium | Medium — baggage realism          |
+| 6        | Phase 4 — settings UI                      | Medium | High — interactive demonstrations |
+| 7        | Phase 3 — full physical environment        | High   | High — wow factor                 |
+| 8        | Phase 5 — real weather API                 | Low    | Medium — easy win                 |
+| 9        | Phase 5 — real schedule CSV loader         | Medium | High — real-world credibility     |
+| 10       | Phase 6.1–6.7 — Mapbox geospatial twin     | High   | High — visual credibility         |
+| 11       | Phase 6.8 — CesiumJS 3D globe              | Medium | High — wow factor (globe)         |
+| 12       | HOW-TO + airport config system             | Medium | High — community adoption         |
+| 13       | Adapt README & LICENSE & CONTRIBUTING      | Medium | High — community adoption & legal |

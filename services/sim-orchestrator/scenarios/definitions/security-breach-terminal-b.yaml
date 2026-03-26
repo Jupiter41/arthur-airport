@@ -1,0 +1,31 @@
+name: "Security breach Terminal B"
+description: >
+  A security breach triggers a terminal lockdown at 14:00 during the
+  afternoon lull — but close enough to the evening peak to cause boarding
+  delays if not resolved quickly. Tests terminal zone closure impact on
+  passenger flow and boarding processes.
+
+sim_speed: 600
+start_time: "2024-06-15T13:00:00"
+duration_sim_minutes: 150
+
+seed_overrides:
+  weather: VMC
+  daily_flights: 420
+  load_factor: 0.80
+
+events:
+  - at_sim_offset_minutes: 60
+    type: security_breach
+    severity: high
+    location: terminal-B
+    trigger: manual
+    description: "Unauthorised individual past security checkpoint B — terminal lockdown initiated"
+
+expected_outcomes:
+  - metric: flights_delayed_current
+    condition: ">= 3"
+    within_sim_minutes: 90
+  - metric: incident_count_active
+    condition: ">= 1"
+    within_sim_minutes: 70

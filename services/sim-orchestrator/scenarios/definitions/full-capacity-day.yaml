@@ -1,0 +1,25 @@
+name: "Full capacity day"
+description: >
+  A special event day with 1.3x passenger multiplier pushes the airport
+  to its operational limits. All terminals at high load with no incidents
+  injected — tests the system's behaviour under pure demand stress with
+  security queue overflow and extended dwell times.
+
+sim_speed: 600
+start_time: "2024-06-15T05:00:00"
+duration_sim_minutes: 240
+
+seed_overrides:
+  weather: CAVOK
+  daily_flights: 420
+  load_factor: 0.95
+
+events: []
+
+expected_outcomes:
+  - metric: flights_delayed_current
+    condition: ">= 1"
+    within_sim_minutes: 240
+  - metric: pax_disrupted
+    condition: ">= 0"
+    within_sim_minutes: 240

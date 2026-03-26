@@ -35,34 +35,87 @@ type ProxyRoute = {
 
 const PROXY_ROUTES: ProxyRoute[] = [
   // Flight service
-  { service: "flights", mountPath: "/api/v1/flights", upstreamPrefix: "/api/v1/flights" },
-  { service: "flights", mountPath: "/api/v1/runways", upstreamPrefix: "/api/v1/runways" },
-  { service: "flights", mountPath: "/api/v1/gates", upstreamPrefix: "/api/v1/gates" },
+  {
+    service: "flights",
+    mountPath: "/api/v1/flights",
+    upstreamPrefix: "/api/v1/flights",
+  },
+  {
+    service: "flights",
+    mountPath: "/api/v1/runways",
+    upstreamPrefix: "/api/v1/runways",
+  },
+  {
+    service: "flights",
+    mountPath: "/api/v1/gates",
+    upstreamPrefix: "/api/v1/gates",
+  },
 
   // Weather service
-  { service: "weather", mountPath: "/api/v1/weather", upstreamPrefix: "/api/v1/weather" },
+  {
+    service: "weather",
+    mountPath: "/api/v1/weather",
+    upstreamPrefix: "/api/v1/weather",
+  },
 
   // Incident service
-  { service: "incidents", mountPath: "/api/v1/incidents/alerts", upstreamPrefix: "/api/v1/alerts" },
-  { service: "incidents", mountPath: "/api/v1/incidents", upstreamPrefix: "/api/v1/incidents" },
+  {
+    service: "incidents",
+    mountPath: "/api/v1/incidents/alerts",
+    upstreamPrefix: "/api/v1/alerts",
+  },
+  {
+    service: "incidents",
+    mountPath: "/api/v1/incidents",
+    upstreamPrefix: "/api/v1/incidents",
+  },
 
   // Simulation orchestrator
+  {
+    service: "sim",
+    mountPath: "/api/v1/scenarios",
+    upstreamPrefix: "/api/v1/scenarios",
+  },
   { service: "sim", mountPath: "/api/v1/sim", upstreamPrefix: "/api/v1/sim" },
 
   // Passenger service. Frontend namespaces these under /passengers/*.
-  { service: "passengers", mountPath: "/api/v1/passengers/flow", upstreamPrefix: "/api/v1/flow" },
+  {
+    service: "passengers",
+    mountPath: "/api/v1/passengers/flow",
+    upstreamPrefix: "/api/v1/flow",
+  },
   {
     service: "passengers",
     mountPath: "/api/v1/passengers/connections",
     upstreamPrefix: "/api/v1/connections",
   },
-  { service: "passengers", mountPath: "/api/v1/passengers/alerts", upstreamPrefix: "/api/v1/alerts" },
-  { service: "passengers", mountPath: "/api/v1/passengers", upstreamPrefix: "/api/v1/passengers" },
+  {
+    service: "passengers",
+    mountPath: "/api/v1/passengers/alerts",
+    upstreamPrefix: "/api/v1/alerts",
+  },
+  {
+    service: "passengers",
+    mountPath: "/api/v1/passengers",
+    upstreamPrefix: "/api/v1/passengers",
+  },
 
   // Baggage service. Frontend namespaces these under /baggage/*.
-  { service: "baggage", mountPath: "/api/v1/baggage/flow", upstreamPrefix: "/api/v1/flow" },
-  { service: "baggage", mountPath: "/api/v1/baggage/flagged", upstreamPrefix: "/api/v1/flagged" },
-  { service: "baggage", mountPath: "/api/v1/baggage", upstreamPrefix: "/api/v1/baggage" },
+  {
+    service: "baggage",
+    mountPath: "/api/v1/baggage/flow",
+    upstreamPrefix: "/api/v1/flow",
+  },
+  {
+    service: "baggage",
+    mountPath: "/api/v1/baggage/flagged",
+    upstreamPrefix: "/api/v1/flagged",
+  },
+  {
+    service: "baggage",
+    mountPath: "/api/v1/baggage",
+    upstreamPrefix: "/api/v1/baggage",
+  },
 ];
 
 function joinPath(base: string, suffix: string): string {
