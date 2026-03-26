@@ -21,17 +21,25 @@ from db.neo4j import (
     assign_flight_to_runway,
     release_gate,
     get_open_runway,
+    get_paired_flight,
 )
 from kafka.producer import (
     emit_flight_status_changed,
     emit_flight_gate_assigned,
     emit_flight_runway_assigned,
     emit_flight_cancelled,
+    emit_turnaround_task_changed,
 )
 from services.state_machine import evaluate_transition
 from services.runway_queue import RunwayQueue
 from services.gate_resolver import ensure_gate_assigned
 from services.turnaround import propagate_turnaround_delay
+from services.turnaround_plan import (
+    TurnaroundPlan,
+    TaskStatus,
+    create_turnaround_plan,
+    nominal_turnaround_minutes,
+)
 from metrics import (
     flight_status_transitions_total as m_transitions,
     flights_active as m_active,
@@ -55,12 +63,14 @@ class FlightConsumerState:
 
     def __init__(self) -> None:
         self.sim_time: datetime | None = None
+        self.last_tick_sim_time: datetime | None = None
         self.runway_queue = RunwayQueue()
         self.held_flights: dict[str, dict] = {}
         self.incident_affected_gates: set[str] = set()
         self.incident_affected_runways: set[str] = set()
         self.processed_events: set[str] = set()
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
+        self.turnaround_plans: dict[str, TurnaroundPlan] = {}  # keyed by aircraft_registration
 
     MAX_PROCESSED = 10000
 
@@ -152,7 +162,7 @@ async def run_consumer() -> None:
     global _consumer, _consumer_running
 
     _consumer = _make_consumer()
-    _consumer.subscribe(["sim.clock", "weather.events", "incidents.events", "flights.schedule"])
+    _consumer.subscribe(["sim.clock", "weather.events", "incidents.events", "flights.schedule", "baggage.events"])
     _consumer_running = True
 
     loop = asyncio.get_event_loop()
@@ -259,6 +269,8 @@ async def _dispatch(envelope: dict) -> None:
             await _on_incident_status_changed(payload, sim_time)
         case "FlightScheduleSeeded":
             await _on_schedule_seeded(payload, sim_time)
+        case "BaggageFlagged":
+            await _on_baggage_flagged(payload, sim_time)
         case _:
             pass
 
@@ -266,6 +278,7 @@ async def _dispatch(envelope: dict) -> None:
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Process a SimClockTick — advance all active flights through the FSM."""
     _state.sim_time = sim_time
+    _state.last_tick_sim_time = sim_time
 
     # 1. Get all active flights
     flights = await get_active_flights(sim_time)
@@ -298,6 +311,9 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     for flight in flights:
         await _process_flight(flight, sim_time)
 
+    # 3b. Advance all active turnaround plans
+    _advance_turnaround_plans(sim_time)
+
     # 4. Update Prometheus gauges
     status_counts: dict[str, int] = {}
     delayed_count = 0
@@ -309,6 +325,30 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     for s, count in status_counts.items():
         m_active.labels(status=s).set(count)
     m_delayed.set(delayed_count)
+
+
+def _advance_turnaround_plans(sim_time: datetime) -> None:
+    """Advance all active turnaround plans and emit events for changed tasks."""
+    completed_regs: list[str] = []
+    for reg, plan in _state.turnaround_plans.items():
+        changed = plan.advance(sim_time)
+        for task in changed:
+            emit_turnaround_task_changed(
+                flight_id=plan.arrival_flight_id,
+                aircraft_registration=reg,
+                task_name=task.name,
+                new_status=task.status.value,
+                sim_time=sim_time,
+                duration_min=task.duration_min,
+            )
+        if plan.is_complete:
+            completed_regs.append(reg)
+    # Don't remove completed plans here — they'll be cleaned up when 'arrived' fires
+
+
+def get_turnaround_plan(aircraft_registration: str) -> TurnaroundPlan | None:
+    """Public accessor for turnaround plan state (used by routers)."""
+    return _state.turnaround_plans.get(aircraft_registration)
 
 
 async def _process_flight(flight: dict, sim_time: datetime) -> None:
@@ -357,7 +397,9 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
                 est = datetime.fromisoformat(str(estimated))
                 if sim_time >= est - timedelta(minutes=65):
                     new_gate = await ensure_gate_assigned(
-                        flight_id, gate_id, None, sim_time
+                        flight_id, gate_id, None, sim_time,
+                        aircraft_type=flight.get("aircraft_type"),
+                        flight_type=flight.get("flight_type"),
                     )
                     if new_gate and new_gate != gate_id:
                         flight["gate_id"] = new_gate
@@ -396,6 +438,23 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
         boarded_pct=boarded_pct,
         has_hold=has_hold,
     )
+
+    # ── Turnaround-aware gating ──
+    reg = flight.get("aircraft_registration", "")
+
+    # Gate arrival at_gate → arrived on deplaning completion
+    if (new_status == "arrived" and direction == "arrival"
+            and reg and reg in _state.turnaround_plans):
+        plan = _state.turnaround_plans[reg]
+        if not plan.deplaning_done:
+            new_status = None  # wait for deplaning to complete
+
+    # Gate departure scheduled → boarding on turnaround readiness
+    if (new_status == "boarding" and direction == "departure"
+            and reg and reg in _state.turnaround_plans):
+        plan = _state.turnaround_plans[reg]
+        if not plan.ready_for_boarding:
+            new_status = None  # wait for cleaning + deplaning
 
     if new_status is None:
         # Check for delay accumulation on boarding flights past departure time
@@ -442,7 +501,11 @@ async def _execute_transition(
             if direction == "arrival":
                 gate_id = flight.get("gate_id")
                 if not gate_id:
-                    new_gate = await ensure_gate_assigned(flight_id, None, None, sim_time)
+                    new_gate = await ensure_gate_assigned(
+                        flight_id, None, None, sim_time,
+                        aircraft_type=flight.get("aircraft_type"),
+                        flight_type=flight.get("flight_type"),
+                    )
                     if new_gate:
                         emit_flight_gate_assigned(
                             flight_id=flight_id,
@@ -463,7 +526,11 @@ async def _execute_transition(
             # Assign gate for arrival
             if direction == "arrival":
                 gate_id = flight.get("gate_id")
-                new_gate = await ensure_gate_assigned(flight_id, gate_id, None, sim_time)
+                new_gate = await ensure_gate_assigned(
+                    flight_id, gate_id, None, sim_time,
+                    aircraft_type=flight.get("aircraft_type"),
+                    flight_type=flight.get("flight_type"),
+                )
                 if new_gate:
                     emit_flight_gate_assigned(
                         flight_id=flight_id,
@@ -502,28 +569,64 @@ async def _execute_transition(
             )
 
         case "at_gate":
-            # Arrival turnaround — propagate delay if applicable
-            if direction == "arrival" and delay_minutes > 0:
+            # Arrival turnaround — create task-based turnaround plan
+            if direction == "arrival":
                 reg = flight.get("aircraft_registration", "")
                 aircraft_type = flight.get("aircraft_type", "")
                 if reg:
-                    await propagate_turnaround_delay(
-                        flight_id=flight_id,
+                    paired = await get_paired_flight(reg, "arrival")
+                    paired_id = paired["id"] if paired else None
+                    plan = create_turnaround_plan(
                         aircraft_registration=reg,
+                        arrival_flight_id=flight_id,
                         aircraft_type=aircraft_type,
-                        direction=direction,
-                        delay_minutes=delay_minutes,
-                        sim_time=sim_time,
-                        depth=0,
-                        producer_callback=_emit_status_changed_callback,
+                        paired_departure_id=paired_id,
+                        flight_type=flight.get("flight_type"),
+                    )
+                    started_tasks = plan.start(sim_time)
+                    _state.turnaround_plans[reg] = plan
+                    for t in started_tasks:
+                        emit_turnaround_task_changed(
+                            flight_id=flight_id,
+                            aircraft_registration=reg,
+                            task_name=t.name,
+                            new_status=t.status.value,
+                            sim_time=sim_time,
+                            duration_min=t.duration_min,
+                        )
+                    logger.info(
+                        "Turnaround plan created for %s (reg=%s, cp=%d min)",
+                        flight_number, reg, plan.critical_path_minutes(),
                     )
 
+                    # Propagate delay via critical-path math (replaces flat buffer)
+                    if delay_minutes > 0 and paired:
+                        buffer = nominal_turnaround_minutes(aircraft_type, flight.get("flight_type"))
+                        propagated = max(0, delay_minutes - buffer)
+                        if propagated > 0:
+                            await propagate_turnaround_delay(
+                                flight_id=flight_id,
+                                aircraft_registration=reg,
+                                aircraft_type=aircraft_type,
+                                direction=direction,
+                                delay_minutes=delay_minutes,
+                                sim_time=sim_time,
+                                depth=0,
+                                producer_callback=_emit_status_changed_callback,
+                            )
+
         case "arrived":
-            # Arrival fully completed — release gate
+            # Arrival fully completed — release gate and clean up turnaround
             if direction == "arrival":
                 released = await release_gate(flight_id)
                 if released:
                     logger.info("Gate %s released by arrived flight %s", released, flight_number)
+                # Clean up turnaround plan if complete
+                reg = flight.get("aircraft_registration", "")
+                if reg and reg in _state.turnaround_plans:
+                    plan = _state.turnaround_plans[reg]
+                    if plan.is_complete:
+                        del _state.turnaround_plans[reg]
 
     # Update Neo4j
     await update_flight_status(
@@ -667,6 +770,25 @@ async def _on_schedule_seeded(payload: dict, sim_time: datetime) -> None:
     total = payload.get("total_flights", 0)
     sim_day = payload.get("sim_day", 0)
     logger.info("Flight schedule seeded: day=%d, flights=%d", sim_day, total)
+
+
+async def _on_baggage_flagged(payload: dict, sim_time: datetime) -> None:
+    """Handle BaggageFlagged — extend baggage_offload task in the turnaround plan."""
+    flight_id = payload.get("flight_id", "")
+    if not flight_id:
+        return
+    # Look up the aircraft registration for this flight's turnaround plan
+    from db.neo4j import get_flight_by_id
+    flight = await get_flight_by_id(flight_id)
+    if not flight:
+        return
+    reg = flight.get("aircraft_registration", "")
+    if not reg or reg not in _state.turnaround_plans:
+        return
+    plan = _state.turnaround_plans[reg]
+    # Flagged baggage adds 5 min to offload time
+    plan.extend_task("baggage_offload", 5)
+    logger.info("Baggage flagged on %s — extended baggage_offload by 5 min (reg=%s)", flight_id, reg)
 
 
 # --- Public API for manual hold/release ---

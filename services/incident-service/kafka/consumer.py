@@ -77,6 +77,7 @@ class IncidentConsumerState:
 
     def __init__(self) -> None:
         self.sim_time: datetime | None = None
+        self.last_tick_sim_time: datetime | None = None
         self.processed_events: set[str] = set()
         self.last_prob_hour: int = -1
         self.last_incident_times: dict[str, datetime] = {}
@@ -359,8 +360,15 @@ async def _dispatch(envelope: dict) -> None:
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     _state.sim_time = sim_time
 
+    # Compute delta for multi-minute ticks / tick skipping
+    if _state.last_tick_sim_time is not None:
+        delta_minutes = max(1, round((sim_time - _state.last_tick_sim_time).total_seconds() / 60))
+    else:
+        delta_minutes = payload.get("step_minutes", 1)
+    _state.last_tick_sim_time = sim_time
+
     # 1. TTR countdown
-    await tick_ttr(sim_time)
+    await tick_ttr(sim_time, delta_minutes)
 
     # 1b. Fire any pending delayed cascades
     await fire_pending_cascades(sim_time)

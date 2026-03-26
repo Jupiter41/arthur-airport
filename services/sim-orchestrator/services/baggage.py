@@ -18,6 +18,15 @@ WEIGHT_STD_KG = 4.0
 WEIGHT_MIN_KG = 2.0
 WEIGHT_MAX_KG = 32.0
 
+# Bags-per-passenger multiplier by flight type (Gap 3)
+BAGS_LAMBDA_BY_TYPE: dict[str, float] = {
+    "domestic": 1.0,
+    "international_short": 1.2,
+    "international_long": 1.5,
+    "cargo": 0.0,  # cargo flights carry freight, not pax bags
+    "charter": 1.3,
+}
+
 
 def _generate_tag(counter: int) -> str:
     """Generate a 10-digit barcode tag."""
@@ -27,8 +36,14 @@ def _generate_tag(counter: int) -> str:
 async def generate_baggage(
     passengers: list[dict],
     seed: int | None = None,
+    flight_type_map: dict[str, str] | None = None,
 ) -> tuple[int, list[dict]]:
     """Generate baggage for all passengers and write to Neo4j.
+
+    Args:
+        passengers: list of passenger dicts with at least {id, flight_id}
+        seed: RNG seed
+        flight_type_map: optional flight_id → flight_type lookup for per-type lambda
 
     Returns (total_bag_count, list of baggage dicts).
     """
@@ -42,7 +57,12 @@ async def generate_baggage(
     tag_counter = 1
 
     for pax in passengers:
-        bag_count = int(np_rng.poisson(POISSON_LAMBDA))
+        # Determine bags-per-pax lambda based on flight type
+        flight_id = pax.get("flight_id", "")
+        ft = (flight_type_map or {}).get(flight_id, "")
+        lam = BAGS_LAMBDA_BY_TYPE.get(ft, POISSON_LAMBDA)
+
+        bag_count = int(np_rng.poisson(lam)) if lam > 0 else 0
         bag_count = min(bag_count, 5)  # reasonable cap
 
         for _ in range(bag_count):

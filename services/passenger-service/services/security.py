@@ -64,20 +64,25 @@ class SecurityCheckpoint:
             return 999.0
         return (self.queue_depth / throughput) * 60.0
 
-    def drain_per_tick(self, forecast_queue: int) -> int:
-        """How many passengers to drain from main queue this tick (1 sim-minute)."""
+    def drain_per_tick(self, forecast_queue: int, delta_minutes: int = 1) -> int:
+        """How many passengers to drain from main queue this tick.
+
+        ``delta_minutes`` accounts for multi-minute ticks at high sim speeds:
+        the throughput is ``effective / 60 * delta`` so that skipped ticks
+        don't reduce overall security capacity.
+        """
         throughput = self.effective_throughput(forecast_queue)
-        drain = max(0, int(throughput / 60))
+        drain = max(0, int(throughput / 60 * delta_minutes))
         # Guard: always drain at least 1 pax/tick if queue > 0
         if drain == 0 and self.queue_depth > 0:
             drain = 1
         return drain
 
-    def sa_drain_per_tick(self) -> int:
+    def sa_drain_per_tick(self, delta_minutes: int = 1) -> int:
         """How many SA passengers to drain per tick."""
         throughput = self.sa_throughput()
-        # 20 pax/hr = 0.33/min — at least 1 every 3 ticks
-        return max(0, int(throughput / 60))
+        # 20 pax/hr = 0.33/min — at least 1 every 3 ticks at normal speed
+        return max(0, int(throughput / 60 * delta_minutes))
 
     def enqueue(self, passenger_id: str, special_assistance: bool = False) -> None:
         """Add passenger to the appropriate queue."""
@@ -88,15 +93,15 @@ class SecurityCheckpoint:
             if passenger_id not in self.queue:
                 self.queue.append(passenger_id)
 
-    def drain(self, forecast_queue: int) -> tuple[list[str], list[str]]:
+    def drain(self, forecast_queue: int, delta_minutes: int = 1) -> tuple[list[str], list[str]]:
         """Drain passengers through security. Returns (main_drained, sa_drained)."""
         # Main queue
-        main_count = self.drain_per_tick(forecast_queue)
+        main_count = self.drain_per_tick(forecast_queue, delta_minutes)
         main_drained = self.queue[:main_count]
         self.queue = self.queue[main_count:]
 
         # SA queue — drain at SA rate, minimum 1 every 3 minutes
-        sa_count = self.sa_drain_per_tick()
+        sa_count = self.sa_drain_per_tick(delta_minutes)
         # Ensure at least 1 SA pax processed every 3 ticks
         if sa_count == 0 and self.sa_queue:
             sa_count = 1  # fractional throughput: process 1 pax
@@ -133,12 +138,12 @@ class SecuritySystem:
     def enqueue(self, terminal: str, passenger_id: str, special_assistance: bool = False) -> None:
         self.checkpoints[terminal].enqueue(passenger_id, special_assistance)
 
-    def drain_all(self, forecast_queues: dict[str, int]) -> dict[str, tuple[list[str], list[str]]]:
+    def drain_all(self, forecast_queues: dict[str, int], delta_minutes: int = 1) -> dict[str, tuple[list[str], list[str]]]:
         """Drain all checkpoints. Returns {terminal: (main_drained, sa_drained)}."""
         result = {}
         for terminal, cp in self.checkpoints.items():
             forecast = forecast_queues.get(terminal, 0)
-            result[terminal] = cp.drain(forecast)
+            result[terminal] = cp.drain(forecast, delta_minutes)
         return result
 
     def freeze_terminal(self, terminal: str) -> None:

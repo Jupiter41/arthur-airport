@@ -12,17 +12,20 @@ from datetime import datetime, timedelta
 # checked_in → security_queue → airside → at_gate → boarded
 
 # --- Arrival flow ---
-# airborne → deplaning → baggage_claim → departed_airport
+# airborne → deplaning → customs (international only) → baggage_claim → departed_airport
 
 
 DEPARTURE_STATES = ["checked_in", "security_queue", "airside", "at_gate", "boarded"]
-ARRIVAL_STATES = ["airborne", "deplaning", "baggage_claim", "departed_airport"]
+ARRIVAL_STATES = ["airborne", "deplaning", "customs", "baggage_claim", "departed_airport"]
+
+INTERNATIONAL_FLIGHT_TYPES = {"international_short", "international_long"}
 
 CHECKIN_CUTOFF_MINUTES = 45
 GATE_OPEN_MINUTES = 30
 BOARDING_CALL_MINUTES = 20
 BOARDING_RATE_PAX_PER_MIN = 10
 DEPLANING_DELAY_MINUTES = 15
+CUSTOMS_DELAY_MINUTES = 10
 BAGGAGE_CLAIM_TIMEOUT_MINUTES = 45
 
 
@@ -120,6 +123,24 @@ def should_move_to_baggage_claim(
     return sim_time >= deplaning_dt + timedelta(minutes=DEPLANING_DELAY_MINUTES)
 
 
+def should_clear_customs(
+    sim_time: datetime,
+    customs_at: str | datetime | None,
+) -> bool:
+    """Arrival: move from customs to baggage_claim T+10 min after customs started."""
+    if customs_at is None:
+        return False
+    customs_dt = _to_naive_dt(customs_at)
+    if customs_dt is None:
+        return False
+    return sim_time >= customs_dt + timedelta(minutes=CUSTOMS_DELAY_MINUTES)
+
+
+def is_international_flight(flight_type: str | None) -> bool:
+    """Return True if this flight type requires customs/passport control."""
+    return flight_type in INTERNATIONAL_FLIGHT_TYPES
+
+
 def should_depart_airport(
     sim_time: datetime,
     baggage_claim_at: str | datetime | None,
@@ -186,6 +207,8 @@ def zone_for_status(status: str, terminal: str, gate_id: str | None = None) -> s
             return f"gate-{gate_id}" if gate_id else f"airside-{terminal}"
         case "deplaning":
             return f"gate-{gate_id}" if gate_id else "arrivals-hall"
+        case "customs":
+            return "customs"
         case "baggage_claim":
             return "baggage-claim"
         case "departed_airport":

@@ -140,15 +140,30 @@ def reset_to_start() -> None:
     logger.info("Clock reset to %s", _sim_time)
 
 
+MAX_TICKS_PER_SEC = int(os.getenv("MAX_TICKS_PER_SEC", "10"))
+
+
+def _compute_step_minutes() -> int:
+    """How many sim-minutes to advance per emitted tick.
+
+    At low speeds (≤600×) this is 1 — normal minute-by-minute ticking.
+    At higher speeds the step increases so the Kafka tick rate stays
+    at MAX_TICKS_PER_SEC, reducing message flood and giving consumers
+    time to process each tick.
+    """
+    return max(1, _speed_multiplier // (60 * MAX_TICKS_PER_SEC))
+
+
 async def run_clock_loop() -> None:
     """Main simulation clock loop.
 
-    Each iteration:
-        1. Advance sim_time by 1 minute
-        2. Emit SimClockTick to ``sim.clock``
-        3. Call hour-boundary callback if minute == 0
-        4. Call day-boundary callback at 23:30
-        5. Sleep for ``60 / speed_multiplier`` real seconds
+    At speeds ≤600× the loop emits one tick per sim-minute (unchanged).
+    At higher speeds the clock advances multiple sim-minutes per iteration
+    and emits a single tick with the final sim_time, keeping the wall-clock
+    tick rate capped at MAX_TICKS_PER_SEC (~10/s).  Hour- and day-boundary
+    callbacks are still invoked at every intermediate sim-minute so that
+    probabilistic events, next-day seeding, and day-rollover detection
+    work correctly regardless of speed.
     """
     global _sim_time, _sim_day, _tick_number, _events_produced, _tick_latencies
 
@@ -165,41 +180,47 @@ async def run_clock_loop() -> None:
         m_day.set(_sim_day)
         tick_start = time.monotonic()
 
-        _sim_time += timedelta(minutes=1)
+        step = _compute_step_minutes()
+
+        # Advance sim_time minute-by-minute so boundary callbacks fire
+        for _ in range(step):
+            _sim_time += timedelta(minutes=1)
+
+            # Hour boundary check
+            if _sim_time.minute == 0 and _on_hour_boundary:
+                try:
+                    await _on_hour_boundary(_sim_time)
+                except Exception as e:
+                    logger.error("Hour boundary callback error: %s", e)
+
+            # Day boundary: seed next day at 23:30
+            if _sim_time.hour == 23 and _sim_time.minute == 30 and _on_day_boundary:
+                try:
+                    await _on_day_boundary(_sim_day + 1, _sim_time)
+                except Exception as e:
+                    logger.error("Day boundary callback error: %s", e)
+
+            # Detect day rollover
+            prev = _sim_time - timedelta(minutes=1)
+            if _sim_time.date() != prev.date():
+                _sim_day += 1
+                logger.info("Day boundary: now day %d (%s)", _sim_day, _sim_time.date())
+
         _tick_number += 1
 
+        # Emit one tick per outer iteration with the final sim_time
         try:
             emit_clock_tick(
                 sim_time=_sim_time,
                 speed_multiplier=_speed_multiplier,
                 tick_number=_tick_number,
                 day_of_sim=_sim_day,
+                step_minutes=step,
             )
             _events_produced += 1
             m_tick_total.inc()
         except Exception as e:
-            # Never let a transient Kafka write issue stop the simulation clock.
             logger.error("Failed to emit SimClockTick at tick %d: %s", _tick_number, e)
-
-        # Hour boundary check
-        if _sim_time.minute == 0 and _on_hour_boundary:
-            try:
-                await _on_hour_boundary(_sim_time)
-            except Exception as e:
-                logger.error("Hour boundary callback error: %s", e)
-
-        # Day boundary: seed next day at 23:30
-        if _sim_time.hour == 23 and _sim_time.minute == 30 and _on_day_boundary:
-            try:
-                await _on_day_boundary(_sim_day + 1, _sim_time)
-            except Exception as e:
-                logger.error("Day boundary callback error: %s", e)
-
-        # Detect day rollover
-        prev = _sim_time - timedelta(minutes=1)
-        if _sim_time.date() != prev.date():
-            _sim_day += 1
-            logger.info("Day boundary: now day %d (%s)", _sim_day, _sim_time.date())
 
         tick_elapsed = (time.monotonic() - tick_start) * 1000  # ms
         m_tick_latency.observe(tick_elapsed)
@@ -207,6 +228,6 @@ async def run_clock_loop() -> None:
         if len(_tick_latencies) > 1000:
             _tick_latencies = _tick_latencies[-500:]
 
-        sleep_s = 60.0 / _speed_multiplier
+        sleep_s = step * 60.0 / _speed_multiplier
         actual_sleep = max(0, sleep_s - tick_elapsed / 1000)
         await asyncio.sleep(actual_sleep)

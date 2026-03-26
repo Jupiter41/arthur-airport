@@ -2,6 +2,9 @@
 
 When multiple flights need the same gate at overlapping times, the resolver
 finds the nearest available gate in the same terminal (or any terminal as fallback).
+
+Enforces gate compatibility: international flights require international-capable gates,
+wide-body aircraft require gates with jetbridge clearance for large frames.
 """
 
 import logging
@@ -29,6 +32,9 @@ TERMINAL_FALLBACK = {
     "T-C": ["T-B", "T-A"],
 }
 
+INTERNATIONAL_FLIGHT_TYPES = {"international_short", "international_long"}
+WIDE_BODY_TYPES = {"B77W", "A333", "A332", "B748", "A380"}
+
 
 def _gate_to_terminal(gate_id: str) -> str:
     """Extract terminal ID from gate ID (e.g. 'B07' -> 'T-B')."""
@@ -41,6 +47,8 @@ async def check_and_resolve_conflict(
     flight_id: str,
     gate_id: str,
     sim_time: datetime,
+    require_international: bool = False,
+    require_wide_body: bool = False,
 ) -> dict | None:
     """Check if a gate is occupied and resolve conflict if needed.
 
@@ -56,12 +64,20 @@ async def check_and_resolve_conflict(
 
     # Try same terminal first
     terminal = _gate_to_terminal(gate_id)
-    new_gate = await get_available_gate(terminal, exclude_flight_id=flight_id)
+    new_gate = await get_available_gate(
+        terminal, exclude_flight_id=flight_id,
+        require_international=require_international,
+        require_wide_body=require_wide_body,
+    )
 
     # Try fallback terminals
     if not new_gate:
         for fallback_terminal in TERMINAL_FALLBACK.get(terminal, []):
-            new_gate = await get_available_gate(fallback_terminal, exclude_flight_id=flight_id)
+            new_gate = await get_available_gate(
+                fallback_terminal, exclude_flight_id=flight_id,
+                require_international=require_international,
+                require_wide_body=require_wide_body,
+            )
             if new_gate:
                 break
 
@@ -85,15 +101,27 @@ async def ensure_gate_assigned(
     current_gate_id: str | None,
     preferred_terminal: str | None,
     sim_time: datetime,
+    aircraft_type: str | None = None,
+    flight_type: str | None = None,
 ) -> str | None:
     """Ensure a flight has a gate assigned. Returns the gate ID (new or existing).
 
     If the flight already has a valid gate, return it.
     If the gate is occupied, resolve the conflict.
     If no gate, find one.
+
+    Respects gate compatibility: international flights need international-capable gates,
+    wide-body aircraft need gates with wide_body_capable clearance.
     """
+    require_international = flight_type in INTERNATIONAL_FLIGHT_TYPES
+    require_wide_body = aircraft_type in WIDE_BODY_TYPES
+
     if current_gate_id:
-        conflict = await check_and_resolve_conflict(flight_id, current_gate_id, sim_time)
+        conflict = await check_and_resolve_conflict(
+            flight_id, current_gate_id, sim_time,
+            require_international=require_international,
+            require_wide_body=require_wide_body,
+        )
         if conflict:
             return conflict["new_gate"]
         return current_gate_id
@@ -103,10 +131,18 @@ async def ensure_gate_assigned(
     if not terminal.startswith("T-"):
         terminal = f"T-{terminal}"
 
-    gate = await get_available_gate(terminal, exclude_flight_id=flight_id)
+    gate = await get_available_gate(
+        terminal, exclude_flight_id=flight_id,
+        require_international=require_international,
+        require_wide_body=require_wide_body,
+    )
     if not gate:
         for fallback in TERMINAL_FALLBACK.get(terminal, []):
-            gate = await get_available_gate(fallback, exclude_flight_id=flight_id)
+            gate = await get_available_gate(
+                fallback, exclude_flight_id=flight_id,
+                require_international=require_international,
+                require_wide_body=require_wide_body,
+            )
             if gate:
                 break
 

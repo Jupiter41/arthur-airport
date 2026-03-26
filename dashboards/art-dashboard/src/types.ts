@@ -68,6 +68,8 @@ export interface Flight {
   pax_boarded: number;
   baggage_count: number;
   baggage_loaded: number;
+  flight_type: string | null;
+  route_category: string | null;
 }
 
 export interface Runway {

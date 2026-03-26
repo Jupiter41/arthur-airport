@@ -28,6 +28,23 @@ def _build_airline_lookup() -> None:
         _reg_counters.setdefault(airline["code"], 0)
 
 
+def _classify_flight(destination: dict, aircraft: dict) -> tuple[str, str]:
+    """Return (flight_type, route_category) based on destination region and aircraft.
+
+    Mapping:
+      domestic  → domestic / short_haul
+      shorthaul → international_short / medium_haul
+      longhaul  → international_long / long_haul
+    """
+    region = destination.get("region", "domestic")
+    if region == "domestic":
+        return "domestic", "short_haul"
+    elif region == "shorthaul":
+        return "international_short", "medium_haul"
+    else:  # longhaul
+        return "international_long", "long_haul"
+
+
 def _sample_airline(rng: random.Random) -> dict:
     """Weight-select an airline based on market_share."""
     fixtures = get_fixtures()
@@ -165,6 +182,8 @@ async def generate_schedule(
         terminal_pref = _airline_terminal.get(airline["code"], "A")
         gate_id = _assign_gate(terminal_pref, gate_usage, dep_time)
 
+        flight_type, route_category = _classify_flight(destination, aircraft)
+
         # Departure flight
         dep_id = str(uuid4())
         dep_flight = {
@@ -184,6 +203,8 @@ async def generate_schedule(
             "pax_count": 0,  # filled by passenger generation
             "gate_id": gate_id,
             "runway_id": "09L" if runway_toggle % 2 == 0 else "09R",
+            "flight_type": flight_type,
+            "route_category": route_category,
         }
         flights.append(dep_flight)
 
@@ -219,6 +240,8 @@ async def generate_schedule(
             "pax_count": 0,
             "gate_id": gate_id,
             "runway_id": "27R" if runway_toggle % 2 == 0 else "27L",
+            "flight_type": flight_type,
+            "route_category": route_category,
         }
         flights.append(arr_flight)
         runway_toggle += 1
@@ -260,7 +283,9 @@ async def _persist_flights(flights: list[dict]) -> None:
                     delay_minutes: f.delay_minutes,
                     delay_reason: '',
                     seat_capacity: f.seat_capacity,
-                    pax_count: f.pax_count
+                    pax_count: f.pax_count,
+                    flight_type: f.flight_type,
+                    route_category: f.route_category
                 })
                 CREATE (fl)-[:ASSIGNED_TO]->(g)
                 CREATE (fl)-[:USES_RUNWAY {operation: CASE WHEN f.direction = 'departure' THEN 'takeoff' ELSE 'landing' END}]->(r)

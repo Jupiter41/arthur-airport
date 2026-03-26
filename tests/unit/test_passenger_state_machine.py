@@ -13,6 +13,7 @@ GATE_OPEN_MINUTES = _sm.GATE_OPEN_MINUTES
 BOARDING_CALL_MINUTES = _sm.BOARDING_CALL_MINUTES
 BOARDING_RATE_PAX_PER_MIN = _sm.BOARDING_RATE_PAX_PER_MIN
 DEPLANING_DELAY_MINUTES = _sm.DEPLANING_DELAY_MINUTES
+CUSTOMS_DELAY_MINUTES = _sm.CUSTOMS_DELAY_MINUTES
 BAGGAGE_CLAIM_TIMEOUT_MINUTES = _sm.BAGGAGE_CLAIM_TIMEOUT_MINUTES
 sample_dwell_minutes = _sm.sample_dwell_minutes
 should_move_to_security_queue = _sm.should_move_to_security_queue
@@ -20,6 +21,8 @@ should_move_to_at_gate = _sm.should_move_to_at_gate
 compute_boarding_batch_size = _sm.compute_boarding_batch_size
 should_start_boarding = _sm.should_start_boarding
 should_move_to_baggage_claim = _sm.should_move_to_baggage_claim
+should_clear_customs = _sm.should_clear_customs
+is_international_flight = _sm.is_international_flight
 should_depart_airport = _sm.should_depart_airport
 get_terminal_from_gate = _sm.get_terminal_from_gate
 get_terminal_for_flight = _sm.get_terminal_for_flight
@@ -36,7 +39,7 @@ class TestConstants:
         assert DEPARTURE_STATES == ["checked_in", "security_queue", "airside", "at_gate", "boarded"]
 
     def test_arrival_states_order(self):
-        assert ARRIVAL_STATES == ["airborne", "deplaning", "baggage_claim", "departed_airport"]
+        assert ARRIVAL_STATES == ["airborne", "deplaning", "customs", "baggage_claim", "departed_airport"]
 
     def test_cutoff_is_45(self):
         assert CHECKIN_CUTOFF_MINUTES == 45
@@ -220,3 +223,53 @@ class TestDwellSampling:
 
     def test_dwell_is_integer(self):
         assert isinstance(sample_dwell_minutes(), int)
+
+
+# ── Customs / international flight helpers ───────────────────────
+
+class TestCustomsClearance:
+    def test_should_clear_customs_none(self):
+        assert not should_clear_customs(BASE_TIME, None)
+
+    def test_should_clear_customs_before_delay(self):
+        customs_at = BASE_TIME
+        sim = customs_at + timedelta(minutes=CUSTOMS_DELAY_MINUTES - 1)
+        assert not should_clear_customs(sim, customs_at)
+
+    def test_should_clear_customs_at_delay(self):
+        customs_at = BASE_TIME
+        sim = customs_at + timedelta(minutes=CUSTOMS_DELAY_MINUTES)
+        assert should_clear_customs(sim, customs_at)
+
+    def test_should_clear_customs_after_delay(self):
+        customs_at = BASE_TIME
+        sim = customs_at + timedelta(minutes=CUSTOMS_DELAY_MINUTES + 5)
+        assert should_clear_customs(sim, customs_at)
+
+    def test_customs_delay_is_10_minutes(self):
+        assert CUSTOMS_DELAY_MINUTES == 10
+
+
+class TestIsInternationalFlight:
+    def test_international_short(self):
+        assert is_international_flight("international_short")
+
+    def test_international_long(self):
+        assert is_international_flight("international_long")
+
+    def test_domestic_not_international(self):
+        assert not is_international_flight("domestic")
+
+    def test_cargo_not_international(self):
+        assert not is_international_flight("cargo")
+
+    def test_charter_not_international(self):
+        assert not is_international_flight("charter")
+
+    def test_none_not_international(self):
+        assert not is_international_flight(None)
+
+
+class TestZoneForCustoms:
+    def test_customs_zone(self):
+        assert zone_for_status("customs", "A") == "customs"

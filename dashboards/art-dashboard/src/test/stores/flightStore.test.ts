@@ -24,6 +24,8 @@ const makeFlight = (overrides: Partial<Flight> = {}): Flight =>
     pax_boarded: 0,
     baggage_count: 200,
     baggage_loaded: 0,
+    flight_type: null,
+    route_category: null,
     ...overrides,
   }) as Flight;
 
@@ -100,16 +102,14 @@ describe("flightStore", () => {
   });
 
   it("setRunways replaces runway list", () => {
-    useFlightStore
-      .getState()
-      .setRunways([
-        {
-          runway_id: "09L",
-          status: "open",
-          arrivals_queued: 0,
-          departures_queued: 2,
-        },
-      ] as never[]);
+    useFlightStore.getState().setRunways([
+      {
+        runway_id: "09L",
+        status: "open",
+        arrivals_queued: 0,
+        departures_queued: 2,
+      },
+    ] as never[]);
     expect(useFlightStore.getState().runways).toHaveLength(1);
   });
 

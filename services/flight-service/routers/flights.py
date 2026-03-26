@@ -16,6 +16,7 @@ from kafka.consumer import (
     release_flight,
     get_sim_time,
     get_runway_queue,
+    get_turnaround_plan,
 )
 from models.domain import HoldRequest
 
@@ -54,10 +55,16 @@ async def list_flights(
 
 @router.get("/flights/{flight_id}")
 async def get_flight(flight_id: str):
-    """Full flight detail including gate and runway info."""
+    """Full flight detail including gate, runway, and turnaround info."""
     flight = await get_flight_by_id(flight_id)
     if not flight:
         raise HTTPException(status_code=404, detail="Flight not found")
+    # Attach turnaround progress if an active plan exists for this aircraft
+    reg = flight.get("aircraft_registration", "")
+    if reg:
+        plan = get_turnaround_plan(reg)
+        if plan:
+            flight["turnaround"] = plan.to_dict()
     return flight
 
 
@@ -155,3 +162,13 @@ async def release_flight_endpoint(flight_id: str):
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to release flight")
     return updated
+
+
+@router.get("/turnarounds")
+async def list_turnarounds():
+    """List all active turnaround plans (for ground ops dashboard)."""
+    from kafka.consumer import _state
+    plans = []
+    for reg, plan in _state.turnaround_plans.items():
+        plans.append(plan.to_dict())
+    return {"turnarounds": plans, "total": len(plans)}

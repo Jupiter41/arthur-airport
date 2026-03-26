@@ -47,7 +47,9 @@ from services.state_machine import (
     should_move_to_security_queue,
     should_start_boarding,
     should_move_to_baggage_claim,
+    should_clear_customs,
     should_depart_airport,
+    is_international_flight,
     zone_for_status,
     BOARDING_RATE_PAX_PER_MIN,
 )
@@ -78,6 +80,7 @@ class PassengerConsumerState:
 
     def __init__(self) -> None:
         self.sim_time: datetime | None = None
+        self.last_tick_sim_time: datetime | None = None
         self.sim_day: int = 0
         self.security = SecuritySystem()
         self.weather_category: str = "CAVOK"
@@ -398,6 +401,14 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     _state.sim_time = sim_time
     _state.sim_day = payload.get("day_of_sim", 0)
 
+    # Compute how many sim-minutes this tick covers (accounts for tick
+    # skipping at high speed AND multi-minute clock steps).
+    if _state.last_tick_sim_time is not None:
+        delta_minutes = max(1, round((sim_time - _state.last_tick_sim_time).total_seconds() / 60))
+    else:
+        delta_minutes = payload.get("step_minutes", 1)
+    _state.last_tick_sim_time = sim_time
+
     set_tick_batch_mode(True)
     try:
         # Warm-start: pre-advance early departure passengers on first tick
@@ -411,19 +422,19 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             await _ml_tick(sim_time)
 
         # 2. Move booked passengers to checked_in at T-120
-        await _advance_booked_to_checkin(sim_time)
+        await _advance_booked_to_checkin(sim_time, delta_minutes)
 
         # 3. Move checked_in passengers to security_queue when check-in closes
-        await _advance_checkin_to_security(sim_time)
+        await _advance_checkin_to_security(sim_time, delta_minutes)
 
         # 4. Drain security queues
-        await _drain_security_queues(sim_time)
+        await _drain_security_queues(sim_time, delta_minutes)
 
         # 5. Move airside passengers to at_gate when dwells complete
         await _advance_airside_to_gate(sim_time)
 
         # 6. Board passengers at gates
-        await _advance_boarding(sim_time)
+        await _advance_boarding(sim_time, delta_minutes)
 
         # 7. Advance arrival flow
         await _advance_arrivals(sim_time)
@@ -487,13 +498,14 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
 CHECKIN_OPEN_MINUTES = 120  # Passengers arrive at check-in T-120 min before departure
 
 
-async def _advance_booked_to_checkin(sim_time: datetime) -> None:
+async def _advance_booked_to_checkin(sim_time: datetime, delta_minutes: int = 1) -> None:
     """Move booked passengers to checked_in at T-120 (check-in opens).
 
     Batched: up to MAX_CHECKIN_PER_TICK passengers per tick to simulate
-    gradual arrival at the airport.
+    gradual arrival at the airport.  Scales with ``delta_minutes`` so that
+    high-speed tick skipping doesn't reduce throughput.
     """
-    MAX_CHECKIN_PER_TICK = 200
+    MAX_CHECKIN_PER_TICK = 200 * delta_minutes
 
     # Only query booked passengers whose flights depart within next 3 hours
     cutoff = (sim_time + timedelta(hours=3)).isoformat()
@@ -556,13 +568,14 @@ async def _advance_booked_to_checkin(sim_time: datetime) -> None:
         total_moved += len(batch)
 
 
-async def _advance_checkin_to_security(sim_time: datetime) -> None:
+async def _advance_checkin_to_security(sim_time: datetime, delta_minutes: int = 1) -> None:
     """Move checked_in passengers to security_queue at T-45.
 
     Batched: moves up to MAX_CHECKIN_TO_SECURITY_PER_TICK passengers per tick
-    across all flights to prevent security queue overload.
+    across all flights to prevent security queue overload.  Scales with
+    ``delta_minutes`` so high-speed tick skipping doesn't reduce throughput.
     """
-    MAX_CHECKIN_TO_SECURITY_PER_TICK = 80  # ~80 pax/min across all terminals
+    MAX_CHECKIN_TO_SECURITY_PER_TICK = 80 * delta_minutes  # ~80 pax/min across all terminals
 
     # Only query checked_in passengers whose flights depart within next 2 hours
     cutoff = (sim_time + timedelta(hours=2)).isoformat()
@@ -637,7 +650,7 @@ async def _advance_checkin_to_security(sim_time: datetime) -> None:
                     )
 
 
-async def _drain_security_queues(sim_time: datetime) -> None:
+async def _drain_security_queues(sim_time: datetime, delta_minutes: int = 1) -> None:
     """Drain security checkpoints and move passengers to airside."""
     # Periodic DB sync (every 60 ticks) to catch missed events/restarts.
     # On normal ticks, in-memory queues are authoritative.
@@ -645,7 +658,7 @@ async def _drain_security_queues(sim_time: datetime) -> None:
         await _sync_security_from_db()
 
     forecast_queues = _get_forecast_queues(sim_time)
-    drained = _state.security.drain_all(forecast_queues)
+    drained = _state.security.drain_all(forecast_queues, delta_minutes)
 
     for terminal, (main_drained, sa_drained) in drained.items():
         all_drained = main_drained + sa_drained
@@ -800,7 +813,7 @@ async def _advance_airside_to_gate(sim_time: datetime) -> None:
         await bulk_update_status(ids, "at_gate", zone, sim_time)
 
 
-async def _advance_boarding(sim_time: datetime) -> None:
+async def _advance_boarding(sim_time: datetime, delta_minutes: int = 1) -> None:
     """Board passengers at_gate → boarded, progressive at BOARDING_RATE."""
     # Time-window: only passengers with flights departing within next 1.5 hours
     cutoff = (sim_time + timedelta(hours=1, minutes=30)).isoformat()
@@ -816,6 +829,8 @@ async def _advance_boarding(sim_time: datetime) -> None:
         fid = pax.get("flight_id") or ""
         flights.setdefault(fid, []).append(pax)
 
+    boarding_rate = BOARDING_RATE_PAX_PER_MIN * delta_minutes
+
     for flight_id, pax_group in flights.items():
         if not pax_group:
             continue
@@ -830,8 +845,8 @@ async def _advance_boarding(sim_time: datetime) -> None:
         if flight_status in ("airborne", "departed", "taxiing"):
             to_board = pax_group
         elif should_start_boarding(sim_time, estimated, flight_status):
-            # Board up to BOARDING_RATE passengers per tick
-            to_board = pax_group[:BOARDING_RATE_PAX_PER_MIN]
+            # Board up to BOARDING_RATE × delta passengers per tick
+            to_board = pax_group[:boarding_rate]
         else:
             continue
 
@@ -864,18 +879,40 @@ async def _advance_boarding(sim_time: datetime) -> None:
 
 
 async def _advance_arrivals(sim_time: datetime) -> None:
-    """Advance arrival passengers: deplaning → baggage_claim → departed_airport."""
-    # deplaning → baggage_claim
+    """Advance arrival passengers: deplaning → [customs →] baggage_claim → departed_airport."""
+    # deplaning → customs (international) or baggage_claim (domestic)
     try:
         deplaning = await get_passengers_by_status("deplaning")
     except Exception:
         deplaning = []
 
+    to_customs: list[dict] = []
     to_baggage_claim: list[dict] = []
     for pax in deplaning:
         deplaning_at = pax.get("deplaning_at")
         if should_move_to_baggage_claim(sim_time, deplaning_at):
-            to_baggage_claim.append(pax)
+            if is_international_flight(pax.get("flight_type")):
+                to_customs.append(pax)
+            else:
+                to_baggage_claim.append(pax)
+
+    if to_customs:
+        ids = [p["id"] for p in to_customs]
+        new_zone = "customs"
+        await bulk_update_status(ids, "customs", new_zone, sim_time)
+        for pax in to_customs:
+            old_zone = pax.get("location_zone") or "arrivals-hall"
+            move_passenger(old_zone, new_zone)
+            await emit_passenger_status_changed(
+                passenger_id=pax["id"],
+                name=pax.get("name", ""),
+                previous_status="deplaning",
+                new_status="customs",
+                location_zone=new_zone,
+                sim_time=sim_time,
+                flight_id=pax.get("flight_id"),
+                flight_number=pax.get("flight_number"),
+            )
 
     if to_baggage_claim:
         ids = [p["id"] for p in to_baggage_claim]
@@ -888,6 +925,36 @@ async def _advance_arrivals(sim_time: datetime) -> None:
                 passenger_id=pax["id"],
                 name=pax.get("name", ""),
                 previous_status="deplaning",
+                new_status="baggage_claim",
+                location_zone=new_zone,
+                sim_time=sim_time,
+                flight_id=pax.get("flight_id"),
+                flight_number=pax.get("flight_number"),
+            )
+
+    # customs → baggage_claim
+    try:
+        in_customs = await get_passengers_by_status("customs")
+    except Exception:
+        in_customs = []
+
+    customs_to_bc: list[dict] = []
+    for pax in in_customs:
+        customs_at = pax.get("customs_at")
+        if should_clear_customs(sim_time, customs_at):
+            customs_to_bc.append(pax)
+
+    if customs_to_bc:
+        ids = [p["id"] for p in customs_to_bc]
+        new_zone = "baggage-claim"
+        await bulk_update_status(ids, "baggage_claim", new_zone, sim_time)
+        for pax in customs_to_bc:
+            old_zone = pax.get("location_zone") or "customs"
+            move_passenger(old_zone, new_zone)
+            await emit_passenger_status_changed(
+                passenger_id=pax["id"],
+                name=pax.get("name", ""),
+                previous_status="customs",
                 new_status="baggage_claim",
                 location_zone=new_zone,
                 sim_time=sim_time,

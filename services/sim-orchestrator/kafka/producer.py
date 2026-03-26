@@ -88,6 +88,7 @@ def emit_clock_tick(
     speed_multiplier: int,
     tick_number: int,
     day_of_sim: int,
+    step_minutes: int = 1,
 ) -> None:
     """Emit a SimClockTick event to sim.clock."""
     payload = {
@@ -96,6 +97,7 @@ def emit_clock_tick(
         "speed_multiplier": speed_multiplier,
         "tick_number": tick_number,
         "day_of_sim": day_of_sim,
+        "step_minutes": step_minutes,
     }
     produce_event(
         topic="sim.clock",

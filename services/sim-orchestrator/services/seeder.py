@@ -62,7 +62,8 @@ async def seed_day(sim_day: int) -> None:
     total_pax = dep_pax + arr_pax
 
     # 3. Generate baggage
-    total_bags_departure, _ = await generate_baggage(passengers, seed=rng_seed + 2000)
+    flight_type_map = {f["id"]: f.get("flight_type", "") for f in flights}
+    total_bags_departure, _ = await generate_baggage(passengers, seed=rng_seed + 2000, flight_type_map=flight_type_map)
     arrival_flights = arrival_flights_for_pax
     total_bags_arrival, _ = await generate_arrival_baggage(arrival_flights, seed=rng_seed + 3000)
     total_bags = total_bags_departure + total_bags_arrival

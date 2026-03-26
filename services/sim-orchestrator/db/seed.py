@@ -10,6 +10,16 @@ TERMINALS = ["A", "B", "C"]
 GATES_PER_TERMINAL = 14
 RUNWAYS = ["09L", "27R", "09R", "27L"]
 
+# Gate capability map: terminal → (international_capable gate range, wide_body_capable gate range)
+# Terminal A: main international hub — all international, first 6 wide-body
+# Terminal B: mixed — first 10 international, first 4 wide-body
+# Terminal C: domestic only — no international, first 2 wide-body (overflow/cargo)
+GATE_CAPABILITIES: dict[str, dict[str, set[int]]] = {
+    "A": {"international": set(range(1, 15)), "wide_body": set(range(1, 7))},
+    "B": {"international": set(range(1, 11)), "wide_body": set(range(1, 5))},
+    "C": {"international": set(), "wide_body": set(range(1, 3))},
+}
+
 
 async def airport_exists() -> bool:
     """Check if the Airport node already exists in Neo4j."""
@@ -53,10 +63,15 @@ async def seed_airport_structure() -> None:
             )
             for n in range(1, GATES_PER_TERMINAL + 1):
                 gate_id = f"{t}{n:02d}"
+                caps = GATE_CAPABILITIES[t]
+                intl = n in caps["international"]
+                wb = n in caps["wide_body"]
                 await session.run(
                     "MERGE (g:Gate {id: $gid}) "
                     "SET g.terminal_id = $tid, g.status = 'available', "
                     "    g.pier = $pier, g.jetbridge = true, "
+                    "    g.international_capable = $intl, "
+                    "    g.wide_body_capable = $wb, "
                     "    g.last_assigned_at = null "
                     "WITH g "
                     "MATCH (t:Terminal {id: $tid}) "
@@ -64,6 +79,8 @@ async def seed_airport_structure() -> None:
                     gid=gate_id,
                     tid=tid,
                     pier=t,
+                    intl=intl,
+                    wb=wb,
                 )
 
         # Runways

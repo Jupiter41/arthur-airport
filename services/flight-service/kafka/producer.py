@@ -161,6 +161,29 @@ def emit_flight_cancelled(
     logger.info("Emitted FlightCancelled: %s reason=%s", flight_number, reason)
 
 
+def emit_turnaround_task_changed(
+    flight_id: str,
+    aircraft_registration: str,
+    task_name: str,
+    new_status: str,
+    sim_time: datetime,
+    duration_min: int = 0,
+) -> None:
+    """Emit turnaround.task.started or turnaround.task.completed event."""
+    event_type = (
+        "TurnaroundTaskStarted" if new_status == "in_progress"
+        else "TurnaroundTaskCompleted"
+    )
+    payload = {
+        "flight_id": flight_id,
+        "aircraft_registration": aircraft_registration,
+        "task_name": task_name,
+        "status": new_status,
+        "duration_min": duration_min,
+    }
+    _produce_event(event_type, sim_time, payload, key=flight_id)
+
+
 async def check_kafka() -> bool:
     try:
         admin = AdminClient({

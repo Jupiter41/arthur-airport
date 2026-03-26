@@ -3,6 +3,9 @@ import { useIncidentStore } from "../../stores/incidentStore";
 import { incidentsApi } from "../../hooks/useApi";
 import { useIncidentConsoleQueries } from "../../hooks/useQueries";
 import { StatusBadge } from "../../components/StatusBadge";
+import { ExportMenu } from "../../components/ExportMenu";
+import { exportData } from "../../utils/exportData";
+import type { ExportFormat } from "../../utils/exportData";
 import type {
   Incident,
   IncidentAlert,
@@ -505,12 +508,31 @@ export default function IncidentConsolePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">Incident Operations</h2>
-        <button
-          className="text-sm font-bold px-4 py-2 rounded bg-red-600 text-white hover:bg-red-500"
-          onClick={() => setInjectOpen(true)}
-        >
-          + INJECT
-        </button>
+        <div className="flex items-center gap-3">
+          <ExportMenu
+            onExport={(fmt: ExportFormat) => {
+              const rows = incidentList.map((i) => ({
+                id: i.id,
+                type: i.type,
+                severity: i.severity,
+                status: i.status,
+                title: i.title,
+                location: i.location,
+                started_at: i.started_at,
+                resolved_at: i.resolved_at ?? "",
+                cascade_depth: i.cascade_depth,
+                protocols: (i.protocols ?? []).join("; "),
+              }));
+              exportData(rows, "incidents", fmt);
+            }}
+          />
+          <button
+            className="text-sm font-bold px-4 py-2 rounded bg-red-600 text-white hover:bg-red-500"
+            onClick={() => setInjectOpen(true)}
+          >
+            + INJECT
+          </button>
+        </div>
       </div>
 
       {/* Main panel */}

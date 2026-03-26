@@ -149,7 +149,7 @@ async def get_all_flights(
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .delay_minutes,
-        .pax_count, .seat_capacity
+        .pax_count, .seat_capacity, .flight_type, .route_category
     }} AS flight,
     COALESCE(g.id, f.gate_id) AS gate_id,
     r.id AS runway_id,
@@ -208,7 +208,8 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
-        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id
+        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id,
+        .flight_type, .route_category
     } AS flight,
     g { .id, .terminal_id, .jetbridge, .status } AS gate,
     r { .id, .status, .ils } AS runway,
@@ -267,7 +268,8 @@ async def get_active_flights(sim_time: datetime) -> list[dict]:
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
-        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id
+        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id,
+        .flight_type, .route_category
     } AS flight,
     COALESCE(g.id, f.gate_id) AS gate_id,
     r.id AS runway_id
@@ -414,16 +416,26 @@ async def release_gate(flight_id: str) -> str | None:
         return record["gate_id"] if record else None
 
 
-async def get_available_gate(terminal_id: str, exclude_flight_id: str | None = None) -> str | None:
-    """Find an available gate in the specified terminal."""
+async def get_available_gate(
+    terminal_id: str,
+    exclude_flight_id: str | None = None,
+    require_international: bool = False,
+    require_wide_body: bool = False,
+) -> str | None:
+    """Find an available gate in the specified terminal, optionally filtered by capabilities."""
     driver = get_driver()
-    query = """
-    MATCH (t:Terminal {id: $terminal_id})-[:HAS_GATE]->(g:Gate)
-    WHERE NOT EXISTS {
+    capability_filter = ""
+    if require_international:
+        capability_filter += "\n      AND g.international_capable = true"
+    if require_wide_body:
+        capability_filter += "\n      AND g.wide_body_capable = true"
+    query = f"""
+    MATCH (t:Terminal {{id: $terminal_id}})-[:HAS_GATE]->(g:Gate)
+    WHERE NOT EXISTS {{
         MATCH (fl:Flight)-[:ASSIGNED_TO]->(g)
         WHERE fl.status IN ['boarding', 'delayed', 'scheduled', 'landed', 'taxiing', 'at_gate']
           AND ($exclude_id IS NULL OR fl.id <> $exclude_id)
-      }
+      }}{capability_filter}
     RETURN g.id AS gate_id
     ORDER BY g.id
     LIMIT 1
@@ -451,6 +463,8 @@ async def get_all_gates(terminal: str | None = None) -> list[dict]:
            g.terminal_id AS terminal_id,
            g.status AS status,
            g.jetbridge AS jetbridge,
+           g.international_capable AS international_capable,
+           g.wide_body_capable AS wide_body_capable,
            f.flight_number AS flight_number,
            f.estimated_time AS occupied_until
     ORDER BY g.id
@@ -466,6 +480,8 @@ async def get_all_gates(terminal: str | None = None) -> list[dict]:
             "terminal": r["terminal_id"] or "",
             "status": r["status"],
             "jetbridge": r["jetbridge"],
+            "international_capable": r["international_capable"],
+            "wide_body_capable": r["wide_body_capable"],
             "flight_number": r["flight_number"],
             "occupied_until": r["occupied_until"],
         })

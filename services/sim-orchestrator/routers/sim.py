@@ -213,3 +213,80 @@ async def sim_metrics():
         "missed_ticks": 0,
         "sim_time_drift_ms": 0,
     }
+
+
+@router.get("/sim/history")
+async def sim_history():
+    """Returns summary metrics for all simulated days.
+
+    Queries Neo4j to compute per-day flight, passenger, and incident
+    statistics from raw entity data.
+    """
+    from services.clock import SIM_START_TIME
+    from datetime import timedelta
+
+    current_day = clock.get_sim_day()
+    days = []
+
+    try:
+        driver = get_driver()
+        async with driver.session() as session:
+            for d in range(1, current_day + 1):
+                sim_date = (SIM_START_TIME + timedelta(days=d - 1)).date()
+                prefix = sim_date.isoformat()
+
+                result = await session.run(
+                    """
+                    MATCH (f:Flight) WHERE f.scheduled_time STARTS WITH $prefix
+                    RETURN count(f) AS total,
+                           count(CASE WHEN f.status = 'cancelled' THEN 1 END) AS cancelled,
+                           count(CASE WHEN f.delay_minutes > 0 THEN 1 END) AS delayed,
+                           avg(f.delay_minutes) AS avg_delay
+                    """,
+                    prefix=prefix,
+                )
+                rec = await result.single()
+                flight_total = rec["total"] if rec else 0
+                flight_cancelled = rec["cancelled"] if rec else 0
+                flight_delayed = rec["delayed"] if rec else 0
+                avg_delay = round(rec["avg_delay"] or 0, 1) if rec else 0
+
+                result = await session.run(
+                    """
+                    MATCH (p:Passenger)-[:ON_FLIGHT]->(f:Flight)
+                    WHERE f.scheduled_time STARTS WITH $prefix
+                    RETURN count(p) AS total
+                    """,
+                    prefix=prefix,
+                )
+                rec = await result.single()
+                pax_total = rec["total"] if rec else 0
+
+                result = await session.run(
+                    """
+                    MATCH (i:Incident) WHERE i.started_at STARTS WITH $prefix
+                    RETURN count(i) AS total,
+                           max(i.severity) AS max_severity
+                    """,
+                    prefix=prefix,
+                )
+                rec = await result.single()
+                incident_total = rec["total"] if rec else 0
+                max_severity = rec["max_severity"] if rec else None
+
+                days.append({
+                    "day_number": d,
+                    "sim_date": sim_date.isoformat(),
+                    "flights_total": flight_total,
+                    "flights_cancelled": flight_cancelled,
+                    "flights_delayed": flight_delayed,
+                    "avg_delay_minutes": avg_delay,
+                    "passengers_total": pax_total,
+                    "incidents_total": incident_total,
+                    "max_severity": max_severity,
+                })
+    except Exception as e:
+        logger.error("Error fetching sim history: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch history")
+
+    return {"current_day": current_day, "days": days}

@@ -261,9 +261,11 @@ async def resolve_incident(incident_id: str, sim_time: datetime, note: str = "")
     return updated
 
 
-async def tick_ttr(sim_time: datetime) -> None:
-    """Advance TTR (time-to-resolve) countdown by 1 minute for all active incidents.
+async def tick_ttr(sim_time: datetime, delta_minutes: int = 1) -> None:
+    """Advance TTR (time-to-resolve) countdown for all active incidents.
 
+    ``delta_minutes`` accounts for multi-minute ticks at high sim speeds;
+    each incident's TTR is decremented by ``delta_minutes`` instead of 1.
     Auto-resolves any incident whose TTR reaches 0.
     """
     active = await get_active_incidents_with_ttr()
@@ -271,7 +273,7 @@ async def tick_ttr(sim_time: datetime) -> None:
         ttr = incident.get("ttr_remaining")
         if ttr is None:
             continue
-        ttr -= 1
+        ttr -= delta_minutes
         await update_ttr_remaining(incident["id"], ttr)
         if ttr <= 0:
             await resolve_incident(

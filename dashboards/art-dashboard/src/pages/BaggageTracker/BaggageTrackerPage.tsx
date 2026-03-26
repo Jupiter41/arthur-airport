@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { useBaggageStore } from "../../stores/baggageStore";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { useBaggageTrackerQueries } from "../../hooks/useQueries";
+import { ExportMenu } from "../../components/ExportMenu";
+import { exportData, exportRaw } from "../../utils/exportData";
+import type { ExportFormat } from "../../utils/exportData";
 import type {
   BaggageZone,
   BaggageFlowSummary,
@@ -473,7 +476,23 @@ export default function BaggageTrackerPage() {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
-      <h2 className="text-lg font-bold text-white">Baggage Operations</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-white">Baggage Operations</h2>
+        <ExportMenu
+          onExport={(fmt: ExportFormat) => {
+            const rows = zones.map((z) => ({
+              zone_id: z.zone_id,
+              zone_type: z.zone_type,
+              status: z.status,
+              items: z.items,
+              capacity: z.capacity,
+              utilisation_pct: z.utilisation_pct,
+              throughput_per_hour: z.throughput_per_hour,
+            }));
+            exportData(rows, "baggage-zones", fmt);
+          }}
+        />
+      </div>
 
       <div className="grid grid-cols-3 gap-4">
         {/* Conveyor map */}

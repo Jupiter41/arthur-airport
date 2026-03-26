@@ -26,6 +26,22 @@ class FlightDirection(str, Enum):
     DEPARTURE = "departure"
 
 
+class FlightType(str, Enum):
+    """Operational category of a flight."""
+    DOMESTIC = "domestic"
+    INTERNATIONAL_SHORT = "international_short"
+    INTERNATIONAL_LONG = "international_long"
+    CARGO = "cargo"
+    CHARTER = "charter"
+
+
+class RouteCategory(str, Enum):
+    """Distance-based route classification."""
+    SHORT_HAUL = "short_haul"
+    MEDIUM_HAUL = "medium_haul"
+    LONG_HAUL = "long_haul"
+
+
 class FlightSummary(BaseModel):
     """Lightweight flight representation returned by the list endpoint."""
     id: str
@@ -42,6 +58,9 @@ class FlightSummary(BaseModel):
     estimated_time: str
     delay_minutes: int = 0
     pax_count: int = 0
+    seat_capacity: int = 0
+    flight_type: Optional[str] = None
+    route_category: Optional[str] = None
     seat_capacity: int = 0
 
     model_config = {"from_attributes": True}

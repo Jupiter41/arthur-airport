@@ -4,7 +4,47 @@ import { useIncidentStore } from "../../stores/incidentStore";
 import { useFlightBoardQueries } from "../../hooks/useQueries";
 import { useWeatherStore } from "../../stores/weatherStore";
 import { StatusBadge } from "../../components/StatusBadge";
+import { ExportMenu } from "../../components/ExportMenu";
+import { useSort, compare, SortArrow } from "../../hooks/useSort";
+import { exportData } from "../../utils/exportData";
+import type { ExportFormat } from "../../utils/exportData";
 import type { Flight, Runway, WeatherState } from "../../types";
+
+type FlightSortCol =
+  | "flight_number"
+  | "type"
+  | "destination"
+  | "gate"
+  | "time"
+  | "status"
+  | "delay";
+
+/* ──────── Flight Type Badge ──────── */
+const FLIGHT_TYPE_STYLES: Record<string, { label: string; cls: string }> = {
+  domestic: { label: "DOM", cls: "bg-sky-900 text-sky-300" },
+  international_short: {
+    label: "INT-S",
+    cls: "bg-emerald-900 text-emerald-300",
+  },
+  international_long: { label: "INT-L", cls: "bg-purple-900 text-purple-300" },
+  cargo: { label: "CGO", cls: "bg-amber-900 text-amber-300" },
+  charter: { label: "CHR", cls: "bg-rose-900 text-rose-300" },
+};
+
+function FlightTypeBadge({ type }: { type: string | null }) {
+  if (!type) return <span className="text-gray-600 text-xs">—</span>;
+  const style = FLIGHT_TYPE_STYLES[type] ?? {
+    label: type,
+    cls: "bg-gray-700 text-gray-300",
+  };
+  return (
+    <span
+      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${style.cls}`}
+    >
+      {style.label}
+    </span>
+  );
+}
 
 /* ──────── Flight Row ──────── */
 function FlightRow({
@@ -28,6 +68,9 @@ function FlightRow({
         <span className="ml-2 text-xs bg-gray-700 text-gray-300 px-1.5 rounded">
           {flight.airline_code}
         </span>
+      </td>
+      <td className="px-3 py-2">
+        <FlightTypeBadge type={flight.flight_type} />
       </td>
       <td className="px-3 py-2 text-sm text-gray-300">
         {flight.direction === "departure"
@@ -109,6 +152,8 @@ function FlightDetailDrawer({
           <Info label="Airline" value={flight.airline_code} />
           <Info label="Aircraft" value={flight.aircraft_type} />
           <Info label="Registration" value={flight.registration} />
+          <Info label="Flight Type" value={flight.flight_type ?? "—"} />
+          <Info label="Route" value={flight.route_category ?? "—"} />
           <Info label="Direction" value={flight.direction} />
           <Info label="Origin" value={flight.origin_iata} />
           <Info label="Destination" value={flight.destination_iata} />
@@ -263,6 +308,29 @@ function RunwayStatusBar({ runways }: { runways: Runway[] }) {
 }
 
 /* ──────── FIDS Panel ──────── */
+function flightSortValue(
+  f: Flight,
+  col: FlightSortCol,
+  dir: "departure" | "arrival",
+): unknown {
+  switch (col) {
+    case "flight_number":
+      return f.flight_number;
+    case "type":
+      return f.flight_type ?? "";
+    case "destination":
+      return dir === "departure" ? f.destination_iata : f.origin_iata;
+    case "gate":
+      return f.gate_id ?? "";
+    case "time":
+      return f.scheduled_time;
+    case "status":
+      return f.status;
+    case "delay":
+      return f.delay_minutes;
+  }
+}
+
 function FIDSPanel({
   flights,
   direction,
@@ -276,8 +344,22 @@ function FIDSPanel({
 }) {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 20;
-  const totalPages = Math.ceil(flights.length / PAGE_SIZE);
-  const pageFlights = flights.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const { sort, toggle } = useSort<FlightSortCol>("time");
+
+  const sorted = useMemo(
+    () =>
+      [...flights].sort((a, b) =>
+        compare(
+          flightSortValue(a, sort.column, direction),
+          flightSortValue(b, sort.column, direction),
+          sort.direction,
+        ),
+      ),
+    [flights, sort, direction],
+  );
+
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+  const pageFlights = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <div className="flex flex-col h-full">
@@ -312,13 +394,43 @@ function FIDSPanel({
         <table className="w-full text-left">
           <thead>
             <tr className="text-xs text-gray-500 uppercase">
-              <th className="px-3 py-1.5">Flight</th>
-              <th className="px-3 py-1.5">
-                {direction === "departure" ? "To" : "From"}
+              <th
+                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                onClick={() => toggle("flight_number")}
+              >
+                Flight <SortArrow column="flight_number" sort={sort} />
               </th>
-              <th className="px-3 py-1.5">Gate</th>
-              <th className="px-3 py-1.5">Time</th>
-              <th className="px-3 py-1.5">Status</th>
+              <th
+                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                onClick={() => toggle("type")}
+              >
+                Type <SortArrow column="type" sort={sort} />
+              </th>
+              <th
+                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                onClick={() => toggle("destination")}
+              >
+                {direction === "departure" ? "To" : "From"}{" "}
+                <SortArrow column="destination" sort={sort} />
+              </th>
+              <th
+                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                onClick={() => toggle("gate")}
+              >
+                Gate <SortArrow column="gate" sort={sort} />
+              </th>
+              <th
+                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                onClick={() => toggle("time")}
+              >
+                Time <SortArrow column="time" sort={sort} />
+              </th>
+              <th
+                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                onClick={() => toggle("status")}
+              >
+                Status <SortArrow column="status" sort={sort} />
+              </th>
               <th className="px-3 py-1.5">Progress</th>
             </tr>
           </thead>
@@ -431,21 +543,37 @@ export default function FlightBoardPage() {
 
   const flightList = Object.values(flights);
   const departures = useMemo(
-    () =>
-      flightList
-        .filter((f) => f.direction === "departure")
-        .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)),
+    () => flightList.filter((f) => f.direction === "departure"),
     [flightList],
   );
   const arrivals = useMemo(
-    () =>
-      flightList
-        .filter((f) => f.direction === "arrival")
-        .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)),
+    () => flightList.filter((f) => f.direction === "arrival"),
     [flightList],
   );
 
   const handleSelect = useCallback((f: Flight) => setSelectedFlight(f), []);
+
+  const handleExport = useCallback(
+    (format: ExportFormat) => {
+      const rows = flightList.map((f) => ({
+        flight_number: f.flight_number,
+        airline: f.airline_code,
+        direction: f.direction,
+        origin: f.origin_iata,
+        destination: f.destination_iata,
+        gate: f.gate_id ?? "",
+        terminal: f.terminal,
+        status: f.status,
+        scheduled_time: f.scheduled_time,
+        estimated_time: f.estimated_time ?? "",
+        delay_minutes: f.delay_minutes,
+        pax_count: f.pax_count,
+        pax_boarded: f.pax_boarded,
+      }));
+      exportData(rows, "flights", format);
+    },
+    [flightList],
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -473,7 +601,10 @@ export default function FlightBoardPage() {
 
       {/* Bottom bar */}
       <div className="bg-gray-800 border-t border-gray-700 p-3 space-y-3">
-        <FlightStats flights={flightList} />
+        <div className="flex items-center justify-between">
+          <FlightStats flights={flightList} />
+          <ExportMenu onExport={handleExport} />
+        </div>
         {runways.length > 0 && <RunwayStatusBar runways={runways} />}
       </div>
 

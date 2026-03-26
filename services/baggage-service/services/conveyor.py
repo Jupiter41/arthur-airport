@@ -131,9 +131,13 @@ class ConveyorSystem:
                     return bag
         return None
 
-    def drain_zone(self, zone: ZoneState) -> list[BagInZone]:
+    def drain_zone(self, zone: ZoneState, delta_minutes: int = 1) -> list[BagInZone]:
         """Drain items from a zone based on its throughput capacity.
-        Returns list of bags moved out of this zone."""
+
+        ``delta_minutes`` scales throughput for multi-minute ticks at high
+        sim speeds so that tick-skipping doesn't reduce conveyor capacity.
+        Returns list of bags moved out of this zone.
+        """
         if zone.status == "offline":
             return []
 
@@ -141,15 +145,15 @@ class ConveyorSystem:
         if zone.status == "degraded":
             capacity = int(capacity * 0.5)
 
-        # items_to_advance per 1 sim-minute tick
-        items_to_advance = min(zone.items, max(1, capacity // 60))
+        # items_to_advance per tick covering `delta_minutes` sim-minutes
+        items_to_advance = min(zone.items, max(1, capacity * delta_minutes // 60))
         advanced: list[BagInZone] = []
         for _ in range(items_to_advance):
             if zone.queue:
                 advanced.append(zone.queue.popleft())
         return advanced
 
-    def advance_tick(self, sim_time: str) -> dict[str, list[BagInZone]]:
+    def advance_tick(self, sim_time: str, delta_minutes: int = 1) -> dict[str, list[BagInZone]]:
         """Advance all zones by one tick. Returns dict of zone_id -> bags that
         exited that zone and need to move to the next stage.
 
@@ -167,7 +171,7 @@ class ConveyorSystem:
         for n in range(1, 7):
             zone_id = f"arrival-belt-{n}"
             zone = self._zones[zone_id]
-            exited = self.drain_zone(zone)
+            exited = self.drain_zone(zone, delta_minutes)
             if exited:
                 outputs[zone_id] = exited
 
@@ -176,13 +180,13 @@ class ConveyorSystem:
             for n in range(1, 6):
                 zone_id = f"make-up-{t}-{n}"
                 zone = self._zones[zone_id]
-                exited = self.drain_zone(zone)
+                exited = self.drain_zone(zone, delta_minutes)
                 if exited:
                     outputs[zone_id] = exited
 
         # 3. Drain sorting-matrix → route to make-up zones by terminal
         zone = self._zones["sorting-matrix"]
-        sorted_bags = self.drain_zone(zone)
+        sorted_bags = self.drain_zone(zone, delta_minutes)
         if sorted_bags:
             outputs["sorting-matrix"] = []
             for bag in sorted_bags:
@@ -195,7 +199,7 @@ class ConveyorSystem:
         for unit_n in range(1, 7):
             zone_id = f"screening-unit-{unit_n}"
             zone = self._zones[zone_id]
-            screened = self.drain_zone(zone)
+            screened = self.drain_zone(zone, delta_minutes)
             if screened:
                 outputs[zone_id] = screened
                 for bag in screened:
@@ -206,7 +210,7 @@ class ConveyorSystem:
         for t in "ABC":
             zone_id = f"induction-{t}"
             zone = self._zones[zone_id]
-            inducted = self.drain_zone(zone)
+            inducted = self.drain_zone(zone, delta_minutes)
             if inducted:
                 outputs[zone_id] = inducted
                 for bag in inducted:

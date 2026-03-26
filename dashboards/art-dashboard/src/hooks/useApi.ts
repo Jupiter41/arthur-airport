@@ -2,7 +2,9 @@ import { getAuthToken } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
 import type { WeatherState } from "../types";
 
-const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)
+const RAW_API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL as string | undefined
+)
   ?.trim()
   .replace(/\/+$/, "");
 
@@ -112,11 +114,14 @@ export const flightsApi = {
     }),
   runways: () => apiFetch<unknown[]>("/runways"),
   gates: () => apiFetch<unknown[]>("/gates"),
+  turnarounds: () =>
+    apiFetch<{ turnarounds: unknown[]; total: number }>("/turnarounds"),
 };
 
 // ── Weather ──
 export const weatherApi = {
-  current: async () => normalizeWeatherResponse(await apiFetch<unknown>("/weather/current")),
+  current: async () =>
+    normalizeWeatherResponse(await apiFetch<unknown>("/weather/current")),
   metar: async () => {
     try {
       const token = await getAuthToken();
@@ -190,7 +195,9 @@ export const incidentsApi = {
   report: (id: string) =>
     apiFetch<unknown>(`/incidents/${encodeURIComponent(id)}/report`),
   alerts: async (limit = 100) => {
-    const data = (await apiFetch<unknown>(`/incidents/alerts?limit=${limit}`)) as {
+    const data = (await apiFetch<unknown>(
+      `/incidents/alerts?limit=${limit}`,
+    )) as {
       alerts?: Array<Record<string, unknown>>;
     };
 
@@ -223,6 +230,7 @@ export const simApi = {
       method: "POST",
       body: JSON.stringify({ confirm: true }),
     }),
+  history: () => apiFetch<unknown>("/sim/history"),
 };
 
 // ── Airport aggregate ──

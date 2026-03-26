@@ -7,6 +7,7 @@ import BaggageTrackerPage from "./pages/BaggageTracker/BaggageTrackerPage";
 import PassengerFlowPage from "./pages/PassengerFlow/PassengerFlowPage";
 import IncidentConsolePage from "./pages/IncidentConsole/IncidentConsolePage";
 import GroundOpsPage from "./pages/GroundOps/GroundOpsPage";
+import SimHistoryPage from "./pages/SimHistory/SimHistoryPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +33,7 @@ function AppShell() {
           <Route path="/passengers" element={<PassengerFlowPage />} />
           <Route path="/incidents" element={<IncidentConsolePage />} />
           <Route path="/ground-ops" element={<GroundOpsPage />} />
+          <Route path="/history" element={<SimHistoryPage />} />
         </Routes>
       </main>
     </div>

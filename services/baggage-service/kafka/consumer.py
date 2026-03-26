@@ -70,6 +70,7 @@ class BaggageConsumerState:
 
     def __init__(self) -> None:
         self.sim_time: datetime | None = None
+        self.last_tick_sim_time: datetime | None = None
         self.conveyor = ConveyorSystem()
         self.processed_events: set[str] = set()
         self.inducted_bag_ids: set[str] = set()
@@ -289,14 +290,21 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Process SimClockTick — induct new bags and advance conveyor pipeline."""
     _state.sim_time = sim_time
 
+    # Compute delta for multi-minute ticks / tick skipping
+    if _state.last_tick_sim_time is not None:
+        delta_minutes = max(1, round((sim_time - _state.last_tick_sim_time).total_seconds() / 60))
+    else:
+        delta_minutes = payload.get("step_minutes", 1)
+    _state.last_tick_sim_time = sim_time
+
     sim_time_str = sim_time.isoformat()
 
     # 1. Induct new bags: pull 'dropped_off' bags from Neo4j whose flights
     #    depart within ~90 minutes
-    await _induct_new_bags(sim_time)
+    await _induct_new_bags(sim_time, delta_minutes)
 
     # 2. Advance conveyor pipeline
-    outputs = _state.conveyor.advance_tick(sim_time_str)
+    outputs = _state.conveyor.advance_tick(sim_time_str, delta_minutes)
 
     # 3. Process zone outputs
     for zone_id, bags in outputs.items():
@@ -319,7 +327,7 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         m_zone_status.labels(zone_id=z["zone_id"]).set(status_val)
 
 
-async def _induct_new_bags(sim_time: datetime) -> None:
+async def _induct_new_bags(sim_time: datetime, delta_minutes: int = 1) -> None:
     """Pull dropped_off bags from Neo4j and add them to the induction belt.
 
     For flights that have already departed/are airborne, fast-track bags directly
@@ -334,9 +342,9 @@ async def _induct_new_bags(sim_time: datetime) -> None:
 
     sim_time_str = sim_time.isoformat()
 
-    # Limit batch size per tick to avoid blocking
+    # Limit batch size per tick to avoid blocking — scale with delta
     batch_count = 0
-    MAX_BATCH_PER_TICK = 500
+    MAX_BATCH_PER_TICK = 500 * delta_minutes
 
     for bag in bags:
         if batch_count >= MAX_BATCH_PER_TICK:

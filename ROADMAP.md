@@ -35,12 +35,13 @@ The current dashboards lack sorting, grouping, archive, a clear history of simul
 
 ### Tasks
 
-- [ ] **GAP-05-1** — Add column sorting and grouping to all data tables in the dashboards.
-- [ ] **GAP-05-2** — Implement an archive view showing past simulation runs with summary metrics.
-- [ ] **GAP-05-3** — Add a simulation history timeline so users can scrub through past events.
-- [ ] **GAP-05-4** — Improve chart visualisations: add tooltips, zoom, and better colour coding by severity.
-- [ ] **GAP-05-5** — Add a per-page export button (CSV and JSON) for any data currently shown on screen.
-- [ ] **GAP-05-6** — Add a global export that dumps the full simulation run to a single JSON/CSV archive.
+- [x] **GAP-05-0** — Add a plane icon to the website's favicon.
+- [x] **GAP-05-1** — Add column sorting and grouping to all data tables in the dashboards.
+- [x] **GAP-05-2** — Implement an archive view showing past simulation runs with summary metrics.
+- [x] **GAP-05-3** — Add a simulation history timeline so users can scrub through past events.
+- [x] **GAP-05-4** — Improve chart visualisations: add tooltips, zoom, and better colour coding by severity.
+- [x] **GAP-05-5** — Add a per-page export button (CSV and JSON) for any data currently shown on screen.
+- [x] **GAP-05-6** — Add a global export that dumps the full simulation run to a single JSON/CSV archive.
 
 ---
 
@@ -96,6 +97,7 @@ Gate distances from runway 09L threshold (approximate):
 - [ ] **GAP-1-5** — Add walking-time computation between terminal zones (check-in → security → airside → gate) based on the distances in the layout fixture.
 - [ ] **GAP-1-6** — Feed walking times into the connection risk model so cross-terminal connections (e.g. C-pier arrival → A-pier departure) are penalised correctly.
 - [ ] **GAP-1-7** — Write unit tests for the taxi-time and walking-time functions covering same-terminal, adjacent-terminal, and far-terminal cases.
+- [ ] **GAP-1-8** — Add a visualization of the airport layout to the dashboard, showing real-time positions of planes and bags as they move through the system.
 
 ---
 
@@ -130,14 +132,14 @@ The critical path is: baggage offload → baggage loading → boarding → door 
 
 ### Tasks
 
-- [ ] **GAP-2-1** — Define the `TurnaroundTask` dataclass (`name`, `starts_after`, `duration_min`, `status`) and the `TurnaroundPlan` container.
-- [ ] **GAP-2-2** — Define the narrow-body task list (`NARROW_BODY_TURNAROUND`) and the wide-body task list (`WIDE_BODY_TURNAROUND`) as module-level constants.
-- [ ] **GAP-2-3** — Implement a `TurnaroundScheduler` that, given a set of tasks with dependencies, resolves the critical path and computes the minimum turnaround time via topological sort.
-- [ ] **GAP-2-4** — Implement a `TurnaroundRunner` that advances task states tick-by-tick during the simulation and emits a Kafka event for each task state change (`turnaround.task.started`, `turnaround.task.completed`).
-- [ ] **GAP-2-5** — Replace the flat buffer logic in `flight-service` with `TurnaroundRunner`, instantiating a plan at wheels-stop and deriving the ready-for-departure time from the critical path completion.
-- [ ] **GAP-2-6** — Propagate delays into the task graph: when `baggage-service` reports a baggage delay, extend the `baggage_offload` task duration and recompute the critical path.
-- [ ] **GAP-2-7** — Expose current turnaround progress (`tasks`, `critical_path_slack`, `estimated_ready_time`) on the flight detail endpoint and the ground ops dashboard.
-- [ ] **GAP-2-8** — Write unit tests covering: on-time turnaround, baggage delay propagation, fueling delay that is absorbed by slack, and a delay that exceeds slack and pushes departure.
+- [x] **GAP-2-1** — Define the `TurnaroundTask` dataclass (`name`, `starts_after`, `duration_min`, `status`) and the `TurnaroundPlan` container.
+- [x] **GAP-2-2** — Define the narrow-body task list (`NARROW_BODY_TURNAROUND`) and the wide-body task list (`WIDE_BODY_TURNAROUND`) as module-level constants.
+- [x] **GAP-2-3** — Implement a `TurnaroundScheduler` that, given a set of tasks with dependencies, resolves the critical path and computes the minimum turnaround time via topological sort.
+- [x] **GAP-2-4** — Implement a `TurnaroundRunner` that advances task states tick-by-tick during the simulation and emits a Kafka event for each task state change (`turnaround.task.started`, `turnaround.task.completed`).
+- [x] **GAP-2-5** — Replace the flat buffer logic in `flight-service` with `TurnaroundRunner`, instantiating a plan at wheels-stop and deriving the ready-for-departure time from the critical path completion.
+- [x] **GAP-2-6** — Propagate delays into the task graph: when `baggage-service` reports a baggage delay, extend the `baggage_offload` task duration and recompute the critical path.
+- [x] **GAP-2-7** — Expose current turnaround progress (`tasks`, `critical_path_slack`, `estimated_ready_time`) on the flight detail endpoint and the ground ops dashboard.
+- [x] **GAP-2-8** — Write unit tests covering: on-time turnaround, baggage delay propagation, fueling delay that is absorbed by slack, and a delay that exceeds slack and pushes departure.
 
 ---
 
@@ -155,14 +157,14 @@ All flights are treated identically. In reality, domestic, international, long-h
 
 ### Tasks
 
-- [ ] **GAP-3-1** — Define `FlightType` (`domestic`, `international_short`, `international_long`, `cargo`, `charter`) and `RouteCategory` (`short_haul`, `medium_haul`, `long_haul`) enums.
-- [ ] **GAP-3-2** — Add `flight_type` and `route_category` fields to the `Flight` Neo4j node and populate them in the synthetic flight generator based on route distance and destination.
-- [ ] **GAP-3-3** — Map each `FlightType` to its corresponding `TurnaroundPlan` template (from Gap 2) so narrow-body domestic, wide-body long-haul, and cargo all get distinct task graphs.
-- [ ] **GAP-3-4** — Adjust the bags-per-passenger multiplier in `baggage-service` per flight type (1.0 domestic → 1.5 long-haul).
-- [ ] **GAP-3-5** — Route international arrivals through passport control and customs steps in the passenger flow model; domestic arrivals go directly to baggage claim.
-- [ ] **GAP-3-6** — Enforce gate compatibility constraints in the gate-assignment logic: international flights only assigned to international-capable gates, wide-body flights only to gates with jetbridge clearance.
-- [ ] **GAP-3-7** — Update the dashboard flight table to display flight type and route category as filterable columns.
-- [ ] **GAP-3-8** — Write tests for gate assignment rejecting an international flight assigned to a domestic gate, and a wide-body rejected from a narrow-body-only stand.
+- [x] **GAP-3-1** — Define `FlightType` (`domestic`, `international_short`, `international_long`, `cargo`, `charter`) and `RouteCategory` (`short_haul`, `medium_haul`, `long_haul`) enums.
+- [x] **GAP-3-2** — Add `flight_type` and `route_category` fields to the `Flight` Neo4j node and populate them in the synthetic flight generator based on route distance and destination.
+- [x] **GAP-3-3** — Map each `FlightType` to its corresponding `TurnaroundPlan` template (from Gap 2) so narrow-body domestic, wide-body long-haul, and cargo all get distinct task graphs.
+- [x] **GAP-3-4** — Adjust the bags-per-passenger multiplier in `baggage-service` per flight type (1.0 domestic → 1.5 long-haul).
+- [x] **GAP-3-5** — Route international arrivals through passport control and customs steps in the passenger flow model; domestic arrivals go directly to baggage claim.
+- [x] **GAP-3-6** — Enforce gate compatibility constraints in the gate-assignment logic: international flights only assigned to international-capable gates, wide-body flights only to gates with jetbridge clearance.
+- [x] **GAP-3-7** — Update the dashboard flight table to display flight type and route category as filterable columns.
+- [x] **GAP-3-8** — Write tests for gate assignment rejecting an international flight assigned to a domestic gate, and a wide-body rejected from a narrow-body-only stand.
 
 ---
 
@@ -918,3 +920,4 @@ The `sim-orchestrator` reads this file at startup and generates all fixtures dyn
 | 11       | Phase 6.1–6.7 — Mapbox geospatial twin  | High   | High — visual credibility         |
 | 12       | Phase 6.8 — CesiumJS 3D globe           | Medium | High — wow factor (globe)         |
 | 13       | HOW-TO + airport config system          | Medium | High — community adoption         |
+| 14       | Adapt README & LICENSE & CONTRIBUTING   | Medium | High — community adoption & legal |

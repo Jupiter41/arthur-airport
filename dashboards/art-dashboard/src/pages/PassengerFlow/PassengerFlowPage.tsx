@@ -2,6 +2,19 @@ import { useState, useEffect, useMemo } from "react";
 import { usePassengerStore } from "../../stores/passengerStore";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { usePassengerFlowQueries } from "../../hooks/useQueries";
+import { ExportMenu } from "../../components/ExportMenu";
+import { exportData, exportRaw } from "../../utils/exportData";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
+import type { ExportFormat } from "../../utils/exportData";
 import type {
   ZoneDensity,
   PassengerFlowSummary,
@@ -228,6 +241,56 @@ function AirportHeatmap({
   );
 }
 
+/* ──────── Security Queue Chart ──────── */
+function SecurityQueueChart({
+  summary,
+}: {
+  summary: PassengerFlowSummary | null;
+}) {
+  if (!summary?.security) return null;
+
+  const data = Object.entries(summary.security).map(([term, info]) => ({
+    terminal: `Terminal ${term.replace("terminal_", "")}`,
+    queue: info.queue_length,
+    wait: info.wait_minutes,
+  }));
+
+  function barColor(wait: number): string {
+    if (wait <= 10) return "#22c55e";
+    if (wait <= 20) return "#f59e0b";
+    return "#ef4444";
+  }
+
+  return (
+    <div className="bg-gray-800 rounded p-3">
+      <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+        Security Queue Depth
+      </h3>
+      <ResponsiveContainer width="100%" height={140}>
+        <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+          <XAxis dataKey="terminal" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+          <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} width={32} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "#1f2937",
+              border: "1px solid #4b5563",
+              borderRadius: 4,
+            }}
+            labelStyle={{ color: "#e5e7eb", fontSize: 11 }}
+            itemStyle={{ fontSize: 11 }}
+          />
+          <Bar dataKey="queue" name="Queue" radius={[4, 4, 0, 0]}>
+            {data.map((d, i) => (
+              <Cell key={i} fill={barColor(d.wait)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 /* ──────── KPI Bar ──────── */
 function KPIBar({ summary }: { summary: PassengerFlowSummary | null }) {
   if (!summary) return null;
@@ -400,9 +463,26 @@ export default function PassengerFlowPage() {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
-      <h2 className="text-lg font-bold text-white">Passenger Flow</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-white">Passenger Flow</h2>
+        <ExportMenu
+          onExport={(fmt: ExportFormat) => {
+            const rows = zones.map((z) => ({
+              zone_id: z.zone_id,
+              zone_type: z.zone_type,
+              terminal: z.terminal,
+              density: z.density,
+              capacity: z.capacity,
+              load_pct: z.load_pct,
+            }));
+            exportData(rows, "passenger-flow", fmt);
+          }}
+        />
+      </div>
 
       <KPIBar summary={summary} />
+
+      <SecurityQueueChart summary={summary} />
 
       <AirportHeatmap
         zones={zones}

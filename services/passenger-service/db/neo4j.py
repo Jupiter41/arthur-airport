@@ -379,6 +379,7 @@ async def get_passengers_by_status(status: str, scheduled_before: str | None = N
                p.airside_at AS airside_at,
                p.deplaning_at AS deplaning_at,
                p.baggage_claim_at AS baggage_claim_at,
+               p.customs_at AS customs_at,
                p.connection AS connection,
                p.connection_flight_id AS connection_flight_id,
                f.flight_number AS flight_number,
@@ -386,6 +387,7 @@ async def get_passengers_by_status(status: str, scheduled_before: str | None = N
                f.scheduled_time AS scheduled_time,
                f.status AS flight_status,
                f.direction AS direction,
+               f.flight_type AS flight_type,
                g.id AS gate_id,
                g.terminal_id AS terminal_id
         """
@@ -403,6 +405,7 @@ async def get_passengers_by_status(status: str, scheduled_before: str | None = N
                p.airside_at AS airside_at,
                p.deplaning_at AS deplaning_at,
                p.baggage_claim_at AS baggage_claim_at,
+               p.customs_at AS customs_at,
                p.connection AS connection,
                p.connection_flight_id AS connection_flight_id,
                f.flight_number AS flight_number,
@@ -410,6 +413,7 @@ async def get_passengers_by_status(status: str, scheduled_before: str | None = N
                f.scheduled_time AS scheduled_time,
                f.status AS flight_status,
                f.direction AS direction,
+               f.flight_type AS flight_type,
                g.id AS gate_id,
                g.terminal_id AS terminal_id
         """
