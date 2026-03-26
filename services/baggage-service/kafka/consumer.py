@@ -37,7 +37,6 @@ from metrics import (
     conveyor_zone_utilisation_pct as m_zone_util,
     conveyor_zone_status as m_zone_status,
     baggage_transitions_total as m_transitions,
-    baggage_offloaded_total as m_offloaded,
     dangerous_goods_detected_total as m_dg_detected,
     screening_false_positives_total as m_false_pos,
     envelope_invalid_total as m_envelope_invalid,
