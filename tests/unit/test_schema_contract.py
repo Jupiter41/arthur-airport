@@ -10,7 +10,6 @@ These are static analysis tests (no Neo4j required).
 
 import os
 import re
-import sys
 
 import pytest
 

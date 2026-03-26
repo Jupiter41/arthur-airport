@@ -69,7 +69,6 @@ async def generate_passengers(
         load_factor = float(beta_rng.rvs(random_state=rng.randint(0, 2**31)))
         load_factor = max(0.5, min(1.0, load_factor))
         pax_count = round(seat_cap * load_factor)
-        terminal = _terminal_from_gate(flight.get("gate_id"))
 
         passengers = []
         for i in range(pax_count):

@@ -1,6 +1,5 @@
 """Pydantic models for scenario definitions and run results."""
 
-from datetime import datetime
 from enum import Enum
 from typing import Optional
 
