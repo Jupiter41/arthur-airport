@@ -36,13 +36,11 @@ class SecurityCheckpoint:
     def sa_queue_depth(self) -> int:
         return len(self.sa_queue)
 
-    BREACH_THROUGHPUT_FRACTION = 0.25  # during breach, keep 25% capacity
-
     def effective_throughput(self, forecast_queue: int) -> float:
         """Compute effective throughput per hour with slowdown."""
         base = self.lanes_open * BASE_THROUGHPUT_PER_LANE
         if self.frozen:
-            return base * self.BREACH_THROUGHPUT_FRACTION
+            return 0.0
         actual = self.queue_depth
         if forecast_queue > 0 and actual > forecast_queue * 1.3:
             slowdown = min(1.0, forecast_queue / actual)
@@ -71,6 +69,8 @@ class SecurityCheckpoint:
         the throughput is ``effective / 60 * delta`` so that skipped ticks
         don't reduce overall security capacity.
         """
+        if self.frozen:
+            return 0
         throughput = self.effective_throughput(forecast_queue)
         drain = max(0, int(throughput / 60 * delta_minutes))
         # Guard: always drain at least 1 pax/tick if queue > 0

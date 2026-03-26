@@ -36,7 +36,6 @@ from services.gate_resolver import ensure_gate_assigned
 from services.turnaround import propagate_turnaround_delay
 from services.turnaround_plan import (
     TurnaroundPlan,
-    TaskStatus,
     create_turnaround_plan,
     nominal_turnaround_minutes,
 )

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
