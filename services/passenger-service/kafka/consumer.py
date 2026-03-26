@@ -20,7 +20,6 @@ from db.neo4j import (
     get_passengers_by_flight,
     update_passenger_status,
     bulk_update_status,
-    set_passenger_dwell,
     bulk_set_dwell,
     set_connection_risk,
     get_connecting_passengers,
@@ -62,7 +61,6 @@ from metrics import (
     connections_at_risk as m_connections_at_risk,
     connections_missed_total as m_connections_missed,
     passenger_alerts_total as m_passenger_alerts,
-    zone_load_pct as m_zone_load,
     envelope_invalid_total as m_envelope_invalid,
 )
 
