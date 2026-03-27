@@ -3,7 +3,7 @@
 Before doing any edit, do this:
 
 - READ all SPEC and skill files.
-- READ scripts README.md if it exists.
+- READ scripts/ README.md if it exists.
 - READ ROADMAP.md fully.
 - NEVER implement any roundabout fix. For any very complex thing, write a plan file in docs/lessons-learned/ and then implement it step by step.
 - ALWAYS take the elegant solution, even if it takes more time. Don't do quick and dirty fixes.
@@ -20,6 +20,4 @@ Before doing any edit, do this:
 
 Following ROADMAP.md planning, do this:
 
-- Create a new endpoint (or link to dashboards, do what you think is best) with an UI to create, run, inspect, see results of scenarios defined in YAML files.
-  | 4 | Fix Gap 1 — spatial layout (taxi times) | Medium | Medium — physical realism |
-  | 5 | Fix Gap 4 — conveyor spatial model | Medium | Medium — baggage realism |
+- Improve Scenarios page to allow the creation of new scenarios with custom settings and everything it entails: allow save, delete , edit, fork scenarios. Base scenarios should be immutable.

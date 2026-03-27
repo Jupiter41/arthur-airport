@@ -231,9 +231,32 @@ export const simApi = {
       body: JSON.stringify({ confirm: true }),
     }),
   history: () => apiFetch<unknown>("/sim/history"),
+  settings: () => apiFetch<unknown>("/sim/settings"),
+  updateSettings: (body: Record<string, unknown>) =>
+    apiFetch<unknown>("/sim/settings", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 };
 
 // ── Airport aggregate ──
 export const airportApi = {
   snapshot: () => apiFetch<unknown>("/airport"),
+};
+
+// ── Scenarios ──
+export const scenariosApi = {
+  list: () => apiFetch<{ scenarios: unknown[] }>("/scenarios"),
+  get: (name: string) =>
+    apiFetch<unknown>(`/scenarios/${encodeURIComponent(name)}`),
+  run: (name: string, speed?: number) =>
+    apiFetch<unknown>(`/scenarios/${encodeURIComponent(name)}/run`, {
+      method: "POST",
+      body: JSON.stringify(speed ? { speed } : {}),
+    }),
+  active: () => apiFetch<unknown>("/scenarios/active"),
+  stop: () => apiFetch<unknown>("/scenarios/active/stop", { method: "POST" }),
+  results: () => apiFetch<{ results: unknown[] }>("/scenarios/results"),
+  result: (runId: string) =>
+    apiFetch<unknown>(`/scenarios/results/${encodeURIComponent(runId)}`),
 };

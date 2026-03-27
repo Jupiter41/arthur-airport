@@ -16,6 +16,7 @@ from db.neo4j import (
 from kafka.consumer import (
     get_sim_time,
     is_consumer_running,
+    load_spatial_positions,
     rebuild_security_from_neo4j,
     run_consumer,
     set_ws_broadcast,
@@ -83,6 +84,9 @@ async def lifespan(app: FastAPI):
 
     # 5b. Rebuild in-memory security queues from Neo4j
     await rebuild_security_from_neo4j()
+
+    # 5c. Load spatial positions for walking time computation
+    await load_spatial_positions()
 
     # 6. Load any existing ML models
     load_models()

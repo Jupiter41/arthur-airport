@@ -3,6 +3,7 @@
 import logging
 
 from db.neo4j import get_driver
+from services.fixtures import get_fixtures
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,14 @@ async def seed_airport_structure() -> None:
     """Seed the static airport structure: Airport, Terminals, Gates, Runways.
 
     Uses MERGE for full idempotency — safe to re-run on restart.
+    Includes spatial positions from layout.json fixture.
     """
     driver = get_driver()
+    layout = get_fixtures().get("layout", {})
+    terminal_positions = layout.get("terminals", {})
+    gate_positions = layout.get("gates", {})
+    runway_positions = layout.get("runways", {})
+
     async with driver.session() as session:
         # Airport node
         await session.run(
@@ -51,28 +58,34 @@ async def seed_airport_structure() -> None:
         # Terminals + Gates
         for t in TERMINALS:
             tid = f"T-{t}"
+            tpos = terminal_positions.get(tid, {})
             await session.run(
                 "MERGE (t:Terminal {id: $tid}) "
-                "SET t.name = $name, t.gate_count = $gc, t.open = true "
+                "SET t.name = $name, t.gate_count = $gc, t.open = true, "
+                "    t.position_x = $px, t.position_y = $py "
                 "WITH t "
                 "MATCH (a:Airport {icao: 'KART'}) "
                 "MERGE (a)-[:HAS_TERMINAL]->(t)",
                 tid=tid,
                 name=f"Terminal {t}",
                 gc=GATES_PER_TERMINAL,
+                px=tpos.get("x", 500),
+                py=tpos.get("y", 400),
             )
             for n in range(1, GATES_PER_TERMINAL + 1):
                 gate_id = f"{t}{n:02d}"
                 caps = GATE_CAPABILITIES[t]
                 intl = n in caps["international"]
                 wb = n in caps["wide_body"]
+                gpos = gate_positions.get(gate_id, {})
                 await session.run(
                     "MERGE (g:Gate {id: $gid}) "
                     "SET g.terminal_id = $tid, g.status = 'available', "
                     "    g.pier = $pier, g.jetbridge = true, "
                     "    g.international_capable = $intl, "
                     "    g.wide_body_capable = $wb, "
-                    "    g.last_assigned_at = null "
+                    "    g.last_assigned_at = null, "
+                    "    g.position_x = $px, g.position_y = $py "
                     "WITH g "
                     "MATCH (t:Terminal {id: $tid}) "
                     "MERGE (t)-[:HAS_GATE]->(g)",
@@ -81,21 +94,27 @@ async def seed_airport_structure() -> None:
                     pier=t,
                     intl=intl,
                     wb=wb,
+                    px=gpos.get("x", 500),
+                    py=gpos.get("y", 400),
                 )
 
         # Runways
         for rwy in RUNWAYS:
+            rpos = runway_positions.get(rwy, {})
             await session.run(
                 "MERGE (r:Runway {id: $id}) "
                 "SET r.status = 'open', "
                 "    r.current_use = 'idle', "
                 "    r.surface = 'asphalt', "
                 "    r.length_m = 3500, "
-                "    r.ils = ($id IN ['09L', '27R']) "
+                "    r.ils = ($id IN ['09L', '27R']), "
+                "    r.threshold_x = $tx, r.threshold_y = $ty "
                 "WITH r "
                 "MATCH (a:Airport {icao: 'KART'}) "
                 "MERGE (a)-[:HAS_RUNWAY]->(r)",
                 id=rwy,
+                tx=rpos.get("threshold_x", 500),
+                ty=rpos.get("threshold_y", 800),
             )
 
     logger.info(

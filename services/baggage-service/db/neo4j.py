@@ -406,6 +406,7 @@ async def get_dropped_off_baggage_for_departures(sim_time: datetime) -> list[dic
            f.estimated_time AS estimated_time,
            f.status AS flight_status,
            p.id AS passenger_id,
+           g.id AS gate_id,
            g.terminal_id AS terminal_id
     """
     async with driver.session() as session:

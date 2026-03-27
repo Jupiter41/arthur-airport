@@ -398,6 +398,14 @@ async def _induct_new_bags(sim_time: datetime, delta_minutes: int = 1) -> None:
         if terminal not in "ABC":
             terminal = "A"
 
+        # Determine gate's terminal for cross-terminal transit time
+        gate_terminal = terminal
+        gate_id = bag.get("gate_id")
+        if gate_id and len(str(gate_id)) >= 1:
+            gt = str(gate_id)[0].upper()
+            if gt in "ABC":
+                gate_terminal = gt
+
         bag_in_zone = BagInZone(
             baggage_id=bag_id,
             tag=bag["tag"],
@@ -407,6 +415,7 @@ async def _induct_new_bags(sim_time: datetime, delta_minutes: int = 1) -> None:
             passenger_id=bag.get("passenger_id"),
             terminal=terminal,
             entered_at=sim_time_str,
+            gate_terminal=gate_terminal,
         )
 
         zone_id = _state.conveyor.induct_bag(bag_in_zone, sim_time_str)

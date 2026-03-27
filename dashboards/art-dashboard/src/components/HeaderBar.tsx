@@ -22,6 +22,8 @@ const NAV_ITEMS = [
   { path: "/incidents", label: "Incidents", icon: "🚨" },
   { path: "/ground-ops", label: "Ground Ops", icon: "🎛️" },
   { path: "/history", label: "History", icon: "📊" },
+  { path: "/scenarios", label: "Scenarios", icon: "🧪" },
+  { path: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
 export function HeaderBar() {

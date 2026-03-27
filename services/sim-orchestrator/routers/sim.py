@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from services import clock
 from services.schedule import get_schedule_from_neo4j
+from services.settings import get_settings, update_settings, SimSettings
 from kafka.producer import emit_inject_incident
 from db.neo4j import get_driver
 
@@ -290,3 +291,26 @@ async def sim_history():
         raise HTTPException(status_code=500, detail="Failed to fetch history")
 
     return {"current_day": current_day, "days": days}
+
+
+# ── Settings ─────────────────────────────────────────────────
+
+
+@router.get("/sim/settings")
+async def sim_settings_get():
+    """Return the current simulation settings."""
+    return get_settings().model_dump()
+
+
+@router.patch("/sim/settings")
+async def sim_settings_patch(body: dict):
+    """Apply a partial update to simulation settings.
+
+    Any subset of SimSettings fields may be sent. Unknown keys are
+    silently ignored. Pydantic validates every value.
+    """
+    try:
+        updated = update_settings(body)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return updated.model_dump()

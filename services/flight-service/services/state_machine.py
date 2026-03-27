@@ -48,6 +48,8 @@ def evaluate_transition(
     gate_available: bool = True,
     boarded_pct: float = 1.0,
     has_hold: bool = False,
+    taxi_initial_min: float = 2.0,
+    taxi_total_min: float = 8.0,
 ) -> str | None:
     """Evaluate whether a flight should transition to a new state.
 
@@ -61,6 +63,8 @@ def evaluate_transition(
         gate_available: whether the assigned gate is available
         boarded_pct: fraction of passengers boarded (0.0–1.0)
         has_hold: whether the flight is under manual hold
+        taxi_initial_min: minutes from touchdown to start taxiing (spatial model)
+        taxi_total_min: minutes from touchdown to gate arrival (spatial model)
     """
     status = flight["status"]
     direction = flight.get("direction", "departure")
@@ -94,10 +98,10 @@ def evaluate_transition(
             return _eval_approach(flight, sim_time, estimated_time, runway_available)
 
         case "landed":
-            return _eval_landed(flight, sim_time)
+            return _eval_landed(flight, sim_time, taxi_initial_min)
 
         case "taxiing":
-            return _eval_taxiing(flight, sim_time, gate_available)
+            return _eval_taxiing(flight, sim_time, gate_available, taxi_total_min)
 
         case "at_gate":
             return _eval_at_gate(flight, sim_time, direction)
@@ -198,22 +202,23 @@ def _eval_approach(flight: dict, sim_time: datetime, estimated_time: datetime,
     return None
 
 
-def _eval_landed(flight: dict, sim_time: datetime) -> str | None:
+def _eval_landed(flight: dict, sim_time: datetime, taxi_initial_min: float = 2.0) -> str | None:
     actual_time = _parse_time(flight.get("actual_time"))
     if actual_time is None:
         return None
-    # ATA + 2 minutes → taxiing
-    if sim_time >= actual_time + timedelta(minutes=2):
+    # ATA + taxi_initial_min → taxiing (spatial model replaces fixed 2 min)
+    if sim_time >= actual_time + timedelta(minutes=taxi_initial_min):
         return "taxiing"
     return None
 
 
-def _eval_taxiing(flight: dict, sim_time: datetime, gate_available: bool) -> str | None:
+def _eval_taxiing(flight: dict, sim_time: datetime, gate_available: bool,
+                  taxi_total_min: float = 8.0) -> str | None:
     actual_time = _parse_time(flight.get("actual_time"))
     if actual_time is None:
         return None
-    # ATA + 8 minutes → at_gate (if gate available)
-    if sim_time >= actual_time + timedelta(minutes=8) and gate_available:
+    # ATA + taxi_total_min → at_gate (spatial model replaces fixed 8 min)
+    if sim_time >= actual_time + timedelta(minutes=taxi_total_min) and gate_available:
         return "at_gate"
     return None
 

@@ -114,3 +114,17 @@ async def list_flagged():
             "review_status": item.get("review_status", "pending"),
         })
     return {"flagged": flagged}
+
+
+@router.get("/baggage/conveyor-status")
+async def conveyor_status():
+    """Overall conveyor system status — used by integration tests and dashboard."""
+    conveyor = get_conveyor()
+    sim_time = get_sim_time()
+    zones = conveyor.get_zone_summary()
+    total_in_system = sum(z.get("queue_depth", 0) for z in zones.values())
+    return {
+        "sim_time": sim_time.isoformat() if sim_time else None,
+        "total_in_system": total_in_system,
+        "zones": zones,
+    }

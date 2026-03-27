@@ -2,11 +2,15 @@
 
 Models the baggage handling system as a series of zones with throughput constraints.
 Items flow: induction → screening → sorting → make-up (loading) → arrival-belt.
+Cross-terminal bags incur transit delays between sorting and make-up.
 """
 
 import logging
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime
+
+from services.spatial import sorting_to_makeup_minutes, SORTING_TO_MAKEUP_SAME
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +24,17 @@ class BagInZone:
     is_dg: bool
     dg_class: str | None
     passenger_id: str | None
-    terminal: str  # A, B, or C
+    terminal: str  # A, B, or C (check-in terminal)
     entered_at: str  # ISO timestamp when entered this zone
+    gate_terminal: str = ""  # destination terminal (make-up side)
+
+
+@dataclass
+class TransitBag:
+    """A bag in transit between terminals (sorting → make-up)."""
+    bag: BagInZone
+    makeup_zone: str
+    ready_at_minutes: float  # sim-minutes elapsed until delivery
 
 
 @dataclass
@@ -90,6 +103,7 @@ class ConveyorSystem:
         self._zones: dict[str, ZoneState] = {}
         self._screening_round_robin: dict[str, int] = {"A": 0, "B": 0, "C": 0}
         self._makeup_round_robin: dict[str, int] = {"A": 0, "B": 0, "C": 0}
+        self._transit_queue: list[TransitBag] = []  # bags in cross-terminal transit
         self._initialize_zones()
 
     def _initialize_zones(self) -> None:
@@ -184,15 +198,42 @@ class ConveyorSystem:
                 if exited:
                     outputs[zone_id] = exited
 
+        # 2b. Deliver transit bags that have completed their inter-terminal journey
+        still_in_transit: list[TransitBag] = []
+        for tb in self._transit_queue:
+            tb.ready_at_minutes -= delta_minutes
+            if tb.ready_at_minutes <= 0:
+                tb.bag.entered_at = sim_time
+                zone = self._zones.get(tb.makeup_zone)
+                if zone:
+                    zone.queue.append(tb.bag)
+            else:
+                still_in_transit.append(tb)
+        self._transit_queue = still_in_transit
+
         # 3. Drain sorting-matrix → route to make-up zones by terminal
+        #    Cross-terminal bags go through transit delay queue
         zone = self._zones["sorting-matrix"]
         sorted_bags = self.drain_zone(zone, delta_minutes)
         if sorted_bags:
             outputs["sorting-matrix"] = []
             for bag in sorted_bags:
-                makeup_zone = self._pick_makeup_zone(bag.terminal)
-                bag.entered_at = sim_time
-                self._zones[makeup_zone].queue.append(bag)
+                dest_terminal = bag.gate_terminal or bag.terminal
+                makeup_zone = self._pick_makeup_zone(dest_terminal)
+                transit_min = sorting_to_makeup_minutes(bag.terminal, dest_terminal)
+
+                if transit_min <= SORTING_TO_MAKEUP_SAME:
+                    # Same terminal — deliver immediately
+                    bag.entered_at = sim_time
+                    self._zones[makeup_zone].queue.append(bag)
+                else:
+                    # Cross-terminal — queue for transit delay
+                    extra_delay = transit_min - SORTING_TO_MAKEUP_SAME
+                    self._transit_queue.append(TransitBag(
+                        bag=bag,
+                        makeup_zone=makeup_zone,
+                        ready_at_minutes=extra_delay,
+                    ))
             outputs["sorting-matrix"] = sorted_bags
 
         # 4. Drain screening zones → send to sorting-matrix
@@ -263,3 +304,8 @@ class ConveyorSystem:
     def get_system_failures_count(self) -> int:
         """Count zones currently offline."""
         return sum(1 for z in self._zones.values() if z.status == "offline")
+
+    @property
+    def transit_queue_depth(self) -> int:
+        """Number of bags currently in cross-terminal transit."""
+        return len(self._transit_queue)

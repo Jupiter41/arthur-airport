@@ -39,6 +39,7 @@ from ml.inference import load_models, predict
 from ml.training import add_training_row, maybe_flush, maybe_retrain
 from services.connections import evaluate_connecting_passengers
 from services.security import SecuritySystem
+from services.spatial import walking_time_to_gate
 from services.state_machine import (
     get_terminal_for_flight,
     sample_dwell_minutes,
@@ -95,6 +96,9 @@ class PassengerConsumerState:
         self.baggage_collected: set[str] = set()
         self.passengers_at_carousel: set[str] = set()
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
+        # Spatial data for walking time computation
+        self.gate_positions: dict[str, dict] = {}
+        self.walking_zones: dict[str, dict] = {}
 
     def check_idempotency(self, event_id: str) -> bool:
         if not event_id:
@@ -150,6 +154,38 @@ async def rebuild_security_from_neo4j() -> None:
         count += 1
 
     logger.info("Rebuilt security queues from Neo4j: %d passengers loaded", count)
+
+
+async def load_spatial_positions() -> None:
+    """Load gate positions and walking zones from Neo4j for walking time computation."""
+    from db.neo4j import get_driver
+    try:
+        driver = get_driver()
+        async with driver.session() as session:
+            result = await session.run(
+                "MATCH (g:Gate) WHERE g.position_x IS NOT NULL "
+                "RETURN g.id AS id, g.position_x AS x, g.position_y AS y"
+            )
+            async for record in result:
+                _state.gate_positions[record["id"]] = {
+                    "position_x": record["x"],
+                    "position_y": record["y"],
+                }
+
+        # Load walking zones from layout fixture if available on Terminal nodes
+        # Fallback: use hardcoded zones matching layout.json
+        _state.walking_zones = {
+            "A": {"checkin": {"x": 500, "y": 50}, "security": {"x": 500, "y": 100}, "airside": {"x": 500, "y": 130}},
+            "B": {"checkin": {"x": 500, "y": 300}, "security": {"x": 500, "y": 350}, "airside": {"x": 500, "y": 380}},
+            "C": {"checkin": {"x": 500, "y": 550}, "security": {"x": 500, "y": 600}, "airside": {"x": 500, "y": 630}},
+        }
+        logger.info(
+            "Loaded spatial positions: %d gates, %d walking zones",
+            len(_state.gate_positions),
+            len(_state.walking_zones),
+        )
+    except Exception as e:
+        logger.warning("Failed to load spatial positions (walking times will use defaults): %s", e)
 
 
 def set_ws_broadcast(fn):
@@ -778,15 +814,23 @@ async def _advance_airside_to_gate(sim_time: datetime) -> None:
             dwell = pax.get("dwell_minutes")
             airside_at = pax.get("airside_at")
 
-            if not should_move_to_at_gate(sim_time, estimated, dwell, airside_at):
-                continue
-
             gate_id = pax.get("gate_id")
             terminal = get_terminal_for_flight(
                 gate_id,
                 pax.get("terminal_id"),
                 pax.get("flight_id"),
             )
+
+            # Compute walking time from airside to gate
+            gate_pos = _state.gate_positions.get(gate_id) if gate_id else None
+            walk_min = walking_time_to_gate(
+                terminal, gate_pos, _state.walking_zones,
+                special_assistance=bool(pax.get("special_assistance")),
+            )
+
+            if not should_move_to_at_gate(sim_time, estimated, dwell, airside_at, walk_min):
+                continue
+
             new_zone = zone_for_status("at_gate", terminal, gate_id)
             old_zone = pax.get("location_zone") or f"airside-{terminal}"
 
@@ -1003,7 +1047,7 @@ async def _check_connections(sim_time: datetime) -> None:
         logger.error("Failed to get connecting passengers: %s", e)
         return
 
-    results = evaluate_connecting_passengers(conn_pax, sim_time)
+    results = evaluate_connecting_passengers(conn_pax, sim_time, _state.gate_positions or None)
     new_at_risk = []
 
     for r in results:

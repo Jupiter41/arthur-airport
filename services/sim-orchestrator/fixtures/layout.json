@@ -1,0 +1,107 @@
+{
+  "_doc": "KART airport spatial layout on a normalized 0-1000 grid (1 unit ≈ 1 m). Y-axis runs N→S, X-axis runs W→E. Runway 09L/27R is south, 09R/27L further south.",
+  "terminals": {
+    "T-A": { "x": 500, "y": 150, "name": "Terminal A (North pier)" },
+    "T-B": { "x": 500, "y": 400, "name": "Terminal B (Central pier)" },
+    "T-C": { "x": 500, "y": 650, "name": "Terminal C (South pier)" }
+  },
+  "runways": {
+    "09L": {
+      "threshold_x": 100,
+      "threshold_y": 800,
+      "end_x": 900,
+      "end_y": 800
+    },
+    "27R": {
+      "threshold_x": 900,
+      "threshold_y": 800,
+      "end_x": 100,
+      "end_y": 800
+    },
+    "09R": {
+      "threshold_x": 100,
+      "threshold_y": 900,
+      "end_x": 900,
+      "end_y": 900
+    },
+    "27L": {
+      "threshold_x": 900,
+      "threshold_y": 900,
+      "end_x": 100,
+      "end_y": 900
+    }
+  },
+  "taxiways": {
+    "alpha": { "y": 275, "name": "Taxiway Alpha (between A and B)" },
+    "bravo": { "y": 525, "name": "Taxiway Bravo (between B and C)" }
+  },
+  "gates": {
+    "A01": { "x": 160, "y": 150 },
+    "A02": { "x": 220, "y": 150 },
+    "A03": { "x": 280, "y": 150 },
+    "A04": { "x": 340, "y": 150 },
+    "A05": { "x": 400, "y": 150 },
+    "A06": { "x": 460, "y": 150 },
+    "A07": { "x": 520, "y": 150 },
+    "A08": { "x": 580, "y": 150 },
+    "A09": { "x": 640, "y": 150 },
+    "A10": { "x": 700, "y": 150 },
+    "A11": { "x": 760, "y": 150 },
+    "A12": { "x": 820, "y": 150 },
+    "A13": { "x": 880, "y": 150 },
+    "A14": { "x": 940, "y": 150 },
+    "B01": { "x": 160, "y": 400 },
+    "B02": { "x": 220, "y": 400 },
+    "B03": { "x": 280, "y": 400 },
+    "B04": { "x": 340, "y": 400 },
+    "B05": { "x": 400, "y": 400 },
+    "B06": { "x": 460, "y": 400 },
+    "B07": { "x": 520, "y": 400 },
+    "B08": { "x": 580, "y": 400 },
+    "B09": { "x": 640, "y": 400 },
+    "B10": { "x": 700, "y": 400 },
+    "B11": { "x": 760, "y": 400 },
+    "B12": { "x": 820, "y": 400 },
+    "B13": { "x": 880, "y": 400 },
+    "B14": { "x": 940, "y": 400 },
+    "C01": { "x": 160, "y": 650 },
+    "C02": { "x": 220, "y": 650 },
+    "C03": { "x": 280, "y": 650 },
+    "C04": { "x": 340, "y": 650 },
+    "C05": { "x": 400, "y": 650 },
+    "C06": { "x": 460, "y": 650 },
+    "C07": { "x": 520, "y": 650 },
+    "C08": { "x": 580, "y": 650 },
+    "C09": { "x": 640, "y": 650 },
+    "C10": { "x": 700, "y": 650 },
+    "C11": { "x": 760, "y": 650 },
+    "C12": { "x": 820, "y": 650 },
+    "C13": { "x": 880, "y": 650 },
+    "C14": { "x": 940, "y": 650 }
+  },
+  "walking_zones": {
+    "_doc": "Walking zones per terminal: check-in, security, airside, gates. Distances in metres.",
+    "A": {
+      "checkin": { "x": 500, "y": 50 },
+      "security": { "x": 500, "y": 100 },
+      "airside": { "x": 500, "y": 130 }
+    },
+    "B": {
+      "checkin": { "x": 500, "y": 300 },
+      "security": { "x": 500, "y": 350 },
+      "airside": { "x": 500, "y": 380 }
+    },
+    "C": {
+      "checkin": { "x": 500, "y": 550 },
+      "security": { "x": 500, "y": 600 },
+      "airside": { "x": 500, "y": 630 }
+    }
+  },
+  "speeds": {
+    "taxiway_m_per_min": 250,
+    "apron_m_per_min": 83.3,
+    "walking_m_per_min": 84,
+    "special_assistance_multiplier": 2.5,
+    "apron_radius_m": 200
+  }
+}

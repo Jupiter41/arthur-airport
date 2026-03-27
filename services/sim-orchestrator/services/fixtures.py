@@ -21,6 +21,7 @@ FIXTURE_FILES = [
     "nationalities",
     "dg_classes",
     "events",
+    "layout",
 ]
 
 

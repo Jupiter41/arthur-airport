@@ -66,9 +66,10 @@ def should_move_to_at_gate(
     estimated_time: str | datetime,
     dwell_minutes: int | None,
     airside_at: str | datetime | None,
+    walking_minutes: float = 0.0,
 ) -> bool:
     """Check if a passenger in airside should move to gate.
-    Trigger: sim_time >= gate_open_time (T-30) AND dwell elapsed.
+    Trigger: sim_time >= gate_open_time (T-30) AND dwell + walking time elapsed.
     """
     estimated_dt = _to_naive_dt(estimated_time)
     if estimated_dt is None:
@@ -78,12 +79,12 @@ def should_move_to_at_gate(
     if sim_time < gate_open:
         return False
 
-    # Check dwell time elapsed
+    # Check dwell time + walking time elapsed
     if dwell_minutes is not None and airside_at is not None:
         airside_dt = _to_naive_dt(airside_at)
         if airside_dt is None:
             return False
-        dwell_end = airside_dt + timedelta(minutes=dwell_minutes)
+        dwell_end = airside_dt + timedelta(minutes=dwell_minutes + walking_minutes)
         return sim_time >= dwell_end
 
     # No dwell info: move immediately when gate opens

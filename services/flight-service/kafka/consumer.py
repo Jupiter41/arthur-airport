@@ -39,6 +39,7 @@ from services.turnaround_plan import (
     create_turnaround_plan,
     nominal_turnaround_minutes,
 )
+from services.spatial import taxi_time_from_positions
 from metrics import (
     flight_status_transitions_total as m_transitions,
     flights_active as m_active,
@@ -70,6 +71,9 @@ class FlightConsumerState:
         self.processed_events: set[str] = set()
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
         self.turnaround_plans: dict[str, TurnaroundPlan] = {}  # keyed by aircraft_registration
+        # Spatial layout caches (populated from Neo4j on startup)
+        self.gate_positions: dict[str, dict] = {}   # gate_id → {position_x, position_y}
+        self.runway_positions: dict[str, dict] = {}  # runway_id → {threshold_x, threshold_y}
 
     MAX_PROCESSED = 10000
 
@@ -107,6 +111,43 @@ class FlightConsumerState:
             len(self.incident_affected_runways),
             len(self.incident_affected_gates),
         )
+
+        # Load spatial positions for taxi time computation
+        await self._load_spatial_positions()
+
+    async def _load_spatial_positions(self) -> None:
+        """Load gate and runway positions from Neo4j for taxi time computation."""
+        from db.neo4j import get_driver
+        try:
+            driver = get_driver()
+            async with driver.session() as session:
+                result = await session.run(
+                    "MATCH (g:Gate) WHERE g.position_x IS NOT NULL "
+                    "RETURN g.id AS id, g.position_x AS x, g.position_y AS y"
+                )
+                async for record in result:
+                    self.gate_positions[record["id"]] = {
+                        "position_x": record["x"],
+                        "position_y": record["y"],
+                    }
+
+                result = await session.run(
+                    "MATCH (r:Runway) WHERE r.threshold_x IS NOT NULL "
+                    "RETURN r.id AS id, r.threshold_x AS tx, r.threshold_y AS ty"
+                )
+                async for record in result:
+                    self.runway_positions[record["id"]] = {
+                        "threshold_x": record["tx"],
+                        "threshold_y": record["ty"],
+                    }
+
+            logger.info(
+                "Loaded spatial positions: %d gates, %d runways",
+                len(self.gate_positions),
+                len(self.runway_positions),
+            )
+        except Exception as e:
+            logger.warning("Failed to load spatial positions (using defaults): %s", e)
 
 
 # Module-level singleton
@@ -428,6 +469,12 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
         if boarded_pct >= 0.95:
             _state.runway_queue.enqueue_departure(flight_id, str(estimated))
 
+    # Compute spatial taxi times from positions
+    runway_id = flight.get("runway_id")
+    runway_pos = _state.runway_positions.get(runway_id) if runway_id else None
+    gate_pos = _state.gate_positions.get(gate_id) if gate_id else None
+    taxi_initial, taxi_total = taxi_time_from_positions(runway_pos, gate_pos)
+
     # Evaluate FSM transition
     new_status = evaluate_transition(
         flight=flight,
@@ -436,6 +483,8 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
         gate_available=gate_available,
         boarded_pct=boarded_pct,
         has_hold=has_hold,
+        taxi_initial_min=taxi_initial,
+        taxi_total_min=taxi_total,
     )
 
     # ── Turnaround-aware gating ──

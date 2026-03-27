@@ -122,3 +122,73 @@ class TestEvaluateConnectingPassengers:
         ]
         results = evaluate_connecting_passengers(pax, BASE_TIME)
         assert len(results) == 2
+
+
+class TestConnectionRiskWithWalkingTime:
+    """Verify walking time inflates effective MCT."""
+
+    def test_ok_without_walking_becomes_at_risk_with_walking(self):
+        """A connection that was ok at MCT+20 becomes at_risk with 10min walking."""
+        assert connection_risk(0, MCT_MINUTES + 20, walking_minutes=0.0) in ("at_risk", "ok")
+        assert connection_risk(0, MCT_MINUTES + 20, walking_minutes=10.0) == "at_risk"
+
+    def test_at_risk_without_walking_becomes_missed_with_walking(self):
+        """At MCT+5 with 10min walking → effective MCT is MCT+10, so missed."""
+        assert connection_risk(0, MCT_MINUTES + 5, walking_minutes=0.0) == "at_risk"
+        assert connection_risk(0, MCT_MINUTES + 5, walking_minutes=10.0) == "missed"
+
+    def test_zero_walking_is_unchanged(self):
+        assert connection_risk(0, MCT_MINUTES + 30, walking_minutes=0.0) == "ok"
+
+    def test_cross_terminal_penalty(self):
+        """Cross-terminal walking (~6 min A→C) bumps risk level."""
+        # MCT+50 is ok with no walking
+        assert connection_risk(0, MCT_MINUTES + 50) == "ok"
+        # Still ok with 6 min cross-terminal walking (effective MCT diff is 6 min)
+        assert connection_risk(20, MCT_MINUTES + 50, walking_minutes=6.0) == "watch"
+
+
+class TestEvaluateWithGatePositions:
+    """Evaluate connection risk with spatial gate data."""
+
+    def test_cross_terminal_gates_increase_walking(self):
+        gate_positions = {
+            "A01": {"position_x": 160, "position_y": 150},
+            "C14": {"position_x": 940, "position_y": 650},
+        }
+        pax = [{
+            "id": "p1", "name": "Test", "pnr": "XY",
+            "inbound_delay": 0,
+            "connection_estimated": (BASE_TIME + timedelta(minutes=MCT_MINUTES + 30)).isoformat(),
+            "connection_risk": "ok",
+            "inbound_gate_id": "A01",
+            "connection_gate_id": "C14",
+        }]
+        results = evaluate_connecting_passengers(pax, BASE_TIME, gate_positions)
+        assert len(results) == 1
+        assert results[0]["walking_minutes"] > 5  # substantial cross-terminal walk
+
+    def test_same_gate_zero_walking(self):
+        gate_positions = {
+            "B07": {"position_x": 520, "position_y": 400},
+        }
+        pax = [{
+            "id": "p1", "name": "Test", "pnr": "XY",
+            "inbound_delay": 0,
+            "connection_estimated": (BASE_TIME + timedelta(hours=3)).isoformat(),
+            "connection_risk": "ok",
+            "inbound_gate_id": "B07",
+            "connection_gate_id": "B07",
+        }]
+        results = evaluate_connecting_passengers(pax, BASE_TIME, gate_positions)
+        assert results[0]["walking_minutes"] == 0.0
+
+    def test_no_gate_positions_uses_default(self):
+        pax = [{
+            "id": "p1", "name": "Test", "pnr": "XY",
+            "inbound_delay": 0,
+            "connection_estimated": (BASE_TIME + timedelta(hours=3)).isoformat(),
+            "connection_risk": "ok",
+        }]
+        results = evaluate_connecting_passengers(pax, BASE_TIME, gate_positions=None)
+        assert results[0]["walking_minutes"] == 0.0  # no gate_positions → skip

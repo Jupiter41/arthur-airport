@@ -4,6 +4,7 @@ Minimum Connection Time (MCT) = 45 sim-minutes (configurable).
 Risk levels: ok → watch → at_risk → missed.
 """
 
+import math
 import os
 from datetime import datetime
 
@@ -13,19 +14,22 @@ MCT_MINUTES = int(os.getenv("MIN_CONNECTION_TIME_MIN", "45"))
 def connection_risk(
     inbound_delay_min: int,
     time_to_connection_min: int,
+    walking_minutes: float = 0.0,
 ) -> str:
     """Compute connection risk level.
 
     Args:
         inbound_delay_min: delay of inbound flight in sim-minutes
         time_to_connection_min: time until connecting flight departs
+        walking_minutes: walking time between arrival gate and departure gate
 
     Returns:
         Risk level: 'ok', 'watch', 'at_risk', or 'missed'
     """
-    if time_to_connection_min < MCT_MINUTES:
+    effective_mct = MCT_MINUTES + walking_minutes
+    if time_to_connection_min < effective_mct:
         return "missed"
-    if inbound_delay_min > 30 or time_to_connection_min < MCT_MINUTES + 15:
+    if inbound_delay_min > 30 or time_to_connection_min < effective_mct + 15:
         return "at_risk"
     if inbound_delay_min > 15:
         return "watch"
@@ -47,9 +51,38 @@ def compute_time_to_connection(
     return max(0, int(delta.total_seconds() / 60))
 
 
+_WALKING_SPEED = 84.0  # m/min
+_SPECIAL_ASSIST_MULT = 2.5
+
+
+def _walking_time_between_gates(
+    from_pos: dict | None,
+    to_pos: dict | None,
+    special_assistance: bool = False,
+) -> float:
+    """Walking time between two gate positions (for connection risk)."""
+    if from_pos is None or to_pos is None:
+        return 10.0  # default cross-terminal fallback
+
+    fx = from_pos.get("position_x", from_pos.get("x"))
+    fy = from_pos.get("position_y", from_pos.get("y"))
+    tx = to_pos.get("position_x", to_pos.get("x"))
+    ty = to_pos.get("position_y", to_pos.get("y"))
+
+    if any(v is None for v in (fx, fy, tx, ty)):
+        return 10.0
+
+    dist = math.sqrt((tx - fx) ** 2 + (ty - fy) ** 2)
+    time_min = dist / _WALKING_SPEED
+    if special_assistance:
+        time_min *= _SPECIAL_ASSIST_MULT
+    return time_min
+
+
 def evaluate_connecting_passengers(
     connecting_pax: list[dict],
     sim_time: datetime,
+    gate_positions: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Evaluate risk for all connecting passengers.
 
@@ -65,7 +98,16 @@ def evaluate_connecting_passengers(
         if time_to_conn is None:
             continue
 
-        new_risk = connection_risk(inbound_delay, time_to_conn)
+        # Compute walking time between arrival and departure gates
+        walk_min = 0.0
+        if gate_positions:
+            inbound_gate = pax.get("inbound_gate_id")
+            conn_gate = pax.get("connection_gate_id")
+            from_pos = gate_positions.get(inbound_gate) if inbound_gate else None
+            to_pos = gate_positions.get(conn_gate) if conn_gate else None
+            walk_min = _walking_time_between_gates(from_pos, to_pos, bool(pax.get("special_assistance")))
+
+        new_risk = connection_risk(inbound_delay, time_to_conn, walk_min)
         old_risk = pax.get("connection_risk") or "ok"
 
         results.append({
@@ -76,6 +118,7 @@ def evaluate_connecting_passengers(
             "inbound_delay_minutes": inbound_delay,
             "connection_flight": pax.get("connection_flight"),
             "connection_departs_in_minutes": time_to_conn,
+            "walking_minutes": round(walk_min, 1),
             "mct_minutes": MCT_MINUTES,
             "risk_level": new_risk,
             "old_risk_level": old_risk,

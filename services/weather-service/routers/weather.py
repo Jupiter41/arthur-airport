@@ -112,8 +112,10 @@ async def weather_history(hours: int = Query(default=12, ge=1, le=48)):
             current = get_current_state()
             to_time = current["sim_time"].isoformat() if current["sim_time"] else from_time
 
-        from_dt = datetime.fromisoformat(from_time)
-        to_dt = datetime.fromisoformat(to_time)
+        # Strip timezone info to avoid offset-naive vs offset-aware mismatch
+        # (Neo4j toString(datetime) and in-memory sim_time may differ)
+        from_dt = datetime.fromisoformat(from_time).replace(tzinfo=None)
+        to_dt = datetime.fromisoformat(to_time).replace(tzinfo=None)
         duration_minutes = int((to_dt - from_dt).total_seconds() / 60)
 
         states.append({

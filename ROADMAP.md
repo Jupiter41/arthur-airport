@@ -90,13 +90,13 @@ Gate distances from runway 09L threshold (approximate):
 
 ### Tasks
 
-- [ ] **GAP-1-1** — Define a `position` property (x, y on a normalised 0–1000 grid, 1 unit ≈ 1 m) on `Gate`, `Runway`, and `Terminal` nodes in Neo4j and populate it for all existing nodes.
-- [ ] **GAP-1-2** — Write a `taxi_time_minutes(runway_id, gate_id, positions)` utility function using Euclidean distance, splitting distance into taxiway (15 km/h) and apron (5 km/h) segments.
-- [ ] **GAP-1-3** — Replace the current fixed taxi-time constant in `flight-service` with calls to the new utility, keyed on the flight's assigned runway and gate.
-- [ ] **GAP-1-4** — Add a `layout.json` fixture to `sim-orchestrator` encoding all runway thresholds, taxiway segments, and gate positions on the normalised grid.
-- [ ] **GAP-1-5** — Add walking-time computation between terminal zones (check-in → security → airside → gate) based on the distances in the layout fixture.
-- [ ] **GAP-1-6** — Feed walking times into the connection risk model so cross-terminal connections (e.g. C-pier arrival → A-pier departure) are penalised correctly.
-- [ ] **GAP-1-7** — Write unit tests for the taxi-time and walking-time functions covering same-terminal, adjacent-terminal, and far-terminal cases.
+- [x] **GAP-1-1** — Define a `position` property (x, y on a normalised 0–1000 grid, 1 unit ≈ 1 m) on `Gate`, `Runway`, and `Terminal` nodes in Neo4j and populate it for all existing nodes.
+- [x] **GAP-1-2** — Write a `taxi_time_minutes(runway_id, gate_id, positions)` utility function using Euclidean distance, splitting distance into taxiway (15 km/h) and apron (5 km/h) segments.
+- [x] **GAP-1-3** — Replace the current fixed taxi-time constant in `flight-service` with calls to the new utility, keyed on the flight's assigned runway and gate.
+- [x] **GAP-1-4** — Add a `layout.json` fixture to `sim-orchestrator` encoding all runway thresholds, taxiway segments, and gate positions on the normalised grid.
+- [x] **GAP-1-5** — Add walking-time computation between terminal zones (check-in → security → airside → gate) based on the distances in the layout fixture.
+- [x] **GAP-1-6** — Feed walking times into the connection risk model so cross-terminal connections (e.g. C-pier arrival → A-pier departure) are penalised correctly.
+- [x] **GAP-1-7** — Write unit tests for the taxi-time and walking-time functions covering same-terminal, adjacent-terminal, and far-terminal cases.
 - [ ] **GAP-1-8** — Add a visualization of the airport layout to the dashboard, showing real-time positions of planes and bags as they move through the system.
 
 ---
@@ -215,13 +215,13 @@ ARRIVAL CAROUSELS:
 
 - [ ] **GAP-4-1** — Model the conveyor topology as a directed graph in Neo4j: `CheckInZone → InductionBelt → ScreeningUnit → SortMatrix → MakeUpCarousel → Gate`.
 - [ ] **GAP-4-2** — Assign each check-in zone to its home terminal's induction belt and each gate to its make-up carousel in the fixture data.
-- [ ] **GAP-4-3** — Implement a `bag_conveyor_time(checkin_zone, gate_id, topology)` function that walks the conveyor graph and sums segment durations, applying the inter-terminal penalty when the bag crosses a terminal boundary.
-- [ ] **GAP-4-4** — Replace the current fixed bag-travel-time constant in `baggage-service` with calls to the new function.
+- [x] **GAP-4-3** — Implement a `bag_conveyor_time(checkin_zone, gate_id, topology)` function that walks the conveyor graph and sums segment durations, applying the inter-terminal penalty when the bag crosses a terminal boundary.
+- [x] **GAP-4-4** — Replace the current fixed bag-travel-time constant in `baggage-service` with calls to the new function.
 - [ ] **GAP-4-5** — Model make-up carousel capacity: each carousel has a maximum throughput (bags/min); when exceeded, bags queue and the loading start time for the flight is delayed.
 - [ ] **GAP-4-6** — Emit a `baggage.conveyor.delay` Kafka event when a bag misses its make-up deadline, triggering the Gap 2 propagation logic in `flight-service`.
 - [ ] **GAP-4-7** — Model arrival carousels: bags from an arriving flight appear on the correct carousel (A→carousel 1–2, B→3–4, C→5–6) after a fixed offload delay.
 - [ ] **GAP-4-8** — Add conveyor segment load (bags currently in transit per segment) as a Prometheus metric, and display it on the baggage dashboard as a live heat-map.
-- [ ] **GAP-4-9** — Write unit tests covering: same-terminal bag (no inter-terminal penalty), cross-terminal bag (full penalty), carousel overflow causing flight delay.
+- [x] **GAP-4-9** — Write unit tests covering: same-terminal bag (no inter-terminal penalty), cross-terminal bag (full penalty), carousel overflow causing flight delay.
 
 ---
 
@@ -910,19 +910,19 @@ The `sim-orchestrator` reads this file at startup and generates all fixtures dyn
 
 ## Priority order summary
 
-| Priority | Phase                                      | Effort | Impact                            |
-| -------- | ------------------------------------------ | ------ | --------------------------------- |
-| 0        | ✅ Gap 0.5 — better dashboards             | Medium | High — usability                  |
-| 1        | ✅ Fix Gap 2 — turnaround task graph       | Medium | High — makes delays realistic     |
-| 2        | ✅ Fix Gap 3 — flight type distinction     | Low    | Medium — domestic vs intl realism |
-| 3        | ✅ Phase 2 — scenario engine + YAML runner | High   | High — makes project demonstrable |
-| 4        | Fix Gap 1 — spatial layout (taxi times)    | Medium | Medium — physical realism         |
-| 5        | Fix Gap 4 — conveyor spatial model         | Medium | Medium — baggage realism          |
-| 6        | Phase 4 — settings UI                      | Medium | High — interactive demonstrations |
-| 7        | Phase 3 — full physical environment        | High   | High — wow factor                 |
-| 8        | Phase 5 — real weather API                 | Low    | Medium — easy win                 |
-| 9        | Phase 5 — real schedule CSV loader         | Medium | High — real-world credibility     |
-| 10       | Phase 6.1–6.7 — Mapbox geospatial twin     | High   | High — visual credibility         |
-| 11       | Phase 6.8 — CesiumJS 3D globe              | Medium | High — wow factor (globe)         |
-| 12       | HOW-TO + airport config system             | Medium | High — community adoption         |
-| 13       | Adapt README & LICENSE & CONTRIBUTING      | Medium | High — community adoption & legal |
+| Priority | Phase                                                                                          | Effort | Impact                            |
+| -------- | ---------------------------------------------------------------------------------------------- | ------ | --------------------------------- |
+| 0        | ✅ Gap 0.5 — better dashboards                                                                 | Medium | High — usability                  |
+| 1        | ✅ Fix Gap 2 — turnaround task graph                                                           | Medium | High — makes delays realistic     |
+| 2        | ✅ Fix Gap 3 — flight type distinction                                                         | Low    | Medium — domestic vs intl realism |
+| 3        | ✅ Phase 2 — scenario engine + YAML runner                                                     | High   | High — makes project demonstrable |
+| 4        | ✅ Fix Gap 1 — spatial layout (taxi times)                                                     | Medium | Medium — physical realism         |
+| 5        | ✅ Fix Gap 4 — conveyor spatial model                                                          | Medium | Medium — baggage realism          |
+| 6        | ✅ Phase 4 — settings UI                                                                       | Medium | High — interactive demonstrations |
+| 7        | Phase 3 — full physical environment                                                            | High   | High — wow factor                 |
+| 8        | Phase 5 — real weather API                                                                     | Low    | Medium — easy win                 |
+| 9        | Phase 5 — real schedule CSV loader                                                             | Medium | High — real-world credibility     |
+| 10       | Phase 6.1–6.7 — Mapbox geospatial twin                                                         | High   | High — visual credibility         |
+| 11       | Phase 6.8 — CesiumJS 3D globe                                                                  | Medium | High — wow factor (globe)         |
+| 12       | HOW-TO + airport config system                                                                 | Medium | High — community adoption         |
+| 13       | Adapt READMEs (with cross references to other README, timelines etc.) & LICENSE & CONTRIBUTING | Medium | High — community adoption & legal |

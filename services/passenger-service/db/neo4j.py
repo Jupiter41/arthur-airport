@@ -446,15 +446,20 @@ async def get_connecting_passengers() -> list[dict]:
     WHERE NOT p.status IN ['departed_airport', 'boarded', 'missed_connection']
     OPTIONAL MATCH (cf:Flight {id: p.connection_flight_id})
     OPTIONAL MATCH (p)-[:CARRIES]->(b:Baggage)
+    OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(ig:Gate)
+    OPTIONAL MATCH (cf)-[:ASSIGNED_TO]->(cg:Gate)
     RETURN p.id AS id, p.name AS name, p.pnr AS pnr,
            p.status AS status, p.connection_risk AS connection_risk,
+           p.special_assistance AS special_assistance,
            f.flight_number AS inbound_flight,
            f.delay_minutes AS inbound_delay,
            f.estimated_time AS inbound_estimated,
            f.status AS inbound_status,
+           ig.id AS inbound_gate_id,
            cf.flight_number AS connection_flight,
            cf.estimated_time AS connection_estimated,
            cf.scheduled_time AS connection_scheduled,
+           cg.id AS connection_gate_id,
            count(b) AS baggage_count
     """
     async with driver.session() as session:

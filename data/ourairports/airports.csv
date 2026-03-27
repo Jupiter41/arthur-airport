@@ -2899,7 +2899,7 @@
 9541,"2MD2","heliport","Aerospace Tech Center Heliport",39.23649978637695,-76.82610321044922,415,"NA","US","US-MD","Columbia","no",,,"2MD2","2MD2",,,
 45460,"2MD3","small_airport","Fly Away Farm Airport",39.229,-77.345333,501,"NA","US","US-MD","Boyds","no",,,"2MD3","2MD3",,,
 9542,"2MD4","small_airport","Ennis Aerodrome",38.39459991455078,-75.55740356445312,44,"NA","US","US-MD","Salisbury","no",,,"2MD4","2MD4",,,
-9543,"2MD5","small_airport","Hoby Wolf Airport",39.4079444,-76.9275556,600,"NA","US","US-MD","Eldersburg","no",,,"2MD5","2MD5",,,"1W5"
+9543,"2MD5","heliport","Hoby Wolf Airport",39.407944,-76.927556,600,"NA","US","US-MD","Eldersburg","no",,,"2MD5","2MD5",,,"1W5"
 9544,"2MD6","small_airport","Cherry Field",38.14400100708008,-76.47219848632812,8,"NA","US","US-MD","Lexington Park","no",,,"2MD6","2MD6",,,
 9545,"2MD7","heliport","Maritime Institute Heliport",39.21120071411133,-76.6718978881836,170,"NA","US","US-MD","Linthicum Heights","no",,,"2MD7","2MD7",,,
 9546,"2MD8","small_airport","Greater Gortner Airport",39.33340072631836,-79.44139862060547,2500,"NA","US","US-MD","Oakland","no",,,"2MD8","2MD8",,,
@@ -19643,7 +19643,7 @@
 355511,"CN-0354","medium_airport","Ali Pulan Airport",30.397898,81.13317,13943,"AS","CN","CN-54","Burang Town","no","ZUPL","APJ","ZUPL",,,"https://en.wikipedia.org/wiki/Ali_Pulan_Airport",
 355764,"CN-0355","heliport","Shenzhen Sun Yat-sen Cardiovascular Hospital Heliport",22.559549,113.942838,,"AS","CN","CN-44","Shenzhen (Nanshan)","no",,,,,,,
 355816,"CN-0356","heliport","Baigang Shalan Heliport",22.76941,114.62793,98,"AS","CN","CN-44","Huizhou (Huiyang)","no",,,,,,,
-355921,"CN-0357","small_airport","Beijing Dingling Airport",40.28566,116.232675,351,"AS","CN","CN-11","Beijing","no",,,,,,,
+355921,"CN-0357","heliport","Beijing Dingling Airport",40.28566,116.232675,351,"AS","CN","CN-11","Beijing","no",,,,,,,
 507438,"CN-0358","small_airport","Fuling Airfield",29.659301,107.254987,,"AS","CN","CN-50","Fuling","no",,,,,,,
 355952,"CN-0359","small_airport","Zhaosu Tianma Airport",43.088477,81.223013,,"AS","CN","CN-65","Zhaosu","yes","ZWZS","ZFL","ZWZS",,,"https://en.wikipedia.org/wiki/Zhaosu_Tianma_Airport",
 355960,"CN-0360","small_airport","Urad Front Banner Gongmiaozi Airport",40.614366,108.998835,3369,"AS","CN","CN-15","Urad Front Banner","no",,,,,,,"Ulashan, ZULL"
@@ -19758,7 +19758,7 @@
 597730,"CN-0473","heliport","Jiande Hospital Heliport",29.345012,119.198245,177,"AS","CN","CN-33","Hangzhou","no",,,,,,,
 597737,"CN-0474","heliport","Houma Army Heliport",35.663868,111.407621,1432,"AS","CN","CN-14","Houma","no",,,,,,,
 597937,"CN-0475","closed","Xi'an Xiguan Airport",34.249,108.894999,,"AS","CN","CN-61",,"no",,,,,,"https://en.wikipedia.org/wiki/Xi%27an_Xiguan_Airport",
-598595,"CN-0476","medium_airport","Bengbu Tenghu Airport",33.166389,117.058333,78,"AS","CN","CN-34","Bengbu","yes","ZSBA","BFY","ZSBA",,,"https://en.wikipedia.org/wiki/Bengbu_Tenghu_Airport","蚌埠滕湖机场"
+598595,"CN-0476","medium_airport","Bengbu Tenghu Airport",33.166292,117.058344,,"AS","CN","CN-34","Bengbu","yes","ZSBA","BFY","ZSBA",,,"https://en.wikipedia.org/wiki/Bengbu_Tenghu_Airport","蚌埠滕湖机场"
 598863,"CN-0477","small_airport","Baoquanling General Airport",47.41079,130.61054,,"AS","CN","CN-23",,"no",,,,,,,
 599310,"CN-0478","small_airport","Urumqi Xishan Airport",43.772537,87.372819,3389,"AS","CN","CN-65","Xishan Nongchang","no",,,,,,,"西山农场"
 599958,"CN-0479","small_airport","Neixiang Air Base",32.975237,111.884194,,"AS","CN","CN-41","Neixiang, Nanyang","no",,,,,,,
@@ -19809,7 +19809,7 @@
 16844,"CN37","small_airport","Kelso Valley Airport",35.38130188,-118.2310028,4047,"NA","US","US-CA","Mojave","no",,,"CN37","CN37",,,
 16845,"CN38","small_airport","Flying B Ranch Airport",38.34130096435547,-121.43699645996094,19,"NA","US","US-CA","Franklin","no",,,"CN38","CN38",,,
 16846,"CN39","heliport","Operating Engineers Pension Trust Building Heliport",34.06217,-118.288073,441,"NA","US","US-CA","Los Angeles","no",,,"CN39","CN39",,,
-504752,"CN40","small_airport","Roosevelt Ranch Heliport",38.812506,-121.81185,38,"NA","US","US-CA","Woodland","no",,,"CN40","CN40",,,
+504752,"CN40","heliport","Roosevelt Ranch Heliport",38.812506,-121.81185,38,"NA","US","US-CA","Woodland","no",,,"CN40","CN40",,,
 16847,"CN42","small_airport","Double Creek Ranch Airport",40.445702,-121.882004,2030,"NA","US","US-CA","Manton","no",,,"CN42","CN42",,,
 16848,"CN43","heliport","Boeing Anaheim B/250 Heliport",33.85969924926758,-117.8499984741211,342,"NA","US","US-CA","Anaheim","no",,,"CN43","CN43",,,
 16849,"CN44","small_airport","Flying Bull Airport",37.620231,-121.165331,40,"NA","US","US-CA","Modesto","no",,,"CN44","CN44",,,
@@ -23879,7 +23879,7 @@
 505470,"EG-0056","heliport","Wadi Firan Heliport",28.6886,33.35797,528,"AS","EG","EG-JS","Ras Abu Rudeis","no",,,,,,,
 505471,"EG-0057","small_airport","Wadi Firan Airport",28.675985,33.358955,528,"AS","EG","EG-JS","Ras Abu Rudeis","no",,,,,,,
 510029,"EG-0058","small_airport","Sahra' Muhafadhat al-Jeezah Airfield",29.800373,31.084539,,"AF","EG","EG-GZ","6th of October","no",,,,,,,"West Cairo"
-511740,"EG-0059","small_airport","Katameya Air Base",30.057669,31.845586,800,"AF","EG","EG-C","New Cairo","no",,,,,,,"HE13, Wadi Al Jandali, Ramadan City, TFR"
+511740,"EG-0059","heliport","Katameya Air Base",30.057669,31.845586,800,"AF","EG","EG-C","New Cairo","no",,,,,,,"HE13, Wadi Al Jandali, Ramadan City, TFR"
 514867,"EG-0060","small_airport","Sheikh Zayed City Military Airstrip",30.03825,30.885848,,"AF","EG","EG-GZ","Sheikh Zayed City","no",,,,,,,
 514870,"EG-0061","heliport","Sheikh Zayed City Military Heliport",30.039018,30.893517,,"AF","EG","EG-GZ","Sheikh Zayed City","no",,,,,,,
 515135,"EG-0062","heliport","Joint Air Defense Training Center Heliport",29.82222,31.12127,318,"AF","EG","EG-GZ","Al Giza Desert","no",,,,,,,
@@ -30401,7 +30401,7 @@
 3181,"HEBL","medium_airport","Abu Simbel Airport",22.375924,31.611734,614,"AF","EG","EG-ASN","Abu Simbel","yes","HEBL","ABS","HEBL",,,"https://en.wikipedia.org/wiki/Abu_Simbel_Airport",
 3182,"HEBS","medium_airport","Bani Sweif Air Base",29.20224,31.013471,102,"AF","EG","EG-BNS","Bani Sweif","no",,,"HEBS",,,,
 3183,"HECA","large_airport","Cairo International Airport",30.111534,31.396694,322,"AF","EG","EG-C","Cairo","yes","HECA","CAI","HECA",,,"https://en.wikipedia.org/wiki/Cairo_International_Airport",
-2356,"HECP","large_airport","Capital International Airport",30.06465,31.839974,761,"AF","EG","EG-C","New Cairo","yes","HECP","CCE","HECP",,,"https://en.wikipedia.org/wiki/Capital_International_Airport_(Egypt)",
+2356,"HECP","medium_airport","Capital International Airport",30.06465,31.839974,761,"AF","EG","EG-C","New Cairo","yes","HECP","CCE","HECP",,,"https://en.wikipedia.org/wiki/Capital_International_Airport_(Egypt)",
 3184,"HECW","medium_airport","Cairo West Air Base",30.116431,30.915535,557,"AF","EG","EG-GZ","Cairo","no","HECW",,"HECW",,,"https://en.wikipedia.org/wiki/Cairo_West_Air_Base","CWE"
 3185,"HEDK","small_airport","Ad Dakhla Airport",25.41116,29.003273,551,"AF","EG","EG-WAD","Dakhla Oases","no","HEDK","DAK","HEDK",,,"https://en.wikipedia.org/wiki/Dakhla_Oasis_Airport",
 3186,"HEGN","large_airport","Hurghada International Airport",27.176776,33.796692,32,"AF","EG","EG-BA","Hurghada","yes","HEGN","HRG","HEGN",,,"https://en.wikipedia.org/wiki/Hurghada_International_Airport","Al Ghardaqah, الغردقة"
@@ -54416,7 +54416,7 @@
 315637,"RK1Y","heliport","C 171 Heliport",37.8275,126.8092,145,"AS","KR","KR-41","Camp Custer South","no",,,"RK1Y","RK1Y",,,"Camp Custer South"
 3806,"RK21","small_airport","G-413 Airport",38.382541,128.458071,23,"AS","KR","KR-42","Goseong","no",,,"RK21","RK21",,,
 3807,"RK22","small_airport","G-313 Airport",38.120023,127.686067,460,"AS","KR","KR-42","Hwacheon","no",,,"RK22","RK22",,,
-3809,"RK25","small_airport","Tongjin Airfield - G-107 / N-225",37.715159,126.560086,45,"AS","KR","KR-41","Gimpo","no",,,,"RK25",,,"N-225, G 107, G-107, Wolgot"
+3809,"RK25","heliport","Tongjin Airfield - G-107 / N-225",37.715159,126.560086,45,"AS","KR","KR-41","Gimpo","no",,,,"RK25",,,"N-225, G 107, G-107, Wolgot"
 3810,"RK27","small_airport","G-218 Airport",37.895023,126.970518,381,"AS","KR","KR-41","Gaenari","no",,,"RK27","RK27",,,
 3811,"RK28","small_airport","G-219 Airport",37.90939,127.008455,317,"AS","KR","KR-41","Samnyuksa-ro","no",,,"RK28","RK28",,,
 300381,"RK2A","heliport","C 181Heliport",37.631898,126.674233,307,"AS","KR","KR-41",,"no",,,"RK2A","RK2A",,,
@@ -56447,7 +56447,7 @@
 354424,"SA-0050","heliport","Coastal helipad",16.669824,42.71177,,"AS","SA","SA-09",,"no",,,,,,,
 354425,"SA-0051","heliport","Riyah Equestrian Club Helipad (2x)",24.982528,46.782194,,"AS","SA","SA-01","Riyadh","no",,,,,,,
 354426,"SA-0052","heliport","Residential Helipad",24.988217,46.760479,,"AS","SA","SA-01","Riyadh","no",,,,,,,
-354437,"SA-0053","small_airport","Dirab Air Base",24.477911,46.570712,,"AS","SA","SA-01","Riyadh","no",,,,,,"https://en.wikipedia.org/wiki/Dirab_Air_Base",
+354437,"SA-0053","heliport","Dirab Air Base",24.477911,46.570712,,"AS","SA","SA-01","Riyadh","no",,,,,,"https://en.wikipedia.org/wiki/Dirab_Air_Base",
 354442,"SA-0054","heliport","National Guard Residential Helipad",24.476164,46.597846,,"AS","SA","SA-01","Riyadh","no",,,,,,,
 354443,"SA-0055","heliport","Military Helipad",24.418148,46.871238,,"AS","SA","SA-01","Riyadh","no",,,,,,,
 354444,"SA-0056","heliport","SANG Airbase Helipads (4x)",24.626854,46.920248,,"AS","SA","SA-01","Riyadh","no",,,,,,,
@@ -70522,6 +70522,7 @@
 334352,"US-1293","heliport","George Washington University Hospital Heliport",38.900903,-77.051132,174,"NA","US","US-DC","Washington","no",,,"24DC","24DC",,,
 606112,"US-12930","heliport","Michigan Helicopters Helideck",42.778497,-83.260752,985,"NA","US","US-MI","Lake Orion","no",,,"MI99","MI99",,,
 606137,"US-12931","heliport","Silvertree Heliport",46.841598,-90.660309,661,"NA","US","US-WI","La Pointe","no",,,"WI28","WI28",,,
+606221,"US-12932","heliport","Camp Pendleton HLZ",33.433608,-117.558764,,"NA","US","US-CA",,"no",,,,,,,
 334358,"US-1294","small_airport","Curry Ridge Airport",32.723321,-113.938501,329,"NA","US","US-AZ","Tacna","no",,,"AZ60","AZ60",,,
 334361,"US-1295","closed","Keystone XL Whitewater Heliport",48.7575,-107.524167,2774,"NA","US","US-MT","Whitewater","no",,,,,,,"MT26"
 334362,"US-1296","small_airport","Wapshilla Airport",45.941616,-116.763597,1410,"NA","US","US-ID","Winchester","no",,,,"I45",,,"ID50"
@@ -76059,7 +76060,7 @@
 354605,"US-6823","heliport","Sanford Tracy Heliport",44.231874,-95.607018,1385,"NA","US","US-MN","Tracy","no",,,"0MN5","0MN5",,,
 354606,"US-6824","heliport","City of Remer Heliport",47.05951,-93.9214,1343,"NA","US","US-MN","Remer","no",,,"16MN","16MN",,,
 354609,"US-6825","small_airport","Silverhorn Ranch Airport",27.929578,-98.533769,691,"NA","US","US-TX","Freer","no",,,"19TS","19TS",,,
-354624,"US-6826","small_airport","Carris Health Redwood Falls Heliport",44.53,-95.09,1021,"NA","US","US-MN","Redwood Falls","no",,,"37MN","37MN",,,
+354624,"US-6826","heliport","Carris Health Redwood Falls Heliport",44.53,-95.09,1021,"NA","US","US-MN","Redwood Falls","no",,,"37MN","37MN",,,
 354626,"US-6827","heliport","Air Care & Mobile Care Mount Orab Heliport",39.037278,-83.923879,945,"NA","US","US-OH","Mount Orab","no",,,"3OH2","3OH2",,,
 354628,"US-6828","seaplane_base","Great Lakes Seaplane Base",42.466547,-88.132836,737,"NA","US","US-IL","Antioch","no",,,"41IL","41IL",,,"Lake Marie"
 354632,"US-6829","heliport","Corry Memorial Hospital Heliport",41.937012,-79.612277,1502,"NA","US","US-PA","Corry","no",,,"43PN","43PN",,,
@@ -77068,7 +77069,7 @@
 509234,"US-7832","small_airport","Triple P Ranch Airport",39.29043,-104.747227,6707,"NA","US","US-CO","Franktown","no",,,"CO99","CO99",,,
 509596,"US-7833","seaplane_base","Dallas Lake Seaplane Base",41.550158,-85.424183,900,"NA","US","US-IN","LaGrange","no",,,"I01","I01",,,
 509609,"US-7834","small_airport","Monte Carlo Airport",38.593439,-92.127443,744,"NA","US","US-MO","Holts Summit","no",,,"15MO","15MO",,,
-509612,"US-7835","small_airport","AdventHealth Minneola Heliport",28.603333,-81.719722,211,"NA","US","US-FL","Minneola","no",,,"24FA","24FA",,,
+509612,"US-7835","heliport","AdventHealth Minneola Heliport",28.603333,-81.719722,211,"NA","US","US-FL","Minneola","no",,,"24FA","24FA",,,
 509624,"US-7836","heliport","AdventHealth Riverview Heliport",27.860775,-82.325308,164,"NA","US","US-FL","Riverview","no",,,"26FA","26FA",,,
 509627,"US-7837","small_airport","Kruger Aviation Ultralight Flightpark",44.135559,-92.696111,1206,"NA","US","US-MN","Pine Island","no",,,"31MN","31MN",,,
 509632,"US-7838","heliport","Meyersdale Hospital Heliport",39.809722,-79.024167,1955,"NA","US","US-PA","Meyersdale","no",,,"4PN9","4PN9",,,
@@ -77674,7 +77675,7 @@
 523878,"US-8438","heliport","Piedmont Medical Center - Fort Mill Heliport",35.023615,-80.958729,672,"NA","US","US-SC","Fort Mill","no",,,"51SC","51SC",,,
 523894,"US-8439","heliport","Rt36 EMS Heliport",41.542214,-79.506517,1494,"NA","US","US-PA","Pleasantville","no",,,"5PS4","5PS4",,,
 523920,"US-8440","heliport","White Hills Heliport",35.723878,-114.486428,2415,"NA","US","US-AZ","White Hills","no",,,"AZ42","AZ42",,,
-524103,"US-8441","small_airport","Halliburton Office Heliport",40.042222,-104.808889,4908,"NA","US","US-CO","Fort Lupton","no",,,"CO09","CO09",,,
+524103,"US-8441","heliport","Halliburton Office Heliport",40.042222,-104.808889,4908,"NA","US","US-CO","Fort Lupton","no",,,"CO09","CO09",,,
 524106,"US-8442","heliport","UNM Hospital Critical Care Tower West Helipad",35.088964,-106.621031,5292,"NA","US","US-NM","Albuquerque","no",,,"NM28","NM28",,,
 524124,"US-8443","heliport","Franjo Jo Airways Heliport",41.825664,-75.099224,1226,"NA","US","US-NY","Hankins","no",,,"NY58","NY58",,,
 524169,"US-8444","small_airport","Placer Airport",42.627716,-123.321986,1380,"NA","US","US-OR","Grants Pass","no",,,"OR48","OR48",,,"Sunny Valley"
@@ -79397,7 +79398,7 @@
 32013,"UTNN","large_airport","Nukus International Airport",42.4884,59.623299,246,"AS","UZ","UZ-QR","Nukus","yes","UZNN","NCU","UTNN",,,"https://en.m.wikipedia.org/wiki/Nukus_Airport","Nokis"
 32559,"UTNT","small_airport","Turtkul Airport",41.57500076293945,60.96659851074219,305,"AS","UZ","UZ-QR","Turtkul","no",,,"UTNT",,,,
 26387,"UTNU","large_airport","Urgench International Airport",41.58274,60.64338,320,"AS","UZ","UZ-XO","Urgench","yes","UZNU","UGC","UTNU",,,"https://en.wikipedia.org/wiki/Urgench_Airport",
-32561,"UTSA","large_airport","Navoi International Airport",40.117599,65.172658,1140,"AS","UZ","UZ-NW","Navoi","yes","UZSA","NVI","UZSA",,,"https://en.wikipedia.org/wiki/Navoi_International_Airport","UTSA"
+32561,"UTSA","medium_airport","Navoi International Airport",40.117599,65.172658,1140,"AS","UZ","UZ-NW","Navoi","yes","UZSA","NVI","UZSA",,,"https://en.wikipedia.org/wiki/Navoi_International_Airport","UTSA"
 26388,"UTSB","large_airport","Bukhara International Airport",39.775319,64.482279,751,"AS","UZ","UZ-BU","Bukhara","yes","UZSB","BHK","UZSB",,,"https://en.wikipedia.org/wiki/Bukhara_International_Airport","UTSB, Buhara, Buxoro"
 41812,"UTSH","small_airport","Shahrisabz Airport",39.068003,66.758388,1900,"AS","UZ","UZ-QA","Shahrisabz","no",,,"UTSH",,,,
 26417,"UTSK","small_airport","Karshi Airport",38.802246,65.773068,1230,"AS","UZ","UZ-QA","Karshi","yes","UZSK","KSQ","UTSK","UT1N",,"https://en.wikipedia.org/wiki/Karshi_Airport","Qarshi Airport"
@@ -84775,7 +84776,7 @@
 32740,"ZPZT","medium_airport","Zhaotong Airport",27.327549,103.75617,,"AS","CN","CN-53","Zhaotong (Zhaoyang)","yes",,,,,,"https://en.wikipedia.org/wiki/Zhaotong_Airport",
 27215,"ZSAM","large_airport","Xiamen Gaoqi International Airport",24.543889,118.127454,59,"AS","CN","CN-35","Xiamen","yes","ZSAM","XMN","ZSAM",,"http://www.xiagc.com.cn/enweb/","https://en.wikipedia.org/wiki/Xiamen_Gaoqi_International_Airport","厦门高崎国际机场"
 30650,"ZSAQ","medium_airport","Anqing Tianzhushan Airport / Anqing North Air Base",30.582199,117.050003,,"AS","CN","CN-34","Anqing","yes","ZSAQ","AQG","ZSAQ",,,"https://en.wikipedia.org/wiki/Anqing_Tianzhushan_Airport",
-301883,"ZSBB","medium_airport","Bengbu Renheji Airport",32.847733,117.320244,100,"AS","CN","CN-34","Bengbu","no","ZSBB","BFU","ZSBB",,,"https://en.wikipedia.org/wiki/Bengbu_Airport",
+301883,"ZSBB","medium_airport","Bengbu Renheji Airport",32.847733,117.320244,100,"AS","CN","CN-34","Bengbu","no","ZSBB","BFU","ZSBB",,,"https://en.wikipedia.org/w/index.php?title=Bengbu_Airport&oldid=429911774",
 30871,"ZSCG","medium_airport","Changzhou Benniu International Airport",31.920485,119.77546,33,"AS","CN","CN-32","Changzhou","yes","ZSCG","CZX","ZSCG",,,"https://en.wikipedia.org/wiki/Changzhou_Benniu_International_Airport",
 27216,"ZSCN","large_airport","Nanchang Changbei International Airport",28.864815,115.90271,143,"AS","CN","CN-36","Nanchang","yes","ZSCN","KHN","ZSCN",,,"https://en.wikipedia.org/wiki/Nanchang_Changbei_International_Airport",
 349715,"ZSDL","small_airport","Zhenjiang Dalu Airport",32.23649,119.718683,16,"AS","CN","CN-32","Zhenjiang","no","ZSDL","AZJ",,,,,
