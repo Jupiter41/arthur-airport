@@ -15,9 +15,11 @@ Before doing any edit, do this:
 - NEVER commit any temporary file.
 - NEVER write code that you don't understand. If you don't understand something, ask for help or write a plan to investigate and understand it before writing the code.
 - NEVER use sleep in terminal commands, precise to the user to wait before accepting the command.
-- ALWAYS write a final summary of the changes you made, the issues you fixed, the tests you ran and the results you got.
+- ALWAYS write a final summary of the changes you made, the issues you fixed, the tests you ran and the results you got in a md file in docs/lessons-learned/.
 - ALWAYS mark issues as completed in the relevant file if needed.
+- ALWAYS run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
 
 Following ROADMAP.md planning, do this:
-
-- Improve Scenarios page to allow the creation of new scenarios with custom settings and everything it entails: allow save, delete , edit, fork scenarios. Base scenarios should be immutable.
+Implement the phase 6
+| 10       | Phase 6.1–6.7 — Mapbox geospatial twin                                                         | High   | High — visual credibility         |
+| 11       | Phase 6.8 — CesiumJS 3D globe                                                                  | Medium | High — wow factor (globe)         |

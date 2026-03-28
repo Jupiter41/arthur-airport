@@ -870,6 +870,8 @@ The transition is triggered by a camera altitude threshold. A short crossfade bl
 
 ## HOW-TO — Create your own airport
 
+> **Status: DONE** — `config/airport.yaml`, runtime config loading, and a dedicated guide are now available.
+
 Minimum configuration to customise:
 
 ```yaml
@@ -924,5 +926,5 @@ The `sim-orchestrator` reads this file at startup and generates all fixtures dyn
 | 9        | Phase 5 — real schedule CSV loader                                                             | Medium | High — real-world credibility     |
 | 10       | Phase 6.1–6.7 — Mapbox geospatial twin                                                         | High   | High — visual credibility         |
 | 11       | Phase 6.8 — CesiumJS 3D globe                                                                  | Medium | High — wow factor (globe)         |
-| 12       | HOW-TO + airport config system                                                                 | Medium | High — community adoption         |
+| 12       | ✅ HOW-TO + airport config system                                                              | Medium | High — community adoption         |
 | 13       | Adapt READMEs (with cross references to other README, timelines etc.) & LICENSE & CONTRIBUTING | Medium | High — community adoption & legal |

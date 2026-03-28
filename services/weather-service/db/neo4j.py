@@ -137,7 +137,10 @@ async def persist_weather_state(
     )
     WITH w
     // Find the airport node
-    MATCH (a:Airport {icao: 'KART'})
+    MATCH (a:Airport)
+    WITH w, a
+    ORDER BY a.created_at DESC
+    LIMIT 1
     // Optionally find existing current weather
     OPTIONAL MATCH (a)-[old_rel:CURRENT_WEATHER]->(old:WeatherState)
     // Delete old pointer if it exists
@@ -177,14 +180,17 @@ async def get_current_weather() -> dict | None:
     """Get the current weather state from Neo4j."""
     driver = get_driver()
     query = """
-    MATCH (a:Airport {icao: 'KART'})-[:CURRENT_WEATHER]->(w:WeatherState)
+    MATCH (a:Airport)-[:CURRENT_WEATHER]->(w:WeatherState)
     RETURN w {
         .id, .category, .visibility_m, .wind_direction, .wind_speed_kt,
         .wind_gust_kt, .temperature_c, .dew_point_c,
         .qnh_hpa, .phenomena, .runway_impact,
         ceiling_ft: w.ceiling_ft,
         previous_category: w.previous_category,
-        timestamp: toString(w.timestamp)
+        timestamp: toString(w.timestamp),
+        airport_icao: a.icao,
+        airport_iata: a.iata,
+        airport_name: a.name
     } AS weather
     """
     async with driver.session() as session:
@@ -203,7 +209,7 @@ async def get_weather_history(hours: int = 12) -> list[dict]:
     """
     driver = get_driver()
     query = """
-    MATCH (a:Airport {icao: 'KART'})-[:CURRENT_WEATHER]->(current:WeatherState)
+    MATCH (a:Airport)-[:CURRENT_WEATHER]->(current:WeatherState)
     MATCH path = (current)-[:PREVIOUS_WEATHER*0..]->(state:WeatherState)
     WHERE state.timestamp >= current.timestamp - duration({hours: $hours})
     RETURN state {
@@ -220,3 +226,20 @@ async def get_weather_history(hours: int = 12) -> list[dict]:
         result = await session.run(query, hours=hours)
         records = [record async for record in result]
         return [dict(record["weather"]) for record in records]
+
+
+async def get_airport_identity() -> dict | None:
+    """Return the active airport identity from Neo4j."""
+    driver = get_driver()
+    query = """
+    MATCH (a:Airport)
+    RETURN a { .icao, .iata, .name, .timezone } AS airport
+    ORDER BY a.created_at DESC
+    LIMIT 1
+    """
+    async with driver.session() as session:
+        result = await session.run(query)
+        record = await result.single()
+        if record is None:
+            return None
+        return dict(record["airport"])

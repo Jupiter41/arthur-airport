@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from confluent_kafka import Consumer
 
-from db.neo4j import persist_weather_state, get_current_weather
+from db.neo4j import persist_weather_state, get_current_weather, get_airport_identity
 from kafka.producer import emit_weather_state_changed, emit_metar_issued
 from services.fsm import evaluate_transition
 from services.parameters import sample_params, WeatherParams
@@ -47,6 +47,7 @@ class WeatherConsumerState:
         self.current_params: WeatherParams | None = None
         self.current_metar: str = ""
         self.current_taf: str = ""
+        self.airport_icao: str = os.getenv("AIRPORT_ICAO", "KART")
         self.sim_time: datetime | None = None
         self.last_metar_total_min: int = -1
         self.last_fsm_hour: int = -1
@@ -61,12 +62,14 @@ class WeatherConsumerState:
             "metar": self.current_metar,
             "taf": self.current_taf,
             "sim_time": self.sim_time,
+            "airport_icao": self.airport_icao,
         }
 
     async def initialize_from_neo4j(self) -> None:
         """Load current weather state from Neo4j on startup."""
         weather = await get_current_weather()
         if weather:
+            self.airport_icao = weather.get("airport_icao") or self.airport_icao
             self.current_category = weather["category"]
             self.sim_time = datetime.fromisoformat(weather["timestamp"])
             self.current_params = WeatherParams(
@@ -81,11 +84,14 @@ class WeatherConsumerState:
                 qnh_hpa=weather["qnh_hpa"],
                 phenomena=weather["phenomena"],
             )
-            self.current_metar = build_metar(self.current_params, self.sim_time)
-            self.current_taf = build_taf(self.current_params, self.sim_time)
+            self.current_metar = build_metar(self.current_params, self.sim_time, self.airport_icao)
+            self.current_taf = build_taf(self.current_params, self.sim_time, station_icao=self.airport_icao)
             self._update_gauges(self.current_category, self.current_params)
             logger.info("Restored weather state from Neo4j: %s", self.current_category)
         else:
+            airport = await get_airport_identity()
+            if airport and airport.get("icao"):
+                self.airport_icao = str(airport["icao"])
             logger.info("No weather state in Neo4j — will initialize on first clock tick")
 
     def _params_dict(self, params: WeatherParams) -> dict:
@@ -133,8 +139,8 @@ class WeatherConsumerState:
         total_min = hour * 60 + minute
         if minute % metar_interval == 0 and total_min != self.last_metar_total_min:
             self.last_metar_total_min = total_min
-            self.current_metar = build_metar(self.current_params, sim_time)
-            self.current_taf = build_taf(self.current_params, sim_time)
+            self.current_metar = build_metar(self.current_params, sim_time, self.airport_icao)
+            self.current_taf = build_taf(self.current_params, sim_time, station_icao=self.airport_icao)
 
             emit_metar_issued(sim_time, self.current_metar)
 
@@ -149,8 +155,8 @@ class WeatherConsumerState:
         initial_category = os.getenv("INITIAL_WEATHER_CATEGORY", "CAVOK")
         self.current_category = initial_category
         self.current_params = sample_params(initial_category, self.rng)
-        self.current_metar = build_metar(self.current_params, sim_time)
-        self.current_taf = build_taf(self.current_params, sim_time)
+        self.current_metar = build_metar(self.current_params, sim_time, self.airport_icao)
+        self.current_taf = build_taf(self.current_params, sim_time, station_icao=self.airport_icao)
 
         weather_id = str(uuid4())
         capacity = compute_runway_capacity(self.current_params)
@@ -192,8 +198,8 @@ class WeatherConsumerState:
     ) -> None:
         self.current_category = new_category
         self.current_params = sample_params(new_category, self.rng)
-        self.current_metar = build_metar(self.current_params, sim_time)
-        self.current_taf = build_taf(self.current_params, sim_time)
+        self.current_metar = build_metar(self.current_params, sim_time, self.airport_icao)
+        self.current_taf = build_taf(self.current_params, sim_time, station_icao=self.airport_icao)
 
         weather_id = str(uuid4())
         capacity = compute_runway_capacity(self.current_params)

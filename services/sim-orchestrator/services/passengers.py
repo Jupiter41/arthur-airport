@@ -7,13 +7,14 @@ from uuid import uuid4
 
 from scipy.stats import beta as beta_dist
 
+from services.airport_config import load_airport_runtime_config
 from db.neo4j import get_driver
 from services.fixtures import get_fixtures
 
 logger = logging.getLogger(__name__)
 
-LOAD_FACTOR_ALPHA = 8
-LOAD_FACTOR_BETA = 2  # mean ~0.80
+LOAD_FACTOR_ALPHA = 8.0
+LOAD_FACTOR_BETA = 2.0  # default mean ~0.80
 
 CONNECTION_PROBABILITY = 0.20
 SPECIAL_ASSISTANCE_PROBABILITY = 0.05
@@ -60,8 +61,11 @@ async def generate_passengers(
     all_passengers: list[dict] = []
     flight_pax_counts: dict[str, int] = {}
 
+    runtime = load_airport_runtime_config()
+    load_alpha, load_beta = runtime.load_factor_beta_params
+
     # Seed scipy RNG
-    beta_rng = beta_dist(LOAD_FACTOR_ALPHA, LOAD_FACTOR_BETA)
+    beta_rng = beta_dist(load_alpha, load_beta)
     rng.getstate()  # sync
 
     for flight in flights:

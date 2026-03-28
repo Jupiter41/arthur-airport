@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from models.scenario import ScenarioDefinition
 
 from services import clock
 from services.scenario_engine import get_engine
@@ -18,6 +19,10 @@ class RunScenarioRequest(BaseModel):
     speed: Optional[int] = None  # override sim speed for this run
 
 
+class ForkScenarioRequest(BaseModel):
+    name: str
+
+
 # ── Endpoints ────────────────────────────────────────────────────
 
 
@@ -26,6 +31,62 @@ async def list_scenarios():
     """List all available scenario definitions."""
     engine = get_engine()
     return {"scenarios": engine.list_scenarios()}
+
+
+@router.post("/scenarios", status_code=201)
+async def create_scenario(definition: ScenarioDefinition):
+    """Create a custom scenario definition."""
+    engine = get_engine()
+    try:
+        created = engine.create_definition(definition)
+        return {"created": True, "scenario": engine.get_definition_payload(created.name)}
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.put("/scenarios/{name}")
+async def update_scenario(name: str, definition: ScenarioDefinition):
+    """Update one custom scenario definition."""
+    engine = get_engine()
+    try:
+        updated = engine.update_definition(name, definition)
+        return {"updated": True, "scenario": engine.get_definition_payload(updated.name)}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.delete("/scenarios/{name}")
+async def delete_scenario(name: str):
+    """Delete one custom scenario definition."""
+    engine = get_engine()
+    try:
+        engine.delete_definition(name)
+        return {"deleted": True, "name": name}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/scenarios/{name}/fork", status_code=201)
+async def fork_scenario(name: str, req: ForkScenarioRequest):
+    """Fork a scenario to a new custom scenario name."""
+    engine = get_engine()
+    try:
+        forked = engine.fork_definition(name, req.name)
+        return {"created": True, "scenario": engine.get_definition_payload(forked.name)}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.get("/scenarios/active")
@@ -88,10 +149,10 @@ async def get_result(run_id: str):
 async def get_scenario(name: str):
     """Get a specific scenario definition."""
     engine = get_engine()
-    defn = engine.get_definition(name)
-    if defn is None:
+    payload = engine.get_definition_payload(name)
+    if payload is None:
         raise HTTPException(status_code=404, detail=f"Scenario '{name}' not found")
-    return defn.model_dump()
+    return payload
 
 
 @router.post("/scenarios/{name}/run", status_code=201)

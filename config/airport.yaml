@@ -1,0 +1,27 @@
+identity:
+  name: "Arthur International Airport"
+  iata: "ART"
+  icao: "KART"
+  timezone: "America/Arthur"
+
+infrastructure:
+  terminals: 3
+  gates_per_terminal: [14, 14, 14]
+  runways:
+    - id: "09L/27R"
+      length_m: 3500
+      ils: true
+    - id: "09R/27L"
+      length_m: 3500
+      ils: false
+
+simulation:
+  daily_flight_target: 420
+  load_factor_mean: 0.80
+  peak_hours: [7, 8, 9, 17, 18, 19]
+
+airlines:
+  - code: "AX"
+    name: "Artex Airways"
+    market_share: 0.22
+    hub_terminal: "B"

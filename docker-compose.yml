@@ -252,10 +252,13 @@ services:
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: art-digital-twin
       KAFKA_BROKERS: kafka:9092
+      AIRPORT_CONFIG_PATH: /app/config/airport.yaml
       SIM_SPEED_MULTIPLIER: 60
       SIM_START_TIME: "2024-06-15T06:00:00Z"
       DAILY_FLIGHT_TARGET: 420
       DAILY_LOAD_FACTOR_MEAN: 0.80
+    volumes:
+      - ./config:/app/config:ro
     depends_on:
       flight-service:
         condition: service_healthy

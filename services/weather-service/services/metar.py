@@ -12,7 +12,7 @@ def _fmt_temp(t: float) -> str:
     return f"{int(t):02d}"
 
 
-def build_metar(params: WeatherParams, sim_time: datetime) -> str:
+def build_metar(params: WeatherParams, sim_time: datetime, station_icao: str = "KART") -> str:
     """Build a METAR string from weather parameters and simulation time.
 
     Format:
@@ -44,13 +44,14 @@ def build_metar(params: WeatherParams, sim_time: datetime) -> str:
     temp = f"{_fmt_temp(params.temperature_c)}/{_fmt_temp(params.dew_point_c)}"
     qnh = f"Q{params.qnh_hpa:04d}"
 
-    return f"KART {day:02d}{hour:02d}{minute:02d}Z {wind} {vis_cloud} {temp} {qnh}"
+    return f"{station_icao} {day:02d}{hour:02d}{minute:02d}Z {wind} {vis_cloud} {temp} {qnh}"
 
 
 def build_taf(
     params: WeatherParams,
     sim_time: datetime,
     next_category: str | None = None,
+    station_icao: str = "KART",
 ) -> str:
     """Build a simplified TAF from current weather parameters.
 
@@ -82,7 +83,7 @@ def build_taf(
             vis += f" {oktas}{hundreds:03d}"
 
     issue_time = f"{day:02d}{hour:02d}00"
-    lines = [f"TAF KART {issue_time}Z {valid_from}/{valid_to} {wind} {vis}"]
+    lines = [f"TAF {station_icao} {issue_time}Z {valid_from}/{valid_to} {wind} {vis}"]
 
     # TEMPO group: degraded conditions within forecast period
     if params.category in ("CAVOK", "VMC"):

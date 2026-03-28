@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from services import clock
+from services.airport_config import load_airport_runtime_config
 from services.schedule import get_schedule_from_neo4j
 from services.settings import get_settings, update_settings, SimSettings
 from kafka.producer import emit_inject_incident
@@ -59,6 +60,7 @@ class StatusResponse(BaseModel):
 @router.get("/sim/status")
 async def sim_status():
     state = clock.get_state()
+    runtime = load_airport_runtime_config()
     # Get flight/passenger counts from Neo4j
     flights_today = 0
     passengers_today = 0
@@ -84,6 +86,12 @@ async def sim_status():
         pass
 
     return {
+        "airport": {
+            "name": runtime.identity.name,
+            "iata": runtime.identity.iata,
+            "icao": runtime.identity.icao,
+            "timezone": runtime.identity.timezone,
+        },
         "running": state["running"],
         "paused": state["paused"],
         "sim_time": state["sim_time"],

@@ -76,3 +76,20 @@ Validates Cypher query strings embedded in Python source files.
 ```bash
 python3 scripts/lint-cypher.py
 ```
+
+---
+
+## helper_validate_airport_config.py
+
+Validates `config/airport.yaml` and prints normalized runtime values used by `sim-orchestrator`.
+
+```bash
+# Validate default config
+python scripts/helper_validate_airport_config.py
+
+# Validate a specific file
+python scripts/helper_validate_airport_config.py --path config/airport.yaml
+
+# Print normalized data as JSON
+python scripts/helper_validate_airport_config.py --json
+```

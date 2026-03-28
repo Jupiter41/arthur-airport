@@ -249,6 +249,25 @@ export const scenariosApi = {
   list: () => apiFetch<{ scenarios: unknown[] }>("/scenarios"),
   get: (name: string) =>
     apiFetch<unknown>(`/scenarios/${encodeURIComponent(name)}`),
+  create: (body: Record<string, unknown>) =>
+    apiFetch<unknown>("/scenarios", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  update: (name: string, body: Record<string, unknown>) =>
+    apiFetch<unknown>(`/scenarios/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  delete: (name: string) =>
+    apiFetch<unknown>(`/scenarios/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
+  fork: (name: string, newName: string) =>
+    apiFetch<unknown>(`/scenarios/${encodeURIComponent(name)}/fork`, {
+      method: "POST",
+      body: JSON.stringify({ name: newName }),
+    }),
   run: (name: string, speed?: number) =>
     apiFetch<unknown>(`/scenarios/${encodeURIComponent(name)}/run`, {
       method: "POST",

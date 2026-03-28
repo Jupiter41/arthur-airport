@@ -21,6 +21,7 @@ from kafka.producer import (
 )
 from routers.sim import router as sim_router
 from routers.scenarios import router as scenarios_router
+from services.airport_config import load_airport_runtime_config
 from services import clock
 from services.fixtures import load_fixtures
 from services.injector import evaluate_probabilistic_events, set_seed
@@ -62,6 +63,15 @@ async def lifespan(app: FastAPI):
         5. Emit initial CAVOK weather
         6. Start the virtual clock loop
     """
+    # 0. Load and validate airport config
+    runtime = load_airport_runtime_config()
+    logger.info(
+        "Airport config loaded: %s (%s/%s)",
+        runtime.identity.name,
+        runtime.identity.iata,
+        runtime.identity.icao,
+    )
+
     # 1. Load fixtures
     load_fixtures()
 

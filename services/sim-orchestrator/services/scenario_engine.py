@@ -23,6 +23,7 @@ from models.scenario import (
 logger = logging.getLogger(__name__)
 
 SCENARIOS_DIR = Path(os.getenv("SCENARIOS_DIR", "/app/scenarios/definitions"))
+SCENARIOS_USER_DIR = Path(os.getenv("SCENARIOS_USER_DIR", "/app/scenarios/user"))
 RESULTS_DIR = Path(os.getenv("SCENARIO_RESULTS_DIR", "/app/scenarios/results"))
 
 # Metric snapshot interval (every N sim-minutes)
@@ -38,6 +39,7 @@ class ScenarioEngine:
 
     def __init__(self) -> None:
         self._definitions: dict[str, ScenarioDefinition] = {}
+        self._definition_meta: dict[str, dict] = {}
         self._active_run: ScenarioRunResult | None = None
         self._active_def: ScenarioDefinition | None = None
         self._scenario_start_sim_time: datetime | None = None
@@ -53,40 +55,182 @@ class ScenarioEngine:
         Returns the number of successfully loaded scenarios.
         """
         self._definitions.clear()
-        if not SCENARIOS_DIR.exists():
-            logger.warning("Scenarios directory not found: %s", SCENARIOS_DIR)
+        self._definition_meta.clear()
+
+        count = 0
+        count += self._load_from_dir(SCENARIOS_DIR, is_base=True)
+        count += self._load_from_dir(SCENARIOS_USER_DIR, is_base=False)
+
+        logger.info("Loaded %d scenario definitions", count)
+        return count
+
+    def _load_from_dir(self, directory: Path, is_base: bool) -> int:
+        """Load scenario YAML files from one directory into memory."""
+        if not directory.exists():
+            if is_base:
+                logger.warning("Scenarios directory not found: %s", directory)
             return 0
 
         count = 0
-        for path in sorted(SCENARIOS_DIR.glob("*.yaml")):
+        for path in sorted(directory.glob("*.yaml")):
             try:
-                with open(path) as f:
+                with open(path, encoding="utf-8") as f:
                     raw = yaml.safe_load(f)
                 defn = ScenarioDefinition.model_validate(raw)
+
+                if defn.name in self._definitions:
+                    logger.error(
+                        "Skipping duplicate scenario name '%s' in %s",
+                        defn.name,
+                        path,
+                    )
+                    continue
+
                 self._definitions[defn.name] = defn
+                self._definition_meta[defn.name] = {
+                    "is_base": is_base,
+                    "file_path": path,
+                }
                 count += 1
                 logger.info("Loaded scenario: %s", defn.name)
             except Exception as e:
                 logger.error("Failed to load scenario %s: %s", path.name, e)
 
-        logger.info("Loaded %d scenario definitions", count)
         return count
 
     def list_scenarios(self) -> list[dict]:
         """Return a summary list of all loaded scenario definitions."""
-        return [
+        scenarios = [
             {
                 "name": d.name,
                 "description": d.description,
                 "duration_sim_minutes": d.duration_sim_minutes,
                 "event_count": len(d.events),
                 "outcome_count": len(d.expected_outcomes),
+                "is_base": self.is_base(d.name),
             }
             for d in self._definitions.values()
         ]
+        scenarios.sort(key=lambda item: (item["is_base"] is False, item["name"].lower()))
+        return scenarios
 
     def get_definition(self, name: str) -> ScenarioDefinition | None:
         return self._definitions.get(name)
+
+    def get_definition_payload(self, name: str) -> dict | None:
+        """Return scenario definition with metadata used by API clients."""
+        defn = self._definitions.get(name)
+        if defn is None:
+            return None
+        payload = defn.model_dump(mode="json")
+        payload["is_base"] = self.is_base(name)
+        return payload
+
+    def is_base(self, name: str) -> bool:
+        return bool(self._definition_meta.get(name, {}).get("is_base", False))
+
+    def create_definition(self, definition: ScenarioDefinition) -> ScenarioDefinition:
+        """Create a new custom scenario definition."""
+        if definition.name in self._definitions:
+            raise ValueError(f"Scenario '{definition.name}' already exists")
+
+        file_path = self._allocate_user_file_path(definition.name)
+        self._write_definition_yaml(file_path, definition)
+
+        self._definitions[definition.name] = definition
+        self._definition_meta[definition.name] = {
+            "is_base": False,
+            "file_path": file_path,
+        }
+        return definition
+
+    def update_definition(self, current_name: str, definition: ScenarioDefinition) -> ScenarioDefinition:
+        """Update an existing custom scenario (optionally rename)."""
+        existing = self._definitions.get(current_name)
+        if existing is None:
+            raise KeyError(f"Scenario '{current_name}' not found")
+        if self.is_base(current_name):
+            raise PermissionError("Base scenarios are immutable")
+
+        if self.is_active() and self._active_run and self._active_run.scenario_name == current_name:
+            raise RuntimeError("Cannot update a scenario while it is running")
+
+        target_name = definition.name
+        if target_name != current_name and target_name in self._definitions:
+            raise ValueError(f"Scenario '{target_name}' already exists")
+
+        old_file_path: Path | None = self._definition_meta.get(current_name, {}).get("file_path")
+        new_file_path = self._allocate_user_file_path(target_name)
+        if target_name == current_name and old_file_path is not None:
+            new_file_path = old_file_path
+
+        self._write_definition_yaml(new_file_path, definition)
+
+        if old_file_path is not None and old_file_path != new_file_path and old_file_path.exists():
+            old_file_path.unlink()
+
+        if target_name != current_name:
+            self._definitions.pop(current_name, None)
+            self._definition_meta.pop(current_name, None)
+
+        self._definitions[target_name] = definition
+        self._definition_meta[target_name] = {
+            "is_base": False,
+            "file_path": new_file_path,
+        }
+        return definition
+
+    def delete_definition(self, name: str) -> None:
+        """Delete one custom scenario definition."""
+        if name not in self._definitions:
+            raise KeyError(f"Scenario '{name}' not found")
+        if self.is_base(name):
+            raise PermissionError("Base scenarios are immutable")
+
+        if self.is_active() and self._active_run and self._active_run.scenario_name == name:
+            raise RuntimeError("Cannot delete a scenario while it is running")
+
+        file_path: Path | None = self._definition_meta.get(name, {}).get("file_path")
+        if file_path is not None and file_path.exists():
+            file_path.unlink()
+
+        self._definitions.pop(name, None)
+        self._definition_meta.pop(name, None)
+
+    def fork_definition(self, source_name: str, target_name: str) -> ScenarioDefinition:
+        """Clone an existing scenario to a new custom scenario name."""
+        source = self._definitions.get(source_name)
+        if source is None:
+            raise KeyError(f"Scenario '{source_name}' not found")
+        if target_name in self._definitions:
+            raise ValueError(f"Scenario '{target_name}' already exists")
+
+        cloned_payload = source.model_dump(mode="json")
+        cloned_payload["name"] = target_name
+        cloned = ScenarioDefinition.model_validate(cloned_payload)
+        return self.create_definition(cloned)
+
+    def _allocate_user_file_path(self, scenario_name: str) -> Path:
+        """Create a deterministic user scenario filepath with conflict handling."""
+        SCENARIOS_USER_DIR.mkdir(parents=True, exist_ok=True)
+        slug = self._slugify_name(scenario_name)
+        candidate = SCENARIOS_USER_DIR / f"{slug}.yaml"
+        idx = 2
+        while candidate.exists():
+            candidate = SCENARIOS_USER_DIR / f"{slug}-{idx}.yaml"
+            idx += 1
+        return candidate
+
+    @staticmethod
+    def _slugify_name(name: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        return slug or "scenario"
+
+    @staticmethod
+    def _write_definition_yaml(path: Path, definition: ScenarioDefinition) -> None:
+        payload = definition.model_dump(mode="json")
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(payload, f, sort_keys=False, allow_unicode=False)
 
     # ── Run lifecycle ─────────────────────────────────────────────
 

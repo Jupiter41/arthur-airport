@@ -8,7 +8,6 @@ Cross-terminal bags incur transit delays between sorting and make-up.
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from services.spatial import sorting_to_makeup_minutes, SORTING_TO_MAKEUP_SAME
 

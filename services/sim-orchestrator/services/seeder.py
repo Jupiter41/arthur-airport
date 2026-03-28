@@ -5,6 +5,7 @@ import os
 from datetime import timedelta
 
 from db.neo4j import get_driver
+from services.airport_config import load_airport_runtime_config
 from services.clock import get_sim_time, get_sim_day, SIM_START_TIME
 from services.schedule import generate_schedule
 from services.passengers import generate_passengers
@@ -13,7 +14,16 @@ from kafka.producer import emit_flight_schedule_seeded, emit_weather_state_chang
 
 logger = logging.getLogger(__name__)
 
-DAILY_FLIGHT_TARGET = int(os.getenv("DAILY_FLIGHT_TARGET", "420"))
+
+def _daily_flight_target() -> int:
+    """Resolve daily flight target from env override or airport config."""
+    runtime = load_airport_runtime_config()
+    return int(
+        os.getenv(
+            "DAILY_FLIGHT_TARGET",
+            str(runtime.simulation.daily_flight_target),
+        )
+    )
 
 
 async def _day_already_seeded(sim_date) -> bool:
@@ -42,7 +52,7 @@ async def seed_day(sim_day: int) -> None:
         logger.info("Day %d (%s) already seeded — skipping", sim_day, sim_date)
         return
 
-    target_departures = DAILY_FLIGHT_TARGET // 2  # half departures, half arrivals
+    target_departures = _daily_flight_target() // 2  # half departures, half arrivals
 
     logger.info("Seeding day %d (%s): %d departures target", sim_day, sim_date, target_departures)
 

@@ -13,15 +13,19 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from services.airport_config import load_airport_runtime_config
+
 logger = logging.getLogger(__name__)
+
+_runtime = load_airport_runtime_config()
 
 
 class SimSettings(BaseModel):
     """All tuneable simulation parameters."""
 
     # ── Demand ──────────────────────────────────────────────
-    daily_flights: int = Field(420, ge=50, le=1200)
-    load_factor_mean: float = Field(0.80, ge=0.1, le=1.0)
+    daily_flights: int = Field(_runtime.simulation.daily_flight_target, ge=50, le=5000)
+    load_factor_mean: float = Field(_runtime.simulation.load_factor_mean, ge=0.1, le=1.0)
     pax_multiplier: float = Field(1.0, ge=0.1, le=5.0)
     special_event: Optional[str] = None
 

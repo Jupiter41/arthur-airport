@@ -20,6 +20,19 @@ All data is 100% synthetic. No real airport, airline, or passenger data is used.
 
 ---
 
+## Airport Config System
+
+The simulation now supports single-file airport customization through [config/airport.yaml](config/airport.yaml).
+
+- Airport identity (name, IATA, ICAO, timezone)
+- Infrastructure (terminal count, gate counts, runway pairs)
+- Simulation defaults (daily flight volume, load factor, peak hours)
+- Optional airline overrides
+
+Guide: [HOW_TO_CREATE_AIRPORT.md](HOW_TO_CREATE_AIRPORT.md)
+
+---
+
 ## Architecture
 
 ```
@@ -318,6 +331,7 @@ knowledge base for both humans and agents.
 ```
 arthur-airport/
 ├── README.md
+├── HOW_TO_CREATE_AIRPORT.md          ← airport customization guide
 ├── CHANGELOG.md                       ← version history by sprint
 ├── CLAUDE.md                          ← agent context for Claude Code
 ├── AGENTS.md                          ← agent context for OpenAI / Codex

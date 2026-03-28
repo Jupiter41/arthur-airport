@@ -47,7 +47,7 @@ async def current_weather():
     )
     capacity = compute_runway_capacity(p)
     ts = datetime.fromisoformat(weather["timestamp"])
-    metar_raw = build_metar(p, ts)
+    metar_raw = build_metar(p, ts, weather.get("airport_icao") or "KART")
 
     return {
         "id": weather["id"],

@@ -8,6 +8,7 @@ from uuid import uuid4
 import numpy as np
 
 from db.neo4j import get_driver
+from services.airport_config import load_airport_runtime_config
 from services.fixtures import get_fixtures
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,8 @@ _reg_counters: dict[str, int] = {}
 def _build_airline_lookup() -> None:
     """Build airline lookup dicts from fixtures."""
     global _airline_terminal, _reg_counters
+    _airline_terminal = {}
+    _reg_counters = {}
     fixtures = get_fixtures()
     for airline in fixtures["airlines"]:
         _airline_terminal[airline["code"]] = airline["preferred_terminal"]
@@ -115,10 +118,17 @@ def sample_departure_slots(n: int, sim_date: date, np_rng: np.random.Generator) 
     return slots
 
 
-def _assign_gate(terminal_pref: str, gate_usage: dict[str, datetime], dep_time: datetime) -> str:
+def _assign_gate(
+    terminal_pref: str,
+    gate_usage: dict[str, datetime],
+    dep_time: datetime,
+    terminal_codes: list[str],
+    gates_per_terminal: dict[str, int],
+) -> str:
     """Assign a gate from preferred terminal. Falls back to others if full."""
-    for t in [terminal_pref, "A", "B", "C"]:
-        for n in range(1, GATES_PER_TERMINAL + 1):
+    ordered_terminals = [terminal_pref] + [t for t in terminal_codes if t != terminal_pref]
+    for t in ordered_terminals:
+        for n in range(1, gates_per_terminal[t] + 1):
             gate_id = f"{t}{n:02d}"
             last_used = gate_usage.get(gate_id)
             if last_used is None or dep_time >= last_used + timedelta(minutes=45):
@@ -128,7 +138,6 @@ def _assign_gate(terminal_pref: str, gate_usage: dict[str, datetime], dep_time: 
     return f"{terminal_pref}01"
 
 
-GATES_PER_TERMINAL = 14
 FLIGHT_NUMBER_USED: set[str] = set()
 
 
@@ -153,6 +162,12 @@ async def generate_schedule(
         List of flight dicts ready for Kafka emission.
     """
     _build_airline_lookup()
+    runtime = load_airport_runtime_config()
+    terminal_codes = runtime.terminal_codes
+    gates_per_terminal = runtime.gates_per_terminal_map
+    departure_runway_ids = runtime.departure_runway_ids
+    arrival_runway_ids = runtime.arrival_runway_ids
+    home_iata = runtime.identity.iata
 
     rng = random.Random(seed)
     np_rng = np.random.default_rng(seed)
@@ -179,8 +194,16 @@ async def generate_schedule(
                 FLIGHT_NUMBER_USED.add(fn)
                 break
 
-        terminal_pref = _airline_terminal.get(airline["code"], "A")
-        gate_id = _assign_gate(terminal_pref, gate_usage, dep_time)
+        terminal_pref = _airline_terminal.get(airline["code"], terminal_codes[0])
+        if terminal_pref not in terminal_codes:
+            terminal_pref = terminal_codes[0]
+        gate_id = _assign_gate(
+            terminal_pref,
+            gate_usage,
+            dep_time,
+            terminal_codes,
+            gates_per_terminal,
+        )
 
         flight_type, route_category = _classify_flight(destination, aircraft)
 
@@ -194,7 +217,7 @@ async def generate_schedule(
             "status": "scheduled",
             "aircraft_type": aircraft["icao"],
             "aircraft_registration": registration,
-            "origin_iata": "ART",
+            "origin_iata": home_iata,
             "destination_iata": destination["iata"],
             "scheduled_time": dep_time.isoformat(),
             "estimated_time": dep_time.isoformat(),
@@ -202,7 +225,7 @@ async def generate_schedule(
             "seat_capacity": aircraft["seat_capacity"],
             "pax_count": 0,  # filled by passenger generation
             "gate_id": gate_id,
-            "runway_id": "09L" if runway_toggle % 2 == 0 else "09R",
+            "runway_id": departure_runway_ids[runway_toggle % len(departure_runway_ids)],
             "flight_type": flight_type,
             "route_category": route_category,
         }
@@ -232,14 +255,14 @@ async def generate_schedule(
             "aircraft_type": aircraft["icao"],
             "aircraft_registration": registration,
             "origin_iata": destination["iata"],
-            "destination_iata": "ART",
+            "destination_iata": home_iata,
             "scheduled_time": arr_time.isoformat(),
             "estimated_time": arr_time.isoformat(),
             "delay_minutes": 0,
             "seat_capacity": aircraft["seat_capacity"],
             "pax_count": 0,
             "gate_id": gate_id,
-            "runway_id": "27R" if runway_toggle % 2 == 0 else "27L",
+            "runway_id": arrival_runway_ids[runway_toggle % len(arrival_runway_ids)],
             "flight_type": flight_type,
             "route_category": route_category,
         }

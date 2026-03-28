@@ -4,6 +4,7 @@ import logging
 import random
 from datetime import datetime
 
+from services.airport_config import load_airport_runtime_config
 from services.fixtures import get_fixtures
 from kafka.producer import emit_inject_incident
 from metrics import sim_events_injected_total as m_events_injected
@@ -53,9 +54,10 @@ async def evaluate_probabilistic_events(sim_time: datetime) -> None:
     suppression_window = events_config.get("suppression_window_hours", 2)
     severity_ranges = events_config["severity_ranges"]
     locations = events_config["locations"]
+    runtime = load_airport_runtime_config()
 
     if PEAK_HOURS is None:
-        PEAK_HOURS = set(events_config.get("peak_hours", [7, 8, 9, 17, 18, 19]))
+        PEAK_HOURS = set(runtime.simulation.peak_hours or events_config.get("peak_hours", [7, 8, 9, 17, 18, 19]))
 
     sim_hour = sim_time.hour
 

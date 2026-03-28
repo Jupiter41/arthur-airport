@@ -102,6 +102,18 @@ API docs at **http://localhost:8006/docs**
 | GET    | `/api/v1/sim/schedule` | Current day's flight schedule                    |
 | GET    | `/api/v1/sim/metrics`  | Internal metrics (tick latency, events count)    |
 
+### Scenario API
+
+| Method | Path                             | Description                                      |
+| ------ | -------------------------------- | ------------------------------------------------ |
+| GET    | `/api/v1/scenarios`             | List scenarios with `is_base` metadata           |
+| GET    | `/api/v1/scenarios/{name}`      | Fetch one scenario definition                     |
+| POST   | `/api/v1/scenarios`             | Create a new custom scenario                      |
+| PUT    | `/api/v1/scenarios/{name}`      | Update a custom scenario (base scenarios blocked) |
+| DELETE | `/api/v1/scenarios/{name}`      | Delete a custom scenario                          |
+| POST   | `/api/v1/scenarios/{name}/fork` | Fork any scenario into a new custom one           |
+| POST   | `/api/v1/scenarios/{name}/run`  | Run one scenario                                  |
+
 ## Kafka topics
 
 | Direction | Topic              | Events                                           |
@@ -124,5 +136,18 @@ python -m pytest tests/unit/ -k sim -v
 | `SIM_START_TIME`       | `2024-06-15T06:00:00` | Simulation start time   |
 | `SIM_SPEED_MULTIPLIER` | `60`                  | Default speed           |
 | `DAILY_FLIGHT_TARGET`  | `420`                 | Total daily movements   |
+| `AIRPORT_CONFIG_PATH`  | `/app/config/airport.yaml` | Airport config file path |
 | `NEO4J_URI`            | `bolt://neo4j:7687`   | Neo4j connection        |
 | `KAFKA_BROKERS`        | `kafka:9092`          | Kafka bootstrap servers |
+
+## Airport Config Workflow
+
+The orchestrator reads airport settings from `config/airport.yaml` (mounted in Docker as `/app/config/airport.yaml`).
+
+Validate config before startup:
+
+```bash
+python scripts/helper_validate_airport_config.py --path config/airport.yaml
+```
+
+Full customization guide: [HOW_TO_CREATE_AIRPORT.md](../../HOW_TO_CREATE_AIRPORT.md)

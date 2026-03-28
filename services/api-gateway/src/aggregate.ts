@@ -84,10 +84,11 @@ export async function handleAggregate(
   }
 
   const simData = dataMap.sim as Record<string, unknown> | null;
+  const simAirport = (simData?.airport as Record<string, unknown> | undefined) ?? null;
 
   const body = {
     sim_time: simData?.sim_time ?? null,
-    airport: {
+    airport: simAirport ?? {
       iata: "ART",
       icao: "KART",
       name: "Arthur International Airport",
