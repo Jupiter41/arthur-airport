@@ -1,0 +1,65 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "terminal-a",
+        "name": "Terminal A",
+        "height_m": 22
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-27.0915, 38.7546],
+            [-27.0785, 38.7546],
+            [-27.0785, 38.7532],
+            [-27.0915, 38.7532],
+            [-27.0915, 38.7546]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "terminal-b",
+        "name": "Terminal B",
+        "height_m": 20
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-27.0915, 38.7529],
+            [-27.0785, 38.7529],
+            [-27.0785, 38.7515],
+            [-27.0915, 38.7515],
+            [-27.0915, 38.7529]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "terminal-c",
+        "name": "Terminal C",
+        "height_m": 18
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-27.0915, 38.7511],
+            [-27.0785, 38.7511],
+            [-27.0785, 38.7497],
+            [-27.0915, 38.7497],
+            [-27.0915, 38.7511]
+          ]
+        ]
+      }
+    }
+  ]
+}

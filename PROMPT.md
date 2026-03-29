@@ -5,6 +5,7 @@ Before doing any edit, do this:
 - READ all SPEC and skill files.
 - READ scripts/ README.md if it exists.
 - READ ROADMAP.md fully.
+- READ all md files in docs/lessons-learned
 - NEVER implement any roundabout fix. For any very complex thing, write a plan file in docs/lessons-learned/ and then implement it step by step.
 - ALWAYS take the elegant solution, even if it takes more time. Don't do quick and dirty fixes.
 - ALWAYS run tests and validate along the way the behaviour of the services by rebuilding the container, doing curls requests etc.
@@ -19,7 +20,30 @@ Before doing any edit, do this:
 - ALWAYS mark issues as completed in the relevant file if needed.
 - ALWAYS run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
 
-Following ROADMAP.md planning, do this:
-Implement the phase 6
-| 10       | Phase 6.1–6.7 — Mapbox geospatial twin                                                         | High   | High — visual credibility         |
-| 11       | Phase 6.8 — CesiumJS 3D globe                                                                  | Medium | High — wow factor (globe)         |
+Your mission is to:
+
+1. Perform a deep audit of all items marked as “done” in ROADMAP.md (or as "implemented" in the lessons-learned files).
+2. Do not trust the status — verify everything through:
+    - Code review
+    - Specs comparison
+    - Functional testing
+    - Edge case validation
+3. Identify:
+   - Bugs
+   - Missing functionality
+   - Logical inconsistencies
+   - Deviations from specifications
+   - Performance or design issues
+4. Then:
+    - Write a comprehensive fix plan in docs/lessons-learned/
+    - Implement all fixes systematically
+    - Validate each fix thoroughly
+    - Write a final report in docs/lessons-learned/ with:
+    - Summary of changes
+    - Issues fixed
+    - Tests run and results
+Key Mindset
+    - Be skeptical: assume “done” might be wrong.
+    - Be methodical: verify before acting.
+    - Be thorough: no shallow checks or fixes.
+    - Be clean: no shortcuts, no technical debt, no breaking features or missing functionality.

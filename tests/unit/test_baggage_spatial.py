@@ -1,6 +1,5 @@
 """Unit tests for baggage conveyor spatial model — transit times."""
 
-import pytest
 from tests.conftest import import_service_module
 
 _sp = import_service_module("baggage", "services.spatial")
@@ -68,7 +67,6 @@ class TestBagConveyorTime:
     def test_cross_terminal_always_slower(self):
         same = bag_conveyor_time("B", "B")
         adjacent = bag_conveyor_time("B", "C")
-        far = bag_conveyor_time("B", "A")  # B→A is adjacent
         assert same < adjacent
         assert bag_conveyor_time("A", "C") > adjacent
 

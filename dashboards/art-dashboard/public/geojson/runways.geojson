@@ -1,0 +1,47 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "09L-27R",
+        "name": "Runway 09L/27R",
+        "heading": 90,
+        "height_m": 1.2
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-27.1020, 38.7508],
+            [-27.0600, 38.7508],
+            [-27.0600, 38.7497],
+            [-27.1020, 38.7497],
+            [-27.1020, 38.7508]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "09R-27L",
+        "name": "Runway 09R/27L",
+        "heading": 90,
+        "height_m": 1.2
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-27.1020, 38.7488],
+            [-27.0600, 38.7488],
+            [-27.0600, 38.7477],
+            [-27.1020, 38.7477],
+            [-27.1020, 38.7488]
+          ]
+        ]
+      }
+    }
+  ]
+}

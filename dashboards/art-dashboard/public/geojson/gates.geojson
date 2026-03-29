@@ -1,0 +1,22 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "id": "A01", "terminal": "A" }, "geometry": { "type": "Point", "coordinates": [-27.0805, 38.7542] } },
+    { "type": "Feature", "properties": { "id": "A02", "terminal": "A" }, "geometry": { "type": "Point", "coordinates": [-27.0815, 38.7542] } },
+    { "type": "Feature", "properties": { "id": "A03", "terminal": "A" }, "geometry": { "type": "Point", "coordinates": [-27.0825, 38.7542] } },
+    { "type": "Feature", "properties": { "id": "A04", "terminal": "A" }, "geometry": { "type": "Point", "coordinates": [-27.0835, 38.7542] } },
+    { "type": "Feature", "properties": { "id": "A05", "terminal": "A" }, "geometry": { "type": "Point", "coordinates": [-27.0845, 38.7542] } },
+
+    { "type": "Feature", "properties": { "id": "B01", "terminal": "B" }, "geometry": { "type": "Point", "coordinates": [-27.0805, 38.7525] } },
+    { "type": "Feature", "properties": { "id": "B02", "terminal": "B" }, "geometry": { "type": "Point", "coordinates": [-27.0815, 38.7525] } },
+    { "type": "Feature", "properties": { "id": "B03", "terminal": "B" }, "geometry": { "type": "Point", "coordinates": [-27.0825, 38.7525] } },
+    { "type": "Feature", "properties": { "id": "B04", "terminal": "B" }, "geometry": { "type": "Point", "coordinates": [-27.0835, 38.7525] } },
+    { "type": "Feature", "properties": { "id": "B05", "terminal": "B" }, "geometry": { "type": "Point", "coordinates": [-27.0845, 38.7525] } },
+
+    { "type": "Feature", "properties": { "id": "C01", "terminal": "C" }, "geometry": { "type": "Point", "coordinates": [-27.0805, 38.7507] } },
+    { "type": "Feature", "properties": { "id": "C02", "terminal": "C" }, "geometry": { "type": "Point", "coordinates": [-27.0815, 38.7507] } },
+    { "type": "Feature", "properties": { "id": "C03", "terminal": "C" }, "geometry": { "type": "Point", "coordinates": [-27.0825, 38.7507] } },
+    { "type": "Feature", "properties": { "id": "C04", "terminal": "C" }, "geometry": { "type": "Point", "coordinates": [-27.0835, 38.7507] } },
+    { "type": "Feature", "properties": { "id": "C05", "terminal": "C" }, "geometry": { "type": "Point", "coordinates": [-27.0845, 38.7507] } }
+  ]
+}

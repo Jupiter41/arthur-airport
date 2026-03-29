@@ -10,6 +10,7 @@ import GroundOpsPage from "./pages/GroundOps/GroundOpsPage";
 import SimHistoryPage from "./pages/SimHistory/SimHistoryPage";
 import ScenariosPage from "./pages/Scenarios/ScenariosPage";
 import SettingsPage from "./pages/Settings/SettingsPage";
+import WorldMapPage from "./pages/WorldMap/WorldMapPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +36,7 @@ function AppShell() {
           <Route path="/passengers" element={<PassengerFlowPage />} />
           <Route path="/incidents" element={<IncidentConsolePage />} />
           <Route path="/ground-ops" element={<GroundOpsPage />} />
+          <Route path="/world" element={<WorldMapPage />} />
           <Route path="/history" element={<SimHistoryPage />} />
           <Route path="/scenarios" element={<ScenariosPage />} />
           <Route path="/settings" element={<SettingsPage />} />

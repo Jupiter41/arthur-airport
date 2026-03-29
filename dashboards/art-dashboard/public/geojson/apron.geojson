@@ -1,0 +1,24 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "apron-main",
+        "name": "Main Apron"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-27.0940, 38.7538],
+            [-27.0700, 38.7538],
+            [-27.0660, 38.7472],
+            [-27.0980, 38.7472],
+            [-27.0940, 38.7538]
+          ]
+        ]
+      }
+    }
+  ]
+}

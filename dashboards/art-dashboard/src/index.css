@@ -31,4 +31,50 @@
     0% { background-color: rgba(59, 130, 246, 0.3); }
     100% { background-color: transparent; }
   }
+
+  /* Fade in animation */
+  .animation-fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+  @keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+
+  /* Slide in from top */
+  .animation-slide-down {
+    animation: slideDown 0.4s ease-out;
+  }
+  @keyframes slideDown {
+    0% { transform: translateY(-20px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+
+  /* Slide in from left */
+  .animation-slide-right {
+    animation: slideRight 0.4s ease-out;
+  }
+  @keyframes slideRight {
+    0% { transform: translateX(-20px); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+  }
+
+  /* Pulse animation */
+  .animation-pulse-glow {
+    animation: pulseGlow 2s ease-in-out infinite;
+  }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2); }
+    50% { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0.4); }
+  }
+
+  /* Bounce animation */
+  .animation-bounce-gentle {
+    animation: bounceGentle 3s ease-in-out infinite;
+  }
+  @keyframes bounceGentle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
 }
+

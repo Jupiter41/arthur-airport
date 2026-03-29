@@ -93,3 +93,22 @@ python scripts/helper_validate_airport_config.py --path config/airport.yaml
 # Print normalized data as JSON
 python scripts/helper_validate_airport_config.py --json
 ```
+
+---
+
+## helper_generate_destination_coordinates.py
+
+Generates the dashboard destination airport coordinate lookup from `data/ourairports/airports.csv`.
+
+Output:
+- `dashboards/art-dashboard/src/data/destinationCoordinates.ts`
+
+```bash
+# Generate with defaults
+python scripts/helper_generate_destination_coordinates.py
+
+# Use custom paths
+python scripts/helper_generate_destination_coordinates.py \
+	--airports-csv data/ourairports/airports.csv \
+	--output dashboards/art-dashboard/src/data/destinationCoordinates.ts
+```

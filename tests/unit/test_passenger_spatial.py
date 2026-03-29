@@ -1,6 +1,5 @@
 """Unit tests for passenger-service spatial utilities — walking times."""
 
-import pytest
 from tests.conftest import import_service_module
 
 _sp = import_service_module("passenger", "services.spatial")

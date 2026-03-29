@@ -1,6 +1,5 @@
 """Unit tests for conveyor cross-terminal transit delay model."""
 
-import pytest
 from tests.conftest import import_service_module
 
 _cv = import_service_module("baggage", "services.conveyor")

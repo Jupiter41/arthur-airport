@@ -1,0 +1,47 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "alpha",
+        "name": "Taxiway Alpha"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-27.0980, 38.7524],
+          [-27.0640, 38.7524]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "bravo",
+        "name": "Taxiway Bravo"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-27.0980, 38.7512],
+          [-27.0640, 38.7512]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "charlie",
+        "name": "Taxiway Charlie"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-27.0980, 38.7500],
+          [-27.0640, 38.7500]
+        ]
+      }
+    }
+  ]
+}

@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { path: "/passengers", label: "Passengers", icon: "👥" },
   { path: "/incidents", label: "Incidents", icon: "🚨" },
   { path: "/ground-ops", label: "Ground Ops", icon: "🎛️" },
+  { path: "/world", label: "World", icon: "🗺️" },
   { path: "/history", label: "History", icon: "📊" },
   { path: "/scenarios", label: "Scenarios", icon: "🧪" },
   { path: "/settings", label: "Settings", icon: "⚙️" },

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from services import clock
 from services.airport_config import load_airport_runtime_config
 from services.schedule import get_schedule_from_neo4j
-from services.settings import get_settings, update_settings, SimSettings
+from services.settings import get_settings, update_settings
 from kafka.producer import emit_inject_incident
 from db.neo4j import get_driver
 
