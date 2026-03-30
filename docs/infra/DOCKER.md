@@ -8,23 +8,23 @@
 
 ## 1. Service inventory
 
-| Service | Image | Port (host) | Depends on |
-|---|---|---|---|
-| `neo4j` | `neo4j:5` | 7474 (HTTP), 7687 (Bolt) | — |
-| `zookeeper` | `confluentinc/cp-zookeeper:7.6` | 2181 | — |
-| `kafka` | `confluentinc/cp-kafka:7.6` | 9092 | zookeeper |
-| `kafka-ui` | `provectuslabs/kafka-ui:latest` | 8080 | kafka |
-| `kafka-exporter` | `danielqsj/kafka-exporter:latest` | 9308 | kafka |
-| `flight-service` | `./services/flight-service` | 8001 | neo4j, kafka |
-| `passenger-service` | `./services/passenger-service` | 8002 | neo4j, kafka |
-| `baggage-service` | `./services/baggage-service` | 8003 | neo4j, kafka |
-| `weather-service` | `./services/weather-service` | 8004 | neo4j, kafka |
-| `incident-service` | `./services/incident-service` | 8005 | neo4j, kafka |
-| `sim-orchestrator` | `./services/sim-orchestrator` | 8006 | neo4j, kafka, all domain services |
-| `api-gateway` | `./services/api-gateway` | 3000 | kafka, all domain services |
-| `dashboard` | `./dashboards/art-dashboard` | 5173 | api-gateway |
-| `prometheus` | `prom/prometheus:v2.51` | 9090 | all services |
-| `grafana` | `grafana/grafana:10.4` | 3001 | prometheus |
+| Service             | Image                             | Port (host)              | Depends on                        |
+| ------------------- | --------------------------------- | ------------------------ | --------------------------------- |
+| `neo4j`             | `neo4j:5`                         | 7474 (HTTP), 7687 (Bolt) | —                                 |
+| `zookeeper`         | `confluentinc/cp-zookeeper:7.6`   | 2181                     | —                                 |
+| `kafka`             | `confluentinc/cp-kafka:7.6`       | 9092                     | zookeeper                         |
+| `kafka-ui`          | `provectuslabs/kafka-ui:latest`   | 8080                     | kafka                             |
+| `kafka-exporter`    | `danielqsj/kafka-exporter:latest` | 9308                     | kafka                             |
+| `flight-service`    | `./services/flight-service`       | 8001                     | neo4j, kafka                      |
+| `passenger-service` | `./services/passenger-service`    | 8002                     | neo4j, kafka                      |
+| `baggage-service`   | `./services/baggage-service`      | 8003                     | neo4j, kafka                      |
+| `weather-service`   | `./services/weather-service`      | 8004                     | neo4j, kafka                      |
+| `incident-service`  | `./services/incident-service`     | 8005                     | neo4j, kafka                      |
+| `sim-orchestrator`  | `./services/sim-orchestrator`     | 8006                     | neo4j, kafka, all domain services |
+| `api-gateway`       | `./services/api-gateway`          | 3000                     | kafka, all domain services        |
+| `dashboard`         | `./dashboards/art-dashboard`      | 5173                     | api-gateway                       |
+| `prometheus`        | `prom/prometheus:v2.51`           | 9090                     | all services                      |
+| `grafana`           | `grafana/grafana:10.4`            | 3001                     | prometheus                        |
 
 ---
 
@@ -45,7 +45,6 @@ x-python-service: &python-service
     LOG_LEVEL: INFO
 
 services:
-
   # ─── Infrastructure ────────────────────────────────────────────
 
   neo4j:
@@ -98,7 +97,13 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      test:
+        [
+          "CMD",
+          "kafka-broker-api-versions",
+          "--bootstrap-server",
+          "localhost:9092",
+        ]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -312,8 +317,8 @@ services:
       - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=7d'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
     depends_on:
       - flight-service
       - passenger-service
@@ -497,12 +502,84 @@ curl -X POST http://localhost:3000/api/v1/incidents/inject \
 
 On a modern laptop with Docker Desktop (cold start, all images pulled):
 
-| Phase | Approx. time |
-|---|---|
-| Neo4j ready | 20–35s |
-| Kafka ready | 15–25s |
-| Domain services ready | 8–12s each (after Neo4j + Kafka) |
-| Sim-orchestrator seed | 5–10s (after all domain services) |
-| Total to first sim tick | ~60–90s |
+| Phase                   | Approx. time                      |
+| ----------------------- | --------------------------------- |
+| Neo4j ready             | 20–35s                            |
+| Kafka ready             | 15–25s                            |
+| Domain services ready   | 8–12s each (after Neo4j + Kafka)  |
+| Sim-orchestrator seed   | 5–10s (after all domain services) |
+| Total to first sim tick | ~60–90s                           |
 
 Subsequent starts (images cached, volumes preserved) are ~20–30s total.
+
+---
+
+## 9. Airport configuration system
+
+The simulation is **config-driven**: airport properties are read from `config/airport.yaml` at startup. This allows you to customize the airport without rebuilding code.
+
+### Config file location
+
+The `docker-compose.yml` mounts the local `config/` directory into all services:
+
+```yaml
+sim-orchestrator:
+  volumes:
+    - ./config:/app/config # Mounts config/airport.yaml into container
+```
+
+### Config loading order (sim-orchestrator)
+
+1. Check `AIRPORT_CONFIG_PATH` environment variable
+2. Try `config/airport.yaml` in repo root (local dev)
+3. Try `/app/config/airport.yaml` in container
+4. Fall back to built-in defaults (zero downtime)
+
+### Customizing the airport
+
+**Before running docker compose:**
+
+1. Edit `config/airport.yaml`:
+
+   ```yaml
+   identity:
+     name: "Your Airport"
+     iata: "ABC"
+     icao: "WXYZ"
+     timezone: "Your/Timezone"
+   ```
+
+2. Validate your config:
+   ```bash
+   python scripts/helper_validate_airport_config.py --path config/airport.yaml
+   ```
+
+**Then run:**
+
+```bash
+docker compose up --build
+```
+
+### Environment variable overrides
+
+Simulation defaults can be overridden via env vars on `sim-orchestrator` (takes precedence over config):
+
+| Variable                 | Example                | Notes                                      |
+| ------------------------ | ---------------------- | ------------------------------------------ |
+| `AIRPORT_CONFIG_PATH`    | `/custom/airport.yaml` | Absolute path to custom config file        |
+| `DAILY_FLIGHT_TARGET`    | `1000`                 | Overrides `simulation.daily_flight_target` |
+| `DAILY_LOAD_FACTOR_MEAN` | `0.85`                 | Overrides `simulation.load_factor_mean`    |
+
+Example override in docker-compose.yml:
+
+```yaml
+sim-orchestrator:
+  environment:
+    DAILY_FLIGHT_TARGET: 1000 # Override config value
+```
+
+### Full configuration reference
+
+See **[HOW_TO_CREATE_AIRPORT.md](../../HOW_TO_CREATE_AIRPORT.md)** for the complete airport configuration schema, validation constraints, and examples.
+
+---

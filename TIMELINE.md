@@ -18,13 +18,15 @@ Simulator     Simulator     Twin          Twin          Twin
 ---
 
 ## Phase 1 — Airport operations simulator
-### *What is happening, and why*
+
+### _What is happening, and why_
 
 The foundation. A fully event-driven simulation of airport operations with no spatial
 awareness — entities (flights, passengers, baggage) exist as abstract state machines
 connected by a Kafka event bus and persisted in a Neo4j graph.
 
 **What you can do:**
+
 - Simulate 420 flights/day with realistic state machines and cascading delays
 - Inject hazardous incidents (runway incursion, baggage fire, security breach, system failure)
 - Watch cascade trees propagate across services in real time
@@ -34,6 +36,7 @@ connected by a Kafka event bus and persisted in a Neo4j graph.
   passenger flow, incident console, ground ops
 
 **Key capabilities added in this phase:**
+
 - Event-driven microservices (FastAPI × 6, Node.js × 1)
 - Neo4j graph database for entity relationships
 - Kafka event bus — 9 topics, fully typed event schemas
@@ -42,6 +45,7 @@ connected by a Kafka event bus and persisted in a Neo4j graph.
 - Docker-compose single-command deployment
 
 **What is deliberately absent:**
+
 - No physical positions — gates are labels, not coordinates
 - No real distances — taxi time is a flat buffer
 - No distinction between domestic and international flights
@@ -53,18 +57,20 @@ Prometheus · Grafana · Docker
 **Milestone:** `docker compose up` → full simulation running, all dashboards live,
 incidents cascading, LightGBM model trained after 3 sim-days.
 
-**Documentation:** `TODO.md` sprints 0–10 · `docs/architecture/` · `docs/services/`
+**Documentation:** `CHANGELOG.md` (sprints and releases) · `docs/architecture/` · `docs/services/`
 
 ---
 
 ## Phase 2 — Spatially-aware simulator
-### *Where things are, and how long it takes to get there*
+
+### _Where things are, and how long it takes to get there_
 
 The airport acquires a physical presence. Gates, runways, taxiways, and conveyor belts
 are no longer abstract labels — they have positions, distances, and adjacency relationships.
 Time-based operations become physically grounded.
 
 **What changes from Phase 1:**
+
 - Taxi time computed from real gate-to-runway distance using the airport layout grid
 - Turnaround modelled as a dependency graph of parallel tasks (deplaning, cleaning,
   fueling, baggage loading, boarding) rather than a flat buffer
@@ -76,6 +82,7 @@ Time-based operations become physically grounded.
   connectors — connection risk calculation becomes spatially accurate
 
 **Key capabilities added:**
+
 - `fixtures/layout.json` — full airport grid with x/y coordinates for every node
 - `compute_taxi_time(runway, gate)` — Euclidean distance on normalised 1000×1000 grid
 - `TurnaroundPlan` — task dependency graph with per-task durations and critical path
@@ -84,6 +91,7 @@ Time-based operations become physically grounded.
 - Passenger zone walking times feeding the MCT and connection risk models
 
 **What is still absent:**
+
 - No real-world map — the layout is a schematic grid, not geographic coordinates
 - No real destination airports — destinations are still drawn from a fictional pool
 - No real weather data
@@ -95,13 +103,15 @@ in the ground ops dashboard.
 ---
 
 ## Phase 3 — Operational digital twin
-### *A living mirror of a real operation*
+
+### _A living mirror of a real operation_
 
 The simulation acquires the infrastructure of a true digital twin: a scenario engine
 for reproducible test cases, interactive simulation controls, a community HOW-TO for
 creating custom airports, and real-world data sources for weather and flight schedules.
 
 **What changes from Phase 2:**
+
 - Scenario engine: YAML-defined scenarios with seed overrides, timed event injections,
   and expected outcome assertions — runnable from CLI, results auto-documented
 - Scenario library: 8 named scenarios covering peak-hour storms, double disruptions,
@@ -114,6 +124,7 @@ creating custom airports, and real-world data sources for weather and flight sch
 - Real schedule option: OurAirports CSV loader replaces the synthetic bimodal generator
 
 **Key capabilities added:**
+
 - `scenarios/runner.py` — CLI: `run`, `compare`, `list` commands
 - `scenarios/definitions/*.yaml` — sharable, version-controlled scenario files
 - `scenarios/results/` — auto-captured metrics, event logs, dashboard screenshots
@@ -128,7 +139,8 @@ Heathrow) can be simulated by editing `config/airport.yaml` only.
 ---
 
 ## Phase 4 — Geospatial digital twin
-### *Anchored in the real world*
+
+### _Anchored in the real world_
 
 The airport is placed on the actual globe. Real destination airports replace fictional ones.
 Airborne flights have real-world positions interpolated along great-circle routes. The
@@ -136,6 +148,7 @@ ground ops dashboard becomes a Mapbox 3D view. A new world map dashboard shows t
 entire KART fleet in flight simultaneously.
 
 **What changes from Phase 3:**
+
 - KART placed at 38.75°N, 27.08°W (fictional mid-Atlantic island, no real airport within 300 km)
 - Airport rendered in Mapbox GL JS with 8 custom layers: satellite base → apron → runways
   (3D fill-extrusion) → taxiways → terminal buildings (colour-coded 3D extrusion) →
@@ -150,6 +163,7 @@ entire KART fleet in flight simultaneously.
 - World map dashboard (`/world`): seamless zoom from globe → regional → airport → gate
 
 **Key capabilities added:**
+
 - `public/geojson/` — static GeoJSON files for runways, taxiways, terminals, gates, apron
 - `GET /flights/live-positions` — GeoJSON FeatureCollection updated each SimClockTick
 - `compute_aircraft_position(flight, sim_time)` — lat/lon/altitude/heading interpolation
@@ -167,7 +181,8 @@ flight detail.
 ---
 
 ## Phase 5 — Prescriptive digital twin
-### *Not just what is happening — what should be done*
+
+### _Not just what is happening — what should be done_
 
 The system transitions from describing and predicting airport state to actively recommending
 decisions. Machine learning models move beyond forecasting into optimization. Real-time
@@ -175,6 +190,7 @@ data streams replace simulated inputs. The twin becomes a tool an operations man
 actually use to make better decisions.
 
 **What changes from Phase 4:**
+
 - Real-time weather integration: live METAR feeds replace the FSM entirely, so the
   simulation mirrors actual current conditions at a chosen real airport
 - Real schedule integration: historical and live flight schedules from OpenSky Network
@@ -193,6 +209,7 @@ actually use to make better decisions.
   automatically, demonstrating fully autonomous airport operations management
 
 **Key capabilities added:**
+
 - `GET /analysis/what-if` — propose a decision, get projected outcomes
 - `GET /analysis/recommendations` — active bottleneck detections with suggested actions
 - Real weather adapter: `WeatherSource.LIVE` mode polling AVWX or CheckWX
@@ -228,23 +245,23 @@ better outcomes than the baseline run.
 
 ## Capability progression
 
-| Capability | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Flight / pax / baggage simulation | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Incident cascades + alerts | ✅ | ✅ | ✅ | ✅ | ✅ |
-| ML queue forecasting | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Physical taxi + conveyor distances | — | ✅ | ✅ | ✅ | ✅ |
-| Flight type distinction | — | ✅ | ✅ | ✅ | ✅ |
-| Reproducible scenario engine | — | — | ✅ | ✅ | ✅ |
-| Custom airport config | — | — | ✅ | ✅ | ✅ |
-| Real weather data | — | — | ✅ | ✅ | ✅ |
-| 3D airport on world map | — | — | — | ✅ | ✅ |
-| Real destination airports | — | — | — | ✅ | ✅ |
-| Live aircraft positioning | — | — | — | ✅ | ✅ |
-| What-if analysis | — | — | — | — | ✅ |
-| Proactive recommendations | — | — | — | — | ✅ |
-| Real flight schedules | — | — | — | — | ✅ |
-| Autonomous operations | — | — | — | — | ✅ |
+| Capability                         | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 |
+| ---------------------------------- | :-----: | :-----: | :-----: | :-----: | :-----: |
+| Flight / pax / baggage simulation  |   ✅    |   ✅    |   ✅    |   ✅    |   ✅    |
+| Incident cascades + alerts         |   ✅    |   ✅    |   ✅    |   ✅    |   ✅    |
+| ML queue forecasting               |   ✅    |   ✅    |   ✅    |   ✅    |   ✅    |
+| Physical taxi + conveyor distances |    —    |   ✅    |   ✅    |   ✅    |   ✅    |
+| Flight type distinction            |    —    |   ✅    |   ✅    |   ✅    |   ✅    |
+| Reproducible scenario engine       |    —    |    —    |   ✅    |   ✅    |   ✅    |
+| Custom airport config              |    —    |    —    |   ✅    |   ✅    |   ✅    |
+| Real weather data                  |    —    |    —    |   ✅    |   ✅    |   ✅    |
+| 3D airport on world map            |    —    |    —    |    —    |   ✅    |   ✅    |
+| Real destination airports          |    —    |    —    |    —    |   ✅    |   ✅    |
+| Live aircraft positioning          |    —    |    —    |    —    |   ✅    |   ✅    |
+| What-if analysis                   |    —    |    —    |    —    |    —    |   ✅    |
+| Proactive recommendations          |    —    |    —    |    —    |    —    |   ✅    |
+| Real flight schedules              |    —    |    —    |    —    |    —    |   ✅    |
+| Autonomous operations              |    —    |    —    |    —    |    —    |   ✅    |
 
 ---
 
@@ -252,7 +269,7 @@ better outcomes than the baseline run.
 
 **Phase 1 is the only fully specced phase.** All architecture decisions, data models, API
 contracts, service specs, dashboard specs, Kafka schemas, simulation rules, and skill files
-are written and live in `docs/`. Sprints 0–10 in `TODO.md` provide a task-by-task
+are written and live in `docs/`. Sprint history and delivery notes in `CHANGELOG.md` provide a task-by-task
 implementation plan with verifiable gate conditions.
 
 **Phases 2–5 are directional.** `NOTE.md` contains detailed technical design for each

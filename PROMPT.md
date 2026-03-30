@@ -24,26 +24,15 @@ Your mission is to:
 
 1. Perform a deep audit of all items marked as “done” in ROADMAP.md (or as "implemented" in the lessons-learned files).
 2. Do not trust the status — verify everything through:
-    - Code review
-    - Specs comparison
-    - Functional testing
-    - Edge case validation
+   - Code review
+   - Specs comparison
+   - Functional testing
+   - Edge case validation
 3. Identify:
    - Bugs
    - Missing functionality
    - Logical inconsistencies
    - Deviations from specifications
    - Performance or design issues
-4. Then:
-    - Write a comprehensive fix plan in docs/lessons-learned/
-    - Implement all fixes systematically
-    - Validate each fix thoroughly
-    - Write a final report in docs/lessons-learned/ with:
-    - Summary of changes
-    - Issues fixed
-    - Tests run and results
-Key Mindset
-    - Be skeptical: assume “done” might be wrong.
-    - Be methodical: verify before acting.
-    - Be thorough: no shallow checks or fixes.
-    - Be clean: no shortcuts, no technical debt, no breaking features or missing functionality.
+4. Then: - Write a comprehensive fix plan in docs/lessons-learned/ - Implement all fixes systematically - Validate each fix thoroughly - Write a final report in docs/lessons-learned/ with: - Summary of changes - Issues fixed - Tests run and results
+   Key Mindset - Be skeptical: assume “done” might be wrong. - Be methodical: verify before acting. - Be thorough: no shallow checks or fixes. - Be clean: no shortcuts, no technical debt, no breaking features or missing functionality.

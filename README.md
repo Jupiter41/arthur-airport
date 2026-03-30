@@ -7,6 +7,24 @@ A high-fidelity airport digital twin built on a microservices architecture with 
 
 This project is **spec-first and agent-ready**: every service, data model, and API contract is fully documented before any code is written, and the repository is structured so that AI coding agents (Claude Code, Cursor, GitHub Copilot, OpenAI Codex) can navigate, implement, and extend the codebase with minimal manual explanation.
 
+## Current maturity
+
+This repository now includes major roadmap delivery work beyond the initial simulator baseline:
+
+- Gap 0 documentation hardening completed
+- Gap 0.5 dashboard upgrades completed (sorting, history/archive/export foundations)
+- Gap 1 spatial layout implementation completed in core services
+- Scenario engine and scenario lifecycle workflows delivered (create/edit/delete/fork for custom scenarios)
+- Geospatial world-map dashboard delivered (`/world`) with Mapbox and tokenless fallback path
+- Airport config system fully integrated across the stack
+
+Follow project evolution in:
+
+- [TIMELINE.md](TIMELINE.md) for phase-by-phase vision and capability layering
+- [ROADMAP.md](ROADMAP.md) for gap tracking and implementation status
+- [CHANGELOG.md](CHANGELOG.md) for sprint-level delivered work
+- [docs/lessons-learned/](docs/lessons-learned/) for implementation reports and postmortems
+
 ---
 
 ## Purpose
@@ -22,14 +40,86 @@ All data is 100% synthetic. No real airport, airline, or passenger data is used.
 
 ## Airport Config System
 
-The simulation now supports single-file airport customization through [config/airport.yaml](config/airport.yaml).
+The simulation is **config-driven**: customize every airport property by editing a single `config/airport.yaml` file without touching code.
 
-- Airport identity (name, IATA, ICAO, timezone)
-- Infrastructure (terminal count, gate counts, runway pairs)
-- Simulation defaults (daily flight volume, load factor, peak hours)
-- Optional airline overrides
+### What you can configure
 
-Guide: [HOW_TO_CREATE_AIRPORT.md](HOW_TO_CREATE_AIRPORT.md)
+**Airport Identity:**
+
+- Name, IATA code, ICAO code, timezone
+
+**Infrastructure:**
+
+- Number of terminals (1–26, named A–Z)
+- Gates per terminal
+- Runway pairs (quantity, length, ILS capability)
+
+**Simulation Defaults:**
+
+- Daily flight volume
+- Passenger load factor distribution
+- Peak hours (for incident injection modifiers)
+
+**Airline Overrides:**
+
+- Customize airline codes, names, market shares, and hub terminals
+
+### Quick start with custom airport — the 60-second version
+
+1. **Edit** `config/airport.yaml`:
+
+   ```yaml
+   identity:
+     name: "London Heathrow"
+     iata: "LHR"
+     icao: "EGLL"
+     timezone: "Europe/London"
+   infrastructure:
+     terminals: 5
+     gates_per_terminal: [28, 32, 26, 60, 10]
+     runways:
+       - id: "09L/27R"
+         length_m: 3902
+         ils: true
+   ```
+
+2. **Validate** your config:
+
+   ```bash
+   python scripts/helper_validate_airport_config.py --path config/airport.yaml
+   ```
+
+3. **Run** the stack:
+   ```bash
+   docker compose up --build
+   ```
+
+The sim-orchestrator will load your config, seed the airport, and start the simulation.
+
+### Verify runtime behavior
+
+```bash
+# Get a JWT token
+TOKEN=$(curl -s -X POST http://localhost:3000/auth/token \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"dashboard","secret":"art-dev-secret"}' | jq -r .token)
+
+# Check active airport identity
+curl http://localhost:3000/api/v1/airport \
+  -H "Authorization: Bearer $TOKEN" | jq '.airport'
+
+# Should output something like:
+# {
+#   "name": "London Heathrow",
+#   "iata": "LHR",
+#   "icao": "EGLL",
+#   "timezone": "Europe/London"
+# }
+```
+
+### Full customization guide
+
+For detailed configuration options, constraints, and advanced features, see **[HOW_TO_CREATE_AIRPORT.md](HOW_TO_CREATE_AIRPORT.md)**.
 
 ---
 
@@ -92,7 +182,7 @@ Each service is independently deployable, has its own README with setup instruct
 | **[incident-service](services/incident-service/)**   | 8005 | Manages hazardous events from creation to resolution. Features a **rule-based cascade engine** that spawns child incidents (e.g. runway_incursion → ground_stop → gate_congestion), emergency protocol activation with override semantics, alert generation, and automated incident report creation.                                                     | [SPEC](docs/services/incident-service/SPEC.md) · [SKILL](services/incident-service/SKILL.md)   |
 | **[sim-orchestrator](services/sim-orchestrator/)**   | 8006 | The conductor — drives a virtual clock at configurable speed, seeds realistic daily schedules (420 flights, ~30K passengers, ~36K baggage items), and evaluates probabilistic hazardous event injection each simulated hour. See the [Simulation deep-dive](#simulation-deep-dive) section below.                                                        | [SPEC](docs/services/sim-orchestrator/SPEC.md) · [SKILL](services/sim-orchestrator/SKILL.md)   |
 | **[api-gateway](services/api-gateway/)**             | 3000 | Node.js/Express gateway — proxies REST to upstream services, fans out Kafka events to dashboard WebSocket clients, handles stub JWT auth, and provides an aggregate `/airport` endpoint.                                                                                                                                                                 | [SPEC](docs/services/api-gateway/SPEC.md) · [SKILL](services/api-gateway/SKILL.md)             |
-| **[dashboard](dashboards/art-dashboard/)**           | 5173 | React + TypeScript SPA with 5 operator views: Flight Board, Passenger Flow, Baggage Tracker, Ground Ops, Incident Console. Uses Zustand for state, React Query for REST, and native WebSocket for real-time updates.                                                                                                                                     | [Flight Board](docs/dashboards/FLIGHT_BOARD.md) · [All dashboards](docs/dashboards/)           |
+| **[dashboard](dashboards/art-dashboard/)**           | 5173 | React + TypeScript SPA with operator views: Flight Board, Passenger Flow, Baggage Tracker, Ground Ops, Incident Console, World Map, History, Scenarios, and Settings. Uses Zustand for state, React Query for REST, and native WebSocket for real-time updates.                                                                                          | [Flight Board](docs/dashboards/FLIGHT_BOARD.md) · [All dashboards](docs/dashboards/)           |
 
 ### Simulation features
 
@@ -157,9 +247,10 @@ The passenger-service includes a LightGBM model for predicting queue depth:
 
 ### Prerequisites
 
-- Docker ≥ 24 and Docker Compose ≥ 2.20
-- Python ≥ 3.11 (for local service development only)
-- Node.js ≥ 20 (for dashboard development only)
+- **Docker** ≥ 24 and **Docker Compose** ≥ 2.20 (required for full stack)
+- **Python** ≥ 3.11 (required to validate airport config; optional for service development)
+- **Node.js** ≥ 20 (optional, for dashboard development only)
+- ~4 GB disk space for Docker images and volumes
 
 ### Run the full stack
 
@@ -384,6 +475,13 @@ arthur-airport/
 | [Simulation Engine](docs/architecture/SIMULATION.md)               | Time model, weather FSM, cascade rules, special events                  |
 | [Monitoring](docs/infra/MONITORING.md)                             | 47 Prometheus metrics, 5 Grafana dashboards, alerting rules             |
 | [Docker](docs/infra/DOCKER.md)                                     | Full docker-compose.yml, Dockerfile templates, useful commands          |
+
+Additional planning and implementation history:
+
+- [ROADMAP.md](ROADMAP.md) — long-horizon gaps, priorities, and acceptance targets
+- [TIMELINE.md](TIMELINE.md) — phased progression from operations simulator to prescriptive twin
+- [CHANGELOG.md](CHANGELOG.md) — sprint-by-sprint release notes
+- [docs/lessons-learned/](docs/lessons-learned/) — implementation reports, decisions, and fixes
 
 ---
 

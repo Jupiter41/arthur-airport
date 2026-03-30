@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2024 arthur-airport contributors
+Copyright (c) 2024-2026 arthur-airport contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -30,4 +30,12 @@ fictional and procedurally generated. Any resemblance to real airports,
 airlines, passengers, or incidents is coincidental.
 
 Arthur International Airport (IATA: ART / ICAO: KART) does not exist.
+The project configuration system (`config/airport.yaml`) is designed to allow
+customization and simulation of fictional or real-world airport profiles
+for educational, portfolio, and testing purposes only.
+
+If real-world reference datasets are used (for example airport metadata or
+historical weather), they must be open-licensed and must not include personal
+data.
+
 This project is intended solely for educational and portfolio purposes.

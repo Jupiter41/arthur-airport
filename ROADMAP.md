@@ -912,19 +912,19 @@ The `sim-orchestrator` reads this file at startup and generates all fixtures dyn
 
 ## Priority order summary
 
-| Priority | Phase                                                                                          | Effort | Impact                            |
-| -------- | ---------------------------------------------------------------------------------------------- | ------ | --------------------------------- |
-| 0        | ✅ Gap 0.5 — better dashboards                                                                 | Medium | High — usability                  |
-| 1        | ✅ Fix Gap 2 — turnaround task graph                                                           | Medium | High — makes delays realistic     |
-| 2        | ✅ Fix Gap 3 — flight type distinction                                                         | Low    | Medium — domestic vs intl realism |
-| 3        | ✅ Phase 2 — scenario engine + YAML runner                                                     | High   | High — makes project demonstrable |
-| 4        | ✅ Fix Gap 1 — spatial layout (taxi times)                                                     | Medium | Medium — physical realism         |
-| 5        | ✅ Fix Gap 4 — conveyor spatial model                                                          | Medium | Medium — baggage realism          |
-| 6        | ✅ Phase 4 — settings UI                                                                       | Medium | High — interactive demonstrations |
+| Priority | Phase                                                                                             | Effort | Impact                            |
+| -------- | ------------------------------------------------------------------------------------------------- | ------ | --------------------------------- |
+| 0        | ✅ Gap 0.5 — better dashboards                                                                    | Medium | High — usability                  |
+| 1        | ✅ Fix Gap 2 — turnaround task graph                                                              | Medium | High — makes delays realistic     |
+| 2        | ✅ Fix Gap 3 — flight type distinction                                                            | Low    | Medium — domestic vs intl realism |
+| 3        | ✅ Phase 2 — scenario engine + YAML runner                                                        | High   | High — makes project demonstrable |
+| 4        | ✅ Fix Gap 1 — spatial layout (taxi times)                                                        | Medium | Medium — physical realism         |
+| 5        | ✅ Fix Gap 4 — conveyor spatial model                                                             | Medium | Medium — baggage realism          |
+| 6        | ✅ Phase 4 — settings UI                                                                          | Medium | High — interactive demonstrations |
 | 7        | ✅ Phase 3 — full physical environment                                                            | High   | High — wow factor                 |
-| 8        | Phase 5 — real weather API                                                                     | Low    | Medium — easy win                 |
-| 9        | Phase 5 — real schedule CSV loader                                                             | Medium | High — real-world credibility     |
+| 8        | Phase 5 — real weather API                                                                        | Low    | Medium — easy win                 |
+| 9        | Phase 5 — real schedule CSV loader                                                                | Medium | High — real-world credibility     |
 | 10       | ✅ Phase 6.1–6.7 — Mapbox geospatial twin                                                         | High   | High — visual credibility         |
 | 11       | ✅ Phase 6.8 — CesiumJS 3D globe                                                                  | Medium | High — wow factor (globe)         |
-| 12       | ✅ HOW-TO + airport config system                                                              | Medium | High — community adoption         |
-| 13       | Adapt READMEs (with cross references to other README, timelines etc.) & LICENSE & CONTRIBUTING | Medium | High — community adoption & legal |
+| 12       | ✅ HOW-TO + airport config system                                                                 | Medium | High — community adoption         |
+| 13       | ✅ Adapt READMEs (with cross references to other README, timelines etc.) & LICENSE & CONTRIBUTING | Medium | High — community adoption & legal |
