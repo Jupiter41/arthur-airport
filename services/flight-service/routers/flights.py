@@ -30,6 +30,9 @@ async def list_flights(
     status: str | None = Query(None, description="Filter by status (comma-separated)"),
     direction: str | None = Query(None, description="arrival or departure"),
     airline: str | None = Query(None, description="2-letter airline code"),
+    terminal: str | None = Query(None, description="Filter by terminal (A, B, C)"),
+    from_time: str | None = Query(None, alias="from", description="Scheduled time >= (ISO 8601)"),
+    to_time: str | None = Query(None, alias="to", description="Scheduled time <= (ISO 8601)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
@@ -41,6 +44,9 @@ async def list_flights(
         status=status,
         direction=direction,
         airline=airline,
+        terminal=terminal,
+        from_time=from_time,
+        to_time=to_time,
         sim_date_prefix=sim_date_prefix,
         limit=limit,
         offset=offset,
@@ -99,16 +105,17 @@ async def list_runways():
         observed = rw["arrivals_queued"] + rw["departures_queued"]
         rw["current_rate"] = max(int(rq.current_rate), int(observed))
         rw["runway_id"] = rw.get("id", "")
-    return runways
+    return {"runways": runways}
 
 
 @router.get("/gates")
 async def list_gates(
     terminal: str | None = Query(None, description="Filter by terminal (A, B, C)"),
+    status: str | None = Query(None, description="Filter by status (available, occupied, maintenance, closed)"),
 ):
     """All gate statuses."""
     terminal_id = f"T-{terminal}" if terminal and not terminal.startswith("T-") else terminal
-    gates = await get_all_gates(terminal=terminal_id)
+    gates = await get_all_gates(terminal=terminal_id, status=status)
     return {"gates": gates}
 
 

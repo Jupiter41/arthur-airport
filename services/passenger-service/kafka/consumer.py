@@ -769,7 +769,9 @@ async def _drain_security_queues(sim_time: datetime, delta_minutes: int = 1) -> 
 
         # Batch: update status + set dwell in two UNWIND queries (not N individual writes)
         await bulk_update_status(all_drained, "airside", new_zone, sim_time)
-        dwell_items = [(pid, sample_dwell_minutes()) for pid in all_drained]
+        # SA passengers skip dwell and route directly to gate (spec §3)
+        sa_set = set(sa_drained)
+        dwell_items = [(pid, 0 if pid in sa_set else sample_dwell_minutes()) for pid in all_drained]
         await bulk_set_dwell(dwell_items)
 
         for pid in all_drained:

@@ -456,12 +456,12 @@ async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
 async def _on_baggage_flagged(payload: dict, sim_time: datetime) -> None:
     """DG class 3 flagged baggage → probabilistic baggage_fire trigger."""
     dg_class = payload.get("dg_class")
-    if dg_class != 3:
+    if str(dg_class) != "3":
         return
 
     # 30% chance of triggering a baggage fire for DG class 3
     if random.random() < 0.30:
-        location = payload.get("zone_id", "baggage-handling")
+        location = payload.get("scan_zone", "baggage-handling")
         await create_incident(
             type="baggage_fire",
             severity="high",
@@ -571,7 +571,7 @@ def _pick_location(event_type: str) -> str:
     elif event_type == "system_failure":
         return random.choice([
             "conveyor-sorting", "conveyor-induction-A",
-            "terminal-A-power", "terminal-B-power",
+            "power-A", "power-B",
             "fids-system", "check-in-system",
         ])
     return "KART-general"

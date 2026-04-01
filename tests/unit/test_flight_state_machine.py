@@ -113,7 +113,7 @@ class TestCanTransition:
         expected_states = {
             "scheduled", "boarding", "delayed", "departed",
             "airborne", "approach", "landed", "taxiing",
-            "at_gate", "cancelled",
+            "at_gate", "arrived", "cancelled",
         }
         assert set(VALID_TRANSITIONS.keys()) == expected_states
 

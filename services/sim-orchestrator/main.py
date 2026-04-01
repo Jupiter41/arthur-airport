@@ -24,7 +24,7 @@ from routers.scenarios import router as scenarios_router
 from services.airport_config import load_airport_runtime_config
 from services import clock
 from services.fixtures import load_fixtures
-from services.injector import evaluate_probabilistic_events, set_seed
+from services.injector import set_seed
 from services.scenario_engine import get_engine
 from services.seeder import emit_initial_weather, seed_day
 
@@ -36,8 +36,13 @@ logger = logging.getLogger("sim-orchestrator")
 
 
 async def _on_hour_boundary(sim_time):
-    """Clock callback fired every simulated hour — evaluates probabilistic incident injection."""
-    await evaluate_probabilistic_events(sim_time)
+    """Clock callback fired every simulated hour.
+
+    Probabilistic incident injection is handled by incident-service
+    (which has weather-aware probability modifiers). The orchestrator
+    only injects incidents via scenarios or manual API triggers.
+    """
+    logger.debug("Hour boundary reached: %s", sim_time)
 
 
 async def _on_day_boundary(next_day: int, sim_time):

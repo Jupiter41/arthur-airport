@@ -34,7 +34,11 @@ export function useFlightBoardQueries() {
 
   const runways = useQuery({
     queryKey: ["runways"],
-    queryFn: () => flightsApi.runways() as Promise<Runway[]>,
+    queryFn: async () => {
+      const data = await flightsApi.runways();
+      const rd = data as { runways?: Runway[] };
+      return rd.runways ?? (Array.isArray(data) ? (data as Runway[]) : []);
+    },
   });
 
   const weather = useQuery({
@@ -136,7 +140,11 @@ export function useBaggageTrackerQueries() {
 export function useGroundOpsQueries() {
   const runways = useQuery({
     queryKey: ["runways"],
-    queryFn: () => flightsApi.runways() as Promise<Runway[]>,
+    queryFn: async () => {
+      const data = await flightsApi.runways();
+      const rd = data as { runways?: Runway[] };
+      return rd.runways ?? (Array.isArray(data) ? (data as Runway[]) : []);
+    },
   });
 
   const gates = useQuery({

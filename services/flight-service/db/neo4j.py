@@ -106,6 +106,9 @@ async def get_all_flights(
     status: str | None = None,
     direction: str | None = None,
     airline: str | None = None,
+    terminal: str | None = None,
+    from_time: str | None = None,
+    to_time: str | None = None,
     sim_date_prefix: str | None = None,
     limit: int = 50,
     offset: int = 0,
@@ -129,13 +132,29 @@ async def get_all_flights(
     if sim_date_prefix:
         where_clauses.append("f.scheduled_time STARTS WITH $sim_date_prefix")
         params["sim_date_prefix"] = sim_date_prefix
+    if from_time:
+        where_clauses.append("f.scheduled_time >= $from_time")
+        params["from_time"] = from_time
+    if to_time:
+        where_clauses.append("f.scheduled_time <= $to_time")
+        params["to_time"] = to_time
+
+    # Terminal filter requires joining through gate
+    gate_match = "OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)"
+    if terminal:
+        terminal_id = f"T-{terminal}" if not terminal.startswith("T-") else terminal
+        gate_match = "MATCH (f)-[:ASSIGNED_TO]->(g:Gate)-[:HAS_GATE]-(t:Terminal {id: $terminal_id})"
+        params["terminal_id"] = terminal_id
 
     where = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
-    count_query = f"MATCH (f:Flight) {where} RETURN count(f) AS total"
+    if terminal:
+        count_query = f"MATCH (f:Flight) {where} {gate_match} RETURN count(f) AS total"
+    else:
+        count_query = f"MATCH (f:Flight) {where} RETURN count(f) AS total"
     data_query = f"""
     MATCH (f:Flight) {where}
-    OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
+    {gate_match}
     OPTIONAL MATCH (f)-[:USES_RUNWAY]->(r:Runway)
     OPTIONAL MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
     WITH f, g, r,
@@ -452,11 +471,18 @@ async def get_available_gate(
         return record["gate_id"] if record else None
 
 
-async def get_all_gates(terminal: str | None = None) -> list[dict]:
+async def get_all_gates(terminal: str | None = None, status: str | None = None) -> list[dict]:
     """Get all gates with occupancy info (one row per gate)."""
     driver = get_driver()
-    where = "WHERE g.terminal_id = $terminal" if terminal else ""
-    params = {"terminal": terminal} if terminal else {}
+    where_clauses = []
+    params: dict = {}
+    if terminal:
+        where_clauses.append("g.terminal_id = $terminal")
+        params["terminal"] = terminal
+    if status:
+        where_clauses.append("g.status = $gate_status")
+        params["gate_status"] = status
+    where = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
     query = f"""
     MATCH (g:Gate)
     {where}

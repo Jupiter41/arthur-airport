@@ -112,8 +112,8 @@ export const flightsApi = {
     apiFetch<unknown>(`/flights/${encodeURIComponent(id)}/release`, {
       method: "POST",
     }),
-  runways: () => apiFetch<unknown[]>("/runways"),
-  gates: () => apiFetch<unknown[]>("/gates"),
+  runways: () => apiFetch<{ runways: unknown[] }>("/runways"),
+  gates: () => apiFetch<{ gates: unknown[] }>("/gates"),
   turnarounds: () =>
     apiFetch<{ turnarounds: unknown[]; total: number }>("/turnarounds"),
 };
