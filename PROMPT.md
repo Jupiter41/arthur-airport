@@ -22,3 +22,6 @@ Before doing any edit, do this:
 - ALWAYS run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
 
 Your mission is to:
+
+- Add integration tests that specifically validate the full event chain based on docs/lessons-learned/sprint-16-full-audit-report.md, section 6 "Cross-Service Integration Analysis". Focus on the critical bugs (BUG-1 through BUG-4) that were identified in the audit report, and ensure that the tests cover the event contracts end-to-end across all relevant services.
+- Implement the missing gaps from ROADMAP based on the undone tasks repaired in the audit report.

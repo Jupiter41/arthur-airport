@@ -383,6 +383,15 @@ function flightSortValue(
   }
 }
 
+const FLIGHT_TYPE_OPTIONS = [
+  { value: "", label: "All types" },
+  { value: "domestic", label: "Domestic" },
+  { value: "international_short", label: "Int'l Short" },
+  { value: "international_long", label: "Int'l Long" },
+  { value: "cargo", label: "Cargo" },
+  { value: "charter", label: "Charter" },
+];
+
 function FIDSPanel({
   flights,
   direction,
@@ -395,20 +404,34 @@ function FIDSPanel({
   onSelect: (f: Flight) => void;
 }) {
   const [page, setPage] = useState(0);
+  const [typeFilter, setTypeFilter] = useState("");
   const PAGE_SIZE = 20;
   const { sort, toggle } = useSort<FlightSortCol>("time");
 
+  const filtered = useMemo(
+    () =>
+      typeFilter
+        ? flights.filter((f) => f.flight_type === typeFilter)
+        : flights,
+    [flights, typeFilter],
+  );
+
   const sorted = useMemo(
     () =>
-      [...flights].sort((a, b) =>
+      [...filtered].sort((a, b) =>
         compare(
           flightSortValue(a, sort.column, direction),
           flightSortValue(b, sort.column, direction),
           sort.direction,
         ),
       ),
-    [flights, sort, direction],
+    [filtered, sort, direction],
   );
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setPage(0);
+  }, [typeFilter]);
 
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const pageFlights = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -416,10 +439,24 @@ function FIDSPanel({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700">
-        <h3 className="text-sm font-bold text-white uppercase">
-          {direction === "departure" ? "Departures" : "Arrivals"} (
-          {flights.length})
-        </h3>
+        <div className="flex items-center gap-3">
+          <h3 className="text-sm font-bold text-white uppercase">
+            {direction === "departure" ? "Departures" : "Arrivals"} (
+            {filtered.length}
+            {typeFilter ? `/${flights.length}` : ""})
+          </h3>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="text-xs bg-gray-700 text-gray-300 border border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {FLIGHT_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
         {totalPages > 1 && (
           <div className="flex items-center gap-2 text-xs">
             <button
