@@ -33,6 +33,11 @@ const VALID_TOPICS = new Set([
 
 const clients = new Set<WsClient>();
 let currentSimTime: string | null = null;
+let currentSimMode: string = "REALTIME";
+
+// BULK-mode throttling: suppress high-frequency events, relay only snapshots
+const BULK_THROTTLE_MS = 2000; // minimum interval between non-snapshot sends
+let lastBulkFanOutAt: number = 0;
 
 // Bootstrap state cache — stores the latest event per topic key
 // so newly connected clients get an immediate state snapshot
@@ -46,6 +51,14 @@ export function getCurrentSimTime(): string | null {
   return currentSimTime;
 }
 
+export function setSimMode(mode: string): void {
+  currentSimMode = mode;
+}
+
+export function getSimMode(): string {
+  return currentSimMode;
+}
+
 export function cacheLatestEvent(topicKey: string, event: object): void {
   latestState[topicKey] = event;
 }
@@ -55,6 +68,28 @@ export function getBootstrapState(): Record<string, object> {
 }
 
 export function fanOut(topicKey: string, event: object): void {
+  const now = Date.now();
+
+  // In BULK mode, always relay BulkStateSnapshot and alerts immediately
+  // but throttle all other events to BULK_THROTTLE_MS intervals
+  if (currentSimMode === "BULK") {
+    const eventObj = event as Record<string, unknown>;
+    const eventType = eventObj.event_type as string | undefined;
+    const isBulkSnapshot = eventType === "BulkStateSnapshot";
+    const isAlert =
+      topicKey === "alerts" ||
+      (eventType === "IncidentCreated" &&
+        (eventObj.payload as Record<string, unknown> | undefined)?.severity ===
+          "critical");
+
+    if (!isBulkSnapshot && !isAlert) {
+      if (now - lastBulkFanOutAt < BULK_THROTTLE_MS) {
+        return; // throttled — drop non-essential event
+      }
+    }
+    lastBulkFanOutAt = now;
+  }
+
   const payload = JSON.stringify(event);
 
   for (const client of clients) {
@@ -99,6 +134,7 @@ export function setupWebSocket(server: Server): void {
       JSON.stringify({
         type: "snapshot",
         sim_time: currentSimTime,
+        mode: currentSimMode,
         bootstrap: getBootstrapState(),
       }),
     );

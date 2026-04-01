@@ -17,6 +17,7 @@ class FlightStatus(str, Enum):
     LANDED = "landed"
     TAXIING = "taxiing"
     AT_GATE = "at_gate"
+    ARRIVED = "arrived"
     CANCELLED = "cancelled"
 
 
@@ -61,7 +62,8 @@ class FlightSummary(BaseModel):
     seat_capacity: int = 0
     flight_type: Optional[str] = None
     route_category: Optional[str] = None
-    seat_capacity: int = 0
+    flight_duration_minutes: Optional[int] = None
+    arrival_estimated_time: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

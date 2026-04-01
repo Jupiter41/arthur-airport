@@ -29,6 +29,7 @@ from kafka.producer import (
     emit_flight_runway_assigned,
     emit_flight_cancelled,
     emit_turnaround_task_changed,
+    emit_bulk_state_snapshot,
 )
 from services.state_machine import evaluate_transition
 from services.runway_queue import RunwayQueue
@@ -74,6 +75,10 @@ class FlightConsumerState:
         # Spatial layout caches (populated from Neo4j on startup)
         self.gate_positions: dict[str, dict] = {}   # gate_id → {position_x, position_y}
         self.runway_positions: dict[str, dict] = {}  # runway_id → {threshold_x, threshold_y}
+        # Speed mode tracking (REALTIME / FAST / BULK)
+        self.current_mode: str = "REALTIME"
+        self.last_mode: str = "REALTIME"
+        self.last_sync_sim_time: datetime | None = None
 
     MAX_PROCESSED = 10000
 
@@ -320,6 +325,14 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     _state.sim_time = sim_time
     _state.last_tick_sim_time = sim_time
 
+    # Track simulation mode
+    _state.last_mode = _state.current_mode
+    _state.current_mode = payload.get("mode", "REALTIME")
+    is_bulk = _state.current_mode == "BULK"
+
+    # Compute delta for multi-minute ticks
+    step_minutes = payload.get("step_minutes", 1)
+
     # 1. Get all active flights
     flights = await get_active_flights(sim_time)
 
@@ -337,13 +350,14 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             # Find flight info for event
             for f in flights:
                 if f["id"] == assignment["flight_id"]:
-                    emit_flight_runway_assigned(
-                        flight_id=f["id"],
-                        flight_number=f["flight_number"],
-                        runway_id=runway_id,
-                        operation=assignment["operation"],
-                        sim_time=sim_time,
-                    )
+                    if not is_bulk:
+                        emit_flight_runway_assigned(
+                            flight_id=f["id"],
+                            flight_number=f["flight_number"],
+                            runway_id=runway_id,
+                            operation=assignment["operation"],
+                            sim_time=sim_time,
+                        )
                     f["runway_id"] = runway_id
                     break
 
@@ -351,8 +365,8 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     for flight in flights:
         await _process_flight(flight, sim_time)
 
-    # 3b. Advance all active turnaround plans
-    _advance_turnaround_plans(sim_time)
+    # 3b. Advance all active turnaround plans (delta-aware)
+    _advance_turnaround_plans(sim_time, step_minutes)
 
     # 4. Update Prometheus gauges
     status_counts: dict[str, int] = {}
@@ -366,21 +380,77 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         m_active.labels(status=s).set(count)
     m_delayed.set(delayed_count)
 
+    # 5. BULK mode: emit periodic BulkStateSnapshot
+    if is_bulk:
+        await _maybe_emit_flight_bulk_snapshot(sim_time, status_counts)
 
-def _advance_turnaround_plans(sim_time: datetime) -> None:
-    """Advance all active turnaround plans and emit events for changed tasks."""
+
+BULK_SNAPSHOT_INTERVAL_SIM_MIN = int(os.getenv("BULK_SNAPSHOT_INTERVAL_MIN", "60"))
+
+
+async def _maybe_emit_flight_bulk_snapshot(
+    sim_time: datetime,
+    status_counts: dict[str, int],
+) -> None:
+    """Emit a BulkStateSnapshot summarising flight state (BULK mode only)."""
+    force = _state.last_mode == "BULK" and _state.current_mode != "BULK"
+
+    if not force and _state.last_sync_sim_time is not None:
+        elapsed = (sim_time - _state.last_sync_sim_time).total_seconds() / 60
+        if elapsed < BULK_SNAPSHOT_INTERVAL_SIM_MIN:
+            return
+
+    _state.last_sync_sim_time = sim_time
+
+    summary = {
+        "by_status": status_counts,
+        "active_turnarounds": len(_state.turnaround_plans),
+        "held_flights": len(_state.held_flights),
+        "affected_runways": list(_state.incident_affected_runways),
+        "affected_gates": list(_state.incident_affected_gates),
+    }
+
+    emit_bulk_state_snapshot(sim_time, summary)
+    logger.info("BulkStateSnapshot emitted (flights): %s", status_counts)
+
+
+def _advance_turnaround_plans(sim_time: datetime, step_minutes: int = 1) -> None:
+    """Advance all active turnaround plans and emit events for changed tasks.
+
+    When step_minutes > 1 (BULK mode), advance the plan multiple times to
+    ensure tasks that complete within the step window are properly resolved.
+    """
     completed_regs: list[str] = []
+    is_bulk = _state.current_mode == "BULK"
+
     for reg, plan in _state.turnaround_plans.items():
-        changed = plan.advance(sim_time)
-        for task in changed:
-            emit_turnaround_task_changed(
-                flight_id=plan.arrival_flight_id,
-                aircraft_registration=reg,
-                task_name=task.name,
-                new_status=task.status.value,
-                sim_time=sim_time,
-                duration_min=task.duration_min,
-            )
+        if step_minutes > 1 and plan.started_at is not None:
+            # Advance through intermediate minutes for correct task completion
+            for offset in range(step_minutes):
+                intermediate = sim_time - timedelta(minutes=step_minutes - 1 - offset)
+                changed = plan.advance(intermediate)
+                if not is_bulk:
+                    for task in changed:
+                        emit_turnaround_task_changed(
+                            flight_id=plan.arrival_flight_id,
+                            aircraft_registration=reg,
+                            task_name=task.name,
+                            new_status=task.status.value,
+                            sim_time=intermediate,
+                            duration_min=task.duration_min,
+                        )
+        else:
+            changed = plan.advance(sim_time)
+            if not is_bulk:
+                for task in changed:
+                    emit_turnaround_task_changed(
+                        flight_id=plan.arrival_flight_id,
+                        aircraft_registration=reg,
+                        task_name=task.name,
+                        new_status=task.status.value,
+                        sim_time=sim_time,
+                        duration_min=task.duration_min,
+                    )
         if plan.is_complete:
             completed_regs.append(reg)
     # Don't remove completed plans here — they'll be cleaned up when 'arrived' fires
@@ -564,6 +634,13 @@ async def _execute_transition(
 
         case "departed":
             update_kwargs["actual_time"] = sim_time.isoformat()
+            # Compute arrival_estimated_time for departures
+            if direction == "departure":
+                duration = flight.get("flight_duration_minutes")
+                if duration and int(duration) > 0:
+                    from datetime import timedelta as td
+                    arrival_est = sim_time + td(minutes=int(duration))
+                    update_kwargs["arrival_estimated_time"] = arrival_est.isoformat()
             # Release gate
             released = await release_gate(flight_id)
             if released:

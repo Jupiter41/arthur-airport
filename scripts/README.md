@@ -149,3 +149,20 @@ python scripts/helper_generate_destination_coordinates.py \
 	--airports-csv data/ourairports/airports.csv \
 	--output dashboards/art-dashboard/src/data/destinationCoordinates.ts
 ```
+
+---
+
+## helper_test_speed_modes.sh
+
+Manual test script for verifying the three simulation speed modes (REALTIME, FAST, BULK).
+Switches between 60×, 600×, and 3600× and checks that the mode field in `/sim/status`
+transitions correctly.
+
+```bash
+./scripts/helper_test_speed_modes.sh
+```
+
+Related:
+
+- [docs/lessons-learned/sprint-15-high-speed-simulation-modes.md](../docs/lessons-learned/sprint-15-high-speed-simulation-modes.md)
+- [PLAN-HIGH-SPEED.md](../PLAN-HIGH-SPEED.md)

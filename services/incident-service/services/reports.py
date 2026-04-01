@@ -82,14 +82,73 @@ async def build_report(incident_id: str, sim_time: datetime) -> dict | None:
                  f"{incident.get('location', '')} — {incident.get('started_at', '')[:10]}",
         "type": incident.get("type", ""),
         "severity": incident.get("severity", ""),
+        "status": incident.get("status", ""),
         "trigger": incident.get("trigger", ""),
+        "location": incident.get("location", ""),
+        "started_at": incident.get("started_at", ""),
+        "resolved_at": incident.get("resolved_at"),
+        "contained_at": incident.get("contained_at"),
+        "duration_minutes": duration_min,
         "timeline_summary": timeline_summary,
         "total_flights_affected": len(affected_flights),
         "total_delay_minutes_caused": total_delay,
+        "affected_flights": [
+            {
+                "flight_id": f.get("id", ""),
+                "flight_number": f.get("flight_number", ""),
+                "delay_minutes": f.get("delay_minutes", 0),
+                "status": f.get("status", ""),
+            }
+            for f in affected_flights
+        ],
         "cascade_events": cascade_events,
+        "cascade_tree": _build_cascade_tree_for_report(cascade_nodes, incident),
         "protocols_activated": protocols,
         "recommendations": recs,
     }
+
+
+def _build_cascade_tree_for_report(cascade_nodes: list[dict], incident: dict) -> dict:
+    """Build a nested cascade tree dict for the JSON report."""
+    if not cascade_nodes:
+        return {
+            "id": incident.get("id", ""),
+            "type": incident.get("type", ""),
+            "severity": incident.get("severity", ""),
+            "status": incident.get("status", ""),
+            "description": incident.get("description", ""),
+            "children": [],
+        }
+
+    # Build flat node map
+    node_map: dict[str, dict] = {}
+    for n in cascade_nodes:
+        node_map[n["id"]] = {
+            "id": n["id"],
+            "type": n.get("type", ""),
+            "severity": n.get("severity", ""),
+            "status": n.get("status", ""),
+            "description": n.get("description", ""),
+            "depth": n.get("depth", 0),
+            "children": [],
+        }
+
+    # Build tree from depth-ordered list
+    root_id = cascade_nodes[0]["id"]
+    depth_parents: dict[int, list[dict]] = {}
+    for n in cascade_nodes:
+        d = n.get("depth", 0)
+        depth_parents.setdefault(d, []).append(node_map[n["id"]])
+
+    max_depth = max(depth_parents.keys()) if depth_parents else 0
+    for d in range(1, max_depth + 1):
+        parents = depth_parents.get(d - 1, [])
+        children = depth_parents.get(d, [])
+        if parents and children:
+            for child in children:
+                parents[0]["children"].append(child)
+
+    return node_map.get(root_id, {"id": "", "type": "", "children": []})
 
 
 def _build_timeline_summary(

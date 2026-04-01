@@ -12,6 +12,7 @@ from confluent_kafka.admin import AdminClient
 logger = logging.getLogger(__name__)
 
 _producer: Producer | None = None
+_bulk_mode: bool = False  # In BULK mode, suppress per-bag events
 
 PRODUCER_NAME = "baggage-service"
 TOPIC = "baggage.events"
@@ -32,6 +33,12 @@ def close_kafka_producer() -> None:
     if _producer:
         _producer.flush(timeout=10)
         logger.info("Kafka producer flushed and closed")
+
+
+def set_bulk_mode(enabled: bool) -> None:
+    """Toggle BULK mode — suppresses per-bag event emission."""
+    global _bulk_mode
+    _bulk_mode = enabled
 
 
 def _delivery_report(err, msg):
@@ -88,6 +95,8 @@ async def emit_baggage_status_changed(
         "scan_zone": scan_zone,
         "at": sim_time.isoformat(),
     }
+    if _bulk_mode:
+        return payload  # BULK mode — suppress per-bag events
     _produce_event("BaggageStatusChanged", sim_time, payload, key=tag)
     logger.debug(
         "Emitted BaggageStatusChanged: %s %s -> %s @ %s",
@@ -134,6 +143,19 @@ async def check_kafka() -> bool:
         return meta is not None
     except Exception:
         return False
+
+
+def emit_bulk_state_snapshot(
+    sim_time: datetime,
+    summary: dict,
+) -> None:
+    """Emit a BulkStateSnapshot event (used in BULK mode instead of per-bag events)."""
+    payload = {
+        "service": PRODUCER_NAME,
+        "sim_time": sim_time.isoformat(),
+        "summary": summary,
+    }
+    _produce_event("BulkStateSnapshot", sim_time, payload)
 
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:

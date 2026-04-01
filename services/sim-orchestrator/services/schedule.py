@@ -31,21 +31,42 @@ def _build_airline_lookup() -> None:
         _reg_counters.setdefault(airline["code"], 0)
 
 
-def _classify_flight(destination: dict, aircraft: dict) -> tuple[str, str]:
-    """Return (flight_type, route_category) based on destination region and aircraft.
+def _classify_flight(destination: dict, aircraft: dict, rng: random.Random | None = None, runtime=None) -> tuple[str, str]:
+    """Return (flight_type, route_category) based on destination region, aircraft, and config.
 
-    Mapping:
+    If the airport config specifies flight_types weights, uses a weighted random
+    selection respecting the configured distribution. Cargo and charter flights
+    are injected probabilistically regardless of destination region.
+
+    Mapping fallback (when no config or for route_category):
       domestic  → domestic / short_haul
       shorthaul → international_short / medium_haul
       longhaul  → international_long / long_haul
     """
     region = destination.get("region", "domestic")
-    if region == "domestic":
-        return "domestic", "short_haul"
-    elif region == "shorthaul":
-        return "international_short", "medium_haul"
-    else:  # longhaul
-        return "international_long", "long_haul"
+
+    # Default region-based classification
+    region_type_map = {
+        "domestic": ("domestic", "short_haul"),
+        "shorthaul": ("international_short", "medium_haul"),
+    }
+    base_type, route_category = region_type_map.get(region, ("international_long", "long_haul"))
+
+    # Override with config-based distribution if available
+    if rng and runtime and hasattr(runtime, "flight_types"):
+        weights = runtime.flight_types.normalized
+        # Cargo and charter override the destination-based type
+        cargo_charter_pct = weights.get("cargo", 0.0) + weights.get("charter", 0.0)
+        if cargo_charter_pct > 0 and rng.random() < cargo_charter_pct:
+            # Decide between cargo and charter
+            cargo_w = weights.get("cargo", 0.0)
+            charter_w = weights.get("charter", 0.0)
+            if rng.random() < cargo_w / (cargo_w + charter_w) if (cargo_w + charter_w) > 0 else 0.5:
+                return "cargo", route_category
+            else:
+                return "charter", route_category
+
+    return base_type, route_category
 
 
 def _sample_airline(rng: random.Random) -> dict:
@@ -205,7 +226,10 @@ async def generate_schedule(
             gates_per_terminal,
         )
 
-        flight_type, route_category = _classify_flight(destination, aircraft)
+        flight_type, route_category = _classify_flight(destination, aircraft, rng, runtime)
+
+        # Flight duration based on destination distance (~450 kt cruise)
+        flight_duration_minutes = max(30, int(destination["distance_nm"] / 7.5))
 
         # Departure flight
         dep_id = str(uuid4())
@@ -228,6 +252,7 @@ async def generate_schedule(
             "runway_id": departure_runway_ids[runway_toggle % len(departure_runway_ids)],
             "flight_type": flight_type,
             "route_category": route_category,
+            "flight_duration_minutes": flight_duration_minutes,
         }
         flights.append(dep_flight)
 
@@ -265,6 +290,7 @@ async def generate_schedule(
             "runway_id": arrival_runway_ids[runway_toggle % len(arrival_runway_ids)],
             "flight_type": flight_type,
             "route_category": route_category,
+            "flight_duration_minutes": flight_duration_minutes,
         }
         flights.append(arr_flight)
         runway_toggle += 1
@@ -308,7 +334,8 @@ async def _persist_flights(flights: list[dict]) -> None:
                     seat_capacity: f.seat_capacity,
                     pax_count: f.pax_count,
                     flight_type: f.flight_type,
-                    route_category: f.route_category
+                    route_category: f.route_category,
+                    flight_duration_minutes: COALESCE(f.flight_duration_minutes, 0)
                 })
                 CREATE (fl)-[:ASSIGNED_TO]->(g)
                 CREATE (fl)-[:USES_RUNWAY {operation: CASE WHEN f.direction = 'departure' THEN 'takeoff' ELSE 'landing' END}]->(r)

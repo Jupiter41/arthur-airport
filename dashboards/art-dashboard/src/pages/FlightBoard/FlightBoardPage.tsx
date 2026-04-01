@@ -81,18 +81,38 @@ function FlightRow({
         {flight.gate_id ?? "—"}
       </td>
       <td className="px-3 py-2 text-sm font-mono">
-        <span
-          className={
-            flight.delay_minutes > 0
-              ? "line-through text-gray-500"
-              : "text-gray-300"
-          }
-        >
-          {formatTime(flight.scheduled_time)}
-        </span>
-        {flight.delay_minutes > 0 && flight.estimated_time && (
-          <span className="ml-2 text-amber-400">
-            {formatTime(flight.estimated_time)}
+        {flight.delay_minutes > 0 ? (
+          <>
+            <span className="line-through text-gray-500">
+              {formatTime(flight.scheduled_time)}
+            </span>
+            {flight.estimated_time && (
+              <span
+                className={`ml-2 ${
+                  (flight.status === "airborne" ||
+                    flight.status === "departed") &&
+                  flight.delay_minutes >= 30
+                    ? "text-red-400"
+                    : (flight.status === "airborne" ||
+                          flight.status === "departed") &&
+                        flight.delay_minutes >= 10
+                      ? "text-amber-400"
+                      : "text-amber-400"
+                }`}
+              >
+                {formatTime(flight.estimated_time)}
+              </span>
+            )}
+          </>
+        ) : (
+          <span
+            className={
+              flight.status === "airborne" || flight.status === "departed"
+                ? "text-green-400"
+                : "text-gray-300"
+            }
+          >
+            {formatTime(flight.scheduled_time)}
           </span>
         )}
       </td>
@@ -121,6 +141,16 @@ function FlightRow({
           ) && (
             <span className="text-xs text-gray-400">
               {flight.pax_count > 0 ? `${flight.pax_count} pax` : "—"}
+            </span>
+          )}
+        {flight.direction === "departure" &&
+          ["airborne", "arrived"].includes(flight.status) &&
+          flight.arrival_estimated_time && (
+            <span className="text-xs text-gray-400">
+              ETA {formatTime(flight.arrival_estimated_time)}
+              {flight.status === "arrived" && (
+                <span className="ml-1 text-green-400">✓</span>
+              )}
             </span>
           )}
       </td>
@@ -245,6 +275,28 @@ function FlightDetailDrawer({
               </span>
             </div>
           )}
+          {flight.direction === "departure" &&
+            flight.arrival_estimated_time && (
+              <div>
+                Arrival ETA:{" "}
+                <span className="font-mono text-blue-400">
+                  {formatTime(flight.arrival_estimated_time)}
+                </span>
+                {flight.status === "arrived" && (
+                  <span className="ml-2 text-green-400 text-xs">✓ Arrived</span>
+                )}
+              </div>
+            )}
+          {flight.flight_duration_minutes != null &&
+            flight.flight_duration_minutes > 0 && (
+              <div>
+                Flight duration:{" "}
+                <span className="font-mono text-gray-400">
+                  {Math.floor(flight.flight_duration_minutes / 60)}h{" "}
+                  {flight.flight_duration_minutes % 60}m
+                </span>
+              </div>
+            )}
         </div>
       </div>
     </div>
@@ -456,14 +508,23 @@ function FlightStats({ flights }: { flights: Flight[] }) {
     let delayed = 0,
       cancelled = 0,
       airborne = 0,
-      boarding = 0;
+      boarding = 0,
+      arrived = 0;
     for (const f of flights) {
       if (f.status === "delayed") delayed++;
       else if (f.status === "cancelled") cancelled++;
       else if (f.status === "airborne") airborne++;
       else if (f.status === "boarding") boarding++;
+      else if (f.status === "arrived") arrived++;
     }
-    return { delayed, cancelled, airborne, boarding, total: flights.length };
+    return {
+      delayed,
+      cancelled,
+      airborne,
+      boarding,
+      arrived,
+      total: flights.length,
+    };
   }, [flights]);
 
   return (
@@ -475,6 +536,11 @@ function FlightStats({ flights }: { flights: Flight[] }) {
         color="text-green-400"
       />
       <StatPill label="Airborne" value={stats.airborne} color="text-blue-400" />
+      <StatPill
+        label="Arrived"
+        value={stats.arrived}
+        color="text-emerald-400"
+      />
       <StatPill label="Delayed" value={stats.delayed} color="text-amber-400" />
       <StatPill
         label="Cancelled"
@@ -569,6 +635,8 @@ export default function FlightBoardPage() {
         delay_minutes: f.delay_minutes,
         pax_count: f.pax_count,
         pax_boarded: f.pax_boarded,
+        flight_duration_minutes: f.flight_duration_minutes ?? "",
+        arrival_estimated_time: f.arrival_estimated_time ?? "",
       }));
       exportData(rows, "flights", format);
     },

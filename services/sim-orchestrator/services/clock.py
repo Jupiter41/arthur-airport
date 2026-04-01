@@ -63,6 +63,7 @@ def get_state() -> dict:
         "sim_time": _sim_time.isoformat(),
         "real_time": datetime.utcnow().isoformat(),
         "speed_multiplier": _speed_multiplier,
+        "mode": compute_mode(),
         "day_number": _sim_day,
         "tick_number": _tick_number,
     }
@@ -145,6 +146,25 @@ def reset_to_start() -> None:
 
 MAX_TICKS_PER_SEC = int(os.getenv("MAX_TICKS_PER_SEC", "10"))
 
+# Speed mode thresholds — see PLAN-HIGH-SPEED.md
+_FAST_THRESHOLD = 60      # above 60× → FAST mode (batched writes)
+_BULK_THRESHOLD = 600     # above 600× → BULK mode (in-memory, periodic sync)
+
+
+def compute_mode(speed: int | None = None) -> str:
+    """Return the simulation mode for the given speed.
+
+    * ``REALTIME`` (1×–60×)  — per-event Neo4j writes, full Kafka events
+    * ``FAST``     (60×–600×) — batched Neo4j writes per tick
+    * ``BULK``     (600×+)    — in-memory state, periodic Neo4j sync
+    """
+    s = speed if speed is not None else _speed_multiplier
+    if s <= _FAST_THRESHOLD:
+        return "REALTIME"
+    if s <= _BULK_THRESHOLD:
+        return "FAST"
+    return "BULK"
+
 
 def _compute_step_minutes() -> int:
     """How many sim-minutes to advance per emitted tick.
@@ -218,6 +238,8 @@ async def run_clock_loop() -> None:
 
         _tick_number += 1
 
+        mode = compute_mode()
+
         # Emit one tick per outer iteration with the final sim_time
         try:
             emit_clock_tick(
@@ -226,6 +248,7 @@ async def run_clock_loop() -> None:
                 tick_number=_tick_number,
                 day_of_sim=_sim_day,
                 step_minutes=step,
+                mode=mode,
             )
             _events_produced += 1
             m_tick_total.inc()

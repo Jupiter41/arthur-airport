@@ -409,7 +409,13 @@ function InjectModal({
 }
 
 /* ──────── Resolved Incidents Table ──────── */
-function ResolvedList({ incidents }: { incidents: Incident[] }) {
+function ResolvedList({
+  incidents,
+  onViewCascade,
+}: {
+  incidents: Incident[];
+  onViewCascade: (id: string) => void;
+}) {
   const [downloading, setDownloading] = useState<string | null>(null);
 
   const handleDownload = useCallback(async (id: string) => {
@@ -418,11 +424,11 @@ function ResolvedList({ incidents }: { incidents: Incident[] }) {
       const report = await incidentsApi.report(id);
       const text =
         typeof report === "string" ? report : JSON.stringify(report, null, 2);
-      const blob = new Blob([text], { type: "text/markdown" });
+      const blob = new Blob([text], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `incident-report-${id.slice(0, 8)}.md`;
+      a.download = `incident-report-${id.slice(0, 8)}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } finally {
@@ -451,15 +457,64 @@ function ResolvedList({ incidents }: { incidents: Incident[] }) {
               <StatusBadge status="resolved" />
               <span className="text-xs text-gray-400">{i.location}</span>
             </div>
-            <button
-              className="text-xs text-blue-400 hover:text-blue-300"
-              onClick={() => handleDownload(i.id)}
-              disabled={downloading === i.id}
-            >
-              {downloading === i.id ? "..." : "↓ Report"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                className="text-xs text-emerald-400 hover:text-emerald-300"
+                onClick={() => onViewCascade(i.id)}
+              >
+                🌳 View Cascade
+              </button>
+              <button
+                className="text-xs text-blue-400 hover:text-blue-300"
+                onClick={() => handleDownload(i.id)}
+                disabled={downloading === i.id}
+              >
+                {downloading === i.id ? "..." : "↓ Report"}
+              </button>
+            </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ──────── Cascade Modal ──────── */
+function CascadeModal({
+  incident,
+  onClose,
+}: {
+  incident: Incident | null;
+  onClose: () => void;
+}) {
+  if (!incident) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+      <div className="bg-gray-800 rounded-lg shadow-2xl w-[600px] max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-gray-700">
+          <h2 className="text-lg font-bold text-white">
+            Cascade Tree — {incident.type.replace(/_/g, " ")}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white text-xl"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="p-4">
+          <div className="text-xs text-gray-400 mb-3">
+            {incident.location} · Depth: {incident.cascade_depth}
+          </div>
+          {incident.cascade_tree ? (
+            <CascadeTree node={incident.cascade_tree} />
+          ) : (
+            <div className="text-sm text-gray-500">
+              No cascade data available for this incident.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -470,8 +525,10 @@ export default function IncidentConsolePage() {
   const incidents = useIncidentStore((s) => s.incidents);
   const alerts = useIncidentStore((s) => s.alerts);
   const setIncidents = useIncidentStore((s) => s.setIncidents);
+  const upsertIncident = useIncidentStore((s) => s.upsertIncident);
   const setAlerts = useIncidentStore((s) => s.setAlerts);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [cascadeViewId, setCascadeViewId] = useState<string | null>(null);
   const [injectOpen, setInjectOpen] = useState(false);
 
   const queries = useIncidentConsoleQueries();
@@ -488,6 +545,22 @@ export default function IncidentConsolePage() {
     if (queries.alerts.data) setAlerts(queries.alerts.data);
   }, [queries.alerts.data, setAlerts]);
 
+  // Fetch full incident detail (with cascade_tree) when an incident is selected
+  useEffect(() => {
+    const targetId = selectedId ?? cascadeViewId;
+    if (!targetId) return;
+    const existing = incidents[targetId];
+    if (existing?.cascade_tree) return; // already have cascade data
+    incidentsApi
+      .get(targetId)
+      .then((detail) => {
+        if (detail && typeof detail === "object") {
+          upsertIncident(detail as never);
+        }
+      })
+      .catch(() => {});
+  }, [selectedId, cascadeViewId, incidents, upsertIncident]);
+
   const incidentList = Object.values(incidents);
   const activeIncidents = useMemo(
     () =>
@@ -502,6 +575,9 @@ export default function IncidentConsolePage() {
   );
 
   const selectedIncident = selectedId ? (incidents[selectedId] ?? null) : null;
+  const cascadeViewIncident = cascadeViewId
+    ? (incidents[cascadeViewId] ?? null)
+    : null;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
@@ -566,7 +642,18 @@ export default function IncidentConsolePage() {
       <AlertFeed alerts={alerts} />
 
       {/* Resolved */}
-      <ResolvedList incidents={resolvedIncidents} />
+      <ResolvedList
+        incidents={resolvedIncidents}
+        onViewCascade={(id) => setCascadeViewId(id)}
+      />
+
+      {/* Cascade view modal */}
+      {cascadeViewIncident && (
+        <CascadeModal
+          incident={cascadeViewIncident}
+          onClose={() => setCascadeViewId(null)}
+        />
+      )}
 
       {/* Injection modal */}
       <InjectModal open={injectOpen} onClose={() => setInjectOpen(false)} />

@@ -64,6 +64,11 @@ The simulation is **config-driven**: customize every airport property by editing
 
 - Customize airline codes, names, market shares, and hub terminals
 
+**Flight Type Distribution:**
+
+- Control the mix of domestic, international short/long, cargo, and charter flights
+- Values must sum to 1.0 (e.g., `domestic: 0.42, cargo: 0.08, charter: 0.04`)
+
 ### Quick start with custom airport — the 60-second version
 
 1. **Edit** `config/airport.yaml`:

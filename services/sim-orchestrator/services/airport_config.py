@@ -64,6 +64,34 @@ class AirportSimulation(BaseModel):
         return self
 
 
+class AirportFlightTypes(BaseModel):
+    domestic: float = Field(default=0.42, ge=0.0, le=1.0)
+    international_short: float = Field(default=0.28, ge=0.0, le=1.0)
+    international_long: float = Field(default=0.18, ge=0.0, le=1.0)
+    cargo: float = Field(default=0.08, ge=0.0, le=1.0)
+    charter: float = Field(default=0.04, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_sum(self) -> "AirportFlightTypes":
+        total = self.domestic + self.international_short + self.international_long + self.cargo + self.charter
+        if abs(total - 1.0) > 0.01:
+            raise ValueError(f"flight_types weights must sum to ~1.0 (got {total:.3f})")
+        return self
+
+    @property
+    def normalized(self) -> dict[str, float]:
+        total = self.domestic + self.international_short + self.international_long + self.cargo + self.charter
+        if total == 0:
+            return {"domestic": 1.0, "international_short": 0.0, "international_long": 0.0, "cargo": 0.0, "charter": 0.0}
+        return {
+            "domestic": self.domestic / total,
+            "international_short": self.international_short / total,
+            "international_long": self.international_long / total,
+            "cargo": self.cargo / total,
+            "charter": self.charter / total,
+        }
+
+
 class AirportAirlineOverride(BaseModel):
     code: str
     name: str
@@ -75,6 +103,7 @@ class AirportConfig(BaseModel):
     identity: AirportIdentity = Field(default_factory=AirportIdentity)
     infrastructure: AirportInfrastructure = Field(default_factory=AirportInfrastructure)
     simulation: AirportSimulation = Field(default_factory=AirportSimulation)
+    flight_types: AirportFlightTypes = Field(default_factory=AirportFlightTypes)
     airlines: list[AirportAirlineOverride] = Field(default_factory=list)
 
 
@@ -83,6 +112,7 @@ class AirportRuntimeConfig:
     identity: AirportIdentity
     infrastructure: AirportInfrastructure
     simulation: AirportSimulation
+    flight_types: AirportFlightTypes
     airlines: list[AirportAirlineOverride]
 
     @property
@@ -190,6 +220,7 @@ def _runtime_from_model(model: AirportConfig) -> AirportRuntimeConfig:
         identity=model.identity,
         infrastructure=model.infrastructure,
         simulation=model.simulation,
+        flight_types=model.flight_types,
         airlines=model.airlines,
     )
 

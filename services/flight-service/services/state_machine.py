@@ -3,8 +3,8 @@
 10-state FSM with explicit transition rules. All transitions depend on
 sim_time and contextual conditions (runway/gate availability, boarding %).
 
-States: scheduled, boarding, delayed, departed, airborne, approach, landed, taxiing, at_gate, cancelled
-Terminal states: at_gate (arrivals complete), cancelled
+States: scheduled, boarding, delayed, departed, airborne, approach, landed, taxiing, at_gate, arrived, cancelled
+Terminal states: at_gate (arrivals complete), arrived (departures at destination), cancelled
 """
 
 import logging
@@ -21,16 +21,17 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
     "boarding": {"departed", "delayed", "cancelled"},
     "delayed": {"boarding", "approach", "cancelled"},
     "departed": {"airborne"},
-    "airborne": {"approach"},
+    "airborne": {"approach", "arrived"},
     "approach": {"landed", "delayed"},
     "landed": {"taxiing"},
     "taxiing": {"at_gate"},
     "at_gate": set(),       # terminal state for arrivals
+    "arrived": set(),       # terminal state for departures at destination
     "cancelled": set(),     # terminal state
 }
 
 # Terminal states — flights in these states are never processed by the FSM
-TERMINAL_STATES = {"at_gate", "cancelled"}
+TERMINAL_STATES = {"at_gate", "arrived", "cancelled"}
 
 # Active departure states (flight hasn't departed yet)
 PRE_DEPARTURE_STATES = {"scheduled", "boarding", "delayed"}
@@ -184,10 +185,18 @@ def _eval_departed(flight: dict, sim_time: datetime, estimated_time: datetime) -
 
 def _eval_airborne(flight: dict, sim_time: datetime, estimated_time: datetime,
                    direction: str) -> str | None:
-    # Only arrivals approach — departures stay airborne (terminal for departures)
     if direction == "arrival":
+        # Arrivals approach at ETA - 20 min
         if sim_time >= estimated_time - timedelta(minutes=20):
             return "approach"
+    else:
+        # Departures arrive at destination after flight_duration_minutes
+        actual_time = _parse_time(flight.get("actual_time"))
+        duration = flight.get("flight_duration_minutes")
+        if actual_time and duration and duration > 0:
+            arrival_at_dest = actual_time + timedelta(minutes=duration)
+            if sim_time >= arrival_at_dest:
+                return "arrived"
     return None
 
 

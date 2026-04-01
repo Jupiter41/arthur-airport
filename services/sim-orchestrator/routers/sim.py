@@ -97,6 +97,7 @@ async def sim_status():
         "sim_time": state["sim_time"],
         "real_time": state["real_time"],
         "speed_multiplier": state["speed_multiplier"],
+        "mode": state.get("mode", "REALTIME"),
         "day_number": state["day_number"],
         "tick_number": state["tick_number"],
         "real_elapsed_seconds": state["tick_number"],

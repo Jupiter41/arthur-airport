@@ -77,10 +77,15 @@ Emitted every simulated minute. All services use this to advance their internal 
     "real_time": "2024-06-15T10:15:03.412Z",
     "speed_multiplier": 60,
     "tick_number": 87243,
-    "day_of_sim": 3
+    "day_of_sim": 3,
+    "step_minutes": 1,
+    "mode": "REALTIME"
   }
 }
 ```
+
+`mode` is one of `REALTIME` (≤60×), `FAST` (≤600×), or `BULK` (>600×).
+`step_minutes` is the number of simulated minutes per tick (usually 1; higher in BULK mode).
 
 ---
 
@@ -390,6 +395,43 @@ Sent by the API gateway (from the dashboard) to manually fire a hazardous event.
   }
 }
 ```
+
+---
+
+### 4.9 `BulkStateSnapshot` (emitted on originating topic)
+
+In BULK mode (speed > 600×), individual per-entity events are suppressed. Instead,
+each service emits a `BulkStateSnapshot` on its own topic every 60 sim-minutes.
+The snapshot summarises aggregate state.
+
+Emitted on: `flights.events`, `passengers.events`, `baggage.events`
+
+```json
+{
+  "event_type": "BulkStateSnapshot",
+  "producer": "flight-service",
+  "payload": {
+    "service": "flight-service",
+    "summary": {
+      "by_status": {
+        "at_gate": 120,
+        "boarding": 8,
+        "scheduled": 45
+      },
+      "active_turnarounds": 12,
+      "held_flights": 2,
+      "affected_runways": ["09L"],
+      "affected_gates": ["B07"]
+    }
+  }
+}
+```
+
+The `summary` structure varies per service:
+
+- **flight-service**: `by_status`, `active_turnarounds`, `held_flights`, `affected_runways`, `affected_gates`
+- **passenger-service**: `by_status` (status → count map)
+- **baggage-service**: `by_stage` (pipeline stage → count map)
 
 ---
 

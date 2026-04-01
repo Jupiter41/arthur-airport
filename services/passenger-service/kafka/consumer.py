@@ -31,7 +31,9 @@ from kafka.producer import (
     emit_passenger_status_changed,
     emit_passenger_alert,
     emit_congestion_detected,
+    emit_bulk_state_snapshot,
     set_tick_batch_mode,
+    set_bulk_mode,
 )
 from ml.congestion import check_congestion
 from ml.features import build_features
@@ -99,6 +101,10 @@ class PassengerConsumerState:
         # Spatial data for walking time computation
         self.gate_positions: dict[str, dict] = {}
         self.walking_zones: dict[str, dict] = {}
+        # Speed mode tracking (REALTIME / FAST / BULK)
+        self.current_mode: str = "REALTIME"
+        self.last_mode: str = "REALTIME"
+        self.last_sync_sim_time: datetime | None = None
 
     def check_idempotency(self, event_id: str) -> bool:
         if not event_id:
@@ -443,6 +449,14 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         delta_minutes = payload.get("step_minutes", 1)
     _state.last_tick_sim_time = sim_time
 
+    # Track simulation mode (REALTIME / FAST / BULK)
+    _state.last_mode = _state.current_mode
+    _state.current_mode = payload.get("mode", "REALTIME")
+    is_bulk = _state.current_mode == "BULK"
+
+    # In BULK mode, suppress ALL per-passenger Kafka events
+    set_bulk_mode(is_bulk)
+
     set_tick_batch_mode(True)
     try:
         # Warm-start: pre-advance early departure passengers on first tick
@@ -451,8 +465,9 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
 
         # === Critical path (every tick) ===
 
-        # 1. ML feature cache (cheap — one query, needed for security forecast)
-        if _tick_counter % 5 == 0:
+        # 1. ML feature cache (reduced frequency in BULK mode)
+        ml_interval = 20 if is_bulk else 5
+        if _tick_counter % ml_interval == 0:
             await _ml_tick(sim_time)
 
         # 2. Move booked passengers to checked_in at T-120
@@ -475,12 +490,14 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
 
         # === Non-critical path (reduced frequency) ===
 
-        # 8. Check connections (every 10 ticks)
-        if _tick_counter % 10 == 0:
+        # 8. Check connections (reduced in BULK mode)
+        conn_interval = 30 if is_bulk else 10
+        if _tick_counter % conn_interval == 0:
             await _check_connections(sim_time)
 
-        # 9. Check congestion (every 5 ticks)
-        if _tick_counter % 5 == 0:
+        # 9. Check congestion (reduced in BULK mode)
+        congestion_interval = 20 if is_bulk else 5
+        if _tick_counter % congestion_interval == 0:
             for terminal in ("A", "B", "C"):
                 cp = _state.security.get(terminal)
                 features = _build_context_features(terminal, sim_time)
@@ -506,8 +523,9 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
                 load_models()
             maybe_flush(sim_time)
 
-        # 11. Update Prometheus gauges (every 5 ticks)
-        if _tick_counter % 5 == 0:
+        # 11. Update Prometheus gauges (reduced in BULK mode)
+        gauge_interval = 20 if is_bulk else 5
+        if _tick_counter % gauge_interval == 0:
             try:
                 status_counts = await get_status_counts()
                 for status, count in status_counts.items():
@@ -523,10 +541,57 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
                 m_sec_wait.labels(terminal=terminal).set(round(cp.wait_minutes(0), 1))
                 m_sec_lanes.labels(terminal=terminal).set(cp.lanes_open)
 
+        # 12. BULK mode: emit periodic BulkStateSnapshot
+        if is_bulk:
+            await _maybe_emit_bulk_snapshot(sim_time)
+
     except Exception as e:
         logger.error("Error in clock tick processing: %s", e, exc_info=True)
     finally:
         set_tick_batch_mode(False)
+
+
+BULK_SNAPSHOT_INTERVAL_SIM_MIN = int(os.getenv("BULK_SNAPSHOT_INTERVAL_MIN", "60"))
+
+
+async def _maybe_emit_bulk_snapshot(sim_time: datetime) -> None:
+    """Emit a BulkStateSnapshot summarising passenger state (BULK mode only).
+
+    Triggered every ``BULK_SNAPSHOT_INTERVAL_SIM_MIN`` sim-minutes.
+    Also triggers on mode transition from BULK → FAST/REALTIME.
+    """
+    force = _state.last_mode == "BULK" and _state.current_mode != "BULK"
+
+    if not force and _state.last_sync_sim_time is not None:
+        elapsed = (sim_time - _state.last_sync_sim_time).total_seconds() / 60
+        if elapsed < BULK_SNAPSHOT_INTERVAL_SIM_MIN:
+            return
+
+    _state.last_sync_sim_time = sim_time
+
+    # Build summary from in-memory security queues + a single Neo4j count query
+    security_wait: dict[str, float] = {}
+    security_depth: dict[str, int] = {}
+    for terminal in ("A", "B", "C"):
+        cp = _state.security.checkpoints.get(terminal)
+        if cp:
+            security_wait[terminal] = round(cp.wait_minutes(0), 1)
+            security_depth[terminal] = cp.queue_depth
+
+    try:
+        status_counts = await get_status_counts()
+    except Exception:
+        status_counts = {}
+
+    summary = {
+        "by_status": status_counts,
+        "connections_at_risk": len(_state.at_risk_connections),
+        "security_wait_by_terminal": security_wait,
+        "security_depth_by_terminal": security_depth,
+    }
+
+    emit_bulk_state_snapshot(sim_time, summary)
+    logger.info("BulkStateSnapshot emitted (pax): %s", summary.get("by_status", {}))
 
 
 CHECKIN_OPEN_MINUTES = 120  # Passengers arrive at check-in T-120 min before departure

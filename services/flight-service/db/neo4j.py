@@ -149,7 +149,8 @@ async def get_all_flights(
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .delay_minutes,
-        .pax_count, .seat_capacity, .flight_type, .route_category
+        .pax_count, .seat_capacity, .flight_type, .route_category,
+        .flight_duration_minutes, .arrival_estimated_time
     }} AS flight,
     COALESCE(g.id, f.gate_id) AS gate_id,
     r.id AS runway_id,
@@ -269,7 +270,7 @@ async def get_active_flights(sim_time: datetime) -> list[dict]:
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
         .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id,
-        .flight_type, .route_category
+        .flight_type, .route_category, .flight_duration_minutes, .arrival_estimated_time
     } AS flight,
     COALESCE(g.id, f.gate_id) AS gate_id,
     r.id AS runway_id
@@ -295,6 +296,7 @@ async def update_flight_status(
     delay_reason: str | None = None,
     estimated_time: str | None = None,
     actual_time: str | None = None,
+    arrival_estimated_time: str | None = None,
 ) -> dict | None:
     """Update flight status and optional related fields atomically."""
     driver = get_driver()
@@ -314,6 +316,9 @@ async def update_flight_status(
     if actual_time is not None:
         set_clauses.append("f.actual_time = $actual_time")
         params["actual_time"] = actual_time
+    if arrival_estimated_time is not None:
+        set_clauses.append("f.arrival_estimated_time = $arrival_estimated_time")
+        params["arrival_estimated_time"] = arrival_estimated_time
 
     set_clause = ", ".join(set_clauses)
     query = f"""
@@ -323,7 +328,8 @@ async def update_flight_status(
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
-        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id
+        .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id,
+        .flight_duration_minutes, .arrival_estimated_time
     }} AS flight
     """
     async with driver.session() as session:

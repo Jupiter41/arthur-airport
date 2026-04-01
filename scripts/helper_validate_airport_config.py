@@ -59,6 +59,7 @@ def _runtime_to_dict(runtime: Any) -> dict[str, Any]:
             "peak_hours": runtime.simulation.peak_hours,
             "load_factor_beta_params": runtime.load_factor_beta_params,
         },
+        "flight_types": runtime.flight_types.normalized,
         "airlines": [
             {
                 "code": a.code,
@@ -104,6 +105,8 @@ def main() -> int:
         print(f"Daily flights: {runtime.simulation.daily_flight_target}")
         print(f"Load factor mean: {runtime.simulation.load_factor_mean:.2f}")
         print(f"Peak hours: {runtime.simulation.peak_hours}")
+        ft = runtime.flight_types.normalized
+        print(f"Flight types: DOM={ft['domestic']:.0%} INT-S={ft['international_short']:.0%} INT-L={ft['international_long']:.0%} CGO={ft['cargo']:.0%} CHR={ft['charter']:.0%}")
 
     return 0
 

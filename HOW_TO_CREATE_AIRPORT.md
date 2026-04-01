@@ -46,6 +46,7 @@ infrastructure:
 ```
 
 Notes:
+
 - terminals must match the number of values in gates_per_terminal.
 - Each runway pair id may contain one direction ("09L") or two directions ("09L/27R").
 
@@ -59,11 +60,46 @@ simulation:
 ```
 
 These values are used by sim-orchestrator at startup:
+
 - daily_flight_target controls generated flight volume.
 - load_factor_mean drives Beta distribution parameters for passenger generation.
 - peak_hours affects probabilistic incident injection multipliers.
 
-## 5. Optional airline overrides
+## 5. Configure flight type distribution
+
+```yaml
+flight_types:
+  domestic: 0.42
+  international_short: 0.28
+  international_long: 0.18
+  cargo: 0.08
+  charter: 0.04
+```
+
+Controls the mix of flight categories in the generated schedule:
+
+- **domestic**: Short-haul domestic flights (default 42%)
+- **international_short**: Medium-haul international flights (default 28%)
+- **international_long**: Long-haul international flights (default 18%)
+- **cargo**: Freight-only flights (default 8%)
+- **charter**: Charter flights (default 4%)
+
+Values must sum to 1.0 (±0.01 tolerance). The schedule generator uses these weights
+to probabilistically assign cargo and charter types; remaining flights derive their
+type from the destination region (domestic/shorthaul/longhaul).
+
+Example — cargo-heavy airport:
+
+```yaml
+flight_types:
+  domestic: 0.20
+  international_short: 0.15
+  international_long: 0.15
+  cargo: 0.40
+  charter: 0.10
+```
+
+## 6. Optional airline overrides
 
 ```yaml
 airlines:
@@ -75,20 +111,21 @@ airlines:
 
 Overrides update fixture airlines by code and normalize market shares.
 
-## 6. Run the stack
+## 7. Run the stack
 
 ```bash
 docker compose up --build
 ```
 
 The sim-orchestrator reads config/airport.yaml from:
+
 - AIRPORT_CONFIG_PATH if provided
 - config/airport.yaml in repo root
 - /app/config/airport.yaml in container
 
 In docker-compose, sim-orchestrator mounts ./config to /app/config.
 
-## 7. Verify runtime behavior
+## 8. Verify runtime behavior
 
 ```bash
 curl http://localhost:8006/api/v1/sim/status
@@ -97,6 +134,7 @@ curl http://localhost:8004/api/v1/weather/metar
 ```
 
 Expected:
+
 - sim status and gateway aggregate expose your airport identity.
 - seeded flights use your configured home IATA as origin/destination home code.
 - METAR/TAF station code follows the active airport ICAO.

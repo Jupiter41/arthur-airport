@@ -24,6 +24,8 @@ from db.neo4j import (
 from kafka.producer import (
     emit_baggage_status_changed,
     emit_baggage_flagged,
+    emit_bulk_state_snapshot,
+    set_bulk_mode,
 )
 from services.conveyor import (
     ConveyorSystem,
@@ -74,6 +76,10 @@ class BaggageConsumerState:
         self.processed_events: set[str] = set()
         self.inducted_bag_ids: set[str] = set()
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
+        # Speed mode tracking (REALTIME / FAST / BULK)
+        self.current_mode: str = "REALTIME"
+        self.last_mode: str = "REALTIME"
+        self.last_sync_sim_time: datetime | None = None
 
     def check_idempotency(self, event_id: str) -> bool:
         if not event_id:
@@ -285,8 +291,14 @@ async def _dispatch(envelope: dict) -> None:
             pass
 
 
+BULK_SNAPSHOT_INTERVAL_SIM_MIN = int(os.getenv("BULK_SNAPSHOT_INTERVAL_MIN", "60"))
+_baggage_tick_n: int = 0
+
+
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Process SimClockTick — induct new bags and advance conveyor pipeline."""
+    global _baggage_tick_n
+    _baggage_tick_n += 1
     _state.sim_time = sim_time
 
     # Compute delta for multi-minute ticks / tick skipping
@@ -295,6 +307,12 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     else:
         delta_minutes = payload.get("step_minutes", 1)
     _state.last_tick_sim_time = sim_time
+
+    # Track simulation mode (REALTIME / FAST / BULK)
+    _state.last_mode = _state.current_mode
+    _state.current_mode = payload.get("mode", "REALTIME")
+    is_bulk = _state.current_mode == "BULK"
+    set_bulk_mode(is_bulk)
 
     sim_time_str = sim_time.isoformat()
 
@@ -313,17 +331,49 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             except Exception as e:
                 logger.error("Failed to process bag %s exiting %s: %s", bag.baggage_id, zone_id, e)
 
-    # 4. Update Prometheus gauges
-    try:
-        counts = await get_baggage_counts_by_status()
-        for status, count in counts.items():
-            m_in_system.labels(status=status).set(count)
-    except Exception:
-        pass
+    # 4. Update Prometheus gauges (reduced frequency in BULK mode)
+    gauge_interval = 20 if is_bulk else 1
+    if _baggage_tick_n % gauge_interval == 0:
+        try:
+            counts = await get_baggage_counts_by_status()
+            for status, count in counts.items():
+                m_in_system.labels(status=status).set(count)
+        except Exception:
+            pass
     for z in _state.conveyor.get_zone_summary():
         m_zone_util.labels(zone_id=z["zone_id"]).set(z["utilisation_pct"])
         status_val = {"normal": 0, "degraded": 1, "offline": 2}.get(z["status"], 0)
         m_zone_status.labels(zone_id=z["zone_id"]).set(status_val)
+
+    # 5. BULK mode: emit periodic BulkStateSnapshot
+    if is_bulk:
+        await _maybe_emit_baggage_bulk_snapshot(sim_time)
+
+
+async def _maybe_emit_baggage_bulk_snapshot(sim_time: datetime) -> None:
+    """Emit a BulkStateSnapshot summarising baggage state (BULK mode only)."""
+    force = _state.last_mode == "BULK" and _state.current_mode != "BULK"
+
+    if not force and _state.last_sync_sim_time is not None:
+        elapsed = (sim_time - _state.last_sync_sim_time).total_seconds() / 60
+        if elapsed < BULK_SNAPSHOT_INTERVAL_SIM_MIN:
+            return
+
+    _state.last_sync_sim_time = sim_time
+
+    try:
+        counts = await get_baggage_counts_by_status()
+    except Exception:
+        counts = {}
+
+    zone_summary = _state.conveyor.get_zone_summary()
+    summary = {
+        "by_status": counts,
+        "zones": {z["zone_id"]: z["utilisation_pct"] for z in zone_summary},
+    }
+
+    emit_bulk_state_snapshot(sim_time, summary)
+    logger.info("BulkStateSnapshot emitted (baggage): %s", counts)
 
 
 async def _induct_new_bags(sim_time: datetime, delta_minutes: int = 1) -> None:

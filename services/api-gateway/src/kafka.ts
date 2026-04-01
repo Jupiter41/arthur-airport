@@ -1,5 +1,10 @@
 import { Kafka, Consumer, EachMessagePayload } from "kafkajs";
-import { fanOut, setCurrentSimTime, cacheLatestEvent } from "./websocket";
+import {
+  fanOut,
+  setCurrentSimTime,
+  cacheLatestEvent,
+  setSimMode,
+} from "./websocket";
 
 const TOPIC_KEY_MAP: Record<string, string> = {
   "sim.clock": "sim",
@@ -69,6 +74,11 @@ export async function setupKafka(): Promise<void> {
             const tickSimTime = event.sim_time ?? event.payload?.sim_time;
             if (typeof tickSimTime === "string") {
               setCurrentSimTime(tickSimTime);
+            }
+            // Track simulation mode for WebSocket throttling
+            const mode = event.payload?.mode;
+            if (typeof mode === "string") {
+              setSimMode(mode);
             }
           }
 

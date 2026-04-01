@@ -70,6 +70,8 @@ export interface Flight {
   baggage_loaded: number;
   flight_type: string | null;
   route_category: string | null;
+  flight_duration_minutes: number | null;
+  arrival_estimated_time: string | null;
 }
 
 export interface Runway {

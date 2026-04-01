@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 from uuid import uuid4
 
@@ -115,41 +115,52 @@ class WeatherConsumerState:
             m_dep_rate.set(capacity.get("recommended_departure_rate", capacity.get("departure_rate", 32)))
 
     async def on_clock_tick(self, payload: dict, sim_time: datetime) -> None:
-        """Process a SimClockTick event."""
+        """Process a SimClockTick event.
+
+        When step_minutes > 1 (FAST/BULK mode), walks all intermediate minutes
+        to detect hour boundaries (FSM eval) and METAR boundaries that would
+        otherwise be missed because the tick only reports the final sim_time.
+        """
         self.sim_time = sim_time
-        hour = sim_time.hour
-        minute = sim_time.minute
+        step_minutes = payload.get("step_minutes", 1)
 
         # --- Initialize if first tick ---
         if self.current_params is None:
-            await self._initialize_first_tick(sim_time, hour, minute)
+            await self._initialize_first_tick(sim_time, sim_time.hour, sim_time.minute)
             return
 
-        # --- Hourly FSM evaluation (minute == 0 and not same hour) ---
-        if minute == 0 and hour != self.last_fsm_hour:
-            self.last_fsm_hour = hour
-            previous_category = self.current_category
-            new_category = evaluate_transition(self.current_category, self.rng)
-
-            if new_category != previous_category:
-                await self._apply_transition(previous_category, new_category, sim_time)
-
-        # --- METAR every 30 simulated minutes (0 and 30) ---
         metar_interval = int(os.getenv("METAR_INTERVAL_SIM_MINUTES", "30"))
-        total_min = hour * 60 + minute
-        if minute % metar_interval == 0 and total_min != self.last_metar_total_min:
-            self.last_metar_total_min = total_min
-            self.current_metar = build_metar(self.current_params, sim_time, self.airport_icao)
-            self.current_taf = build_taf(self.current_params, sim_time, station_icao=self.airport_icao)
 
-            emit_metar_issued(sim_time, self.current_metar)
+        # Walk all intermediate minutes covered by this tick
+        for offset in range(step_minutes):
+            candidate = sim_time - timedelta(minutes=step_minutes - 1 - offset)
+            c_hour = candidate.hour
+            c_minute = candidate.minute
 
-            if self.ws_broadcast:
-                await self.ws_broadcast({
-                    "event_type": "METARIssued",
-                    "raw": self.current_metar,
-                    "sim_time": sim_time.isoformat(),
-                })
+            # --- Hourly FSM evaluation ---
+            if c_minute == 0 and c_hour != self.last_fsm_hour:
+                self.last_fsm_hour = c_hour
+                previous_category = self.current_category
+                new_category = evaluate_transition(self.current_category, self.rng)
+
+                if new_category != previous_category:
+                    await self._apply_transition(previous_category, new_category, candidate)
+
+            # --- METAR at configured interval ---
+            total_min = c_hour * 60 + c_minute
+            if c_minute % metar_interval == 0 and total_min != self.last_metar_total_min:
+                self.last_metar_total_min = total_min
+                self.current_metar = build_metar(self.current_params, candidate, self.airport_icao)
+                self.current_taf = build_taf(self.current_params, candidate, station_icao=self.airport_icao)
+
+                emit_metar_issued(candidate, self.current_metar)
+
+                if self.ws_broadcast:
+                    await self.ws_broadcast({
+                        "event_type": "METARIssued",
+                        "raw": self.current_metar,
+                        "sim_time": candidate.isoformat(),
+                    })
 
     async def _initialize_first_tick(self, sim_time: datetime, hour: int, minute: int) -> None:
         initial_category = os.getenv("INITIAL_WEATHER_CATEGORY", "CAVOK")

@@ -195,6 +195,19 @@ async def check_kafka() -> bool:
         return False
 
 
+def emit_bulk_state_snapshot(
+    sim_time: datetime,
+    summary: dict,
+) -> None:
+    """Emit a BulkStateSnapshot event (used in BULK mode instead of per-flight events)."""
+    payload = {
+        "service": PRODUCER_NAME,
+        "sim_time": sim_time.isoformat(),
+        "summary": summary,
+    }
+    _produce_event("BulkStateSnapshot", sim_time, payload)
+
+
 async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:
     import asyncio
     for attempt in range(1, max_attempts + 1):

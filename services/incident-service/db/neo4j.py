@@ -224,8 +224,13 @@ async def get_incidents(
     params: dict = {"limit": limit}
 
     if status:
-        conditions.append("i.status = $status")
-        params["status"] = status
+        statuses = [s.strip() for s in status.split(",")]
+        if len(statuses) == 1:
+            conditions.append("i.status = $status")
+            params["status"] = statuses[0]
+        else:
+            conditions.append("i.status IN $statuses")
+            params["statuses"] = statuses
     if type_filter:
         conditions.append("i.type = $type_filter")
         params["type_filter"] = type_filter
@@ -356,8 +361,13 @@ async def get_affected_flights(incident_id: str) -> list[dict]:
 async def count_incidents(status: str | None = None) -> int:
     """Count incidents, optionally filtered by status."""
     if status:
-        query = "MATCH (i:Incident {status: $status}) RETURN count(i) AS total"
-        params = {"status": status}
+        statuses = [s.strip() for s in status.split(",")]
+        if len(statuses) == 1:
+            query = "MATCH (i:Incident {status: $status}) RETURN count(i) AS total"
+            params: dict = {"status": statuses[0]}
+        else:
+            query = "MATCH (i:Incident) WHERE i.status IN $statuses RETURN count(i) AS total"
+            params = {"statuses": statuses}
     else:
         query = "MATCH (i:Incident) RETURN count(i) AS total"
         params = {}

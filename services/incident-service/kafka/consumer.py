@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
 from confluent_kafka import Consumer
@@ -373,11 +373,21 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     # 1b. Fire any pending delayed cascades
     await fire_pending_cascades(sim_time)
 
-    # 2. Probabilistic event evaluation (once per simulated hour)
-    hour = sim_time.hour
-    if hour != _state.last_prob_hour:
-        _state.last_prob_hour = hour
-        await _evaluate_probabilistic_events(sim_time)
+    # 2. Probabilistic event evaluation — detect ALL intermediate hour
+    #    boundaries within a multi-minute step (handles step_minutes > 60).
+    step = payload.get("step_minutes", 1)
+    if step > 1 and _state.last_prob_hour is not None:
+        # Walk intermediate hours that may have been crossed
+        for offset in range(step):
+            candidate = sim_time - timedelta(minutes=step - 1 - offset)
+            if candidate.minute == 0 and candidate.hour != _state.last_prob_hour:
+                _state.last_prob_hour = candidate.hour
+                await _evaluate_probabilistic_events(candidate)
+    else:
+        hour = sim_time.hour
+        if hour != _state.last_prob_hour:
+            _state.last_prob_hour = hour
+            await _evaluate_probabilistic_events(sim_time)
 
     # 3. Update alert ages
     for alert in _state.active_alerts:

@@ -19,6 +19,7 @@ _producer: Producer | None = None
 # APIs for authoritative counts; these events are observability / real-time hints.
 _tick_batch_mode: bool = False
 _TICK_EMIT_SAMPLE_RATE = 0.02  # emit ~2% of per-passenger events during tick
+_bulk_mode: bool = False  # In BULK mode, suppress ALL per-passenger events
 
 _producer: Producer | None = None
 
@@ -47,6 +48,12 @@ def set_tick_batch_mode(enabled: bool) -> None:
     """Toggle tick batch mode to throttle per-passenger event emission."""
     global _tick_batch_mode
     _tick_batch_mode = enabled
+
+
+def set_bulk_mode(enabled: bool) -> None:
+    """Toggle BULK mode — suppresses ALL per-entity event emission."""
+    global _bulk_mode
+    _bulk_mode = enabled
 
 
 def _delivery_report(err, msg):
@@ -107,6 +114,8 @@ async def emit_passenger_status_changed(
         "location_zone": location_zone,
         "at": sim_time.isoformat(),
     }
+    if _bulk_mode:
+        return payload  # BULK mode — suppress all per-passenger events
     if _tick_batch_mode and random.random() > _TICK_EMIT_SAMPLE_RATE:
         return payload  # skip production
     _produce_event("PassengerStatusChanged", sim_time, payload, key=passenger_id)
@@ -164,6 +173,19 @@ async def check_kafka() -> bool:
         return meta is not None
     except Exception:
         return False
+
+
+def emit_bulk_state_snapshot(
+    sim_time: datetime,
+    summary: dict,
+) -> None:
+    """Emit a BulkStateSnapshot event (used in BULK mode instead of per-entity events)."""
+    payload = {
+        "service": PRODUCER_NAME,
+        "sim_time": sim_time.isoformat(),
+        "summary": summary,
+    }
+    _produce_event("BulkStateSnapshot", sim_time, payload)
 
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:
