@@ -1,282 +1,684 @@
 [
   {
-    "iata": "VTX",
-    "name": "Vortex City Intl",
-    "distance_nm": 280,
+    "iata": "FNC",
+    "name": "Cristiano Ronaldo International Airport",
+    "distance_nm": 619,
     "region": "domestic",
-    "weight": 0.06
+    "weight": 0.007,
+    "latitude_deg": 32.697812,
+    "longitude_deg": -16.774613,
+    "country": "PT",
+    "municipality": "Funchal"
   },
   {
-    "iata": "MRD",
-    "name": "Meridian Airport",
-    "distance_nm": 520,
+    "iata": "SPC",
+    "name": "La Palma Airport",
+    "distance_nm": 765,
     "region": "domestic",
-    "weight": 0.05
+    "weight": 0.0014,
+    "latitude_deg": 28.626499,
+    "longitude_deg": -17.7556,
+    "country": "ES",
+    "municipality": "Sta Cruz de la Palma, La Palma Island"
   },
   {
-    "iata": "CRL",
-    "name": "Coral Bay Intl",
-    "distance_nm": 1100,
+    "iata": "SMA",
+    "name": "Santa Maria Airport",
+    "distance_nm": 140,
     "region": "domestic",
-    "weight": 0.04
+    "weight": 0.0014,
+    "latitude_deg": 36.97140121459961,
+    "longitude_deg": -25.17060089111328,
+    "country": "PT",
+    "municipality": "Vila do Porto"
   },
   {
-    "iata": "SLV",
-    "name": "Silverton Regional",
-    "distance_nm": 350,
+    "iata": "FLW",
+    "name": "Flores Airport",
+    "distance_nm": 193,
     "region": "domestic",
-    "weight": 0.05
+    "weight": 0.0014,
+    "latitude_deg": 39.455299377441406,
+    "longitude_deg": -31.131399154663086,
+    "country": "PT",
+    "municipality": "Santa Cruz das Flores"
   },
   {
-    "iata": "FRH",
-    "name": "Farhaven Airport",
-    "distance_nm": 680,
+    "iata": "PXO",
+    "name": "Porto Santo Airport",
+    "distance_nm": 623,
     "region": "domestic",
-    "weight": 0.04
+    "weight": 0.0014,
+    "latitude_deg": 33.0733985901,
+    "longitude_deg": -16.3500003815,
+    "country": "PT",
+    "municipality": "Vila Baleira"
   },
   {
-    "iata": "KDN",
-    "name": "Kadence Metro",
-    "distance_nm": 450,
+    "iata": "VDE",
+    "name": "El Hierro Airport",
+    "distance_nm": 802,
     "region": "domestic",
-    "weight": 0.04
+    "weight": 0.0014,
+    "latitude_deg": 27.8148,
+    "longitude_deg": -17.8871,
+    "country": "ES",
+    "municipality": "El Hierro Island"
   },
   {
-    "iata": "PLM",
-    "name": "Palmera Airport",
-    "distance_nm": 310,
-    "region": "domestic",
-    "weight": 0.04
-  },
-  {
-    "iata": "ECH",
-    "name": "Echofield Muni",
-    "distance_nm": 190,
-    "region": "domestic",
-    "weight": 0.03
-  },
-  {
-    "iata": "WDS",
-    "name": "Windstone Intl",
-    "distance_nm": 900,
-    "region": "domestic",
-    "weight": 0.04
-  },
-  {
-    "iata": "BRK",
-    "name": "Brookhaven Airport",
-    "distance_nm": 240,
-    "region": "domestic",
-    "weight": 0.03
-  },
-  {
-    "iata": "TLN",
-    "name": "Tallinor Intl",
-    "distance_nm": 1500,
+    "iata": "TFS",
+    "name": "Tenerife Sur Airport",
+    "distance_nm": 830,
     "region": "shorthaul",
-    "weight": 0.04
+    "weight": 0.0468,
+    "latitude_deg": 28.0445,
+    "longitude_deg": -16.5725,
+    "country": "ES",
+    "municipality": "Tenerife"
   },
   {
-    "iata": "NVD",
-    "name": "Nova Delphi Airport",
-    "distance_nm": 1800,
+    "iata": "LIS",
+    "name": "Lisbon Humberto Delgado Airport",
+    "distance_nm": 839,
     "region": "shorthaul",
-    "weight": 0.03
+    "weight": 0.0468,
+    "latitude_deg": 38.7813,
+    "longitude_deg": -9.13592,
+    "country": "PT",
+    "municipality": "Lisbon"
   },
   {
-    "iata": "CST",
-    "name": "Costa Meridia Intl",
+    "iata": "CMN",
+    "name": "Mohammed V International Airport",
+    "distance_nm": 997,
+    "region": "shorthaul",
+    "weight": 0.0468,
+    "latitude_deg": 33.3675,
+    "longitude_deg": -7.58997,
+    "country": "MA",
+    "municipality": "Casablanca"
+  },
+  {
+    "iata": "MAD",
+    "name": "Adolfo Suárez Madrid–Barajas Airport",
+    "distance_nm": 1089,
+    "region": "shorthaul",
+    "weight": 0.0468,
+    "latitude_deg": 40.493407,
+    "longitude_deg": -3.572249,
+    "country": "ES",
+    "municipality": "Madrid"
+  },
+  {
+    "iata": "LHR",
+    "name": "London Heathrow Airport",
     "distance_nm": 1350,
     "region": "shorthaul",
-    "weight": 0.03
+    "weight": 0.0468,
+    "latitude_deg": 51.470748,
+    "longitude_deg": -0.459909,
+    "country": "GB",
+    "municipality": "London"
   },
   {
-    "iata": "GVN",
-    "name": "Gravenna Intl",
-    "distance_nm": 2100,
+    "iata": "CDG",
+    "name": "Charles de Gaulle International Airport",
+    "distance_nm": 1411,
     "region": "shorthaul",
-    "weight": 0.03
+    "weight": 0.0468,
+    "latitude_deg": 49.00896,
+    "longitude_deg": 2.554117,
+    "country": "FR",
+    "municipality": "Paris (Roissy-en-France, Val-d'Oise)"
   },
   {
-    "iata": "LKS",
-    "name": "Lakeside Hub",
-    "distance_nm": 1650,
+    "iata": "DSS",
+    "name": "Blaise Diagne International Airport",
+    "distance_nm": 1540,
     "region": "shorthaul",
-    "weight": 0.03
+    "weight": 0.0468,
+    "latitude_deg": 14.670878,
+    "longitude_deg": -17.072829,
+    "country": "SN",
+    "municipality": "Dakar"
   },
   {
-    "iata": "PTR",
-    "name": "Port Ariel Intl",
-    "distance_nm": 1900,
+    "iata": "AMS",
+    "name": "Amsterdam Airport Schiphol",
+    "distance_nm": 1549,
     "region": "shorthaul",
-    "weight": 0.02
+    "weight": 0.0468,
+    "latitude_deg": 52.308601,
+    "longitude_deg": 4.76389,
+    "country": "NL",
+    "municipality": "Amsterdam"
   },
   {
-    "iata": "MNT",
-    "name": "Montara Regional",
-    "distance_nm": 1200,
+    "iata": "FRA",
+    "name": "Frankfurt Main Airport",
+    "distance_nm": 1652,
     "region": "shorthaul",
-    "weight": 0.03
+    "weight": 0.0468,
+    "latitude_deg": 50.026706,
+    "longitude_deg": 8.55835,
+    "country": "DE",
+    "municipality": "Frankfurt am Main"
   },
   {
-    "iata": "RDG",
-    "name": "Ridgeway Airport",
-    "distance_nm": 1050,
+    "iata": "FCO",
+    "name": "Rome–Fiumicino Leonardo da Vinci International Airport",
+    "distance_nm": 1795,
     "region": "shorthaul",
-    "weight": 0.02
+    "weight": 0.0468,
+    "latitude_deg": 41.804532,
+    "longitude_deg": 12.251998,
+    "country": "IT",
+    "municipality": "Rome"
   },
   {
-    "iata": "SVR",
-    "name": "Silverwind Intl",
-    "distance_nm": 2300,
+    "iata": "BOS",
+    "name": "Boston Logan International Airport",
+    "distance_nm": 1993,
     "region": "shorthaul",
-    "weight": 0.02
+    "weight": 0.0468,
+    "latitude_deg": 42.36197,
+    "longitude_deg": -71.0079,
+    "country": "US",
+    "municipality": "Boston"
   },
   {
-    "iata": "HLN",
-    "name": "Helios North",
-    "distance_nm": 1400,
+    "iata": "JFK",
+    "name": "John F. Kennedy International Airport",
+    "distance_nm": 2135,
     "region": "shorthaul",
-    "weight": 0.02
+    "weight": 0.0468,
+    "latitude_deg": 40.639447,
+    "longitude_deg": -73.779317,
+    "country": "US",
+    "municipality": "New York"
   },
   {
-    "iata": "AZR",
-    "name": "Azura Intl",
-    "distance_nm": 3200,
-    "region": "longhaul",
-    "weight": 0.03
-  },
-  {
-    "iata": "KMR",
-    "name": "Kamura City Intl",
-    "distance_nm": 4500,
-    "region": "longhaul",
-    "weight": 0.02
-  },
-  {
-    "iata": "DKR",
-    "name": "Darkstone Intl",
-    "distance_nm": 3800,
-    "region": "longhaul",
-    "weight": 0.02
-  },
-  {
-    "iata": "YLN",
-    "name": "Yulani Gateway",
-    "distance_nm": 5200,
-    "region": "longhaul",
-    "weight": 0.02
-  },
-  {
-    "iata": "OKB",
-    "name": "Oakbridge Intl",
-    "distance_nm": 3500,
-    "region": "longhaul",
-    "weight": 0.02
-  },
-  {
-    "iata": "TSR",
-    "name": "Tesseract Hub",
-    "distance_nm": 4100,
-    "region": "longhaul",
-    "weight": 0.02
-  },
-  {
-    "iata": "MPH",
-    "name": "Mapleton Heights",
-    "distance_nm": 2900,
-    "region": "longhaul",
-    "weight": 0.02
-  },
-  {
-    "iata": "VRN",
-    "name": "Veronique Intl",
-    "distance_nm": 3600,
-    "region": "longhaul",
-    "weight": 0.01
-  },
-  {
-    "iata": "BLS",
-    "name": "Bluestone Intl",
-    "distance_nm": 5800,
-    "region": "longhaul",
-    "weight": 0.01
-  },
-  {
-    "iata": "NXS",
-    "name": "Nexus Point",
-    "distance_nm": 6200,
-    "region": "longhaul",
-    "weight": 0.01
-  },
-  {
-    "iata": "FLR",
-    "name": "Floriana Airport",
-    "distance_nm": 750,
-    "region": "domestic",
-    "weight": 0.03
-  },
-  {
-    "iata": "QNT",
-    "name": "Quantum Field",
-    "distance_nm": 480,
-    "region": "domestic",
-    "weight": 0.03
-  },
-  {
-    "iata": "ZPH",
-    "name": "Zephyr Heights",
-    "distance_nm": 620,
-    "region": "domestic",
-    "weight": 0.02
-  },
-  {
-    "iata": "IRN",
-    "name": "Iron Gate Intl",
-    "distance_nm": 1700,
+    "iata": "EWR",
+    "name": "Newark Liberty International Airport",
+    "distance_nm": 2151,
     "region": "shorthaul",
-    "weight": 0.02
+    "weight": 0.0468,
+    "latitude_deg": 40.6894,
+    "longitude_deg": -74.170545,
+    "country": "US",
+    "municipality": "Newark"
   },
   {
-    "iata": "CNX",
-    "name": "Connexa Airport",
-    "distance_nm": 2400,
+    "iata": "EUN",
+    "name": "Laayoune Hassan I International Airport",
+    "distance_nm": 984,
     "region": "shorthaul",
-    "weight": 0.01
+    "weight": 0.0047,
+    "latitude_deg": 27.142467,
+    "longitude_deg": -13.224947,
+    "country": "EH",
+    "municipality": "El Aaiún"
   },
   {
-    "iata": "RVS",
-    "name": "Riverside Metro",
-    "distance_nm": 360,
-    "region": "domestic",
-    "weight": 0.02
-  },
-  {
-    "iata": "PRX",
-    "name": "Praxis Hub",
-    "distance_nm": 1550,
+    "iata": "GIB",
+    "name": "Gibraltar Airport",
+    "distance_nm": 1045,
     "region": "shorthaul",
-    "weight": 0.01
+    "weight": 0.0047,
+    "latitude_deg": 36.151679,
+    "longitude_deg": -5.34978,
+    "country": "GI",
+    "municipality": "Gibraltar"
   },
   {
-    "iata": "GLD",
-    "name": "Guildford Intl",
-    "distance_nm": 4800,
+    "iata": "ORK",
+    "name": "Cork International Airport",
+    "distance_nm": 1105,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 51.841301,
+    "longitude_deg": -8.49111,
+    "country": "IE",
+    "municipality": "Cork"
+  },
+  {
+    "iata": "NDB",
+    "name": "Nouadhibou International Airport",
+    "distance_nm": 1189,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 20.932404,
+    "longitude_deg": -17.030199,
+    "country": "MR",
+    "municipality": "Nouadhibou"
+  },
+  {
+    "iata": "YYT",
+    "name": "St. John's International Airport",
+    "distance_nm": 1236,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 47.618599,
+    "longitude_deg": -52.7519,
+    "country": "CA",
+    "municipality": "St. John's"
+  },
+  {
+    "iata": "TLM",
+    "name": "Zenata – Messali El Hadj Airport",
+    "distance_nm": 1247,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 35.012732,
+    "longitude_deg": -1.457117,
+    "country": "DZ",
+    "municipality": "Zenata"
+  },
+  {
+    "iata": "IOM",
+    "name": "Isle of Man Airport",
+    "distance_nm": 1298,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 54.083081,
+    "longitude_deg": -4.623871,
+    "country": "IM",
+    "municipality": "Castletown"
+  },
+  {
+    "iata": "VXE",
+    "name": "Cesaria Evora International Airport",
+    "distance_nm": 1320,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 16.833363,
+    "longitude_deg": -25.055308,
+    "country": "CV",
+    "municipality": "São Pedro"
+  },
+  {
+    "iata": "OST",
+    "name": "Ostend-Bruges International Airport",
+    "distance_nm": 1461,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 51.1998,
+    "longitude_deg": 2.874673,
+    "country": "BE",
+    "municipality": "Oostende"
+  },
+  {
+    "iata": "KEF",
+    "name": "Keflavik International Airport",
+    "distance_nm": 1524,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 63.985001,
+    "longitude_deg": -22.6056,
+    "country": "IS",
+    "municipality": "Reykjavík"
+  },
+  {
+    "iata": "GVA",
+    "name": "Geneva International Airport",
+    "distance_nm": 1524,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 46.238098,
+    "longitude_deg": 6.10895,
+    "country": "CH",
+    "municipality": "Geneva"
+  },
+  {
+    "iata": "LUX",
+    "name": "Luxembourg-Findel International Airport",
+    "distance_nm": 1559,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 49.626845,
+    "longitude_deg": 6.212134,
+    "country": "LU",
+    "municipality": "Luxembourg"
+  },
+  {
+    "iata": "FAE",
+    "name": "Vágar Airport",
+    "distance_nm": 1577,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 62.063256,
+    "longitude_deg": -7.275782,
+    "country": "FO",
+    "municipality": "Vágar"
+  },
+  {
+    "iata": "BJL",
+    "name": "Banjul International Airport",
+    "distance_nm": 1623,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 13.338,
+    "longitude_deg": -16.652201,
+    "country": "GM",
+    "municipality": "Yundum"
+  },
+  {
+    "iata": "OXB",
+    "name": "Osvaldo Vieira International Airport",
+    "distance_nm": 1724,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 11.894262,
+    "longitude_deg": -15.653596,
+    "country": "GW",
+    "municipality": "Bissau"
+  },
+  {
+    "iata": "SVG",
+    "name": "Stavanger Airport, Sola",
+    "distance_nm": 1739,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 58.876701,
+    "longitude_deg": 5.63778,
+    "country": "NO",
+    "municipality": "Stavanger"
+  },
+  {
+    "iata": "INN",
+    "name": "Innsbruck Airport",
+    "distance_nm": 1743,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 47.260201,
+    "longitude_deg": 11.344,
+    "country": "AT",
+    "municipality": "Innsbruck"
+  },
+  {
+    "iata": "GOH",
+    "name": "Nuuk International Airport",
+    "distance_nm": 1758,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 64.191066,
+    "longitude_deg": -51.67914,
+    "country": "GL",
+    "municipality": "Nuuk"
+  },
+  {
+    "iata": "TUN",
+    "name": "Tunis Carthage International Airport",
+    "distance_nm": 1761,
+    "region": "shorthaul",
+    "weight": 0.0047,
+    "latitude_deg": 36.851002,
+    "longitude_deg": 10.2272,
+    "country": "TN",
+    "municipality": "Tunis"
+  },
+  {
+    "iata": "YYZ",
+    "name": "Toronto Pearson International Airport",
+    "distance_nm": 2352,
     "region": "longhaul",
-    "weight": 0.01
+    "weight": 0.0234,
+    "latitude_deg": 43.675935,
+    "longitude_deg": -79.629421,
+    "country": "CA",
+    "municipality": "Toronto"
   },
   {
-    "iata": "SDN",
-    "name": "Sandune Airport",
-    "distance_nm": 870,
-    "region": "domestic",
-    "weight": 0.02
-  },
-  {
-    "iata": "WVR",
-    "name": "Waveridge Intl",
-    "distance_nm": 2700,
+    "iata": "ACC",
+    "name": "Kotoka International Airport",
+    "distance_nm": 2470,
     "region": "longhaul",
-    "weight": 0.01
+    "weight": 0.0234,
+    "latitude_deg": 5.605189800262451,
+    "longitude_deg": -0.16678600013256073,
+    "country": "GH",
+    "municipality": "Accra"
+  },
+  {
+    "iata": "IST",
+    "name": "İstanbul Airport",
+    "distance_nm": 2526,
+    "region": "longhaul",
+    "weight": 0.0234,
+    "latitude_deg": 41.274874,
+    "longitude_deg": 28.732136,
+    "country": "TR",
+    "municipality": "Istanbul"
+  },
+  {
+    "iata": "ORD",
+    "name": "Chicago O'Hare International Airport",
+    "distance_nm": 2730,
+    "region": "longhaul",
+    "weight": 0.0234,
+    "latitude_deg": 41.9786,
+    "longitude_deg": -87.9048,
+    "country": "US",
+    "municipality": "Chicago"
+  },
+  {
+    "iata": "MIA",
+    "name": "Miami International Airport",
+    "distance_nm": 2770,
+    "region": "longhaul",
+    "weight": 0.0234,
+    "latitude_deg": 25.796011,
+    "longitude_deg": -80.289751,
+    "country": "US",
+    "municipality": "Miami"
+  },
+  {
+    "iata": "GRU",
+    "name": "São Paulo/Guarulhos–Governor André Franco Montoro International Airport",
+    "distance_nm": 3889,
+    "region": "longhaul",
+    "weight": 0.0234,
+    "latitude_deg": -23.431274,
+    "longitude_deg": -46.469954,
+    "country": "BR",
+    "municipality": "São Paulo"
+  },
+  {
+    "iata": "ADD",
+    "name": "Addis Ababa Bole International Airport",
+    "distance_nm": 3941,
+    "region": "longhaul",
+    "weight": 0.0234,
+    "latitude_deg": 8.97789,
+    "longitude_deg": 38.799301,
+    "country": "ET",
+    "municipality": "Addis Ababa"
+  },
+  {
+    "iata": "DXB",
+    "name": "Dubai International Airport",
+    "distance_nm": 4138,
+    "region": "longhaul",
+    "weight": 0.0234,
+    "latitude_deg": 25.24979,
+    "longitude_deg": 55.370992,
+    "country": "AE",
+    "municipality": "Dubai"
+  },
+  {
+    "iata": "NBO",
+    "name": "Jomo Kenyatta International Airport",
+    "distance_nm": 4257,
+    "region": "longhaul",
+    "weight": 0.0234,
+    "latitude_deg": -1.318886,
+    "longitude_deg": 36.928233,
+    "country": "KE",
+    "municipality": "Nairobi"
+  },
+  {
+    "iata": "DAR",
+    "name": "Julius Nyerere International Airport",
+    "distance_nm": 4583,
+    "region": "longhaul",
+    "weight": 0.0234,
+    "latitude_deg": -6.873499,
+    "longitude_deg": 39.207288,
+    "country": "TZ",
+    "municipality": "Dar es Salaam"
+  },
+  {
+    "iata": "JNB",
+    "name": "O.R. Tambo International Airport",
+    "distance_nm": 4981,
+    "region": "longhaul",
+    "weight": 0.0234,
+    "latitude_deg": -26.140081,
+    "longitude_deg": 28.246801,
+    "country": "ZA",
+    "municipality": "Johannesburg"
+  },
+  {
+    "iata": "DEB",
+    "name": "Debrecen International Airport",
+    "distance_nm": 2160,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 47.489469,
+    "longitude_deg": 21.616278,
+    "country": "HU",
+    "municipality": "Debrecen"
+  },
+  {
+    "iata": "LPX",
+    "name": "Liepāja International Airport",
+    "distance_nm": 2162,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 56.517502,
+    "longitude_deg": 21.096901,
+    "country": "LV",
+    "municipality": "Liepāja"
+  },
+  {
+    "iata": "CFU",
+    "name": "Corfu Ioannis Kapodistrias International Airport",
+    "distance_nm": 2163,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 39.60145,
+    "longitude_deg": 19.912179,
+    "country": "GR",
+    "municipality": "Kerkyra (Corfu)"
+  },
+  {
+    "iata": "MHQ",
+    "name": "Mariehamn Airport",
+    "distance_nm": 2169,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 60.1222,
+    "longitude_deg": 19.898199,
+    "country": "FI",
+    "municipality": "Mariehamn"
+  },
+  {
+    "iata": "RZE",
+    "name": "Rzeszów-Jasionka Airport",
+    "distance_nm": 2169,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 50.109791,
+    "longitude_deg": 22.024155,
+    "country": "PL",
+    "municipality": "Jasionka"
+  },
+  {
+    "iata": "NIM",
+    "name": "Diori Hamani International Airport",
+    "distance_nm": 2170,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 13.4815,
+    "longitude_deg": 2.18361,
+    "country": "NE",
+    "municipality": "Niamey"
+  },
+  {
+    "iata": "PRN",
+    "name": "Priština Adem Jashari International Airport",
+    "distance_nm": 2174,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 42.5728,
+    "longitude_deg": 21.035801,
+    "country": "XK",
+    "municipality": "Prishtina"
+  },
+  {
+    "iata": "OMR",
+    "name": "Oradea International Airport",
+    "distance_nm": 2174,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 47.025299,
+    "longitude_deg": 21.9025,
+    "country": "RO",
+    "municipality": "Oradea"
+  },
+  {
+    "iata": "OHD",
+    "name": "Ohrid St. Paul the Apostle Airport",
+    "distance_nm": 2178,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 41.18,
+    "longitude_deg": 20.7423,
+    "country": "MK",
+    "municipality": "Ohrid"
+  },
+  {
+    "iata": "SRX",
+    "name": "Sirt International Airport / Ghardabiya Airbase",
+    "distance_nm": 2179,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 31.058578,
+    "longitude_deg": 16.597095,
+    "country": "LY",
+    "municipality": "Sirt"
+  },
+  {
+    "iata": "UDJ",
+    "name": "Uzhhorod International Airport",
+    "distance_nm": 2182,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 48.6343,
+    "longitude_deg": 22.263399,
+    "country": "UA",
+    "municipality": "Uzhhorod"
+  },
+  {
+    "iata": "BOO",
+    "name": "Bodø Airport",
+    "distance_nm": 2195,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 67.269203,
+    "longitude_deg": 14.3653,
+    "country": "NO",
+    "municipality": "Bodø"
+  },
+  {
+    "iata": "INI",
+    "name": "Niš Constantine the Great Airport",
+    "distance_nm": 2201,
+    "region": "longhaul",
+    "weight": 0.0023,
+    "latitude_deg": 43.336538,
+    "longitude_deg": 21.856242,
+    "country": "RS",
+    "municipality": "Niš"
   }
 ]

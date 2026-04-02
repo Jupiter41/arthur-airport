@@ -201,6 +201,12 @@ services:
       KAFKA_BROKERS: kafka:9092
       INITIAL_WEATHER_CATEGORY: CAVOK
       METAR_INTERVAL_SIM_MINUTES: 30
+      # Weather source: "simulated" (FSM), "historical" (CSV replay), "live" (API)
+      WEATHER_SOURCE: ${WEATHER_SOURCE:-simulated}
+      WEATHER_HISTORY_FILE: /app/data/weather/EGLL_30days.csv
+      WEATHER_LIVE_ICAO: ${WEATHER_LIVE_ICAO:-EGLL}
+    volumes:
+      - ./data/weather:/app/data/weather:ro
     depends_on:
       neo4j:
         condition: service_healthy

@@ -152,6 +152,71 @@ python scripts/helper_generate_destination_coordinates.py \
 
 ---
 
+## helper_generate_destinations.py
+
+Generates real-world destinations fixture from OurAirports airport data. Replaces fictional
+destinations with real IATA codes, names, coordinates, and distance-based weights.
+
+Output:
+
+- `services/sim-orchestrator/fixtures/destinations.json`
+
+```bash
+# Generate 80 destinations (default)
+python scripts/helper_generate_destinations.py
+
+# Generate a different count
+python scripts/helper_generate_destinations.py --count 60
+
+# Custom paths
+python scripts/helper_generate_destinations.py \
+	--airports-csv data/ourairports/airports.csv \
+	--count 80 \
+	--output services/sim-orchestrator/fixtures/destinations.json
+```
+
+Selection criteria:
+
+- Large + medium airports with IATA codes within 200–12,000 km of KART
+- Distance-based classification: <1,500 km → domestic, 1,500–4,000 km → short-haul, >4,000 km → long-haul
+- Major hub airports (LHR, JFK, CDG, etc.) always included
+- Geographic diversity: one airport per country first, then top-weighted fill
+
+---
+
+## helper_generate_airlines.py
+
+Generates real-world airlines fixture from OpenFlights data. Uses a hand-picked list of
+15 airlines suited for a mid-Atlantic hub, with fleet data from real route equipment.
+
+Output:
+
+- `services/sim-orchestrator/fixtures/airlines.json`
+
+```bash
+# Generate with defaults (15 airlines)
+python scripts/helper_generate_airlines.py
+
+# Custom count
+python scripts/helper_generate_airlines.py --count 20
+
+# Custom paths
+python scripts/helper_generate_airlines.py \
+	--airlines-dat data/openflights/airlines.dat \
+	--routes-dat data/openflights/routes.dat \
+	--output services/sim-orchestrator/fixtures/airlines.json
+```
+
+Airlines are selected from:
+
+- European flag carriers (BA, AF, LH, IB, KL, TP)
+- Low-cost (FR, U2)
+- North American (AA, UA, DL)
+- Long-haul (EK, ET, LA)
+- Regional (S4 — SATA International, Azores-based)
+
+---
+
 ## helper_test_speed_modes.sh
 
 Manual test script for verifying the three simulation speed modes (REALTIME, FAST, BULK).

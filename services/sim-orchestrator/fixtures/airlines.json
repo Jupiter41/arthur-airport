@@ -1,98 +1,228 @@
 [
   {
-    "code": "AX",
-    "name": "Artex Airways",
+    "code": "BA",
+    "name": "British Airways",
     "hub": "ART",
-    "market_share": 0.22,
+    "market_share": 0.253,
     "preferred_terminal": "B",
-    "fleet": ["B738", "A320", "A321", "B77W"]
+    "fleet": [
+      "A320",
+      "A321",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
   },
   {
-    "code": "NB",
-    "name": "Northbound Airlines",
+    "code": "AF",
+    "name": "Air France",
     "hub": "ART",
-    "market_share": 0.15,
+    "market_share": 0.19,
     "preferred_terminal": "A",
-    "fleet": ["A320", "A321", "E195"]
+    "fleet": [
+      "A320",
+      "A321",
+      "A332",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
   },
   {
-    "code": "SP",
-    "name": "SkyPeak",
-    "hub": "VTX",
-    "market_share": 0.12,
+    "code": "LH",
+    "name": "Lufthansa",
+    "hub": "ART",
+    "market_share": 0.143,
     "preferred_terminal": "C",
-    "fleet": ["B738", "A320", "DH8D"]
+    "fleet": [
+      "A320",
+      "A321",
+      "A332",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
   },
   {
-    "code": "VL",
-    "name": "Velox Air",
-    "hub": "MRD",
-    "market_share": 0.1,
-    "preferred_terminal": "A",
-    "fleet": ["A333", "B77W", "A320"]
+    "code": "IB",
+    "name": "Iberia Airlines",
+    "hub": "ART",
+    "market_share": 0.107,
+    "preferred_terminal": "B",
+    "fleet": [
+      "A320",
+      "A321",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
   },
   {
-    "code": "PN",
-    "name": "Pinnacle Connect",
+    "code": "KL",
+    "name": "KLM Royal Dutch Airlines",
     "hub": "ART",
     "market_share": 0.08,
-    "preferred_terminal": "B",
-    "fleet": ["E195", "DH8D"]
-  },
-  {
-    "code": "OC",
-    "name": "OceanCrest",
-    "hub": "CRL",
-    "market_share": 0.07,
-    "preferred_terminal": "C",
-    "fleet": ["A332", "B77W", "A321"]
-  },
-  {
-    "code": "TR",
-    "name": "Terravion",
-    "hub": "SLV",
-    "market_share": 0.06,
     "preferred_terminal": "A",
-    "fleet": ["B738", "A320"]
+    "fleet": [
+      "A320",
+      "A321",
+      "A332",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
   },
   {
-    "code": "AM",
-    "name": "ArcticMeridian",
-    "hub": "FRH",
-    "market_share": 0.05,
-    "preferred_terminal": "B",
-    "fleet": ["A321", "B738", "DH8D"]
-  },
-  {
-    "code": "EW",
-    "name": "EastWing",
-    "hub": "KDN",
-    "market_share": 0.05,
+    "code": "TP",
+    "name": "TAP Portugal",
+    "hub": "ART",
+    "market_share": 0.06,
     "preferred_terminal": "C",
-    "fleet": ["A320", "E195"]
+    "fleet": [
+      "A320",
+      "A321",
+      "A332",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D"
+    ]
+  },
+  {
+    "code": "FR",
+    "name": "Ryanair",
+    "hub": "ART",
+    "market_share": 0.045,
+    "preferred_terminal": "C",
+    "fleet": [
+      "B738"
+    ]
+  },
+  {
+    "code": "U2",
+    "name": "easyJet",
+    "hub": "ART",
+    "market_share": 0.034,
+    "preferred_terminal": "C",
+    "fleet": [
+      "A320"
+    ]
+  },
+  {
+    "code": "AA",
+    "name": "American Airlines",
+    "hub": "ART",
+    "market_share": 0.025,
+    "preferred_terminal": "C",
+    "fleet": [
+      "A320",
+      "A321",
+      "A332",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
+  },
+  {
+    "code": "UA",
+    "name": "United Airlines",
+    "hub": "ART",
+    "market_share": 0.019,
+    "preferred_terminal": "B",
+    "fleet": [
+      "A320",
+      "A321",
+      "A332",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
   },
   {
     "code": "DL",
-    "name": "DawnLink",
-    "hub": "PLM",
-    "market_share": 0.04,
-    "preferred_terminal": "A",
-    "fleet": ["B738", "DH8D"]
-  },
-  {
-    "code": "GR",
-    "name": "GreenRoute",
-    "hub": "ECH",
-    "market_share": 0.03,
-    "preferred_terminal": "B",
-    "fleet": ["E195", "DH8D"]
-  },
-  {
-    "code": "ZN",
-    "name": "Zenith Long-Haul",
+    "name": "Delta Air Lines",
     "hub": "ART",
-    "market_share": 0.03,
+    "market_share": 0.014,
+    "preferred_terminal": "A",
+    "fleet": [
+      "A320",
+      "A321",
+      "A332",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
+  },
+  {
+    "code": "EK",
+    "name": "Emirates",
+    "hub": "ART",
+    "market_share": 0.011,
     "preferred_terminal": "C",
-    "fleet": ["B77W", "A333", "B748"]
+    "fleet": [
+      "A332",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
+  },
+  {
+    "code": "ET",
+    "name": "Ethiopian Airlines",
+    "hub": "ART",
+    "market_share": 0.008,
+    "preferred_terminal": "B",
+    "fleet": [
+      "A320",
+      "A321",
+      "A333",
+      "B738",
+      "B77W",
+      "DH8D",
+      "E195"
+    ]
+  },
+  {
+    "code": "LA",
+    "name": "LAN Airlines",
+    "hub": "ART",
+    "market_share": 0.006,
+    "preferred_terminal": "A",
+    "fleet": [
+      "A320",
+      "A333",
+      "B738",
+      "B77W"
+    ]
+  },
+  {
+    "code": "S4",
+    "name": "SATA International",
+    "hub": "ART",
+    "market_share": 0.005,
+    "preferred_terminal": "A",
+    "fleet": [
+      "A320",
+      "A321",
+      "DH8D"
+    ]
   }
 ]

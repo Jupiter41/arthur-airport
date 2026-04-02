@@ -1,6 +1,7 @@
 """REST endpoints for weather-service."""
 
 import logging
+import os
 from datetime import datetime
 
 from fastapi import APIRouter, Query, HTTPException
@@ -70,6 +71,7 @@ async def current_weather():
             "ils_required": capacity["ils_required"],
         },
         "metar_raw": metar_raw,
+        "weather_source": os.getenv("WEATHER_SOURCE", "simulated"),
     }
 
 
@@ -155,3 +157,18 @@ async def weather_impact():
     capacity = compute_runway_capacity(p)
     impact = compute_impact_summary(p, capacity)
     return impact
+
+
+@router.get("/weather/source")
+async def weather_source():
+    """Current weather data source configuration."""
+    source = os.getenv("WEATHER_SOURCE", "simulated")
+    info: dict = {"source": source}
+
+    if source == "historical":
+        info["file"] = os.getenv("WEATHER_HISTORY_FILE", "/app/data/weather/EGLL_30days.csv")
+    elif source == "live":
+        info["icao"] = os.getenv("WEATHER_LIVE_ICAO", "EGLL")
+        info["api"] = "https://aviationweather.gov/api/data/metar"
+
+    return info

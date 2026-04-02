@@ -4,9 +4,34 @@ Static reference data used by the sim-orchestrator to generate realistic schedul
 
 ---
 
+## Data pipeline
+
+Helper scripts in `scripts/` transform raw CSV data into service-ready JSON fixtures:
+
+```
+data/ourairports/airports.csv  ──→  scripts/helper_generate_destinations.py
+                                      └→ services/sim-orchestrator/fixtures/destinations.json
+                                      └→ dashboards/art-dashboard/src/data/destinationCoordinates.ts
+
+data/openflights/airlines.dat  ──→  scripts/helper_generate_airlines.py
+data/openflights/routes.dat          └→ services/sim-orchestrator/fixtures/airlines.json
+
+data/weather/EGLL_30days.csv   ──→  weather-service (historical mode, mounted via Docker volume)
+```
+
+To regenerate fixtures after refreshing data:
+
+```bash
+python scripts/helper_generate_destinations.py
+python scripts/helper_generate_airlines.py
+python scripts/helper_generate_destination_coordinates.py
+```
+
+---
+
 ## Current Datasets
 
-### OurAirports _(already downloaded)_
+### OurAirports _(downloaded)_
 
 |             |                                                          |
 | ----------- | -------------------------------------------------------- |
@@ -16,7 +41,7 @@ Static reference data used by the sim-orchestrator to generate realistic schedul
 
 | File                      | Rows    | Used for                                             |
 | ------------------------- | ------- | ---------------------------------------------------- |
-| `airports.csv`            | ~74,000 | Destination pool — lat/lon, IATA codes, airport type |
+| `airports.csv`            | ~85,000 | Destination pool — lat/lon, IATA codes, airport type |
 | `runways.csv`             | ~45,000 | Runway length, surface, ILS availability per airport |
 | `airport-frequencies.csv` | ~28,000 | ATC frequencies _(future: radio comms simulation)_   |
 | `navaids.csv`             | ~11,000 | Navigation aids _(future: route waypoints)_          |
@@ -37,7 +62,7 @@ Static reference data used by the sim-orchestrator to generate realistic schedul
 | `iso_country`   | ISO 3166-1 alpha-2 country code                                      |
 | `municipality`  | City name                                                            |
 
-**Filtering for destination pool** (see `docs/architecture/SIMULATION.md §6.3`):
+**Filtering for destination pool** (see `scripts/helper_generate_destinations.py`):
 
 ```python
 df = df[df["type"].isin(["large_airport", "medium_airport"])]
@@ -47,9 +72,7 @@ df = df[(df["distance_km"] >= 200) & (df["distance_km"] <= 12000)]
 
 ---
 
-## Recommended Additional Datasets
-
-### OpenFlights — Airlines, Routes, Aircraft
+### OpenFlights — Airlines, Routes, Aircraft _(downloaded)_
 
 |             |                                   |
 | ----------- | --------------------------------- |
@@ -58,26 +81,41 @@ df = df[(df["distance_km"] >= 200) & (df["distance_km"] <= 12000)]
 | **Format**  | CSV (direct download, no API key) |
 | **Refresh** | Infrequent (community-maintained) |
 
-```bash
-curl -o data/openflights/airlines.dat \
-  https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat
+| File           | Rows    | Used for                               |
+| -------------- | ------- | -------------------------------------- |
+| `airlines.dat` | ~6,000  | Real airline names, IATA/ICAO codes    |
+| `routes.dat`   | ~68,000 | Aircraft equipment mapping per airline |
+| `planes.dat`   | ~246    | Aircraft type names _(reference)_      |
 
-curl -o data/openflights/routes.dat \
-  https://raw.githubusercontent.com/jpatokal/openflights/master/data/routes.dat
-
-curl -o data/openflights/planes.dat \
-  https://raw.githubusercontent.com/jpatokal/openflights/master/data/planes.dat
-```
-
-**Used for:**
-
-- `airlines.dat` → Realistic airline identities
-- `routes.dat` → Real-world network topology
-- `planes.dat` → Aircraft types and equipment mapping
+**Used by:** `scripts/helper_generate_airlines.py` → `fixtures/airlines.json`
 
 ---
 
-### Aviation Weather Center — METAR/TAF _(live only)_
+### IEM Mesonet — Historical METAR _(downloaded)_
+
+|             |                                                                  |
+| ----------- | ---------------------------------------------------------------- |
+| **License** | Public Domain (US Government data)                               |
+| **Source**  | https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py        |
+| **Format**  | CSV with ~30 columns including raw METAR, temp, wind, visibility |
+| **History** | 30-day rolling window (configurable in `download_all.sh`)        |
+
+| File              | Rows   | Station | Used for                           |
+| ----------------- | ------ | ------- | ---------------------------------- |
+| `EGLL_30days.csv` | ~1,440 | EGLL    | Historical weather replay (London) |
+| `LFPG_30days.csv` | ~1,440 | LFPG    | Historical weather replay (Paris)  |
+
+**Used by:** weather-service in `historical` mode (`WEATHER_SOURCE=historical`).
+
+Set `WEATHER_HISTORY_FILE` to switch between stations:
+
+```bash
+WEATHER_SOURCE=historical WEATHER_HISTORY_FILE=/app/data/weather/LFPG_30days.csv docker compose up
+```
+
+---
+
+### Aviation Weather Center — Live METAR _(API, no download needed)_
 
 |             |                                       |
 | ----------- | ------------------------------------- |
@@ -88,15 +126,26 @@ curl -o data/openflights/planes.dat \
 
 ```bash
 curl "https://aviationweather.gov/api/data/metar?ids=EGLL&format=json"
-curl "https://aviationweather.gov/api/data/metar?ids=EGLL&format=json&hours=24"
 ```
 
-**Used for:**
+**Used by:** weather-service in `live` mode (`WEATHER_SOURCE=live`).
 
-- Live simulation weather (`WEATHER_SOURCE=live`)
-- Real-time METAR ingestion
+No API key required. Results are cached for 30 real minutes.
 
-> ⚠️ The `hours` parameter is capped (~48h). This API **cannot** be used for historical datasets.
+```bash
+WEATHER_SOURCE=live WEATHER_LIVE_ICAO=EGLL docker compose up
+```
+
+---
+
+## Refreshing all data
+
+```bash
+bash data/download_all.sh
+python scripts/helper_generate_destinations.py
+python scripts/helper_generate_airlines.py
+python scripts/helper_generate_destination_coordinates.py
+```
 
 ---
 
