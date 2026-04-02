@@ -307,7 +307,10 @@ services:
       retries: 5
 
   dashboard:
-    build: ./dashboards/art-dashboard
+    build:
+      context: ./dashboards/art-dashboard
+      args:
+        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-pk.eyJ1IjoidGhlLWFyY3R1cnVzIiwiYSI6ImNtbjRkZHRqMjA2enQycHF6Nm16bGpwMGEifQ.ZWr7iEm6l4CUbNKMN-5nwQ}
     restart: unless-stopped
     networks: [art-net]
     ports:

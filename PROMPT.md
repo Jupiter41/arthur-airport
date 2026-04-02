@@ -23,5 +23,9 @@ Before doing any edit, do this:
 
 Your mission is to:
 
-- Add integration tests that specifically validate the full event chain based on docs/lessons-learned/sprint-16-full-audit-report.md, section 6 "Cross-Service Integration Analysis". Focus on the critical bugs (BUG-1 through BUG-4) that were identified in the audit report, and ensure that the tests cover the event contracts end-to-end across all relevant services.
-- Implement the missing gaps from ROADMAP based on the undone tasks repaired in the audit report.
+- Implement all the gaps still not done from ROADMAP.md, for example the Gap 4.
+- The world page isn't in 3D because it uses the Leaflet fall back but my MAPBOX token is present in .env. In 2D and 3D planes icons should be a plane icon, not a point. When user click on one precise the info of the plane
+- Sometimes the times in departure time column are stroke through and use orange/red whereas estimated = scheduled.
+- flight-service-1 | 2026-04-02 07:30:57,542 [neo4j.notifications] WARNING: Received notification from DBMS server: <GqlStatusObject gql_status='01N52', status_description='warn: property key does not exist. The property `arrival_estimated_time` does not exist
+- In the passengers page, I think it would be good to add an estimated waiting time with the percentage capacity used.
+- I think it would be nice to show more the link flight/passenger/baggage in the terminal pages.

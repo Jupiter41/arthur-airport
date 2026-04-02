@@ -4,6 +4,11 @@ WORKDIR /app
 COPY package*.json .
 RUN npm install
 COPY . .
+
+# Accept Mapbox token as a build-time arg so Vite can inline it
+ARG VITE_MAPBOX_TOKEN
+ENV VITE_MAPBOX_TOKEN=$VITE_MAPBOX_TOKEN
+
 RUN npm run build
 
 FROM nginx:alpine

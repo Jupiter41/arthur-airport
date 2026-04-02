@@ -134,6 +134,33 @@ async def emit_baggage_flagged(
     return payload
 
 
+async def emit_conveyor_delay(
+    zone_id: str,
+    terminal: str,
+    items: int,
+    capacity: int,
+    overflow: int,
+    estimated_delay_min: float,
+    sim_time: datetime,
+) -> dict:
+    """Emit baggage.conveyor.delay event when a make-up zone is overloaded (GAP-4-6)."""
+    payload = {
+        "zone_id": zone_id,
+        "terminal": terminal,
+        "items": items,
+        "capacity": capacity,
+        "overflow": overflow,
+        "estimated_delay_min": estimated_delay_min,
+        "at": sim_time.isoformat(),
+    }
+    _produce_event("ConveyorDelay", sim_time, payload)
+    logger.warning(
+        "Emitted ConveyorDelay: zone=%s overflow=%d delay=%.1fmin",
+        zone_id, overflow, estimated_delay_min,
+    )
+    return payload
+
+
 async def check_kafka() -> bool:
     try:
         admin = AdminClient({

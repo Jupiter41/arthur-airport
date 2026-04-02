@@ -24,6 +24,7 @@ from db.neo4j import (
 from kafka.producer import (
     emit_baggage_status_changed,
     emit_baggage_flagged,
+    emit_conveyor_delay,
     emit_bulk_state_snapshot,
     set_bulk_mode,
 )
@@ -38,6 +39,9 @@ from metrics import (
     baggage_flagged_active as m_flagged,
     conveyor_zone_utilisation_pct as m_zone_util,
     conveyor_zone_status as m_zone_status,
+    conveyor_segment_load as m_segment_load,
+    conveyor_transit_queue as m_transit_queue,
+    conveyor_delay_total as m_conveyor_delay,
     baggage_transitions_total as m_transitions,
     dangerous_goods_detected_total as m_dg_detected,
     screening_false_positives_total as m_false_pos,
@@ -344,8 +348,26 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         m_zone_util.labels(zone_id=z["zone_id"]).set(z["utilisation_pct"])
         status_val = {"normal": 0, "degraded": 1, "offline": 2}.get(z["status"], 0)
         m_zone_status.labels(zone_id=z["zone_id"]).set(status_val)
+        # GAP-4-8: per-segment load metric
+        m_segment_load.labels(zone_id=z["zone_id"]).set(z["items"])
+    m_transit_queue.set(_state.conveyor.transit_queue_depth)
 
-    # 5. BULK mode: emit periodic BulkStateSnapshot
+    # 5. GAP-4-5/4-6: Check make-up carousel capacity overflow
+    if _baggage_tick_n % 5 == 0:  # check every 5 ticks to avoid spam
+        overloaded = _state.conveyor.get_overloaded_makeup_zones()
+        for info in overloaded:
+            m_conveyor_delay.labels(terminal=info["terminal"]).inc()
+            await emit_conveyor_delay(
+                zone_id=info["zone_id"],
+                terminal=info["terminal"],
+                items=info["items"],
+                capacity=info["capacity"],
+                overflow=info["overflow"],
+                estimated_delay_min=info["estimated_delay_min"],
+                sim_time=sim_time,
+            )
+
+    # 6. BULK mode: emit periodic BulkStateSnapshot
     if is_bulk:
         await _maybe_emit_baggage_bulk_snapshot(sim_time)
 
@@ -681,9 +703,15 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
         return
 
     if new_status == "departed":
-        # Flight departed — bags in 'loaded' → 'in_hold'
+        # Flight departed — all bags on this flight → 'in_hold'
+        # Bags still in conveyor (inducted/screening/sorting) or not yet
+        # inducted (dropped_off) are fast-tracked: in reality they would
+        # have been processed before departure.
         from db.neo4j import get_flight_baggage
-        bags = await get_flight_baggage(flight_id, statuses=["loaded"])
+        bags = await get_flight_baggage(
+            flight_id,
+            statuses=["loaded", "sorting", "screening", "inducted", "dropped_off"],
+        )
         for bag in bags:
             await update_baggage_status(
                 bag["id"], "in_hold", "aircraft-hold", sim_time
@@ -691,7 +719,7 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
             event_payload = await _emit_status_changed_with_metric(
                 baggage_id=bag["id"],
                 tag=bag["tag"],
-                previous_status="loaded",
+                previous_status=bag.get("status", "loaded"),
                 new_status="in_hold",
                 scan_zone="aircraft-hold",
                 sim_time=sim_time,
@@ -709,8 +737,13 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
     ):
         # Arrival flight reached gate — bags 'in_hold' → 'arrived' → 'on_carousel'
         from db.neo4j import get_flight_baggage
+        from services.spatial import arrival_carousel_for_terminal
         bags = await get_flight_baggage(flight_id, statuses=["in_hold"])
-        carousel = (hash(flight_id) % 6) + 1
+        # Determine terminal from gate_id (first char) per ROADMAP: A→1-2, B→3-4, C→5-6
+        gate_id = payload.get("gate_id") or ""
+        terminal = gate_id[0].upper() if gate_id else "A"
+        terminal_carousels = arrival_carousel_for_terminal(terminal)
+        carousel = terminal_carousels[hash(flight_id) % len(terminal_carousels)]
         for bag in bags:
             await update_baggage_status(
                 bag["id"], "arrived", f"arrival-belt-{carousel}", sim_time
@@ -724,7 +757,7 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
                 is_dg=False,
                 dg_class=None,
                 passenger_id=bag.get("passenger_id"),
-                terminal="A",
+                terminal=terminal,
                 entered_at=sim_time.isoformat(),
             )
             arrival_zone = _state.conveyor.get_zone(f"arrival-belt-{carousel}")

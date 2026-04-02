@@ -66,6 +66,7 @@ export interface Flight {
   delay_minutes: number;
   pax_count: number;
   pax_boarded: number;
+  seat_capacity: number;
   baggage_count: number;
   baggage_loaded: number;
   flight_type: string | null;

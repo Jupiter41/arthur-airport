@@ -54,7 +54,11 @@ function ZoneCell({
         {zone.zone_id}
       </div>
       <div className="text-xs text-white/80">{zone.density} pax</div>
-      <div className="text-[9px] text-white/60">{zone.load_pct}%</div>
+      <div className="text-[9px] text-white/60">
+        {zone.load_pct}% ·{" "}
+        {zone.capacity - zone.density > 0 ? zone.capacity - zone.density : 0}{" "}
+        free
+      </div>
       {locked && (
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="text-lg">🔒</span>
@@ -253,6 +257,7 @@ function SecurityQueueChart({
     terminal: `Terminal ${term.replace("terminal_", "")}`,
     queue: info.queue_length,
     wait: info.wait_minutes,
+    lanes: info.lanes_open,
   }));
 
   function barColor(wait: number): string {
@@ -264,42 +269,118 @@ function SecurityQueueChart({
   return (
     <div className="bg-gray-800 rounded p-3">
       <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
-        Security Queue Depth
+        Security Queue Depth &amp; Wait Time
       </h3>
-      <ResponsiveContainer width="100%" height={140}>
-        <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-          <XAxis dataKey="terminal" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-          <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} width={32} />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#1f2937",
-              border: "1px solid #4b5563",
-              borderRadius: 4,
-            }}
-            labelStyle={{ color: "#e5e7eb", fontSize: 11 }}
-            itemStyle={{ fontSize: 11 }}
-          />
-          <Bar dataKey="queue" name="Queue" radius={[4, 4, 0, 0]}>
-            {data.map((d, i) => (
-              <Cell key={i} fill={barColor(d.wait)} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart
+              data={data}
+              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <XAxis
+                dataKey="terminal"
+                tick={{ fill: "#9ca3af", fontSize: 10 }}
+              />
+              <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} width={32} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1f2937",
+                  border: "1px solid #4b5563",
+                  borderRadius: 4,
+                }}
+                labelStyle={{ color: "#e5e7eb", fontSize: 11 }}
+                itemStyle={{ fontSize: 11, color: "#e5e7eb" }}
+              />
+              <Bar dataKey="queue" name="Queue Depth" radius={[4, 4, 0, 0]}>
+                {data.map((d, i) => (
+                  <Cell key={i} fill={barColor(d.wait)} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div>
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart
+              data={data}
+              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <XAxis
+                dataKey="terminal"
+                tick={{ fill: "#9ca3af", fontSize: 10 }}
+              />
+              <YAxis
+                tick={{ fill: "#9ca3af", fontSize: 10 }}
+                width={32}
+                unit=" min"
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1f2937",
+                  border: "1px solid #4b5563",
+                  borderRadius: 4,
+                }}
+                labelStyle={{ color: "#e5e7eb", fontSize: 11 }}
+                itemStyle={{ fontSize: 11, color: "#e5e7eb" }}
+                formatter={(value) => [`${value} min`, "Est. Wait"]}
+              />
+              <Bar dataKey="wait" name="Est. Wait" radius={[4, 4, 0, 0]}>
+                {data.map((d, i) => (
+                  <Cell key={i} fill={barColor(d.wait)} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ──────── KPI Bar ──────── */
-function KPIBar({ summary }: { summary: PassengerFlowSummary | null }) {
+function KPIBar({
+  summary,
+  zones,
+}: {
+  summary: PassengerFlowSummary | null;
+  zones: ZoneDensity[];
+}) {
   if (!summary) return null;
+
+  const totalCapacity = zones.reduce((sum, z) => sum + z.capacity, 0);
+  const totalDensity = zones.reduce((sum, z) => sum + z.density, 0);
+  const overallLoadPct =
+    totalCapacity > 0 ? Math.round((totalDensity / totalCapacity) * 100) : 0;
+
   return (
-    <div className="flex gap-4">
+    <div className="flex gap-4 flex-wrap">
       <KPI
         label="In Airport"
         value={summary.total_in_airport.toLocaleString()}
       />
+      <div className="bg-gray-800 rounded px-3 py-2">
+        <div className="text-xs text-gray-500">Overall Capacity</div>
+        <div
+          className={`font-bold ${overallLoadPct > 85 ? "text-red-400" : overallLoadPct > 70 ? "text-amber-400" : "text-white"}`}
+        >
+          {overallLoadPct}%
+        </div>
+        <div className="w-full bg-gray-700 rounded-full h-1.5 mt-1">
+          <div
+            className={`h-1.5 rounded-full transition-all duration-700 ${
+              overallLoadPct > 85
+                ? "bg-red-500"
+                : overallLoadPct > 70
+                  ? "bg-amber-500"
+                  : "bg-green-500"
+            }`}
+            style={{ width: `${Math.min(100, overallLoadPct)}%` }}
+          />
+        </div>
+      </div>
       <KPI
         label="Connections at Risk"
         value={String(summary.connections_at_risk)}
@@ -310,16 +391,30 @@ function KPIBar({ summary }: { summary: PassengerFlowSummary | null }) {
         value={String(summary.connections_missed)}
         color={summary.connections_missed > 0 ? "text-red-400" : undefined}
       />
-      {/* Security queues */}
+      {/* Security queues with wait time + capacity bar */}
       {summary.security &&
         Object.entries(summary.security).map(([term, data]) => (
-          <div key={term} className="bg-gray-800 rounded px-3 py-2">
+          <div
+            key={term}
+            className="bg-gray-800 rounded px-3 py-2 min-w-[120px]"
+          >
             <div className="text-xs text-gray-500">Security {term}</div>
             <div className="font-bold text-white">{data.queue_length} pax</div>
-            <div
-              className={`text-xs ${data.wait_minutes > 20 ? "text-amber-400" : "text-gray-400"}`}
-            >
-              ~{data.wait_minutes} min
+            <div className="flex items-center gap-2 mt-0.5">
+              <div
+                className={`text-xs font-semibold ${
+                  data.wait_minutes > 20
+                    ? "text-red-400"
+                    : data.wait_minutes > 10
+                      ? "text-amber-400"
+                      : "text-green-400"
+                }`}
+              >
+                ~{data.wait_minutes} min wait
+              </div>
+            </div>
+            <div className="text-[10px] text-gray-500">
+              {data.lanes_open} lanes open
             </div>
           </div>
         ))}
@@ -399,6 +494,7 @@ function ConnectionRiskList({
 /* ──────── Zone Detail Panel ──────── */
 function ZoneDetailPanel({ zone }: { zone: ZoneDensity | null }) {
   if (!zone) return null;
+  const remaining = Math.max(0, zone.capacity - zone.density);
   return (
     <div className="bg-gray-800 rounded p-3">
       <h3 className="text-sm font-bold text-white mb-2">{zone.zone_id}</h3>
@@ -412,12 +508,36 @@ function ZoneDetailPanel({ zone }: { zone: ZoneDensity | null }) {
           <span>{zone.capacity}</span>
         </div>
         <div className="flex justify-between">
+          <span>Remaining</span>
+          <span className={remaining < 10 ? "text-red-400 font-bold" : ""}>
+            {remaining} slots
+          </span>
+        </div>
+        <div className="flex justify-between">
           <span>Load</span>
           <span
-            className={zone.load_pct > 85 ? "text-amber-400 font-bold" : ""}
+            className={
+              zone.load_pct > 85
+                ? "text-red-400 font-bold"
+                : zone.load_pct > 70
+                  ? "text-amber-400 font-bold"
+                  : ""
+            }
           >
             {zone.load_pct}%
           </span>
+        </div>
+        <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+          <div
+            className={`h-2 rounded-full transition-all duration-700 ${
+              zone.load_pct > 85
+                ? "bg-red-500"
+                : zone.load_pct > 70
+                  ? "bg-amber-500"
+                  : "bg-green-500"
+            }`}
+            style={{ width: `${Math.min(100, zone.load_pct)}%` }}
+          />
         </div>
       </div>
     </div>
@@ -480,7 +600,7 @@ export default function PassengerFlowPage() {
         />
       </div>
 
-      <KPIBar summary={summary} />
+      <KPIBar summary={summary} zones={zones} />
 
       <SecurityQueueChart summary={summary} />
 

@@ -48,7 +48,10 @@ const EMPTY_FEATURE_COLLECTION = {
   features: [],
 };
 
-function toPositionFeature(flight: Flight, simTime: string): PositionFeature | null {
+function toPositionFeature(
+  flight: Flight,
+  simTime: string,
+): PositionFeature | null {
   const position = computeAircraftPosition(flight, simTime);
   if (!position) {
     return null;
@@ -111,15 +114,14 @@ export default function WorldMapPage() {
   const [searchAirport, setSearchAirport] = useState<string>("");
   const [showSearchPanel, setShowSearchPanel] = useState(false);
 
-  const token = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined)
-    ?.trim();
+  const token = (
+    import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
+  )?.trim();
   const hasMapboxToken = Boolean(token);
 
   const activeFlights = useMemo(
     () =>
-      (flights.data ?? []).filter(
-        (flight) => flight.direction === "departure",
-      ),
+      (flights.data ?? []).filter((flight) => flight.direction === "departure"),
     [flights.data],
   );
 
@@ -133,7 +135,7 @@ export default function WorldMapPage() {
       (f) =>
         f.flight_number.toLowerCase().includes(query) ||
         f.airline_code.toLowerCase().includes(query) ||
-        f.destination_iata.toLowerCase().includes(query)
+        f.destination_iata.toLowerCase().includes(query),
     );
   }, [activeFlights, searchPlane]);
 
@@ -241,9 +243,15 @@ export default function WorldMapPage() {
   }, [activeFlights]);
 
   const stats = useMemo(() => {
-    const airborne = activeFlights.filter((f) => f.status === "airborne").length;
-    const approach = activeFlights.filter((f) => f.status === "approach").length;
-    const longHaul = activeFlights.filter((f) => f.route_category === "long_haul").length;
+    const airborne = activeFlights.filter(
+      (f) => f.status === "airborne",
+    ).length;
+    const approach = activeFlights.filter(
+      (f) => f.status === "approach",
+    ).length;
+    const longHaul = activeFlights.filter(
+      (f) => f.route_category === "long_haul",
+    ).length;
     const longest = activeFlights
       .filter((f) => f.route_category === "long_haul")
       .sort((a, b) => b.delay_minutes - a.delay_minutes)[0];
@@ -344,7 +352,15 @@ export default function WorldMapPage() {
             source: "apron",
             paint: {
               "line-color": "#8b95a5",
-              "line-width": ["interpolate", ["linear"], ["zoom"], 2, 0.3, 13, 1],
+              "line-width": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                2,
+                0.3,
+                13,
+                1,
+              ],
               "line-opacity": 0.6,
             },
           });
@@ -366,7 +382,15 @@ export default function WorldMapPage() {
             source: "taxiways",
             paint: {
               "line-color": "#fcd34d",
-              "line-width": ["interpolate", ["linear"], ["zoom"], 2, 0.8, 13, 4],
+              "line-width": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                2,
+                0.8,
+                13,
+                4,
+              ],
               "line-opacity": 0.85,
             },
           });
@@ -387,7 +411,15 @@ export default function WorldMapPage() {
             source: "terminals",
             paint: {
               "line-color": "#4db8d4",
-              "line-width": ["interpolate", ["linear"], ["zoom"], 2, 0.5, 13, 2],
+              "line-width": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                2,
+                0.5,
+                13,
+                2,
+              ],
               "line-opacity": 0.9,
             },
           });
@@ -398,7 +430,15 @@ export default function WorldMapPage() {
             source: "gates",
             paint: {
               "circle-color": "#06b6d4",
-              "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 3, 14, 6],
+              "circle-radius": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                8,
+                3,
+                14,
+                6,
+              ],
               "circle-opacity": 0.95,
               "circle-stroke-color": "#164e63",
               "circle-stroke-width": 1.5,
@@ -437,7 +477,15 @@ export default function WorldMapPage() {
               ],
               "circle-stroke-color": "#041321",
               "circle-stroke-width": 1,
-              "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 3, 8, 5],
+              "circle-radius": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                2,
+                3,
+                8,
+                5,
+              ],
             },
           });
 
@@ -470,7 +518,8 @@ export default function WorldMapPage() {
           const planeSvgUrl =
             "data:image/svg+xml;charset=utf-8," + encodeURIComponent(planeSvg);
           const selectedPlaneSvgUrl =
-            "data:image/svg+xml;charset=utf-8," + encodeURIComponent(selectedPlaneSvg);
+            "data:image/svg+xml;charset=utf-8," +
+            encodeURIComponent(selectedPlaneSvg);
 
           const planeImg = new Image(48, 48);
           planeImg.onload = () => {
@@ -495,13 +544,33 @@ export default function WorldMapPage() {
                     "plane-icon-selected",
                     "plane-icon",
                   ],
-                  "icon-size": ["interpolate", ["linear"], ["zoom"], 2, 0.45, 8, 0.75, 14, 1.1],
+                  "icon-size": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    2,
+                    0.45,
+                    8,
+                    0.75,
+                    14,
+                    1.1,
+                  ],
                   "icon-rotate": ["coalesce", ["get", "heading_deg"], 0],
                   "icon-rotation-alignment": "map",
                   "icon-allow-overlap": true,
                   "icon-keep-upright": false,
                   "text-field": ["get", "flight_number"],
-                  "text-size": ["interpolate", ["linear"], ["zoom"], 3, 7, 8, 10, 12, 12],
+                  "text-size": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    3,
+                    7,
+                    8,
+                    10,
+                    12,
+                    12,
+                  ],
                   "text-offset": [0, 2],
                   "text-allow-overlap": true,
                 },
@@ -624,7 +693,9 @@ export default function WorldMapPage() {
 
     if (hasMapboxToken) {
       const map = mapRef.current as {
-        getSource: (name: string) => { setData?: (data: unknown) => void } | undefined;
+        getSource: (
+          name: string,
+        ) => { setData?: (data: unknown) => void } | undefined;
         isStyleLoaded?: () => boolean;
         getLayer?: (layerId: string) => unknown;
         setLayoutProperty?: (
@@ -674,7 +745,9 @@ export default function WorldMapPage() {
       aircraftMarkersRef.current = [];
 
       for (const route of routeFeatures) {
-        const latlngs = route.geometry.coordinates.map((coord) => [coord[1], coord[0]] as [number, number]);
+        const latlngs = route.geometry.coordinates.map(
+          (coord) => [coord[1], coord[0]] as [number, number],
+        );
         const line = L.polyline(latlngs, {
           color: "#66d3ff",
           dashArray: "6, 8",
@@ -698,15 +771,21 @@ export default function WorldMapPage() {
 
       for (const feature of positionFeatures) {
         const isSelected = feature.properties.flight_id === selectedFlightId;
-        const marker = L.circleMarker(
+        const fill = isSelected ? "#facc15" : "#22d3ee";
+        const heading = feature.properties.heading_deg ?? 0;
+        const icon = L.divIcon({
+          className: "",
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+          html: `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 48 48"
+                      style="transform:rotate(${heading}deg)">
+                   <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
+                         fill="${fill}" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
+                 </svg>`,
+        });
+        const marker = L.marker(
           [feature.geometry.coordinates[1], feature.geometry.coordinates[0]],
-          {
-            radius: 5,
-            color: isSelected ? "#facc15" : "#22d3ee",
-            fillColor: isSelected ? "#facc15" : "#22d3ee",
-            fillOpacity: 0.9,
-            weight: 2,
-          },
+          { icon },
         )
           .bindTooltip(String(feature.properties.flight_number))
           .on("click", () => {
@@ -754,23 +833,27 @@ export default function WorldMapPage() {
               type="button"
               onClick={() => {
                 if (!mapRef.current) return;
-                
+
                 if (hasMapboxToken) {
-                  const map = mapRef.current as { flyTo?: (options: unknown) => void };
+                  const map = mapRef.current as {
+                    flyTo?: (options: unknown) => void;
+                  };
                   map.flyTo?.({
                     center: [KART_COORDINATES.lon, KART_COORDINATES.lat],
                     zoom: 8,
                     duration: 1500,
                   });
                 } else {
-                  const map = mapRef.current as { 
-                    flyTo?: (latLng: unknown, zoom: number, options?: unknown) => void 
+                  const map = mapRef.current as {
+                    flyTo?: (
+                      latLng: unknown,
+                      zoom: number,
+                      options?: unknown,
+                    ) => void;
                   };
-                  map.flyTo?.(
-                    [KART_COORDINATES.lat, KART_COORDINATES.lon],
-                    8,
-                    { duration: 1.5 }
-                  );
+                  map.flyTo?.([KART_COORDINATES.lat, KART_COORDINATES.lon], 8, {
+                    duration: 1.5,
+                  });
                 }
               }}
               className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 transition-colors text-white font-medium"
@@ -800,7 +883,9 @@ export default function WorldMapPage() {
         {showSearchPanel && (
           <div className="absolute top-3 left-3 w-80 rounded border border-slate-700 bg-slate-950/96 text-xs shadow-lg backdrop-blur-sm p-4 max-h-[70vh] overflow-y-auto animation-slide-right">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-slate-100">Find Planes & Airports</h3>
+              <h3 className="font-semibold text-slate-100">
+                Find Planes & Airports
+              </h3>
               <button
                 type="button"
                 className="text-slate-400 hover:text-slate-200"
@@ -832,7 +917,9 @@ export default function WorldMapPage() {
                         : "bg-slate-800 hover:bg-slate-700 text-slate-200"
                     }`}
                   >
-                    <span className="font-mono font-semibold">{flight.flight_number}</span>
+                    <span className="font-mono font-semibold">
+                      {flight.flight_number}
+                    </span>
                     <span className="text-slate-400 mx-1">→</span>
                     <span>{flight.destination_iata}</span>
                     <span className="float-right text-slate-400">
@@ -841,7 +928,9 @@ export default function WorldMapPage() {
                   </button>
                 ))}
                 {filteredPlanes.length === 0 && (
-                  <div className="px-2 py-1 text-slate-500">No planes found</div>
+                  <div className="px-2 py-1 text-slate-500">
+                    No planes found
+                  </div>
                 )}
                 {filteredPlanes.length > 10 && (
                   <div className="px-2 py-1 text-slate-500 text-center">
@@ -853,7 +942,9 @@ export default function WorldMapPage() {
 
             {/* Search Airports */}
             <div>
-              <label className="block text-slate-400 mb-1">Search Airports</label>
+              <label className="block text-slate-400 mb-1">
+                Search Airports
+              </label>
               <input
                 type="text"
                 placeholder="IATA code..."
@@ -864,7 +955,7 @@ export default function WorldMapPage() {
               <div className="mt-2 space-y-1">
                 {filteredAirports.map((iata) => {
                   const flightCount = activeFlights.filter(
-                    (f) => f.destination_iata === iata
+                    (f) => f.destination_iata === iata,
                   ).length;
                   return (
                     <button
@@ -875,12 +966,16 @@ export default function WorldMapPage() {
                     >
                       <span className="font-mono font-semibold">{iata}</span>
                       <span className="text-slate-400 mx-1">•</span>
-                      <span className="text-slate-400">{flightCount} flight{flightCount !== 1 ? "s" : ""}</span>
+                      <span className="text-slate-400">
+                        {flightCount} flight{flightCount !== 1 ? "s" : ""}
+                      </span>
                     </button>
                   );
                 })}
                 {filteredAirports.length === 0 && searchAirport && (
-                  <div className="px-2 py-1 text-slate-500">No airports found</div>
+                  <div className="px-2 py-1 text-slate-500">
+                    No airports found
+                  </div>
                 )}
               </div>
 
@@ -888,7 +983,9 @@ export default function WorldMapPage() {
               <div className="mt-4 pt-4 border-t border-slate-700 space-y-1 text-slate-400">
                 <div className="flex justify-between">
                   <span>Active Flights:</span>
-                  <span className="font-semibold text-slate-200">{activeFlights.length}</span>
+                  <span className="font-semibold text-slate-200">
+                    {activeFlights.length}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Unique Destinations:</span>
@@ -913,7 +1010,7 @@ export default function WorldMapPage() {
                 onClick={() => setSelectedFlightId(null)}
               >
                 Close
-            </button>
+              </button>
             </div>
             <div className="space-y-1 text-slate-300">
               <p>
@@ -930,16 +1027,62 @@ export default function WorldMapPage() {
               </p>
               <p>
                 <span className="text-slate-400">Status:</span>{" "}
-                {selectedFlight.status}
+                <span
+                  className={
+                    selectedFlight.status === "airborne"
+                      ? "text-cyan-400"
+                      : selectedFlight.status === "approach"
+                        ? "text-amber-400"
+                        : selectedFlight.status === "delayed"
+                          ? "text-red-400"
+                          : "text-green-400"
+                  }
+                >
+                  {selectedFlight.status}
+                </span>
               </p>
-              <p>
-                <span className="text-slate-400">Delay:</span>{" "}
-                {selectedFlight.delay_minutes} min
-              </p>
+              {selectedFlight.delay_minutes > 0 && (
+                <p>
+                  <span className="text-slate-400">Delay:</span>{" "}
+                  <span className="text-amber-400">
+                    {selectedFlight.delay_minutes} min
+                  </span>
+                </p>
+              )}
               <p>
                 <span className="text-slate-400">Terminal / Gate:</span>{" "}
                 {selectedFlight.terminal} / {selectedFlight.gate_id ?? "-"}
               </p>
+              <p>
+                <span className="text-slate-400">Scheduled:</span>{" "}
+                <span className="font-mono">
+                  {new Date(selectedFlight.scheduled_time).toLocaleTimeString()}
+                </span>
+              </p>
+              {selectedFlight.estimated_time &&
+                selectedFlight.estimated_time !==
+                  selectedFlight.scheduled_time && (
+                  <p>
+                    <span className="text-slate-400">Estimated:</span>{" "}
+                    <span className="font-mono text-amber-400">
+                      {new Date(
+                        selectedFlight.estimated_time,
+                      ).toLocaleTimeString()}
+                    </span>
+                  </p>
+                )}
+              {selectedFlight.pax_count > 0 && (
+                <p>
+                  <span className="text-slate-400">Passengers:</span>{" "}
+                  {selectedFlight.pax_count} / {selectedFlight.seat_capacity}
+                </p>
+              )}
+              {selectedFlight.flight_type && (
+                <p>
+                  <span className="text-slate-400">Type:</span>{" "}
+                  {selectedFlight.flight_type} ({selectedFlight.route_category})
+                </p>
+              )}
             </div>
           </aside>
         )}

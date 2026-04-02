@@ -25,6 +25,23 @@ conveyor_zone_status = Gauge(
     ["zone_id"],
 )
 
+conveyor_segment_load = Gauge(
+    "conveyor_segment_load",
+    "Bags currently in transit per conveyor segment",
+    ["zone_id"],
+)
+
+conveyor_transit_queue = Gauge(
+    "conveyor_transit_queue",
+    "Bags in cross-terminal transit queue",
+)
+
+conveyor_delay_total = Counter(
+    "conveyor_delay_total",
+    "Bags that missed make-up deadline (conveyor delays)",
+    ["terminal"],
+)
+
 baggage_transitions_total = Counter(
     "baggage_transitions_total",
     "Status transitions",

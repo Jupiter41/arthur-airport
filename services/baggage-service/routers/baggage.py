@@ -122,7 +122,7 @@ async def conveyor_status():
     conveyor = get_conveyor()
     sim_time = get_sim_time()
     zones = conveyor.get_zone_summary()
-    total_in_system = sum(z.get("queue_depth", 0) for z in zones.values())
+    total_in_system = sum(z.get("items", 0) for z in zones)
     return {
         "sim_time": sim_time.isoformat() if sim_time else None,
         "total_in_system": total_in_system,

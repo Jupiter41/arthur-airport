@@ -42,10 +42,17 @@ class ZoneState:
     status: str = "normal"  # normal | degraded | offline
     throughput_per_hr: int = 0
     queue: deque[BagInZone] = field(default_factory=deque)
+    overflow_count: int = 0  # bags waiting beyond capacity threshold
 
     @property
     def items(self) -> int:
         return len(self.queue)
+
+    @property
+    def is_overloaded(self) -> bool:
+        """Check if zone has more bags than 5-minute throughput capacity."""
+        capacity_5min = max(1, (self.throughput_per_hr * 5) // 60)
+        return self.items > capacity_5min
 
 
 # Zone throughput capacities from SPEC.md §3
@@ -308,3 +315,30 @@ class ConveyorSystem:
     def transit_queue_depth(self) -> int:
         """Number of bags currently in cross-terminal transit."""
         return len(self._transit_queue)
+
+    def get_overloaded_makeup_zones(self) -> list[dict]:
+        """Return make-up zones that are currently overloaded (GAP-4-5).
+
+        When a make-up zone exceeds its 5-minute throughput capacity,
+        bags queue and the loading start time for associated flights is delayed.
+        """
+        overloaded = []
+        for t in "ABC":
+            for n in range(1, 6):
+                zone_id = f"make-up-{t}-{n}"
+                zone = self._zones.get(zone_id)
+                if zone and zone.is_overloaded:
+                    capacity_5min = max(1, (zone.throughput_per_hr * 5) // 60)
+                    overflow = zone.items - capacity_5min
+                    # Estimate additional delay: overflow / throughput-per-minute
+                    tpm = max(1, zone.throughput_per_hr / 60)
+                    delay_min = round(overflow / tpm, 1)
+                    overloaded.append({
+                        "zone_id": zone_id,
+                        "terminal": t,
+                        "items": zone.items,
+                        "capacity": capacity_5min,
+                        "overflow": overflow,
+                        "estimated_delay_min": delay_min,
+                    })
+        return overloaded

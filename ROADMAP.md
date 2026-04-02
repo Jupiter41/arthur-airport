@@ -217,10 +217,10 @@ ARRIVAL CAROUSELS:
 - [ ] **GAP-4-2** — Assign each check-in zone to its home terminal's induction belt and each gate to its make-up carousel in the fixture data.
 - [x] **GAP-4-3** — Implement a `bag_conveyor_time(checkin_zone, gate_id, topology)` function that walks the conveyor graph and sums segment durations, applying the inter-terminal penalty when the bag crosses a terminal boundary.
 - [x] **GAP-4-4** — Replace the current fixed bag-travel-time constant in `baggage-service` with calls to the new function.
-- [ ] **GAP-4-5** — Model make-up carousel capacity: each carousel has a maximum throughput (bags/min); when exceeded, bags queue and the loading start time for the flight is delayed.
-- [ ] **GAP-4-6** — Emit a `baggage.conveyor.delay` Kafka event when a bag misses its make-up deadline, triggering the Gap 2 propagation logic in `flight-service`.
-- [ ] **GAP-4-7** — Model arrival carousels: bags from an arriving flight appear on the correct carousel (A→carousel 1–2, B→3–4, C→5–6) after a fixed offload delay.
-- [ ] **GAP-4-8** — Add conveyor segment load (bags currently in transit per segment) as a Prometheus metric, and display it on the baggage dashboard as a live heat-map.
+- [x] **GAP-4-5** — Model make-up carousel capacity: each carousel has a maximum throughput (bags/min); when exceeded, bags queue and the loading start time for the flight is delayed.
+- [x] **GAP-4-6** — Emit a `baggage.conveyor.delay` Kafka event when a bag misses its make-up deadline, triggering the Gap 2 propagation logic in `flight-service`.
+- [x] **GAP-4-7** — Model arrival carousels: bags from an arriving flight appear on the correct carousel (A→carousel 1–2, B→3–4, C→5–6) after a fixed offload delay.
+- [x] **GAP-4-8** — Add conveyor segment load (bags currently in transit per segment) as a Prometheus metric, and display it on the baggage dashboard as a live heat-map.
 - [x] **GAP-4-9** — Write unit tests covering: same-terminal bag (no inter-terminal penalty), cross-terminal bag (full penalty), carousel overflow causing flight delay.
 
 ---

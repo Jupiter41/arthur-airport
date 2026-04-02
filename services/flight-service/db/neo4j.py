@@ -169,14 +169,15 @@ async def get_all_flights(
         .aircraft_type, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .delay_minutes,
         .pax_count, .seat_capacity, .flight_type, .route_category,
-        .flight_duration_minutes, .arrival_estimated_time
+        .flight_type, .route_category, .flight_duration_minutes
     }} AS flight,
     COALESCE(g.id, f.gate_id) AS gate_id,
     r.id AS runway_id,
     pax_total,
     pax_boarded,
     baggage_count,
-    baggage_loaded
+    baggage_loaded,
+    f.arrival_estimated_time AS arrival_estimated_time
     ORDER BY f.scheduled_time ASC
     SKIP $offset LIMIT $limit
     """
@@ -198,6 +199,7 @@ async def get_all_flights(
         flight["pax_boarded"] = int(r.get("pax_boarded") or 0)
         flight["baggage_count"] = int(r.get("baggage_count") or 0)
         flight["baggage_loaded"] = int(r.get("baggage_loaded") or 0)
+        flight["arrival_estimated_time"] = r.get("arrival_estimated_time")
         flights.append(flight)
 
     return flights, total
@@ -289,10 +291,11 @@ async def get_active_flights(sim_time: datetime) -> list[dict]:
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
         .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id,
-        .flight_type, .route_category, .flight_duration_minutes, .arrival_estimated_time
+        .flight_type, .route_category, .flight_duration_minutes
     } AS flight,
     COALESCE(g.id, f.gate_id) AS gate_id,
-    r.id AS runway_id
+    r.id AS runway_id,
+    f.arrival_estimated_time AS arrival_estimated_time
     """
     async with driver.session() as session:
         result = await session.run(query)
@@ -303,6 +306,7 @@ async def get_active_flights(sim_time: datetime) -> list[dict]:
         flight = dict(r["flight"])
         flight["gate_id"] = r["gate_id"]
         flight["runway_id"] = r["runway_id"]
+        flight["arrival_estimated_time"] = r.get("arrival_estimated_time")
         flights.append(flight)
     return flights
 
@@ -348,15 +352,18 @@ async def update_flight_status(
         .aircraft_type, .aircraft_registration, .origin_iata, .destination_iata,
         .scheduled_time, .estimated_time, .actual_time,
         .delay_minutes, .delay_reason, .pax_count, .seat_capacity, .gate_id,
-        .flight_duration_minutes, .arrival_estimated_time
-    }} AS flight
+        .flight_duration_minutes
+    }} AS flight,
+    f.arrival_estimated_time AS arrival_estimated_time
     """
     async with driver.session() as session:
         result = await session.run(query, **params)
         record = await result.single()
         if not record:
             return None
-        return dict(record["flight"])
+        flight = dict(record["flight"])
+        flight["arrival_estimated_time"] = record.get("arrival_estimated_time")
+        return flight
 
 
 async def apply_delay(

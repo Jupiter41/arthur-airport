@@ -81,28 +81,25 @@ function FlightRow({
         {flight.gate_id ?? "—"}
       </td>
       <td className="px-3 py-2 text-sm font-mono">
-        {flight.delay_minutes > 0 ? (
+        {flight.delay_minutes > 0 &&
+        flight.estimated_time &&
+        formatTime(flight.estimated_time) !==
+          formatTime(flight.scheduled_time) ? (
           <>
             <span className="line-through text-gray-500">
               {formatTime(flight.scheduled_time)}
             </span>
-            {flight.estimated_time && (
-              <span
-                className={`ml-2 ${
-                  (flight.status === "airborne" ||
-                    flight.status === "departed") &&
-                  flight.delay_minutes >= 30
-                    ? "text-red-400"
-                    : (flight.status === "airborne" ||
-                          flight.status === "departed") &&
-                        flight.delay_minutes >= 10
-                      ? "text-amber-400"
-                      : "text-amber-400"
-                }`}
-              >
-                {formatTime(flight.estimated_time)}
-              </span>
-            )}
+            <span
+              className={`ml-2 ${
+                flight.delay_minutes >= 30
+                  ? "text-red-400"
+                  : flight.delay_minutes >= 10
+                    ? "text-amber-400"
+                    : "text-amber-400"
+              }`}
+            >
+              {formatTime(flight.estimated_time)}
+            </span>
           </>
         ) : (
           <span
@@ -259,14 +256,16 @@ function FlightDetailDrawer({
               {formatTime(flight.scheduled_time)}
             </span>
           </div>
-          {flight.estimated_time && (
-            <div>
-              Estimated:{" "}
-              <span className="font-mono text-amber-400">
-                {formatTime(flight.estimated_time)}
-              </span>
-            </div>
-          )}
+          {flight.estimated_time &&
+            formatTime(flight.estimated_time) !==
+              formatTime(flight.scheduled_time) && (
+              <div>
+                Estimated:{" "}
+                <span className="font-mono text-amber-400">
+                  {formatTime(flight.estimated_time)}
+                </span>
+              </div>
+            )}
           {flight.actual_time && (
             <div>
               Actual:{" "}
