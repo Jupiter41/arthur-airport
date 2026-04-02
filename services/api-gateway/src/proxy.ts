@@ -78,6 +78,13 @@ const PROXY_ROUTES: ProxyRoute[] = [
   },
   { service: "sim", mountPath: "/api/v1/sim", upstreamPrefix: "/api/v1/sim" },
 
+  // Debug endpoints (sim-orchestrator)
+  {
+    service: "sim",
+    mountPath: "/api/v1/debug",
+    upstreamPrefix: "/api/v1/debug",
+  },
+
   // Passenger service. Frontend namespaces these under /passengers/*.
   {
     service: "passengers",

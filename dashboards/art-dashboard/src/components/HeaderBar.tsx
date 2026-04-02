@@ -50,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
       { path: "/history", label: "History", icon: "📊" },
       { path: "/scenarios", label: "Scenarios", icon: "🧪" },
       { path: "/settings", label: "Settings", icon: "⚙️" },
+      { path: "/debug", label: "Debug", icon: "🛠️" },
     ],
   },
 ];

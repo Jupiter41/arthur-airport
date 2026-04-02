@@ -21,4 +21,4 @@ Before doing any edit, do this:
 - ALWAYS mark issues as completed in the relevant file if needed.
 - ALWAYS run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
 
-Your mission is to: implement everything linked to the phase 5 of the roadmap (real world data integratioh). Read the data/ folder first to see what we have.
+Your mission is to implement the features of Phase 0 of the ROADMAP.md.

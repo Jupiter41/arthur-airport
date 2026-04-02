@@ -163,7 +163,10 @@ async def weather_impact():
 async def weather_source():
     """Current weather data source configuration."""
     source = os.getenv("WEATHER_SOURCE", "simulated")
-    info: dict = {"source": source}
+    # Use runtime source if it was switched at runtime
+    from kafka.consumer import get_current_state
+    current = get_current_state()
+    info: dict = {"source": source, "current_category": current.get("category")}
 
     if source == "historical":
         info["file"] = os.getenv("WEATHER_HISTORY_FILE", "/app/data/weather/EGLL_30days.csv")
@@ -172,3 +175,45 @@ async def weather_source():
         info["api"] = "https://aviationweather.gov/api/data/metar"
 
     return info
+
+
+@router.post("/weather/source")
+async def switch_weather_source_endpoint(body: dict):
+    """Switch weather source at runtime.
+
+    Body: { "source": "simulated"|"historical"|"live", "csv_path": ..., "live_icao": ... }
+    """
+    from kafka.consumer import switch_weather_source
+
+    source = body.get("source")
+    if not source:
+        raise HTTPException(status_code=400, detail="'source' field required")
+
+    try:
+        result = switch_weather_source(
+            source=source,
+            csv_path=body.get("csv_path"),
+            live_icao=body.get("live_icao"),
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/weather/overrides")
+async def get_overrides():
+    """Get current weather parameter overrides."""
+    from kafka.consumer import get_weather_overrides
+    return {"overrides": get_weather_overrides()}
+
+
+@router.post("/weather/overrides")
+async def set_overrides(body: dict):
+    """Set weather parameter overrides.
+
+    Body: { "visibility_m": 5000, "wind_speed_kt": 25, ... }
+    Set any value to null to unlock that parameter.
+    """
+    from kafka.consumer import set_weather_overrides
+    result = set_weather_overrides(body)
+    return {"overrides": result}

@@ -6,6 +6,7 @@ import { useIncidentStore } from "../../stores/incidentStore";
 import { useGroundOpsQueries } from "../../hooks/useQueries";
 import { StatusBadge } from "../../components/StatusBadge";
 import { flightsApi } from "../../hooks/useApi";
+import { WeatherHistoryChart } from "../Debug/DebugPage";
 import type { Flight, Runway, Gate, WeatherState, Incident } from "../../types";
 
 /* ──────── Gate Cell ──────── */
@@ -792,6 +793,9 @@ export default function GroundOpsPage() {
           <WeatherSidePanel weather={weather} />
         </div>
       </div>
+
+      {/* Weather history sparkline */}
+      <WeatherHistoryChart />
 
       {/* Bottom bar */}
       <div className="grid grid-cols-4 gap-4">

@@ -11,6 +11,7 @@ import SimHistoryPage from "./pages/SimHistory/SimHistoryPage";
 import ScenariosPage from "./pages/Scenarios/ScenariosPage";
 import SettingsPage from "./pages/Settings/SettingsPage";
 import WorldMapPage from "./pages/WorldMap/WorldMapPage";
+import DebugPage from "./pages/Debug/DebugPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +41,7 @@ function AppShell() {
           <Route path="/history" element={<SimHistoryPage />} />
           <Route path="/scenarios" element={<ScenariosPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/debug" element={<DebugPage />} />
         </Routes>
       </main>
     </div>

@@ -144,6 +144,23 @@ def reset_to_start() -> None:
     logger.info("Clock reset to %s", _sim_time)
 
 
+def restore_state(
+    sim_time: datetime,
+    day_number: int,
+    tick_number: int,
+    speed_multiplier: int,
+) -> None:
+    """Restore clock state from a snapshot."""
+    global _sim_time, _sim_day, _tick_number, _speed_multiplier, _events_produced, _tick_latencies
+    _sim_time = sim_time
+    _sim_day = day_number
+    _tick_number = tick_number
+    _speed_multiplier = speed_multiplier
+    _events_produced = 0
+    _tick_latencies = []
+    logger.info("Clock restored to %s (day %d, tick %d)", sim_time, day_number, tick_number)
+
+
 MAX_TICKS_PER_SEC = int(os.getenv("MAX_TICKS_PER_SEC", "10"))
 
 # Speed mode thresholds — see PLAN-HIGH-SPEED.md

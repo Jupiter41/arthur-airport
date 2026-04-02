@@ -71,6 +71,11 @@ class ScenarioDefinition(BaseModel):
     start_time: str = "2024-06-15T06:00:00"
     duration_sim_minutes: int = Field(..., ge=1)
     seed_overrides: Optional[SeedOverrides] = None
+    start_from_snapshot: Optional[str] = Field(
+        None,
+        description="Snapshot filename to restore before running. "
+                    "Skips fresh seed if set (e.g. 'morning-peak_2024-06-15.json.gz').",
+    )
     events: list[ScenarioEvent] = Field(default_factory=list)
     expected_outcomes: list[ExpectedOutcome] = Field(default_factory=list)
 

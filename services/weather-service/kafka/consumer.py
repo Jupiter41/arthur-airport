@@ -135,6 +135,24 @@ class WeatherConsumerState:
             "phenomena": params.phenomena,
         }
 
+    def _apply_overrides(self, params: WeatherParams) -> WeatherParams:
+        """Apply locked parameter overrides on top of generated params."""
+        overrides = getattr(self, "_overrides", {})
+        if not overrides:
+            return params
+        return WeatherParams(
+            category=params.category,
+            visibility_m=overrides.get("visibility_m", params.visibility_m),
+            wind_direction=params.wind_direction,
+            wind_speed_kt=overrides.get("wind_speed_kt", params.wind_speed_kt),
+            wind_gust_kt=overrides.get("wind_gust_kt", params.wind_gust_kt),
+            ceiling_ft=overrides.get("ceiling_ft", params.ceiling_ft),
+            temperature_c=overrides.get("temperature_c", params.temperature_c),
+            dew_point_c=params.dew_point_c,
+            qnh_hpa=params.qnh_hpa,
+            phenomena=params.phenomena,
+        )
+
     def _update_gauges(self, category: str, params: WeatherParams, capacity: dict | None = None) -> None:
         m_category.set(CATEGORY_VALUES.get(category, 0))
         m_visibility.set(params.visibility_m)
@@ -467,6 +485,71 @@ def get_current_state() -> dict:
 
 def get_sim_time() -> datetime | None:
     return _state.sim_time
+
+
+def switch_weather_source(
+    source: str,
+    csv_path: str | None = None,
+    live_icao: str | None = None,
+) -> dict:
+    """Switch weather source at runtime. Returns the new source configuration.
+
+    Args:
+        source: "simulated", "historical", or "live"
+        csv_path: Path to CSV file (required for historical mode)
+        live_icao: ICAO station code (required for live mode)
+    """
+    source = source.lower()
+    if source not in ("simulated", "historical", "live"):
+        raise ValueError(f"Invalid weather source: {source}")
+
+    if source == "historical":
+        path = csv_path or os.getenv("WEATHER_HISTORY_FILE", "/app/data/weather/EGLL_30days.csv")
+        _state._historical = HistoricalMetarSource(path)
+        count = _state._historical.load()
+        if count == 0:
+            raise ValueError(f"Historical METAR file empty/missing: {path}")
+        _state.weather_source = "historical"
+        logger.info("Weather source switched to historical (%d observations from %s)", count, path)
+        return {"source": "historical", "file": path, "observations": count}
+    elif source == "live":
+        icao = live_icao or os.getenv("WEATHER_LIVE_ICAO", "EGLL")
+        _state._live = LiveMetarSource(icao)
+        _state.weather_source = "live"
+        logger.info("Weather source switched to live METAR from %s", icao)
+        return {"source": "live", "icao": icao}
+    else:
+        _state.weather_source = "simulated"
+        _state._historical = None
+        _state._live = None
+        logger.info("Weather source switched to simulated (FSM)")
+        return {"source": "simulated"}
+
+
+def set_weather_overrides(overrides: dict) -> dict:
+    """Set individual weather parameter overrides.
+
+    Any non-null value locks that parameter regardless of the active source.
+    Set a value to None to unlock it.
+    """
+    if not hasattr(_state, "_overrides"):
+        _state._overrides = {}
+
+    for key in ("visibility_m", "wind_speed_kt", "wind_gust_kt", "ceiling_ft", "temperature_c"):
+        if key in overrides:
+            val = overrides[key]
+            if val is None:
+                _state._overrides.pop(key, None)
+            else:
+                _state._overrides[key] = val
+
+    logger.info("Weather overrides updated: %s", _state._overrides)
+    return dict(_state._overrides)
+
+
+def get_weather_overrides() -> dict:
+    """Return current weather parameter overrides."""
+    return dict(getattr(_state, "_overrides", {}))
 
 
 def _make_consumer() -> Consumer:

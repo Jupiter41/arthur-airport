@@ -143,6 +143,18 @@ export const weatherApi = {
   },
   impact: () => apiFetch<unknown>("/weather/impact"),
   history: (hours = 12) => apiFetch<unknown>(`/weather/history?hours=${hours}`),
+  source: () => apiFetch<unknown>("/weather/source"),
+  switchSource: (source: string, csvPath?: string, liveIcao?: string) =>
+    apiFetch<unknown>("/weather/source", {
+      method: "POST",
+      body: JSON.stringify({ source, csv_path: csvPath, live_icao: liveIcao }),
+    }),
+  getOverrides: () => apiFetch<unknown>("/weather/overrides"),
+  setOverrides: (overrides: Record<string, number | null>) =>
+    apiFetch<unknown>("/weather/overrides", {
+      method: "POST",
+      body: JSON.stringify(overrides),
+    }),
 };
 
 // ── Passengers ──
@@ -278,4 +290,66 @@ export const scenariosApi = {
   results: () => apiFetch<{ results: unknown[] }>("/scenarios/results"),
   result: (runId: string) =>
     apiFetch<unknown>(`/scenarios/results/${encodeURIComponent(runId)}`),
+};
+
+// ── Debug ──
+export const debugApi = {
+  cypher: (query: string, params?: Record<string, unknown>) =>
+    apiFetch<{
+      columns: string[];
+      rows: Record<string, unknown>[];
+      row_count: number;
+    }>("/debug/cypher", {
+      method: "POST",
+      body: JSON.stringify({ query, params: params ?? {} }),
+    }),
+  getEntity: (label: string, entityId: string) =>
+    apiFetch<unknown>(
+      `/debug/entity/${encodeURIComponent(label)}/${encodeURIComponent(entityId)}`,
+    ),
+  updateEntity: (
+    label: string,
+    entityId: string,
+    properties: Record<string, unknown>,
+  ) =>
+    apiFetch<unknown>("/debug/entity", {
+      method: "PATCH",
+      body: JSON.stringify({ label, entity_id: entityId, properties }),
+    }),
+  injectPassengers: (flightId: string, count: number, status: string) =>
+    apiFetch<unknown>("/debug/inject/passengers", {
+      method: "POST",
+      body: JSON.stringify({ flight_id: flightId, count, status }),
+    }),
+  injectFlight: (body: Record<string, unknown>) =>
+    apiFetch<unknown>("/debug/inject/flight", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  injectBaggage: (flightId: string, count: number, zoneStatus: string) =>
+    apiFetch<unknown>("/debug/inject/baggage", {
+      method: "POST",
+      body: JSON.stringify({
+        flight_id: flightId,
+        count,
+        zone_status: zoneStatus,
+      }),
+    }),
+  listSnapshots: () =>
+    apiFetch<{ snapshots: unknown[]; count: number }>("/debug/snapshots"),
+  createSnapshot: (name: string) =>
+    apiFetch<unknown>("/debug/snapshot", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  restoreSnapshot: (filename: string) =>
+    apiFetch<unknown>("/debug/snapshot/restore", {
+      method: "POST",
+      body: JSON.stringify({ filename }),
+    }),
+  deleteSnapshot: (filename: string) =>
+    apiFetch<unknown>("/debug/snapshot", {
+      method: "DELETE",
+      body: JSON.stringify({ filename }),
+    }),
 };

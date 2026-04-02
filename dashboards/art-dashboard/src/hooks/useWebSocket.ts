@@ -240,6 +240,10 @@ export function useWebSocket() {
           // Regular event envelope
           if (data.event_type) {
             dispatch(data as unknown as KafkaEvent);
+            // Dispatch a custom DOM event for the Kafka inspector
+            window.dispatchEvent(
+              new MessageEvent("ws-event", { data: ev.data }),
+            );
           }
         };
 

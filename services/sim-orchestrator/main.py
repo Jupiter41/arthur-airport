@@ -21,6 +21,7 @@ from kafka.producer import (
 )
 from routers.sim import router as sim_router
 from routers.scenarios import router as scenarios_router
+from routers.debug import router as debug_router
 from services.airport_config import load_airport_runtime_config
 from services import clock
 from services.fixtures import load_fixtures
@@ -132,6 +133,7 @@ Instrumentator().instrument(app).expose(app)
 
 app.include_router(sim_router)
 app.include_router(scenarios_router)
+app.include_router(debug_router)
 
 
 @app.get("/health")

@@ -174,37 +174,53 @@ async def run_scenario(name: str, req: Optional[RunScenarioRequest] = None):
     # Pause the clock while we reset
     clock.pause()
 
-    # Reset simulation
+    # Reset simulation — using snapshot or fresh seed
     try:
-        from db.neo4j import get_driver, create_constraints_and_indexes
-        from db.seed import seed_airport_structure
-        from services.seeder import seed_day, emit_initial_weather
+        if defn.start_from_snapshot:
+            # Restore from snapshot instead of fresh seed
+            from services.snapshot import restore_snapshot
+            from datetime import datetime as dt
 
-        # Wipe Neo4j
-        driver = get_driver()
-        deleted = True
-        while deleted:
-            async with driver.session() as session:
-                result = await session.run(
-                    "MATCH (n) WITH n LIMIT 10000 DETACH DELETE n RETURN count(*) AS cnt"
-                )
-                record = await result.single()
-                deleted = record and record["cnt"] > 0
+            result = await restore_snapshot(defn.start_from_snapshot)
+            restored_time = dt.fromisoformat(result["sim_time"])
+            clock.restore_state(
+                sim_time=restored_time,
+                day_number=result["day_number"],
+                tick_number=result["tick_number"],
+                speed_multiplier=result["speed_multiplier"],
+            )
+            logger.info(
+                "Scenario '%s': restored from snapshot '%s' at %s",
+                name, defn.start_from_snapshot, result["sim_time"],
+            )
+        else:
+            from db.neo4j import get_driver, create_constraints_and_indexes
+            from db.seed import seed_airport_structure
+            from services.seeder import seed_day, emit_initial_weather
 
-        clock.reset_to_start()
-        await create_constraints_and_indexes()
-        await seed_airport_structure()
+            # Wipe Neo4j
+            driver = get_driver()
+            deleted = True
+            while deleted:
+                async with driver.session() as session:
+                    result = await session.run(
+                        "MATCH (n) WITH n LIMIT 10000 DETACH DELETE n RETURN count(*) AS cnt"
+                    )
+                    record = await result.single()
+                    deleted = record and record["cnt"] > 0
 
-        # Apply seed overrides
-        weather = "CAVOK"
-        if defn.seed_overrides:
-            if defn.seed_overrides.weather:
-                weather = defn.seed_overrides.weather.value
-            # daily_flights and load_factor overrides applied via env-like state
-            # For now they flow through the standard seeding with default parameters
+            clock.reset_to_start()
+            await create_constraints_and_indexes()
+            await seed_airport_structure()
 
-        await seed_day(sim_day=1)
-        await emit_initial_weather(category=weather)
+            # Apply seed overrides
+            weather = "CAVOK"
+            if defn.seed_overrides:
+                if defn.seed_overrides.weather:
+                    weather = defn.seed_overrides.weather.value
+
+            await seed_day(sim_day=1)
+            await emit_initial_weather(category=weather)
 
     except Exception as e:
         clock.resume()
