@@ -32,6 +32,10 @@ scrape_configs:
     static_configs:
       - targets: ['sim-orchestrator:8006']
 
+  - job_name: analysis-service
+    static_configs:
+      - targets: ['analysis-service:8007']
+
   - job_name: api-gateway
     static_configs:
       - targets: ['api-gateway:3000']

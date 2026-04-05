@@ -15,11 +15,14 @@ CONSTRAINTS = [
     "CREATE CONSTRAINT flight_id IF NOT EXISTS FOR (f:Flight) REQUIRE f.id IS UNIQUE",
     "CREATE CONSTRAINT gate_id IF NOT EXISTS FOR (g:Gate) REQUIRE g.id IS UNIQUE",
     "CREATE CONSTRAINT runway_id IF NOT EXISTS FOR (r:Runway) REQUIRE r.id IS UNIQUE",
+    "CREATE CONSTRAINT ground_vehicle_id IF NOT EXISTS FOR (v:GroundVehicle) REQUIRE v.id IS UNIQUE",
 ]
 
 INDEXES = [
     "CREATE INDEX flight_number IF NOT EXISTS FOR (f:Flight) ON (f.flight_number)",
     "CREATE INDEX flight_status IF NOT EXISTS FOR (f:Flight) ON (f.status)",
+    "CREATE INDEX ground_vehicle_type IF NOT EXISTS FOR (v:GroundVehicle) ON (v.type)",
+    "CREATE INDEX ground_vehicle_status IF NOT EXISTS FOR (v:GroundVehicle) ON (v.status)",
 ]
 
 
@@ -734,3 +737,48 @@ async def get_active_incident_locations() -> list[str]:
     async with driver.session() as session:
         result = await session.run(query)
         return [r["location"] async for r in result if r["location"]]
+
+
+# ---------------------------------------------------------------------------
+# Ground vehicle management
+# ---------------------------------------------------------------------------
+
+async def seed_ground_vehicles(vehicles: list[dict]) -> int:
+    """Create GroundVehicle nodes in Neo4j. Returns count created."""
+    driver = get_driver()
+    query = """
+    UNWIND $vehicles AS v
+    MERGE (gv:GroundVehicle {id: v.id})
+    SET gv.type = v.type,
+        gv.status = v.status,
+        gv.position_x = v.position_x,
+        gv.position_y = v.position_y,
+        gv.current_gate = v.current_gate
+    RETURN count(gv) AS cnt
+    """
+    async with driver.session() as session:
+        result = await session.run(query, vehicles=vehicles)
+        record = await result.single()
+        return record["cnt"] if record else 0
+
+
+async def update_ground_vehicle_status(
+    vehicle_id: str,
+    status: str,
+    gate_id: str | None = None,
+) -> None:
+    """Update a ground vehicle's status and optional gate assignment."""
+    driver = get_driver()
+    set_clauses = ["gv.status = $status"]
+    params: dict = {"id": vehicle_id, "status": status}
+    if gate_id is not None:
+        set_clauses.append("gv.current_gate = $gate_id")
+        params["gate_id"] = gate_id
+    else:
+        set_clauses.append("gv.current_gate = null")
+    query = f"""
+    MATCH (gv:GroundVehicle {{id: $id}})
+    SET {", ".join(set_clauses)}
+    """
+    async with driver.session() as session:
+        await session.run(query, **params)

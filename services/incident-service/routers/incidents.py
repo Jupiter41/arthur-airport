@@ -126,7 +126,7 @@ async def get_incident_detail(incident_id: str) -> IncidentDetail:
 async def inject_incident(req: InjectRequest) -> dict:
     sim_time = get_sim_time()
     if sim_time is None:
-        sim_time = datetime.utcnow()
+        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
 
     incident = await create_incident(
         type=req.type,
@@ -147,7 +147,7 @@ async def inject_incident(req: InjectRequest) -> dict:
 async def contain_incident_endpoint(incident_id: str, req: ContainRequest) -> dict:
     sim_time = get_sim_time()
     if sim_time is None:
-        sim_time = datetime.utcnow()
+        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
 
     result = await contain_incident(incident_id, sim_time, req.note)
     if not result:
@@ -162,7 +162,7 @@ async def contain_incident_endpoint(incident_id: str, req: ContainRequest) -> di
 async def resolve_incident_endpoint(incident_id: str, req: ResolveRequest) -> dict:
     sim_time = get_sim_time()
     if sim_time is None:
-        sim_time = datetime.utcnow()
+        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
 
     result = await resolve_incident(incident_id, sim_time, req.note)
     if not result:
@@ -177,7 +177,7 @@ async def resolve_incident_endpoint(incident_id: str, req: ResolveRequest) -> di
 async def get_incident_report(incident_id: str) -> dict:
     sim_time = get_sim_time()
     if sim_time is None:
-        sim_time = datetime.utcnow()
+        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
 
     report = await build_report(incident_id, sim_time)
     if not report:

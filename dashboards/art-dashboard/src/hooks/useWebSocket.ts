@@ -6,6 +6,8 @@ import { useWeatherStore } from "../stores/weatherStore";
 import { useBaggageStore } from "../stores/baggageStore";
 import { useIncidentStore } from "../stores/incidentStore";
 import { usePassengerStore } from "../stores/passengerStore";
+import { useGroundVehicleStore } from "../stores/groundVehicleStore";
+import { useAnalysisStore } from "../stores/analysisStore";
 import { getAuthToken } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
 
@@ -78,11 +80,12 @@ export const eventHandlers: Record<string, EventHandler> = {
   },
 
   BaggageStatusChanged: (payload) => {
-    const { zone_id, items } = payload;
-    if (zone_id && items !== undefined) {
-      useBaggageStore
-        .getState()
-        .updateZone(zone_id as string, { items: items as number });
+    // Per-bag event with (baggage_id, scan_zone, new_status).
+    // Zone aggregate data comes from REST polling; use this event to
+    // hint at zone changes by updating the zone matching scan_zone.
+    const scanZone = payload.scan_zone as string | undefined;
+    if (scanZone) {
+      useBaggageStore.getState().updateZone(scanZone, {});
     }
   },
 
@@ -91,16 +94,11 @@ export const eventHandlers: Record<string, EventHandler> = {
   },
 
   PassengerStatusChanged: (payload) => {
-    const { zone_id, density, load_pct } = payload;
-    if (zone_id) {
-      usePassengerStore
-        .getState()
-        .updateZoneDensity(
-          zone_id as string,
-          (density as number) ?? 0,
-          (load_pct as number) ?? 0,
-        );
-    }
+    // Per-passenger event with (passenger_id, location_zone, new_status).
+    // Zone aggregate data comes from REST polling; this simply signals
+    // that the zone may have changed so UI can mark stale if needed.
+    const _zone = payload.location_zone as string | undefined;
+    void _zone;
   },
 
   IncidentCreated: (payload) => {
@@ -131,6 +129,89 @@ export const eventHandlers: Record<string, EventHandler> = {
       severity: (payload.severity as never) ?? "medium",
       message: (payload.message as string) ?? "",
       incident_id: (payload.incident_id as string) ?? "",
+    });
+  },
+
+  FlightCTOTAssigned: (payload) => {
+    const { flight_id, ctot_delay_minutes } = payload;
+    useFlightStore
+      .getState()
+      .updateFlightStatus(
+        flight_id as string,
+        "boarding",
+        ctot_delay_minutes as number,
+      );
+  },
+
+  MinimumFuelWarning: (payload, sim_time, event) => {
+    useIncidentStore.getState().addAlert({
+      id: event.event_id,
+      sim_time,
+      severity: (payload.is_panpan as boolean) ? "critical" : "high",
+      message: `Fuel warning: ${payload.flight_number as string} holding ${payload.holding_minutes as number}min`,
+      incident_id: "",
+    });
+  },
+
+  FlightDiverted: (payload) => {
+    const { flight_id } = payload;
+    useFlightStore
+      .getState()
+      .updateFlightStatus(flight_id as string, "diverted");
+    useFlightStore.getState().flashRow(flight_id as string);
+    setTimeout(
+      () => useFlightStore.getState().clearFlash(flight_id as string),
+      1500,
+    );
+  },
+
+  GroundVehicleDispatched: (payload) => {
+    useGroundVehicleStore.getState().upsertVehicle({
+      id: payload.vehicle_id as string,
+      type: payload.vehicle_type as never,
+      status: "dispatched",
+      current_gate: payload.gate_id as string,
+      position_x: 0,
+      position_y: 0,
+      task_name: payload.task_name as string,
+      flight_id: payload.flight_id as string,
+    });
+  },
+
+  GroundVehicleReturned: (payload) => {
+    useGroundVehicleStore
+      .getState()
+      .updateVehicleStatus(payload.vehicle_id as string, "available");
+  },
+
+  BottleneckDetected: (payload) => {
+    useAnalysisStore.getState().handleAnalysisEvent({
+      event_type: "BottleneckDetected",
+      payload,
+    });
+  },
+
+  BottleneckResolved: (payload) => {
+    useAnalysisStore.getState().handleAnalysisEvent({
+      event_type: "BottleneckResolved",
+      payload,
+    });
+  },
+
+  RecommendationGenerated: (payload) => {
+    useAnalysisStore.getState().handleAnalysisEvent({
+      event_type: "RecommendationGenerated",
+      payload,
+    });
+  },
+
+  AutonomousActionApplied: (payload, sim_time, event) => {
+    useIncidentStore.getState().addAlert({
+      id: event.event_id,
+      sim_time,
+      severity: "medium",
+      message: `Autonomous: ${payload.description as string}`,
+      incident_id: "",
     });
   },
 };

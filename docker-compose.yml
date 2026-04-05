@@ -109,6 +109,8 @@ services:
           "incidents.events:3:1"
           "incidents.alerts:3:1"
           "incidents.inject:1:1"
+          "ground.events:3:1"
+          "analysis.events:3:1"
         )
         for entry in "$${topics[@]}"; do
           IFS=':' read -r topic partitions replication <<< "$$entry"
@@ -283,6 +285,24 @@ services:
       retries: 30
       start_period: 120s
 
+  analysis-service:
+    <<: *python-service
+    build: ./services/analysis-service
+    ports:
+      - "8007:8007"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api-gateway:
     build: ./services/api-gateway
     restart: unless-stopped
@@ -300,11 +320,14 @@ services:
       WEATHER_SERVICE_URL: http://weather-service:8004
       INCIDENT_SERVICE_URL: http://incident-service:8005
       SIM_ORCHESTRATOR_URL: http://sim-orchestrator:8006
+      ANALYSIS_SERVICE_URL: http://analysis-service:8007
       NODE_ENV: development
     depends_on:
       kafka:
         condition: service_healthy
       sim-orchestrator:
+        condition: service_healthy
+      analysis-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]

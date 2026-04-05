@@ -83,11 +83,19 @@ async def lifespan(app: FastAPI):
     # 7. Start Kafka consumer as background task
     asyncio.create_task(run_consumer())
 
+    # 8. Start ADS-B polling if enabled (Phase 1.1)
+    if os.getenv("ADSB_ENABLED", "false").lower() == "true":
+        from services.adsb import get_adsb_cache
+        asyncio.create_task(get_adsb_cache().start_polling())
+
     logger.info("flight-service startup complete")
     yield
 
     # Shutdown
     stop_consumer()
+    if os.getenv("ADSB_ENABLED", "false").lower() == "true":
+        from services.adsb import get_adsb_cache
+        get_adsb_cache().stop()
     close_kafka_producer()
     await close_neo4j()
     logger.info("flight-service shutdown complete")

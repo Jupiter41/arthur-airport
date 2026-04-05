@@ -14,6 +14,8 @@ const TOPIC_KEY_MAP: Record<string, string> = {
   "weather.events": "weather",
   "incidents.events": "incidents",
   "incidents.alerts": "alerts",
+  "ground.events": "flights",
+  "analysis.events": "analysis",
 };
 
 const ALL_TOPICS = Object.keys(TOPIC_KEY_MAP);

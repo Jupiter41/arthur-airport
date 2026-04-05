@@ -13,6 +13,7 @@ const AGGREGATE_ENDPOINTS: Record<string, string> = {
   passengers: "/api/v1/flow/summary",
   baggage: "/api/v1/flow/summary",
   incidents: "/api/v1/incidents?status=active",
+  analysis: "/api/v1/analysis/bottlenecks",
 };
 
 // ── Short-TTL cache for aggregate endpoint ──────────────────────

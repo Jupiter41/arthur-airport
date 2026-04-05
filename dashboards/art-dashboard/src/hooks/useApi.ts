@@ -116,6 +116,8 @@ export const flightsApi = {
   gates: () => apiFetch<{ gates: unknown[] }>("/gates"),
   turnarounds: () =>
     apiFetch<{ turnarounds: unknown[]; total: number }>("/turnarounds"),
+  adsbStates: () => apiFetch<unknown>("/flights/adsb-states"),
+  groundVehicles: () => apiFetch<unknown>("/ground-vehicles"),
 };
 
 // ── Weather ──
@@ -254,6 +256,46 @@ export const simApi = {
 // ── Airport aggregate ──
 export const airportApi = {
   snapshot: () => apiFetch<unknown>("/airport"),
+};
+
+// ── Analysis ──
+export const analysisApi = {
+  bottlenecks: (params?: Record<string, string>) => {
+    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+    return apiFetch<{ bottlenecks: unknown[]; count: number }>(
+      `/analysis/bottlenecks${qs}`,
+    );
+  },
+  recommendations: () =>
+    apiFetch<{ recommendations: unknown[]; count: number }>(
+      "/analysis/recommendations",
+    ),
+  whatIf: (body: {
+    actions: Array<{
+      action_type: string;
+      description?: string;
+      parameters?: Record<string, unknown>;
+    }>;
+    horizon_minutes?: number;
+  }) =>
+    apiFetch<unknown>("/analysis/what-if", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  whatIfLog: (limit = 50) =>
+    apiFetch<{ entries: unknown[]; total: number }>(
+      `/analysis/what-if/log?limit=${limit}`,
+    ),
+  autonomousSettings: () => apiFetch<unknown>("/analysis/autonomous"),
+  updateAutonomous: (body: Record<string, unknown>) =>
+    apiFetch<unknown>("/analysis/autonomous", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  autonomousLog: (limit = 50) =>
+    apiFetch<{ actions: unknown[]; total: number }>(
+      `/analysis/autonomous/log?limit=${limit}`,
+    ),
 };
 
 // ── Scenarios ──

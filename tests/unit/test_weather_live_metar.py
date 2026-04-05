@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from tests.conftest import import_service_module
 
 _live = import_service_module("weather", "services.live_metar")

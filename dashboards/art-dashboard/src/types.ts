@@ -252,3 +252,64 @@ export interface AirportAggregate {
     latest: { type: string; title: string; started_at: string } | null;
   };
 }
+
+// ---------- Ground Vehicles ----------
+export type GroundVehicleType =
+  | "fuel_truck"
+  | "catering_truck"
+  | "pushback_tug"
+  | "baggage_loader"
+  | "stairs";
+
+export type GroundVehicleStatus =
+  | "available"
+  | "dispatched"
+  | "at_gate"
+  | "returning";
+
+export interface GroundVehicle {
+  id: string;
+  type: GroundVehicleType;
+  status: GroundVehicleStatus;
+  current_gate: string | null;
+  position_x: number;
+  position_y: number;
+  task_name: string | null;
+  flight_id: string | null;
+}
+
+// ---------- ADS-B ----------
+export interface ADSBFeature {
+  type: "Feature";
+  geometry: { type: "Point"; coordinates: [number, number] };
+  properties: {
+    icao24: string;
+    callsign: string;
+    origin_country: string;
+    altitude_m: number | null;
+    on_ground: boolean | null;
+    velocity_ms: number | null;
+    heading: number | null;
+    vertical_rate: number | null;
+    distance_km: number;
+  };
+}
+
+export interface ADSBFeatureCollection {
+  type: "FeatureCollection";
+  features: ADSBFeature[];
+  metadata: {
+    center: { lat: number; lon: number };
+    radius_km: number;
+    aircraft_count: number;
+    last_update: string | null;
+  };
+}
+
+// ---------- Ground Vehicle Summary ----------
+export interface GroundVehicleSummary {
+  vehicles: GroundVehicle[];
+  total: number;
+  utilisation_pct: Record<string, number>;
+  pending_requests: number;
+}

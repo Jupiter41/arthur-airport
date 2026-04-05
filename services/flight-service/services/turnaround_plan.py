@@ -63,6 +63,7 @@ class TurnaroundPlan:
     arrival_flight_id: str
     paired_departure_id: str | None = None
     aircraft_type: str = ""
+    gate_id: str = ""
     started_at: datetime | None = None
     tasks: dict[str, TurnaroundTask] = field(default_factory=dict)
 

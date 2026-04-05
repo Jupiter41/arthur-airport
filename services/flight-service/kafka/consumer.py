@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
@@ -22,6 +23,7 @@ from db.neo4j import (
     release_gate,
     get_open_runway,
     get_paired_flight,
+    seed_ground_vehicles,
 )
 from kafka.producer import (
     emit_flight_status_changed,
@@ -30,6 +32,11 @@ from kafka.producer import (
     emit_flight_cancelled,
     emit_turnaround_task_changed,
     emit_bulk_state_snapshot,
+    emit_flight_ctot_assigned,
+    emit_minimum_fuel_warning,
+    emit_flight_diverted,
+    emit_ground_vehicle_dispatched,
+    emit_ground_vehicle_returned,
 )
 from services.state_machine import evaluate_transition
 from services.runway_queue import RunwayQueue
@@ -41,12 +48,15 @@ from services.turnaround_plan import (
     nominal_turnaround_minutes,
 )
 from services.spatial import taxi_time_from_positions
+from services.ground_vehicles import GroundVehiclePool, VEHICLE_TASK_MAP
 from metrics import (
     flight_status_transitions_total as m_transitions,
     flights_active as m_active,
     flights_delayed_current as m_delayed,
     flights_cancelled_total as m_cancelled,
     envelope_invalid_total as m_envelope_invalid,
+    ground_vehicle_utilisation_pct as m_vehicle_util,
+    ground_vehicle_contention_total as m_vehicle_contention,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,6 +89,38 @@ class FlightConsumerState:
         self.current_mode: str = "REALTIME"
         self.last_mode: str = "REALTIME"
         self.last_sync_sim_time: datetime | None = None
+        # ── Noise model state (Phase 1.2) ──
+        # Tracks flights already evaluated for stochastic draws (one draw per flight)
+        self.crew_delay_drawn: set[str] = set()        # flight_ids that had crew delay draw
+        self.ctot_assigned: set[str] = set()            # flight_ids with CTOT slot
+        self.equipment_failure_drawn: set[str] = set()  # flight_ids with equipment failure draw
+        self.diversion_drawn: set[str] = set()          # flight_ids with diversion draw
+        # Holding stack tracking: flight_id -> minutes in holding
+        self.holding_minutes: dict[str, int] = {}
+        self.fuel_warned: set[str] = set()              # flight_ids that got MinimumFuelWarning
+        self.fuel_panpan: set[str] = set()              # flight_ids that declared PAN PAN
+        # Settings cache (updated from sim-orchestrator via settings event)
+        self.noise_settings: dict = {
+            "crew_delay_probability": 0.05,
+            "crew_delay_min": 5,
+            "crew_delay_max": 15,
+            "ctot_probability_peak": 0.10,
+            "ctot_delay_min": 5,
+            "ctot_delay_max": 30,
+            "equipment_failure_rate": 0.01,
+            "equipment_failure_delay_min": 8,
+            "equipment_failure_delay_max": 20,
+            "diversion_rate": 0.003,
+            "holding_fuel_burn_kg_per_hr": 2500,
+            "holding_fuel_warn_minutes": 30,
+            "holding_fuel_panpan_minutes": 45,
+        }
+        self.peak_hours: set[int] = {7, 8, 9, 17, 18, 19}
+        # ── Ground vehicle pool (Phase 1.3) ──
+        self.vehicle_pool = GroundVehiclePool()
+        self.vehicles_initialized: bool = False
+        # Track which tasks already have a vehicle dispatched: (reg, task_name) → vehicle_id
+        self.task_vehicles: dict[tuple[str, str], str] = {}
 
     MAX_PROCESSED = 10000
 
@@ -151,8 +193,35 @@ class FlightConsumerState:
                 len(self.gate_positions),
                 len(self.runway_positions),
             )
+            # Share gate positions with ground vehicle pool
+            self.vehicle_pool.set_gate_positions(self.gate_positions)
         except Exception as e:
             logger.warning("Failed to load spatial positions (using defaults): %s", e)
+
+        # Initialize ground vehicle fleet (Phase 1.3)
+        if not self.vehicles_initialized:
+            await self._initialize_vehicles()
+
+    async def _initialize_vehicles(self) -> None:
+        """Create ground vehicle fleet and persist to Neo4j."""
+        try:
+            vehicles = self.vehicle_pool.initialize_fleet()
+            vehicle_dicts = [
+                {
+                    "id": v.id,
+                    "type": v.vehicle_type,
+                    "status": v.status,
+                    "position_x": v.position_x,
+                    "position_y": v.position_y,
+                    "current_gate": v.current_gate,
+                }
+                for v in vehicles
+            ]
+            count = await seed_ground_vehicles(vehicle_dicts)
+            self.vehicles_initialized = True
+            logger.info("Ground vehicle fleet seeded: %d vehicles in Neo4j", count)
+        except Exception as e:
+            logger.warning("Failed to initialize ground vehicles: %s", e)
 
 
 # Module-level singleton
@@ -365,8 +434,17 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     for flight in flights:
         await _process_flight(flight, sim_time)
 
-    # 3b. Advance all active turnaround plans (delta-aware)
+    # 3a. Holding fuel burn tracking (P1-2-6)
+    _track_holding_fuel_burn(flights, sim_time, step_minutes, is_bulk)
+
+    # 3b. Equipment failure injection on turnaround plans (P1-2-4)
+    _check_equipment_failures(sim_time)
+
+    # 3c. Advance all active turnaround plans (delta-aware)
     _advance_turnaround_plans(sim_time, step_minutes)
+
+    # 3d. Advance ground vehicle pool (Phase 1.3)
+    _advance_ground_vehicles(sim_time, is_bulk)
 
     # 4. Update Prometheus gauges
     status_counts: dict[str, int] = {}
@@ -379,6 +457,10 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     for s, count in status_counts.items():
         m_active.labels(status=s).set(count)
     m_delayed.set(delayed_count)
+
+    # 4b. Ground vehicle utilisation metrics (Phase 1.3)
+    for vtype, pct in _state.vehicle_pool.utilisation_by_type().items():
+        m_vehicle_util.labels(vehicle_type=vtype).set(pct)
 
     # 5. BULK mode: emit periodic BulkStateSnapshot
     if is_bulk:
@@ -414,6 +496,166 @@ async def _maybe_emit_flight_bulk_snapshot(
     logger.info("BulkStateSnapshot emitted (flights): %s", status_counts)
 
 
+# ── Noise model helpers (Phase 1.2) ────────────────────────
+
+
+def _is_peak_hour(sim_time: datetime) -> bool:
+    """Check if current sim hour is a peak hour."""
+    return sim_time.hour in _state.peak_hours
+
+
+def _draw_crew_delay(flight_id: str) -> int:
+    """Draw a crew readiness delay for a flight. Returns delay minutes or 0."""
+    if flight_id in _state.crew_delay_drawn:
+        return 0
+    _state.crew_delay_drawn.add(flight_id)
+    ns = _state.noise_settings
+    if random.random() < ns["crew_delay_probability"]:
+        delay = random.randint(ns["crew_delay_min"], ns["crew_delay_max"])
+        logger.info("Crew delay drawn for %s: %d min", flight_id, delay)
+        return delay
+    return 0
+
+
+def _draw_ctot(flight_id: str, sim_time: datetime) -> int:
+    """Draw a CTOT slot delay for a departure during peak hours. Returns delay minutes or 0."""
+    if flight_id in _state.ctot_assigned:
+        return 0
+    if not _is_peak_hour(sim_time):
+        return 0
+    _state.ctot_assigned.add(flight_id)
+    ns = _state.noise_settings
+    if random.random() < ns["ctot_probability_peak"]:
+        delay = random.randint(ns["ctot_delay_min"], ns["ctot_delay_max"])
+        logger.info("CTOT assigned for %s: %d min", flight_id, delay)
+        return delay
+    return 0
+
+
+def _draw_diversion(flight_id: str) -> bool:
+    """Draw whether an arriving flight should be diverted. Returns True if diverted."""
+    if flight_id in _state.diversion_drawn:
+        return False
+    _state.diversion_drawn.add(flight_id)
+    ns = _state.noise_settings
+    # Higher diversion rate in LIFR weather
+    rate = ns["diversion_rate"]
+    if _state.runway_queue.weather_category == "LIFR":
+        rate *= 3.0
+    elif _state.runway_queue.weather_category == "IMC":
+        rate *= 1.5
+    if random.random() < rate:
+        logger.info("Diversion drawn for %s", flight_id)
+        return True
+    return False
+
+
+def _track_holding_fuel_burn(
+    flights: list[dict],
+    sim_time: datetime,
+    step_minutes: int,
+    is_bulk: bool,
+) -> None:
+    """Track fuel burn for aircraft in holding (approach state waiting for runway).
+
+    P1-2-6: After 30 min → MinimumFuelWarning. After 45 min → PAN PAN priority.
+    """
+    ns = _state.noise_settings
+    warn_min = ns["holding_fuel_warn_minutes"]
+    panpan_min = ns["holding_fuel_panpan_minutes"]
+    fuel_rate = ns["holding_fuel_burn_kg_per_hr"]
+
+    # Build set of flights currently in approach (holding)
+    holding_ids = set()
+    for f in flights:
+        if f.get("status") == "approach" and f.get("direction") == "arrival":
+            holding_ids.add(f["id"])
+
+    # Update holding minutes
+    for fid in list(_state.holding_minutes.keys()):
+        if fid not in holding_ids:
+            # No longer in holding — remove
+            _state.holding_minutes.pop(fid, None)
+
+    for f in flights:
+        fid = f["id"]
+        if fid not in holding_ids:
+            continue
+        # Increment holding time
+        if fid not in _state.holding_minutes:
+            _state.holding_minutes[fid] = 0
+        _state.holding_minutes[fid] += step_minutes
+
+        hold_min = _state.holding_minutes[fid]
+        fuel_remaining = max(0, 20000 - int(fuel_rate * hold_min / 60))
+
+        # MinimumFuelWarning at warn threshold
+        if hold_min >= warn_min and fid not in _state.fuel_warned:
+            _state.fuel_warned.add(fid)
+            if not is_bulk:
+                emit_minimum_fuel_warning(
+                    flight_id=fid,
+                    flight_number=f.get("flight_number", ""),
+                    holding_minutes=hold_min,
+                    fuel_remaining_kg=fuel_remaining,
+                    is_panpan=False,
+                    sim_time=sim_time,
+                )
+            logger.warning("MinimumFuelWarning: %s holding %d min", f.get("flight_number"), hold_min)
+
+        # PAN PAN at panpan threshold — give priority landing
+        if hold_min >= panpan_min and fid not in _state.fuel_panpan:
+            _state.fuel_panpan.add(fid)
+            # Re-enqueue as emergency to get priority
+            _state.runway_queue.enqueue_arrival(fid, sim_time.isoformat(), is_emergency=True)
+            if not is_bulk:
+                emit_minimum_fuel_warning(
+                    flight_id=fid,
+                    flight_number=f.get("flight_number", ""),
+                    holding_minutes=hold_min,
+                    fuel_remaining_kg=fuel_remaining,
+                    is_panpan=True,
+                    sim_time=sim_time,
+                )
+            logger.warning("PAN PAN declared: %s holding %d min", f.get("flight_number"), hold_min)
+
+
+def _check_equipment_failures(sim_time: datetime) -> None:
+    """P1-2-4: Stochastic equipment failure on active turnaround tasks.
+
+    1% chance per flight — checked once when the turnaround plan starts.
+    Adds 8–20 min to a random in-progress task.
+    """
+    ns = _state.noise_settings
+    for reg, plan in _state.turnaround_plans.items():
+        if reg in _state.equipment_failure_drawn:
+            continue
+        if not plan.started_at:
+            continue
+        # Only draw once per turnaround
+        _state.equipment_failure_drawn.add(reg)
+        if random.random() >= ns["equipment_failure_rate"]:
+            continue
+        # Find an in-progress task to fail
+        in_progress = [t for t in plan.tasks.values()
+                       if t.status.value == "in_progress" and t.name != "deplaning"]
+        if not in_progress:
+            # Pick a pending task instead
+            pending = [t for t in plan.tasks.values()
+                       if t.status.value == "pending" and t.name not in ("deplaning", "pushback")]
+            if pending:
+                in_progress = pending
+        if not in_progress:
+            continue
+        target = random.choice(in_progress)
+        extra = random.randint(ns["equipment_failure_delay_min"], ns["equipment_failure_delay_max"])
+        plan.extend_task(target.name, extra)
+        logger.info(
+            "Equipment failure on %s: task %s extended by %d min (reg=%s)",
+            plan.arrival_flight_id, target.name, extra, reg,
+        )
+
+
 def _advance_turnaround_plans(sim_time: datetime, step_minutes: int = 1) -> None:
     """Advance all active turnaround plans and emit events for changed tasks.
 
@@ -429,6 +671,7 @@ def _advance_turnaround_plans(sim_time: datetime, step_minutes: int = 1) -> None
             for offset in range(step_minutes):
                 intermediate = sim_time - timedelta(minutes=step_minutes - 1 - offset)
                 changed = plan.advance(intermediate)
+                _handle_task_vehicles(reg, plan, changed, intermediate, is_bulk)
                 if not is_bulk:
                     for task in changed:
                         emit_turnaround_task_changed(
@@ -441,6 +684,7 @@ def _advance_turnaround_plans(sim_time: datetime, step_minutes: int = 1) -> None
                         )
         else:
             changed = plan.advance(sim_time)
+            _handle_task_vehicles(reg, plan, changed, sim_time, is_bulk)
             if not is_bulk:
                 for task in changed:
                     emit_turnaround_task_changed(
@@ -454,6 +698,84 @@ def _advance_turnaround_plans(sim_time: datetime, step_minutes: int = 1) -> None
         if plan.is_complete:
             completed_regs.append(reg)
     # Don't remove completed plans here — they'll be cleaned up when 'arrived' fires
+
+
+def _handle_task_vehicles(
+    reg: str,
+    plan: TurnaroundPlan,
+    changed_tasks: list,
+    sim_time: datetime,
+    is_bulk: bool,
+) -> None:
+    """Dispatch or release ground vehicles based on turnaround task changes."""
+    gate_id = plan.gate_id or ""
+
+    for task in changed_tasks:
+        task_key = (reg, task.name)
+
+        if task.status.value == "in_progress" and task.name in VEHICLE_TASK_MAP:
+            # Dispatch a vehicle for this task
+            vehicle, transit = _state.vehicle_pool.request_vehicle(
+                task.name, gate_id, plan.arrival_flight_id, sim_time,
+            )
+            if vehicle:
+                _state.task_vehicles[task_key] = vehicle.id
+                if transit > 0:
+                    # Extend task duration by transit time
+                    plan.extend_task(task.name, transit)
+                if not is_bulk:
+                    emit_ground_vehicle_dispatched(
+                        vehicle_id=vehicle.id,
+                        vehicle_type=vehicle.vehicle_type,
+                        gate_id=gate_id,
+                        flight_id=plan.arrival_flight_id,
+                        task_name=task.name,
+                        transit_minutes=transit,
+                        sim_time=sim_time,
+                    )
+            else:
+                # Contention — delay task until vehicle becomes available
+                vehicle_type = VEHICLE_TASK_MAP[task.name]
+                m_vehicle_contention.labels(vehicle_type=vehicle_type).inc()
+                # Add 5-minute wait for contention (vehicle will be auto-dispatched when available)
+                plan.extend_task(task.name, 5)
+
+        elif task.status.value == "completed" and task_key in _state.task_vehicles:
+            # Release the vehicle
+            vid = _state.task_vehicles.pop(task_key)
+            released, return_transit = _state.vehicle_pool.release_vehicle(vid, sim_time)
+            if released and not is_bulk:
+                v = _state.vehicle_pool.vehicles.get(vid)
+                if v:
+                    emit_ground_vehicle_returned(
+                        vehicle_id=vid,
+                        vehicle_type=v.vehicle_type,
+                        sim_time=sim_time,
+                    )
+
+
+def _advance_ground_vehicles(sim_time: datetime, is_bulk: bool) -> None:
+    """Advance ground vehicle pool — transit arrivals, returns, and pending dispatch."""
+    events = _state.vehicle_pool.advance(sim_time)
+    if is_bulk:
+        return
+    for event_type, vehicle in events:
+        if event_type == "dispatched":
+            emit_ground_vehicle_dispatched(
+                vehicle_id=vehicle.id,
+                vehicle_type=vehicle.vehicle_type,
+                gate_id=vehicle.current_gate or "",
+                flight_id=vehicle.flight_id or "",
+                task_name=vehicle.task_name or "",
+                transit_minutes=0,
+                sim_time=sim_time,
+            )
+        elif event_type == "returned":
+            emit_ground_vehicle_returned(
+                vehicle_id=vehicle.id,
+                vehicle_type=vehicle.vehicle_type,
+                sim_time=sim_time,
+            )
 
 
 def get_turnaround_plan(aircraft_registration: str) -> TurnaroundPlan | None:
@@ -529,7 +851,10 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
         try:
             est = datetime.fromisoformat(str(estimated))
             if sim_time >= est - timedelta(minutes=35):
-                _state.runway_queue.enqueue_arrival(flight_id, str(estimated))
+                _state.runway_queue.enqueue_arrival(
+                    flight_id, str(estimated),
+                    aircraft_type=flight.get("aircraft_type", "A320"),
+                )
         except (ValueError, TypeError):
             pass
 
@@ -537,7 +862,10 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
     if current_status == "boarding" and direction == "departure" and not flight.get("runway_id"):
         estimated = flight.get("estimated_time", "")
         if boarded_pct >= 0.95:
-            _state.runway_queue.enqueue_departure(flight_id, str(estimated))
+            _state.runway_queue.enqueue_departure(
+                flight_id, str(estimated),
+                aircraft_type=flight.get("aircraft_type", "A320"),
+            )
 
     # Compute spatial taxi times from positions
     runway_id = flight.get("runway_id")
@@ -574,6 +902,104 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
         if not plan.ready_for_boarding:
             new_status = None  # wait for cleaning + deplaning
 
+    # ── Noise model draws (Phase 1.2) ──
+
+    is_bulk = _state.current_mode == "BULK"
+
+    # P1-2-5: Diversion — arriving flights in approach may be diverted
+    if (current_status == "approach" and direction == "arrival"
+            and new_status != "landed"):
+        if _draw_diversion(flight_id):
+            # Divert the flight — it never arrives at KART
+            await update_flight_status(flight_id, "diverted", sim_time,
+                                       delay_reason="diversion")
+            if not is_bulk:
+                emit_flight_diverted(
+                    flight_id=flight_id,
+                    flight_number=flight["flight_number"],
+                    reason="weather_below_minimums" if _state.runway_queue.weather_category in ("LIFR", "IMC") else "medical_emergency",
+                    sim_time=sim_time,
+                )
+                emit_flight_status_changed(
+                    flight_id=flight_id,
+                    flight_number=flight["flight_number"],
+                    previous_status=current_status,
+                    new_status="diverted",
+                    sim_time=sim_time,
+                    delay_minutes=flight.get("delay_minutes", 0),
+                    reason="diverted",
+                )
+            _state.runway_queue.remove(flight_id)
+            _state.holding_minutes.pop(flight_id, None)
+            logger.info("Flight %s DIVERTED", flight["flight_number"])
+            return  # skip normal transition
+
+    # P1-2-1: Crew readiness delay — 5% chance at boarding → departed
+    if new_status == "departed" and direction == "departure":
+        crew_delay = _draw_crew_delay(flight_id)
+        if crew_delay > 0:
+            # Block the departure and add the delay
+            current_delay = flight.get("delay_minutes", 0) or 0
+            new_delay = current_delay + crew_delay
+            await update_flight_status(
+                flight_id, "boarding", sim_time,
+                delay_minutes=new_delay,
+                delay_reason="crew_readiness",
+            )
+            # Push estimated time
+            est = flight.get("estimated_time")
+            if est:
+                try:
+                    new_est = datetime.fromisoformat(str(est)) + timedelta(minutes=crew_delay)
+                    await update_flight_status(
+                        flight_id, "boarding", sim_time,
+                        delay_minutes=new_delay,
+                        delay_reason="crew_readiness",
+                        estimated_time=new_est.isoformat(),
+                    )
+                except (ValueError, TypeError):
+                    pass
+            if not is_bulk:
+                emit_flight_status_changed(
+                    flight_id=flight_id,
+                    flight_number=flight["flight_number"],
+                    previous_status="boarding",
+                    new_status="boarding",
+                    sim_time=sim_time,
+                    delay_minutes=new_delay,
+                    reason="crew_readiness",
+                )
+            new_status = None  # suppress the departed transition this tick
+
+    # P1-2-2: CTOT slot allocation — 10% of departures during peak get a CTOT delay
+    if new_status == "departed" and direction == "departure":
+        ctot_delay = _draw_ctot(flight_id, sim_time)
+        if ctot_delay > 0:
+            current_delay = flight.get("delay_minutes", 0) or 0
+            new_delay = current_delay + ctot_delay
+            est = flight.get("estimated_time")
+            new_est_str = None
+            if est:
+                try:
+                    new_est = datetime.fromisoformat(str(est)) + timedelta(minutes=ctot_delay)
+                    new_est_str = new_est.isoformat()
+                except (ValueError, TypeError):
+                    pass
+            await update_flight_status(
+                flight_id, "boarding", sim_time,
+                delay_minutes=new_delay,
+                delay_reason="ctot_slot",
+                estimated_time=new_est_str,
+            )
+            if not is_bulk:
+                emit_flight_ctot_assigned(
+                    flight_id=flight_id,
+                    flight_number=flight["flight_number"],
+                    ctot_delay_minutes=ctot_delay,
+                    sim_time=sim_time,
+                )
+            new_status = None  # suppress the departed transition this tick
+
     if new_status is None:
         # Check for delay accumulation on boarding flights past departure time
         if current_status == "boarding" and direction == "departure":
@@ -584,10 +1010,14 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
                     if sim_time > est and boarded_pct < 0.95:
                         delay = int((sim_time - est).total_seconds() / 60)
                         if delay > (flight.get("delay_minutes", 0) or 0):
+                            # Preserve noise-model delay reasons
+                            current_reason = flight.get("delay_reason", "")
+                            noise_reasons = {"crew_readiness", "ctot_slot", "equipment_failure"}
+                            reason = current_reason if current_reason in noise_reasons else "boarding_incomplete"
                             await update_flight_status(
                                 flight_id, "boarding", sim_time,
                                 delay_minutes=delay,
-                                delay_reason="boarding_incomplete",
+                                delay_reason=reason,
                             )
                 except (ValueError, TypeError):
                     pass
@@ -708,8 +1138,12 @@ async def _execute_transition(
                         paired_departure_id=paired_id,
                         flight_type=flight.get("flight_type"),
                     )
+                    plan.gate_id = flight.get("gate_id", "")
                     started_tasks = plan.start(sim_time)
                     _state.turnaround_plans[reg] = plan
+                    is_bulk = _state.current_mode == "BULK"
+                    # Dispatch vehicles for initially started tasks (Phase 1.3)
+                    _handle_task_vehicles(reg, plan, started_tasks, sim_time, is_bulk)
                     for t in started_tasks:
                         emit_turnaround_task_changed(
                             flight_id=flight_id,

@@ -5,6 +5,7 @@ import {
   passengersApi,
   baggageApi,
   incidentsApi,
+  analysisApi,
 } from "./useApi";
 import type {
   Flight,
@@ -19,6 +20,8 @@ import type {
   FlaggedBaggage,
   Incident,
   IncidentAlert,
+  ADSBFeatureCollection,
+  GroundVehicleSummary,
 } from "../types";
 
 /* ──────── Flight Board ──────── */
@@ -214,4 +217,67 @@ export function useIncidentConsoleQueries() {
   });
 
   return { active, resolved, alerts };
+}
+
+/* ──────── ADS-B States ──────── */
+
+export function useADSBQuery(enabled = true) {
+  return useQuery({
+    queryKey: ["adsb", "states"],
+    queryFn: async () => {
+      const data = await flightsApi.adsbStates();
+      return data as ADSBFeatureCollection;
+    },
+    refetchInterval: 15_000,
+    enabled,
+    retry: 1,
+  });
+}
+
+/* ──────── Ground Vehicles ──────── */
+
+export function useGroundVehiclesQuery() {
+  return useQuery({
+    queryKey: ["ground-vehicles"],
+    queryFn: async () => {
+      const data = await flightsApi.groundVehicles();
+      return data as GroundVehicleSummary;
+    },
+    refetchInterval: 5_000,
+  });
+}
+
+/* ──────── Analysis ──────── */
+
+export function useBottlenecksQuery() {
+  return useQuery({
+    queryKey: ["analysis", "bottlenecks"],
+    queryFn: async () => {
+      const data = await analysisApi.bottlenecks();
+      return data.bottlenecks ?? [];
+    },
+    refetchInterval: 10_000,
+  });
+}
+
+export function useRecommendationsQuery() {
+  return useQuery({
+    queryKey: ["analysis", "recommendations"],
+    queryFn: async () => {
+      const data = await analysisApi.recommendations();
+      return data.recommendations ?? [];
+    },
+    refetchInterval: 10_000,
+  });
+}
+
+export function useAutonomousSettingsQuery() {
+  return useQuery({
+    queryKey: ["analysis", "autonomous"],
+    queryFn: async () => {
+      const data = await analysisApi.autonomousSettings();
+      return (data as Record<string, unknown>).autonomous ?? {};
+    },
+    refetchInterval: 30_000,
+  });
 }

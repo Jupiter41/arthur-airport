@@ -9,6 +9,7 @@ const SERVICE_KEYS: Record<string, string> = {
   weather_service: "weather",
   incident_service: "incidents",
   sim_orchestrator: "sim",
+  analysis_service: "analysis",
 };
 
 async function checkService(baseUrl: string): Promise<boolean> {

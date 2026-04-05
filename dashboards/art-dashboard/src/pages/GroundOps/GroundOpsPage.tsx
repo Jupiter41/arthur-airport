@@ -1,13 +1,13 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFlightStore } from "../../stores/flightStore";
 import { useWeatherStore } from "../../stores/weatherStore";
 import { useIncidentStore } from "../../stores/incidentStore";
-import { useGroundOpsQueries } from "../../hooks/useQueries";
+import { useGroundOpsQueries, useADSBQuery, useGroundVehiclesQuery } from "../../hooks/useQueries";
 import { StatusBadge } from "../../components/StatusBadge";
 import { flightsApi } from "../../hooks/useApi";
 import { WeatherHistoryChart } from "../Debug/DebugPage";
-import type { Flight, Runway, Gate, WeatherState, Incident } from "../../types";
+import type { Flight, Runway, Gate, WeatherState, Incident, ADSBFeatureCollection, GroundVehicleSummary } from "../../types";
 
 /* ──────── Gate Cell ──────── */
 function GateCell({ gate }: { gate: Gate }) {
@@ -603,6 +603,253 @@ function TerminalActivityPanel({
   );
 }
 
+/* ──────── Real Flights Nearby (ADS-B) Panel ──────── */
+function NearbyFlightsPanel({ data }: { data: ADSBFeatureCollection | undefined }) {
+  if (!data || data.features.length === 0) {
+    return (
+      <div className="bg-gray-800 rounded p-3">
+        <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+          📡 Real Flights Nearby
+        </h3>
+        <div className="text-xs text-gray-500">
+          ADS-B disabled or no aircraft detected
+        </div>
+      </div>
+    );
+  }
+
+  const sorted = [...data.features].sort(
+    (a, b) => a.properties.distance_km - b.properties.distance_km,
+  );
+
+  return (
+    <div className="bg-gray-800 rounded p-3">
+      <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+        📡 Real Flights Nearby ({data.metadata.aircraft_count})
+      </h3>
+      <div className="space-y-1 max-h-48 overflow-y-auto">
+        {sorted.slice(0, 12).map((f) => {
+          const alt = f.properties.altitude_m != null
+            ? `FL${Math.round(f.properties.altitude_m / 30.48 / 100)}`
+            : "—";
+          const speed = f.properties.velocity_ms != null
+            ? `${Math.round(f.properties.velocity_ms * 1.944)}kt`
+            : "—";
+          return (
+            <div
+              key={f.properties.icao24}
+              className="flex items-center justify-between text-xs bg-gray-700 rounded px-2 py-1"
+            >
+              <span className="font-mono font-bold text-orange-300 w-20 truncate">
+                {f.properties.callsign?.trim() || f.properties.icao24}
+              </span>
+              <span className="text-gray-400">{alt}</span>
+              <span className="text-gray-400">{speed}</span>
+              <span className="text-gray-300 font-mono">
+                {f.properties.distance_km.toFixed(0)} km
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {data.metadata.last_update && (
+        <div className="mt-2 text-[10px] text-gray-500">
+          Updated: {new Date(data.metadata.last_update).toLocaleTimeString()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ──────── Ground Vehicle Status Panel ──────── */
+function GroundVehicleStatusPanel({ data }: { data: GroundVehicleSummary | undefined }) {
+  if (!data) {
+    return (
+      <div className="bg-gray-800 rounded p-3">
+        <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+          Ground Vehicles
+        </h3>
+        <div className="text-xs text-gray-500">Loading...</div>
+      </div>
+    );
+  }
+
+  const VEHICLE_LABELS: Record<string, { label: string; icon: string }> = {
+    fuel_truck: { label: "Fuel", icon: "⛽" },
+    catering_truck: { label: "Cater", icon: "🍽️" },
+    pushback_tug: { label: "Tug", icon: "🚜" },
+    baggage_loader: { label: "Bags", icon: "🧳" },
+    stairs: { label: "Stairs", icon: "🪜" },
+  };
+
+  const byType = new Map<string, { total: number; busy: number }>();
+  for (const v of data.vehicles) {
+    const entry = byType.get(v.type) ?? { total: 0, busy: 0 };
+    entry.total++;
+    if (v.status !== "available") entry.busy++;
+    byType.set(v.type, entry);
+  }
+
+  return (
+    <div className="bg-gray-800 rounded p-3">
+      <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+        Ground Vehicles ({data.total})
+        {data.pending_requests > 0 && (
+          <span className="ml-2 text-amber-400">
+            ⚠ {data.pending_requests} queued
+          </span>
+        )}
+      </h3>
+      <div className="space-y-2">
+        {[...byType.entries()].map(([type, counts]) => {
+          const meta = VEHICLE_LABELS[type] ?? { label: type, icon: "🚗" };
+          const pct = data.utilisation_pct[type] ?? 0;
+          const barColor =
+            pct > 85 ? "bg-red-500" : pct > 60 ? "bg-amber-500" : "bg-green-500";
+          return (
+            <div key={type} className="text-xs">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-gray-300">
+                  {meta.icon} {meta.label}
+                </span>
+                <span className="text-gray-400">
+                  {counts.busy}/{counts.total} busy · {Math.round(pct)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-600 rounded-full h-1.5">
+                <div
+                  className={`${barColor} h-1.5 rounded-full transition-all duration-700`}
+                  style={{ width: `${Math.min(pct, 100)}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ──────── Ground Vehicle SVG Overlay ──────── */
+const VEHICLE_ICONS: Record<string, { color: string; symbol: string }> = {
+  fuel_truck: { color: "#f59e0b", symbol: "F" },
+  catering_truck: { color: "#8b5cf6", symbol: "C" },
+  pushback_tug: { color: "#3b82f6", symbol: "T" },
+  baggage_loader: { color: "#10b981", symbol: "B" },
+  stairs: { color: "#ec4899", symbol: "S" },
+};
+
+function GroundVehicleOverlay({
+  vehicles,
+}: {
+  vehicles: { id: string; type: string; status: string; current_gate: string | null; position_x: number; position_y: number }[];
+}) {
+  // Map vehicle grid positions to a small SVG overlay area
+  // Vehicle positions are in grid coordinates (0-1000). We scale to SVG viewport.
+  const activeVehicles = vehicles.filter((v) => v.status !== "available");
+  const depotVehicles = vehicles.filter((v) => v.status === "available");
+
+  // Count available by type for the depot area
+  const depotByType = new Map<string, number>();
+  for (const v of depotVehicles) {
+    depotByType.set(v.type, (depotByType.get(v.type) ?? 0) + 1);
+  }
+
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      <svg viewBox="0 0 560 330" className="w-full h-auto">
+        {/* Vehicle depot area */}
+        <g transform="translate(10, 280)">
+          <rect
+            width={120}
+            height={40}
+            rx={4}
+            className="fill-gray-800/60 stroke-gray-600"
+            strokeWidth={0.5}
+          />
+          <text x={5} y={12} className="fill-gray-400 text-[7px]">
+            VEHICLE DEPOT
+          </text>
+          {[...depotByType.entries()].map(([type, count], i) => {
+            const meta = VEHICLE_ICONS[type] ?? { color: "#999", symbol: "?" };
+            return (
+              <g key={type} transform={`translate(${5 + i * 24}, 16)`}>
+                <circle cx={8} cy={8} r={7} fill={meta.color} opacity={0.6} />
+                <text
+                  x={8}
+                  y={11}
+                  textAnchor="middle"
+                  className="text-[7px] font-bold"
+                  fill="white"
+                >
+                  {meta.symbol}
+                </text>
+                <text
+                  x={18}
+                  y={11}
+                  className="fill-gray-300 text-[6px]"
+                >
+                  ×{count}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+
+        {/* Active vehicles moving between gates and depot */}
+        {activeVehicles.map((v) => {
+          const meta = VEHICLE_ICONS[v.type] ?? { color: "#999", symbol: "?" };
+          // Scale positions: x 0-1000 → 40-520, y 0-600 → 20-270
+          const sx = 40 + (v.position_x / 1000) * 480;
+          const sy = 20 + (v.position_y / 600) * 250;
+          const isAtGate = v.status === "at_gate";
+          return (
+            <g key={v.id}>
+              <circle
+                cx={sx}
+                cy={sy}
+                r={5}
+                fill={meta.color}
+                opacity={isAtGate ? 0.9 : 0.7}
+                stroke={isAtGate ? "#fff" : "none"}
+                strokeWidth={isAtGate ? 1 : 0}
+              >
+                {v.status === "dispatched" && (
+                  <animate
+                    attributeName="opacity"
+                    values="0.4;0.9;0.4"
+                    dur="1.5s"
+                    repeatCount="indefinite"
+                  />
+                )}
+              </circle>
+              <text
+                x={sx}
+                y={sy + 3}
+                textAnchor="middle"
+                className="text-[5px] font-bold"
+                fill="white"
+              >
+                {meta.symbol}
+              </text>
+              {v.current_gate && (
+                <text
+                  x={sx}
+                  y={sy + 12}
+                  textAnchor="middle"
+                  className="fill-gray-400 text-[5px]"
+                >
+                  {v.current_gate}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 /* ──────── Main Page ──────── */
 export default function GroundOpsPage() {
   const flights = useFlightStore((s) => s.flights);
@@ -617,6 +864,8 @@ export default function GroundOpsPage() {
   const setIncidents = useIncidentStore((s) => s.setIncidents);
 
   const queries = useGroundOpsQueries();
+  const adsbQuery = useADSBQuery(true);
+  const vehiclesQuery = useGroundVehiclesQuery();
 
   useEffect(() => {
     if (queries.runways.data) setRunways(queries.runways.data);
@@ -671,7 +920,7 @@ export default function GroundOpsPage() {
       <div className="grid grid-cols-4 gap-4">
         {/* Airfield schematic (3 cols) */}
         <div className="col-span-3">
-          <div className="bg-gray-900 rounded-lg p-4">
+          <div className="bg-gray-900 rounded-lg p-4 relative">
             <svg viewBox="0 0 560 330" className="w-full h-auto">
               {/* Background */}
               <rect width={560} height={330} rx={8} className="fill-gray-900" />
@@ -785,12 +1034,18 @@ export default function GroundOpsPage() {
                 </g>
               )}
             </svg>
+
+            {/* Ground vehicle overlay on schematic */}
+            {vehiclesQuery.data && (
+              <GroundVehicleOverlay vehicles={vehiclesQuery.data.vehicles} />
+            )}
           </div>
         </div>
 
         {/* Weather side panel (1 col) */}
-        <div>
+        <div className="space-y-4">
           <WeatherSidePanel weather={weather} />
+          <GroundVehicleStatusPanel data={vehiclesQuery.data as GroundVehicleSummary | undefined} />
         </div>
       </div>
 
@@ -798,11 +1053,12 @@ export default function GroundOpsPage() {
       <WeatherHistoryChart />
 
       {/* Bottom bar */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <HoldingStackPanel flights={flightList} />
         <GroundStopPanel incidents={activeIncidents} />
         <RunwayQueuePanel runways={runways} flights={flightList} />
         <TurnaroundPanel />
+        <NearbyFlightsPanel data={adsbQuery.data as ADSBFeatureCollection | undefined} />
       </div>
 
       {/* Terminal Activity — flight/passenger/baggage links */}

@@ -25,6 +25,7 @@ export const UPSTREAM: Record<string, string> = {
   weather: process.env.WEATHER_SERVICE_URL ?? "http://weather-service:8004",
   incidents: process.env.INCIDENT_SERVICE_URL ?? "http://incident-service:8005",
   sim: process.env.SIM_ORCHESTRATOR_URL ?? "http://sim-orchestrator:8006",
+  analysis: process.env.ANALYSIS_SERVICE_URL ?? "http://analysis-service:8007",
 };
 
 type ProxyRoute = {
@@ -49,6 +50,16 @@ const PROXY_ROUTES: ProxyRoute[] = [
     service: "flights",
     mountPath: "/api/v1/gates",
     upstreamPrefix: "/api/v1/gates",
+  },
+  {
+    service: "flights",
+    mountPath: "/api/v1/turnarounds",
+    upstreamPrefix: "/api/v1/turnarounds",
+  },
+  {
+    service: "flights",
+    mountPath: "/api/v1/ground-vehicles",
+    upstreamPrefix: "/api/v1/ground-vehicles",
   },
 
   // Weather service
@@ -122,6 +133,13 @@ const PROXY_ROUTES: ProxyRoute[] = [
     service: "baggage",
     mountPath: "/api/v1/baggage",
     upstreamPrefix: "/api/v1/baggage",
+  },
+
+  // Analysis service
+  {
+    service: "analysis",
+    mountPath: "/api/v1/analysis",
+    upstreamPrefix: "/api/v1/analysis",
   },
 ];
 

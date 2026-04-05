@@ -21,17 +21,18 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
     "boarding": {"departed", "delayed", "cancelled"},
     "delayed": {"boarding", "approach", "cancelled"},
     "departed": {"airborne"},
-    "airborne": {"approach", "arrived"},
-    "approach": {"landed", "delayed"},
+    "airborne": {"approach", "arrived", "diverted"},
+    "approach": {"landed", "delayed", "diverted"},
     "landed": {"taxiing"},
     "taxiing": {"at_gate"},
     "at_gate": set(),       # terminal state for arrivals
     "arrived": set(),       # terminal state for departures at destination
     "cancelled": set(),     # terminal state
+    "diverted": set(),      # terminal state — flight diverted to alternate airport
 }
 
 # Terminal states — flights in these states are never processed by the FSM
-TERMINAL_STATES = {"at_gate", "arrived", "cancelled"}
+TERMINAL_STATES = {"at_gate", "arrived", "cancelled", "diverted"}
 
 # Active departure states (flight hasn't departed yet)
 PRE_DEPARTURE_STATES = {"scheduled", "boarding", "delayed"}

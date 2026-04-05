@@ -91,6 +91,8 @@ scrape_configs:
 | `cascade_depth`                   | Histogram | —                        | Delay cascade chain depth     |
 | `gate_conflicts_resolved_total`   | Counter   | —                        | Gate reassignments            |
 | `turnaround_delay_minutes`        | Histogram | `aircraft_type`          | Turnaround delay distribution |
+| `ground_vehicle_utilisation_pct`  | Gauge     | `vehicle_type`           | Vehicle utilisation by type   |
+| `ground_vehicle_contention_total` | Counter   | `vehicle_type`           | Vehicle contention events     |
 
 ### 3.3 Passengers
 

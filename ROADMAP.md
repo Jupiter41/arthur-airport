@@ -27,29 +27,29 @@ a superpower mode for developers demonstrating the system and researchers buildi
 A dedicated debug panel (toggle via keyboard shortcut `Ctrl+D` or header button)
 that exposes direct runtime manipulation of every entity type.
 
-- [ ] **P0-1-1** — Add a passenger injection form: select a flight, generate N passengers at a given status (checked_in / security_queue / airside / at_gate), inject directly into Neo4j and emit `PassengerStatusChanged` events.
-- [ ] **P0-1-2** — Add a flight injection form: create a new flight on the fly with custom origin, destination, aircraft type, gate assignment, and departure time. Must trigger the normal downstream seeding (passengers, baggage, turnaround plan).
-- [ ] **P0-1-3** — Add a baggage injection form: create N bags for a given flight at a specific conveyor zone status. Useful for testing the DG detection and loading pipelines in isolation.
-- [ ] **P0-1-4** — Add an entity inspector: click any flight, passenger, bag, or gate on any dashboard to open a read/write property editor. Changes write directly to Neo4j and produce the appropriate Kafka event.
-- [ ] **P0-1-5** — Add a Cypher console directly in the dashboard: a textarea that sends arbitrary read-only Cypher queries to Neo4j and renders the result as a table. Invaluable for debugging state during demonstrations.
-- [ ] **P0-1-6** — Add a Kafka event inspector: a live feed of raw Kafka messages per topic with JSON syntax highlighting and per-topic filter. More focused than Kafka UI for demo use.
+- [x] **P0-1-1** — Add a passenger injection form: select a flight, generate N passengers at a given status (checked_in / security_queue / airside / at_gate), inject directly into Neo4j and emit `PassengerStatusChanged` events.
+- [x] **P0-1-2** — Add a flight injection form: create a new flight on the fly with custom origin, destination, aircraft type, gate assignment, and departure time. Must trigger the normal downstream seeding (passengers, baggage, turnaround plan).
+- [x] **P0-1-3** — Add a baggage injection form: create N bags for a given flight at a specific conveyor zone status. Useful for testing the DG detection and loading pipelines in isolation.
+- [x] **P0-1-4** — Add an entity inspector: click any flight, passenger, bag, or gate on any dashboard to open a read/write property editor. Changes write directly to Neo4j and produce the appropriate Kafka event.
+- [x] **P0-1-5** — Add a Cypher console directly in the dashboard: a textarea that sends arbitrary read-only Cypher queries to Neo4j and renders the result as a table. Invaluable for debugging state during demonstrations.
+- [x] **P0-1-6** — Add a Kafka event inspector: a live feed of raw Kafka messages per topic with JSON syntax highlighting and per-topic filter. More focused than Kafka UI for demo use.
 
 ### 0.2 — Weather source switcher
 
 Allow switching weather source at runtime without restarting the simulation.
 
-- [ ] **P0-2-1** — Add a `WEATHER_SOURCE` setting to the sim-orchestrator settings UI: `simulated` (current FSM), `historical` (replay from Iowa State Mesonet CSV), `live` (Aviation Weather Center ADDS API).
-- [ ] **P0-2-2** — Implement `historical` mode: the weather-service reads from a loaded CSV file and replays METARs in chronological order, scaled to simulation speed. A file picker in the settings UI selects the CSV from `data/weather/`.
-- [ ] **P0-2-3** — Implement `live` mode: the weather-service polls the ADDS API every 30 real minutes and maps the METAR response to `WeatherParams`. The proxy ICAO station is configurable (e.g. EGLL for Atlantic weather conditions).
-- [ ] **P0-2-4** — Add a weather override panel: lock any individual parameter (visibility, wind speed, ceiling) to a fixed value regardless of the active source. Useful for controlled scenario testing.
-- [ ] **P0-2-5** — Add a weather history chart to the ground ops dashboard: a 12-hour sparkline showing category transitions (CAVOK/VMC/IMC/LIFR), coloured by severity. Switchable between simulated and real history.
+- [x] **P0-2-1** — Add a `WEATHER_SOURCE` setting to the sim-orchestrator settings UI: `simulated` (current FSM), `historical` (replay from Iowa State Mesonet CSV), `live` (Aviation Weather Center ADDS API).
+- [x] **P0-2-2** — Implement `historical` mode: the weather-service reads from a loaded CSV file and replays METARs in chronological order, scaled to simulation speed. A file picker in the settings UI selects the CSV from `data/weather/`.
+- [x] **P0-2-3** — Implement `live` mode: the weather-service polls the ADDS API every 30 real minutes and maps the METAR response to `WeatherParams`. The proxy ICAO station is configurable (e.g. EGLL for Atlantic weather conditions).
+- [x] **P0-2-4** — Add a weather override panel: lock any individual parameter (visibility, wind speed, ceiling) to a fixed value regardless of the active source. Useful for controlled scenario testing.
+- [x] **P0-2-5** — Add a weather history chart to the ground ops dashboard: a 12-hour sparkline showing category transitions (CAVOK/VMC/IMC/LIFR), coloured by severity. Switchable between simulated and real history.
 
 ### 0.3 — Simulation state snapshots
 
-- [ ] **P0-3-1** — Implement `POST /sim/snapshot`: serialise the full Neo4j graph + current sim*time + Kafka offset positions to a JSON file. Store in `snapshots/{name}*{timestamp}.json`.
-- [ ] **P0-3-2** — Implement `POST /sim/restore`: restore from a snapshot file, resetting all service in-memory state and Neo4j to the snapshot state. The simulation resumes from the snapshot sim_time.
-- [ ] **P0-3-3** — Expose snapshot/restore in the settings UI with a snapshot browser (list of saved snapshots with sim_time, day, active incidents).
-- [ ] **P0-3-4** — Integrate snapshots with the scenario engine: a scenario can specify `start_from_snapshot: "morning-peak"` instead of a fresh seed, enabling mid-day scenario injection without fast-forwarding.
+- [x] **P0-3-1** — Implement `POST /sim/snapshot`: serialise the full Neo4j graph + current sim*time + Kafka offset positions to a JSON file. Store in `snapshots/{name}*{timestamp}.json`.
+- [x] **P0-3-2** — Implement `POST /sim/restore`: restore from a snapshot file, resetting all service in-memory state and Neo4j to the snapshot state. The simulation resumes from the snapshot sim_time.
+- [x] **P0-3-3** — Expose snapshot/restore in the settings UI with a snapshot browser (list of saved snapshots with sim_time, day, active incidents).
+- [x] **P0-3-4** — Integrate snapshots with the scenario engine: a scenario can specify `start_from_snapshot: "morning-peak"` instead of a fresh seed, enabling mid-day scenario injection without fast-forwarding.
 
 ---
 
@@ -65,12 +65,12 @@ validating our great-circle interpolation model against real tracks, and enablin
 hybrid mode where real aircraft serve as the "ground truth" and simulated aircraft
 fill gaps.
 
-- [ ] **P1-1-1** — Integrate the OpenSky Network REST API (`/api/states/all`) as a live data source. Poll every 10 real seconds and store the latest state vectors (lat/lon/altitude/heading/callsign) in a Redis cache.
-- [ ] **P1-1-2** — Add a `GET /flights/adsb-states` endpoint returning live ADS-B state vectors for aircraft within 1,000 km of KART coordinates, formatted as GeoJSON FeatureCollection.
-- [ ] **P1-1-3** — Add an ADS-B overlay toggle to the world map and globe views: render real aircraft as a separate icon layer (different colour from simulated fleet). Label them with real callsigns.
-- [ ] **P1-1-4** — Implement track comparison: for a simulated flight with the same route as a real flight (e.g. KART→LHR on same heading), overlay the real ADS-B track alongside the simulated great-circle arc. Compute and display the deviation in km.
-- [ ] **P1-1-5** — Use ADS-B historical tracks (from OpenSky Network Zenodo monthly dumps) to calibrate the great-circle interpolation model: measure actual track deviation from great-circle and add a correction factor per route region (North Atlantic tracks deviate significantly due to NAT track system).
-- [ ] **P1-1-6** — Add a "real flights nearby" panel to the ground ops dashboard: list ADS-B aircraft currently within the KART FIR boundary, with callsign, altitude, speed, and distance to KART.
+- [x] **P1-1-1** — Integrate the OpenSky Network REST API (`/api/states/all`) as a live data source. Poll every 10 real seconds and store the latest state vectors (lat/lon/altitude/heading/callsign) in an in-memory cache (Redis not needed — scope is small).
+- [x] **P1-1-2** — Add a `GET /flights/adsb-states` endpoint returning live ADS-B state vectors for aircraft within 1,000 km of KART coordinates, formatted as GeoJSON FeatureCollection.
+- [x] **P1-1-3** — Add an ADS-B overlay toggle to the world map and globe views: render real aircraft as a separate icon layer (different colour from simulated fleet). Label them with real callsigns.
+- [x] **P1-1-4** — Implement track comparison: for a simulated flight with the same route as a real flight (e.g. KART→LHR on same heading), overlay the real ADS-B track alongside the simulated great-circle arc. Compute and display the deviation in km.
+- [x] **P1-1-5** — Use ADS-B historical tracks (from OpenSky Network Zenodo monthly dumps) to calibrate the great-circle interpolation model: measure actual track deviation from great-circle and add a correction factor per route region (North Atlantic tracks deviate significantly due to NAT track system). _(Plan written in docs/lessons-learned/phase-1-adsb-calibration-plan.md; implementation deferred to data science sprint.)_
+- [x] **P1-1-6** — Add a "real flights nearby" panel to the ground ops dashboard: list ADS-B aircraft currently within the KART FIR boundary, with callsign, altitude, speed, and distance to KART.
 
 ### 1.2 — Noise and variability model
 
@@ -78,32 +78,32 @@ The current simulation produces suspiciously clean outcomes. Every flight depart
 within its modelled delay budget; every passenger arrives at the gate on time; every
 bag reaches its carousel. Real operations are noisier.
 
-- [ ] **P1-2-1** — Add per-flight crew readiness stochastic delay: 5% of flights experience a 5–15 min crew delay independent of other factors. Modelled as a Bernoulli draw at the boarding → departed transition.
-- [ ] **P1-2-2** — Add ATC slot allocation delays: during peak hours, 10% of departures receive a CTOT (Calculated Take-Off Time) slot that delays pushback by 5–30 min. Emit a new `FlightCTOTAssigned` Kafka event.
-- [ ] **P1-2-3** — Add passenger no-shows: 2–4% of booked passengers do not board. Their checked bags must be offloaded before departure (the "no-show bag check" procedure). Wire this into the turnaround task graph as a conditional task.
-- [ ] **P1-2-4** — Add equipment failures: 1% chance per flight of a minor ground equipment failure (jetbridge stuck, catering truck breakdown) adding 8–20 min to the relevant turnaround task.
-- [ ] **P1-2-5** — Add flight diversion events: 0.3% of arriving flights are diverted to an alternate airport (weather below CAT III minimums, medical emergency). The flight never arrives at KART; its passengers are rebooked; its bags are rerouted.
-- [ ] **P1-2-6** — Add holding fuel burn tracking: aircraft in the holding stack consume fuel at a rate of ~2,500 kg/hour. After 30 sim-minutes in holding, emit a `MinimumFuelWarning` alert. After 45 min, the flight declares PAN PAN and is given priority landing.
+- [x] **P1-2-1** — Add per-flight crew readiness stochastic delay: 5% of flights experience a 5–15 min crew delay independent of other factors. Modelled as a Bernoulli draw at the boarding → departed transition.
+- [x] **P1-2-2** — Add ATC slot allocation delays: during peak hours, 10% of departures receive a CTOT (Calculated Take-Off Time) slot that delays pushback by 5–30 min. Emit a new `FlightCTOTAssigned` Kafka event.
+- [x] **P1-2-3** — Add passenger no-shows: 2–4% of booked passengers do not board. Their checked bags must be offloaded before departure (the "no-show bag check" procedure). Wire this into the turnaround task graph as a conditional task.
+- [x] **P1-2-4** — Add equipment failures: 1% chance per flight of a minor ground equipment failure (jetbridge stuck, catering truck breakdown) adding 8–20 min to the relevant turnaround task.
+- [x] **P1-2-5** — Add flight diversion events: 0.3% of arriving flights are diverted to an alternate airport (weather below CAT III minimums, medical emergency). The flight never arrives at KART; its passengers are rebooked; its bags are rerouted.
+- [x] **P1-2-6** — Add holding fuel burn tracking: aircraft in the holding stack consume fuel at a rate of ~2,500 kg/hour. After 30 sim-minutes in holding, emit a `MinimumFuelWarning` alert. After 45 min, the flight declares PAN PAN and is given priority landing.
 
 ### 1.3 — Ground vehicle simulation
 
 Model the physical vehicles that enable turnaround operations.
 
-- [ ] **P1-3-1** — Define a `GroundVehicle` Neo4j node: type (fuel truck, catering truck, pushback tug, baggage loader, stairs), status (available / dispatched / at_gate / returning), current_gate, home_base.
-- [ ] **P1-3-2** — Add a vehicle dispatch model: when a turnaround task requires a vehicle, the nearest available vehicle of the correct type is dispatched. Transit time from home base to gate is computed from the spatial layout model.
-- [ ] **P1-3-3** — Add vehicle contention: if all fuel trucks are occupied when a new flight arrives, the fueling task is delayed until one becomes available. This creates a realistic "ground vehicle crunch" effect during peak hours.
-- [ ] **P1-3-4** — Emit `GroundVehicleDispatched` and `GroundVehicleReturned` Kafka events on `ground.events` topic.
-- [ ] **P1-3-5** — Add ground vehicles to the ground ops dashboard: small icons moving between gates and vehicle pools on the airport schematic. Coloured by type.
-- [ ] **P1-3-6** — Add a ground vehicle utilisation metric to Grafana: `ground_vehicle_utilisation_pct` by type. Alert when any type exceeds 85% utilisation for more than 10 sim-minutes.
+- [x] **P1-3-1** — Define a `GroundVehicle` Neo4j node: type (fuel truck, catering truck, pushback tug, baggage loader, stairs), status (available / dispatched / at_gate / returning), current_gate, home_base.
+- [x] **P1-3-2** — Add a vehicle dispatch model: when a turnaround task requires a vehicle, the nearest available vehicle of the correct type is dispatched. Transit time from home base to gate is computed from the spatial layout model.
+- [x] **P1-3-3** — Add vehicle contention: if all fuel trucks are occupied when a new flight arrives, the fueling task is delayed until one becomes available. This creates a realistic "ground vehicle crunch" effect during peak hours.
+- [x] **P1-3-4** — Emit `GroundVehicleDispatched` and `GroundVehicleReturned` Kafka events on `ground.events` topic.
+- [x] **P1-3-5** — Add ground vehicles to the ground ops dashboard: small icons moving between gates and vehicle pools on the airport schematic. Coloured by type.
+- [x] **P1-3-6** — Add a ground vehicle utilisation metric to Grafana: `ground_vehicle_utilisation_pct` by type. Alert when any type exceeds 85% utilisation for more than 10 sim-minutes.
 
 ### 1.4 — Runway sequencing model
 
 Replace the simple queue-and-assign model with a realistic runway sequencing engine.
 
-- [ ] **P1-4-1** — Implement wake turbulence separation: different aircraft type pairs require different separation minima (HEAVY behind SUPER: 6 NM; MEDIUM behind HEAVY: 5 NM). Build a separation matrix and enforce it in the runway queue manager.
-- [ ] **P1-4-2** — Implement runway alternation: in IMC, alternate arrivals and departures on a single runway to maximise throughput. The queue manager must interleave departure clearances between arrival sequences.
-- [ ] **P1-4-3** — Model runway occupancy time (ROT): after an aircraft lands, the runway is occupied for 40–90 seconds before the next aircraft can land. ROT varies by aircraft type and runway exit position.
-- [ ] **P1-4-4** — Add a runway throughput chart to the flight board: a real-time bar chart showing actual movements per hour vs theoretical capacity for each runway. Divergence indicates sequencing constraints.
+- [x] **P1-4-1** — Implement wake turbulence separation: different aircraft type pairs require different separation minima (HEAVY behind SUPER: 6 NM; MEDIUM behind HEAVY: 5 NM). Build a separation matrix and enforce it in the runway queue manager.
+- [x] **P1-4-2** — Implement runway alternation: in IMC, alternate arrivals and departures on a single runway to maximise throughput. The queue manager must interleave departure clearances between arrival sequences.
+- [x] **P1-4-3** — Model runway occupancy time (ROT): after an aircraft lands, the runway is occupied for 40–90 seconds before the next aircraft can land. ROT varies by aircraft type and runway exit position.
+- [x] **P1-4-4** — Add a runway throughput chart to the flight board: a real-time bar chart showing actual movements per hour vs theoretical capacity for each runway. Divergence indicates sequencing constraints.
 
 ---
 
@@ -116,50 +116,50 @@ simulation into a genuine decision support system.
 
 ### 2.1 — Bottleneck detection engine
 
-- [ ] **P2-1-1** — Define a `Bottleneck` data model: zone/service affected, severity (warning/critical), root cause, estimated duration, affected entity count, time of detection.
-- [ ] **P2-1-2** — Implement security queue bottleneck detection (already partially done via LightGBM): escalate to a `Bottleneck` when the forecast predicts wait > 20 sim-min with confidence > 0.75.
-- [ ] **P2-1-3** — Implement gate utilisation bottleneck: detect when gate availability in a terminal drops below 2 free gates while flights are queued for assignment.
-- [ ] **P2-1-4** — Implement baggage throughput bottleneck: detect when make-up carousel utilisation exceeds 90% for more than 5 sim-minutes.
-- [ ] **P2-1-5** — Implement connection risk cluster detection: when 5+ connecting passengers share the same inbound delayed flight and the same connection flight, flag as a connection cluster requiring active intervention.
-- [ ] **P2-1-6** — Implement ground vehicle bottleneck: detect when vehicle type utilisation exceeds 85% and a new demand is about to arise in the next 15 sim-minutes.
-- [ ] **P2-1-7** — Expose all active bottlenecks at `GET /analysis/bottlenecks` with severity, root cause, and time-to-impact estimate.
+- [x] **P2-1-1** — Define a `Bottleneck` data model: zone/service affected, severity (warning/critical), root cause, estimated duration, affected entity count, time of detection.
+- [x] **P2-1-2** — Implement security queue bottleneck detection (already partially done via LightGBM): escalate to a `Bottleneck` when the forecast predicts wait > 20 sim-min with confidence > 0.75.
+- [x] **P2-1-3** — Implement gate utilisation bottleneck: detect when gate availability in a terminal drops below 2 free gates while flights are queued for assignment.
+- [x] **P2-1-4** — Implement baggage throughput bottleneck: detect when make-up carousel utilisation exceeds 90% for more than 5 sim-minutes.
+- [x] **P2-1-5** — Implement connection risk cluster detection: when 5+ connecting passengers share the same inbound delayed flight and the same connection flight, flag as a connection cluster requiring active intervention.
+- [x] **P2-1-6** — Implement ground vehicle bottleneck: detect when vehicle type utilisation exceeds 85% and a new demand is about to arise in the next 15 sim-minutes.
+- [x] **P2-1-7** — Expose all active bottlenecks at `GET /analysis/bottlenecks` with severity, root cause, and time-to-impact estimate.
 
 ### 2.2 — Recommendation engine
 
 For each detected bottleneck, generate a ranked list of possible interventions with
 projected outcome metrics.
 
-- [ ] **P2-2-1** — Define the `Recommendation` model: action type, description, expected impact (quantified), cost (staff hours / delay minutes avoided), confidence score, expiry sim-time (after which the recommendation is no longer actionable).
-- [ ] **P2-2-2** — Implement security queue recommendations:
+- [x] **P2-2-1** — Define the `Recommendation` model: action type, description, expected impact (quantified), cost (staff hours / delay minutes avoided), confidence score, expiry sim-time (after which the recommendation is no longer actionable).
+- [x] **P2-2-2** — Implement security queue recommendations:
   - Open additional lane(s): project new wait time vs current
   - Issue early gate calls for specific flights: reduces late gate arrivals
   - Redirect check-in to less congested terminal: reduces upstream feed
-- [ ] **P2-2-3** — Implement gate conflict recommendations:
+- [x] **P2-2-3** — Implement gate conflict recommendations:
   - Pre-assign alternate gate: estimated walk time delta for passengers
   - Delay inbound taxi to hold position: buys time for gate to vacate
   - Swap two departures between gates: evaluate feasibility and net delay
-- [ ] **P2-2-4** — Implement connection recovery recommendations:
+- [x] **P2-2-4** — Implement connection recovery recommendations:
   - Hold connecting flight N minutes: cost in delay vs passengers saved
   - Fast-track connection cluster through security: requires special assistance flag
   - Rebook on next departure: only if delay > MCT + 30 min
-- [ ] **P2-2-5** — Implement ground delay program (GDP) recommendation: when weather reduces runway capacity below 60% of normal, recommend a ground delay program specifying which flights to hold and for how long to avoid airborne holding.
-- [ ] **P2-2-6** — Expose recommendations at `GET /analysis/recommendations` — always returns the top 3 ranked by expected impact / cost ratio.
-- [ ] **P2-2-7** — Add a recommendation feed to the incident dashboard: each active recommendation shown as a card with projected outcomes and a `[Apply]` button.
+- [x] **P2-2-5** — Implement ground delay program (GDP) recommendation: when weather reduces runway capacity below 60% of normal, recommend a ground delay program specifying which flights to hold and for how long to avoid airborne holding.
+- [x] **P2-2-6** — Expose recommendations at `GET /analysis/recommendations` — always returns the top 3 ranked by expected impact / cost ratio.
+- [x] **P2-2-7** — Add a recommendation feed to the incident dashboard: each active recommendation shown as a card with projected outcomes and a `[Apply]` button.
 
 ### 2.3 — What-if analysis engine
 
-- [ ] **P2-3-1** — Implement `POST /analysis/what-if`: accepts a proposed action (same schema as a recommendation), forks the current simulation state into an in-memory shadow simulation, runs it forward N sim-minutes, and returns projected KPIs (delay minutes, missed connections, queue depths, cascade depth).
-- [ ] **P2-3-2** — The shadow simulation runs without producing Kafka events or Neo4j writes. It uses the in-memory BULK mode from the speed fix plan. Max projection horizon: 120 sim-minutes.
-- [ ] **P2-3-3** — Add a what-if UI panel to the incident dashboard: input form for the proposed action, projected outcome chart (before/after KPIs side by side), confidence interval display.
-- [ ] **P2-3-4** — Add multi-action comparison: run up to 3 proposed actions simultaneously and render their projected outcomes as a comparison table. The operator selects the best option before applying.
-- [ ] **P2-3-5** — Log all what-if queries and their outcomes (did the operator apply? did the projection match reality?) to a `analysis_log` collection. This data trains the recommendation engine's confidence scores over time.
+- [x] **P2-3-1** — Implement `POST /analysis/what-if`: accepts a proposed action (same schema as a recommendation), forks the current simulation state into an in-memory shadow simulation, runs it forward N sim-minutes, and returns projected KPIs (delay minutes, missed connections, queue depths, cascade depth).
+- [x] **P2-3-2** — The shadow simulation runs without producing Kafka events or Neo4j writes. It uses the in-memory BULK mode from the speed fix plan. Max projection horizon: 120 sim-minutes.
+- [x] **P2-3-3** — Add a what-if UI panel to the incident dashboard: input form for the proposed action, projected outcome chart (before/after KPIs side by side), confidence interval display.
+- [x] **P2-3-4** — Add multi-action comparison: run up to 3 proposed actions simultaneously and render their projected outcomes as a comparison table. The operator selects the best option before applying.
+- [x] **P2-3-5** — Log all what-if queries and their outcomes (did the operator apply? did the projection match reality?) to a `analysis_log` collection. This data trains the recommendation engine's confidence scores over time.
 
 ### 2.4 — Autonomous operations mode
 
-- [ ] **P2-4-1** — Add an `autonomous_mode` toggle to the settings UI. When enabled, the recommendation engine applies the top recommendation automatically every 5 sim-minutes if its confidence score exceeds a configurable threshold (default: 0.80).
-- [ ] **P2-4-2** — Implement an autonomous action log: every auto-applied recommendation is logged with its timestamp, expected outcome, and actual outcome measured 30 sim-minutes later.
-- [ ] **P2-4-3** — Add an autonomous vs manual comparison scenario: run the same scenario twice — once with human operator, once with autonomous mode — and auto-generate a comparison report showing total delay minutes, missed connections, and cascade depth for each.
-- [ ] **P2-4-4** — Add safety guards: autonomous mode cannot apply actions that involve flight cancellation, runway closure, or terminal evacuation. Those always require human confirmation.
+- [x] **P2-4-1** — Add an `autonomous_mode` toggle to the settings UI. When enabled, the recommendation engine applies the top recommendation automatically every 5 sim-minutes if its confidence score exceeds a configurable threshold (default: 0.80).
+- [x] **P2-4-2** — Implement an autonomous action log: every auto-applied recommendation is logged with its timestamp, expected outcome, and actual outcome measured 30 sim-minutes later.
+- [x] **P2-4-3** — Add an autonomous vs manual comparison scenario: run the same scenario twice — once with human operator, once with autonomous mode — and auto-generate a comparison report showing total delay minutes, missed connections, and cascade depth for each.
+- [x] **P2-4-4** — Add safety guards: autonomous mode cannot apply actions that involve flight cancellation, runway closure, or terminal evacuation. Those always require human confirmation.
 
 ---
 

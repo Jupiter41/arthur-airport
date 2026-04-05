@@ -1,10 +1,20 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useIncidentStore } from "../../stores/incidentStore";
-import { incidentsApi } from "../../hooks/useApi";
-import { useIncidentConsoleQueries } from "../../hooks/useQueries";
+import { useAnalysisStore } from "../../stores/analysisStore";
+import type {
+  AnalysisBottleneck,
+  AnalysisRecommendation,
+} from "../../stores/analysisStore";
+import { incidentsApi, analysisApi } from "../../hooks/useApi";
+import {
+  useIncidentConsoleQueries,
+  useBottlenecksQuery,
+  useRecommendationsQuery,
+} from "../../hooks/useQueries";
 import { StatusBadge } from "../../components/StatusBadge";
 import { ExportMenu } from "../../components/ExportMenu";
 import { exportData } from "../../utils/exportData";
+import WhatIfPanel from "./WhatIfPanel";
 import type { ExportFormat } from "../../utils/exportData";
 import type {
   Incident,
@@ -520,6 +530,151 @@ function CascadeModal({
   );
 }
 
+/* ──────── P2-2-7: Recommendation Feed ──────── */
+
+const SEVERITY_RING: Record<string, string> = {
+  critical: "ring-red-500",
+  warning: "ring-amber-500",
+};
+
+const ACTION_ICON: Record<string, string> = {
+  open_security_lane: "🚪",
+  early_gate_call: "📢",
+  redirect_checkin: "🔄",
+  reassign_gate: "🔀",
+  delay_taxi: "⏸",
+  swap_gates: "↔",
+  hold_connecting_flight: "✋",
+  fast_track_passengers: "⚡",
+  rebook_passengers: "📋",
+  ground_delay_program: "🛬",
+  redistribute_vehicles: "🚛",
+  defer_task: "⏳",
+  redirect_baggage: "🧳",
+  expedite_loading: "📦",
+};
+
+function RecommendationFeed({
+  bottlenecks,
+  recommendations,
+}: {
+  bottlenecks: AnalysisBottleneck[];
+  recommendations: AnalysisRecommendation[];
+}) {
+  const [applying, setApplying] = useState<string | null>(null);
+
+  if (bottlenecks.length === 0 && recommendations.length === 0) {
+    return (
+      <div className="bg-gray-800 rounded p-4 text-center text-gray-500 text-sm">
+        No active bottlenecks or recommendations
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs text-gray-400 uppercase tracking-wide">
+        Bottlenecks &amp; Recommendations
+      </h3>
+
+      {/* Active bottlenecks */}
+      {bottlenecks.map((bn) => (
+        <div
+          key={bn.id}
+          className={`border-l-4 ${
+            bn.severity === "critical" ? "border-red-500 bg-red-900/20" : "border-amber-500 bg-amber-900/20"
+          } rounded p-3`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-white uppercase">
+              {bn.type.replace(/_/g, " ")}
+            </span>
+            <StatusBadge status={bn.severity} />
+          </div>
+          <div className="text-sm text-gray-300 mt-1">{bn.root_cause}</div>
+          <div className="text-xs text-gray-500 mt-1">
+            {bn.affected_entity_count} affected · ~{bn.estimated_duration_minutes} min
+          </div>
+        </div>
+      ))}
+
+      {/* Recommendations */}
+      {recommendations.map((rec) => (
+        <div
+          key={rec.id}
+          className={`ring-1 ${
+            SEVERITY_RING[
+              bottlenecks.find((b) => b.id === rec.bottleneck_id)?.severity ?? "warning"
+            ] ?? "ring-gray-600"
+          } bg-gray-800 rounded p-3`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-white font-medium">
+              {ACTION_ICON[rec.action_type] ?? "💡"} {rec.description}
+            </span>
+            <span className="text-xs text-gray-400">
+              #{rec.priority_rank}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-gray-400">
+            <div>
+              <span className="text-gray-500">Impact:</span> {rec.expected_impact}
+            </div>
+            <div>
+              <span className="text-gray-500">Cost:</span> {rec.cost}
+            </div>
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-2">
+              <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${
+                    rec.confidence_score >= 0.8 ? "bg-green-500" : rec.confidence_score >= 0.6 ? "bg-amber-500" : "bg-red-500"
+                  }`}
+                  style={{ width: `${rec.confidence_score * 100}%` }}
+                />
+              </div>
+              <span className="text-xs text-gray-500">
+                {(rec.confidence_score * 100).toFixed(0)}% conf.
+              </span>
+            </div>
+            {!rec.applied && (
+              <button
+                className="text-xs font-bold px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50"
+                disabled={applying === rec.id}
+                onClick={async () => {
+                  setApplying(rec.id);
+                  try {
+                    await analysisApi.whatIf({
+                      actions: [
+                        {
+                          action_type: rec.action_type,
+                          description: rec.description,
+                          parameters: rec.parameters,
+                        },
+                      ],
+                      horizon_minutes: 60,
+                    });
+                  } catch {
+                    // silently ignore — projection-only
+                  } finally {
+                    setApplying(null);
+                  }
+                }}
+              >
+                {applying === rec.id ? "..." : "Apply"}
+              </button>
+            )}
+            {rec.applied && (
+              <span className="text-xs text-green-400">✓ Applied</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ──────── Main Page ──────── */
 export default function IncidentConsolePage() {
   const incidents = useIncidentStore((s) => s.incidents);
@@ -532,6 +687,10 @@ export default function IncidentConsolePage() {
   const [injectOpen, setInjectOpen] = useState(false);
 
   const queries = useIncidentConsoleQueries();
+  const bnQuery = useBottlenecksQuery();
+  const recQuery = useRecommendationsQuery();
+  const storeBottlenecks = useAnalysisStore((s) => s.bottlenecks);
+  const storeRecs = useAnalysisStore((s) => s.recommendations);
 
   useEffect(() => {
     const active = queries.active.data ?? [];
@@ -640,6 +799,19 @@ export default function IncidentConsolePage() {
 
       {/* Alert feed */}
       <AlertFeed alerts={alerts} />
+
+      {/* Recommendation feed (P2-2-7) */}
+      <RecommendationFeed
+        bottlenecks={
+          (bnQuery.data as AnalysisBottleneck[] | undefined) ?? storeBottlenecks
+        }
+        recommendations={
+          (recQuery.data as AnalysisRecommendation[] | undefined) ?? storeRecs
+        }
+      />
+
+      {/* What-If Analysis (P2-3-3) */}
+      <WhatIfPanel />
 
       {/* Resolved */}
       <ResolvedList

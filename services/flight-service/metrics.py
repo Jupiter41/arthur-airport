@@ -60,3 +60,15 @@ turnaround_delay_minutes = Histogram(
     ["aircraft_type"],
     buckets=[5, 10, 15, 30, 45, 60, 90, 120],
 )
+
+ground_vehicle_utilisation_pct = Gauge(
+    "ground_vehicle_utilisation_pct",
+    "Ground vehicle utilisation percentage by type",
+    ["vehicle_type"],
+)
+
+ground_vehicle_contention_total = Counter(
+    "ground_vehicle_contention_total",
+    "Total ground vehicle contention events (no vehicle available)",
+    ["vehicle_type"],
+)

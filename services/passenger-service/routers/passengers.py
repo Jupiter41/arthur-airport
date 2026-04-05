@@ -4,7 +4,7 @@ Base path: /api/v1
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -150,6 +150,8 @@ async def flow_forecast(
         raise HTTPException(status_code=400, detail="Terminal must be A, B, or C")
 
     sim_time = get_sim_time()
+    if sim_time is None:
+        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
     trained = is_model_trained(terminal)
 
     # Build forecast points at 5-minute intervals
@@ -161,7 +163,7 @@ async def flow_forecast(
     cp = security.get(terminal)
 
     for offset_min in range(5, window + 1, 5):
-        future_time = sim_time + timedelta(minutes=offset_min) if sim_time else datetime.utcnow()
+        future_time = sim_time + timedelta(minutes=offset_min)
 
         features = build_features(
             terminal=terminal,

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "leaflet/dist/leaflet.css";
-import { useFlightBoardQueries } from "../../hooks/useQueries";
+import { useFlightBoardQueries, useADSBQuery } from "../../hooks/useQueries";
 import { useSimStore } from "../../stores/simStore";
-import type { Flight } from "../../types";
+import type { Flight, ADSBFeatureCollection } from "../../types";
 import {
   KART_COORDINATES,
   computeAircraftPosition,
@@ -47,6 +47,51 @@ const EMPTY_FEATURE_COLLECTION = {
   type: "FeatureCollection" as const,
   features: [],
 };
+
+/** Match an ADS-B aircraft to a simulated flight by heading similarity and distance. */
+function findMatchingAdsb(
+  flight: Flight,
+  simTime: string,
+  adsbFeatures: ADSBFeatureCollection["features"],
+): { callsign: string; lat: number; lon: number; deviationKm: number } | null {
+  const pos = computeAircraftPosition(flight, simTime);
+  if (!pos) return null;
+
+  const dest = destinationCoordinates(flight.destination_iata);
+  if (!dest) return null;
+
+  const simHeading = pos.heading_deg;
+  let best: { callsign: string; lat: number; lon: number; deviationKm: number } | null = null;
+  let bestDist = Infinity;
+
+  for (const f of adsbFeatures) {
+    const heading = f.properties.heading;
+    if (heading == null || f.properties.on_ground) continue;
+
+    // Heading must be within 20°
+    let headingDiff = Math.abs(heading - simHeading);
+    if (headingDiff > 180) headingDiff = 360 - headingDiff;
+    if (headingDiff > 20) continue;
+
+    const [lon, lat] = f.geometry.coordinates;
+    // Distance from ADS-B aircraft to the simulated position
+    const latDiff = lat - pos.lat;
+    const lonDiff = lon - pos.lon;
+    const roughDistKm = Math.sqrt(latDiff ** 2 + lonDiff ** 2) * 111;
+
+    if (roughDistKm < bestDist && roughDistKm < 500) {
+      bestDist = roughDistKm;
+      best = {
+        callsign: f.properties.callsign,
+        lat,
+        lon,
+        deviationKm: Math.round(roughDistKm * 10) / 10,
+      };
+    }
+  }
+
+  return best;
+}
 
 function toPositionFeature(
   flight: Flight,
@@ -113,6 +158,18 @@ export default function WorldMapPage() {
   const [searchPlane, setSearchPlane] = useState<string>("");
   const [searchAirport, setSearchAirport] = useState<string>("");
   const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [showAdsb, setShowAdsb] = useState(false);
+  const [selectedAdsbInfo, setSelectedAdsbInfo] = useState<{
+    callsign: string;
+    altitude: string;
+    speed: string;
+    distance: string;
+    country: string;
+    icao24: string;
+  } | null>(null);
+
+  const adsbQuery = useADSBQuery(showAdsb);
+  const adsbData = adsbQuery.data as ADSBFeatureCollection | undefined;
 
   const token = (
     import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
@@ -264,6 +321,12 @@ export default function WorldMapPage() {
     };
   }, [activeFlights]);
 
+  // Track comparison: match selected simulated flight with a nearby ADS-B aircraft
+  const trackComparison = useMemo(() => {
+    if (!showAdsb || !selectedFlight || !adsbData?.features.length) return null;
+    return findMatchingAdsb(selectedFlight, simTime, adsbData.features);
+  }, [showAdsb, selectedFlight, adsbData, simTime]);
+
   useEffect(() => {
     if (!mapContainerRef.current) {
       return;
@@ -320,6 +383,10 @@ export default function WorldMapPage() {
             data: EMPTY_FEATURE_COLLECTION,
           });
           map.addSource("aircraft", {
+            type: "geojson",
+            data: EMPTY_FEATURE_COLLECTION,
+          });
+          map.addSource("adsb-aircraft", {
             type: "geojson",
             data: EMPTY_FEATURE_COLLECTION,
           });
@@ -596,6 +663,90 @@ export default function WorldMapPage() {
               map.on("mouseleave", "aircraft-symbols", () => {
                 map.getCanvas().style.cursor = "";
               });
+
+              // ── ADS-B layer (real aircraft — orange icons) ──
+              const adsbSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+                <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
+                      fill="#f97316" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
+              </svg>`;
+              const adsbSvgUrl =
+                "data:image/svg+xml;charset=utf-8," +
+                encodeURIComponent(adsbSvg);
+              const adsbImg = new Image(48, 48);
+              adsbImg.onload = () => {
+                if (map.hasImage("adsb-icon")) map.removeImage("adsb-icon");
+                map.addImage("adsb-icon", adsbImg);
+
+                map.addLayer({
+                  id: "adsb-symbols",
+                  type: "symbol",
+                  source: "adsb-aircraft",
+                  layout: {
+                    "icon-image": "adsb-icon",
+                    "icon-size": [
+                      "interpolate",
+                      ["linear"],
+                      ["zoom"],
+                      2,
+                      0.35,
+                      8,
+                      0.6,
+                      14,
+                      0.9,
+                    ],
+                    "icon-rotate": ["coalesce", ["get", "heading"], 0],
+                    "icon-rotation-alignment": "map",
+                    "icon-allow-overlap": true,
+                    "icon-keep-upright": false,
+                    "text-field": ["get", "callsign"],
+                    "text-size": [
+                      "interpolate",
+                      ["linear"],
+                      ["zoom"],
+                      3,
+                      7,
+                      8,
+                      9,
+                      12,
+                      11,
+                    ],
+                    "text-offset": [0, 2],
+                    "text-allow-overlap": true,
+                    "visibility": "none",
+                  },
+                  paint: {
+                    "text-color": "#fed7aa",
+                    "text-halo-color": "#0b1118",
+                    "text-halo-width": 1,
+                  },
+                });
+
+                map.on("click", "adsb-symbols", (event) => {
+                  const props = event.features?.[0]?.properties;
+                  if (props) {
+                    const callsign = String(props.callsign ?? "").trim();
+                    const alt = props.altitude_m != null ? `${Math.round(Number(props.altitude_m))}m` : "—";
+                    const speed = props.velocity_ms != null ? `${Math.round(Number(props.velocity_ms) * 1.944)}kt` : "—";
+                    const dist = `${Number(props.distance_km).toFixed(0)}km`;
+                    setSelectedAdsbInfo({
+                      callsign,
+                      altitude: alt,
+                      speed,
+                      distance: dist,
+                      country: String(props.origin_country ?? ""),
+                      icao24: String(props.icao24 ?? ""),
+                    });
+                  }
+                });
+
+                map.on("mouseenter", "adsb-symbols", () => {
+                  map.getCanvas().style.cursor = "pointer";
+                });
+                map.on("mouseleave", "adsb-symbols", () => {
+                  map.getCanvas().style.cursor = "";
+                });
+              };
+              adsbImg.src = adsbSvgUrl;
             };
             selectedPlaneImg.src = selectedPlaneSvgUrl;
           };
@@ -715,6 +866,20 @@ export default function WorldMapPage() {
         .getSource("airports")
         ?.setData?.({ type: "FeatureCollection", features: airportFeatures });
 
+      // Update ADS-B source
+      if (adsbData?.features) {
+        map.getSource("adsb-aircraft")?.setData?.(adsbData);
+      }
+
+      // Toggle ADS-B layer visibility
+      if (map.isStyleLoaded?.() && map.getLayer?.("adsb-symbols")) {
+        map.setLayoutProperty?.(
+          "adsb-symbols",
+          "visibility",
+          showAdsb ? "visible" : "none",
+        );
+      }
+
       if (map.isStyleLoaded?.() && map.getLayer?.("aircraft-symbols")) {
         map.setLayoutProperty?.("aircraft-symbols", "icon-image", [
           "case",
@@ -797,11 +962,13 @@ export default function WorldMapPage() {
       }
     })();
   }, [
+    adsbData,
     airportFeatures,
     hasMapboxToken,
     positionFeatures,
     routeFeatures,
     selectedFlightId,
+    showAdsb,
   ]);
 
   return (
@@ -828,6 +995,21 @@ export default function WorldMapPage() {
               title="Toggle search panel"
             >
               🔍 Search
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAdsb(!showAdsb);
+                setSelectedAdsbInfo(null);
+              }}
+              className={`px-3 py-1 rounded transition-colors font-medium ${
+                showAdsb
+                  ? "bg-orange-600 hover:bg-orange-700 text-white"
+                  : "bg-slate-700 hover:bg-slate-600 text-slate-300"
+              }`}
+              title="Toggle live ADS-B aircraft overlay"
+            >
+              📡 ADS-B {showAdsb && adsbData ? `(${adsbData.metadata.aircraft_count})` : ""}
             </button>
             <button
               type="button"
@@ -1084,11 +1266,93 @@ export default function WorldMapPage() {
                 </p>
               )}
             </div>
+
+            {/* Track Comparison (P1-1-4) */}
+            {showAdsb && trackComparison && (
+              <div className="mt-3 pt-3 border-t border-slate-700">
+                <h3 className="text-xs font-semibold text-orange-300 mb-1">
+                  📡 Track Comparison
+                </h3>
+                <div className="space-y-1 text-slate-300">
+                  <p>
+                    <span className="text-slate-400">Matched ADS-B:</span>{" "}
+                    <span className="font-mono text-orange-300">
+                      {trackComparison.callsign}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-slate-400">Deviation:</span>{" "}
+                    <span
+                      className={
+                        trackComparison.deviationKm < 50
+                          ? "text-green-400"
+                          : trackComparison.deviationKm < 150
+                            ? "text-amber-400"
+                            : "text-red-400"
+                      }
+                    >
+                      {trackComparison.deviationKm} km
+                    </span>
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Great-circle vs real ADS-B position
+                  </p>
+                </div>
+              </div>
+            )}
+            {showAdsb && !trackComparison && selectedFlight.status === "airborne" && (
+              <div className="mt-3 pt-3 border-t border-slate-700 text-[10px] text-slate-500">
+                No nearby ADS-B match on similar heading
+              </div>
+            )}
+          </aside>
+        )}
+
+        {/* ADS-B aircraft info popup */}
+        {selectedAdsbInfo && !selectedFlight && (
+          <aside className="absolute top-3 right-3 w-64 rounded border border-orange-700/50 bg-slate-950/96 text-xs shadow-lg backdrop-blur-sm p-3 animation-fade-in">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-semibold text-orange-300">
+                📡 {selectedAdsbInfo.callsign || "Unknown"}
+              </h2>
+              <button
+                type="button"
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200"
+                onClick={() => setSelectedAdsbInfo(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="space-y-1 text-slate-300">
+              <p>
+                <span className="text-slate-400">ICAO24:</span>{" "}
+                <span className="font-mono">{selectedAdsbInfo.icao24}</span>
+              </p>
+              <p>
+                <span className="text-slate-400">Country:</span>{" "}
+                {selectedAdsbInfo.country}
+              </p>
+              <p>
+                <span className="text-slate-400">Altitude:</span>{" "}
+                {selectedAdsbInfo.altitude}
+              </p>
+              <p>
+                <span className="text-slate-400">Speed:</span>{" "}
+                {selectedAdsbInfo.speed}
+              </p>
+              <p>
+                <span className="text-slate-400">Distance to KART:</span>{" "}
+                {selectedAdsbInfo.distance}
+              </p>
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-700 text-[10px] text-slate-500">
+              Live data from OpenSky Network
+            </div>
           </aside>
         )}
       </div>
 
-      <footer className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 py-2 text-xs border-t border-slate-800 bg-slate-900">
+      <footer className="grid grid-cols-2 sm:grid-cols-5 gap-2 px-4 py-2 text-xs border-t border-slate-800 bg-slate-900">
         <div className="bg-slate-800/70 rounded px-2 py-1 text-slate-200">
           AIRBORNE: {stats.airborne}
         </div>
@@ -1101,6 +1365,11 @@ export default function WorldMapPage() {
         <div className="bg-slate-800/70 rounded px-2 py-1 text-slate-200">
           LONGEST: {stats.longest}
         </div>
+        {showAdsb && (
+          <div className="bg-orange-900/50 rounded px-2 py-1 text-orange-200">
+            ADS-B: {adsbData?.metadata.aircraft_count ?? 0} real
+          </div>
+        )}
       </footer>
     </section>
   );

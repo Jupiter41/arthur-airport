@@ -15,6 +15,7 @@ _producer: Producer | None = None
 
 PRODUCER_NAME = "flight-service"
 TOPIC = "flights.events"
+GROUND_TOPIC = "ground.events"
 
 
 def init_kafka_producer() -> None:
@@ -46,14 +47,16 @@ def _produce_event(
     sim_time: datetime,
     payload: dict,
     key: str | None = None,
+    topic: str | None = None,
 ) -> None:
-    """Build a standard event envelope and produce it to the flights.events topic.
+    """Build a standard event envelope and produce it to the given topic.
 
     Args:
         event_type: Event name (e.g. ``FlightStatusChanged``).
         sim_time: Current simulation time for the envelope.
         payload: Domain-specific event data.
         key: Optional Kafka message key (typically flight_id) for partition affinity.
+        topic: Target topic, defaults to ``flights.events``.
     """
     if _producer is None:
         raise RuntimeError("Kafka producer not initialized")
@@ -69,7 +72,7 @@ def _produce_event(
     }
 
     _producer.produce(
-        topic=TOPIC,
+        topic=topic or TOPIC,
         key=key.encode("utf-8") if key else None,
         value=json.dumps(envelope).encode("utf-8"),
         callback=_delivery_report,
@@ -182,6 +185,108 @@ def emit_turnaround_task_changed(
         "duration_min": duration_min,
     }
     _produce_event(event_type, sim_time, payload, key=flight_id)
+
+
+def emit_flight_ctot_assigned(
+    flight_id: str,
+    flight_number: str,
+    ctot_delay_minutes: int,
+    sim_time: datetime,
+) -> None:
+    """Emit FlightCTOTAssigned event — ATC slot allocation delay."""
+    payload = {
+        "flight_id": flight_id,
+        "flight_number": flight_number,
+        "ctot_delay_minutes": ctot_delay_minutes,
+    }
+    _produce_event("FlightCTOTAssigned", sim_time, payload, key=flight_id)
+    logger.info(
+        "Emitted FlightCTOTAssigned: %s delay=%dmin",
+        flight_number, ctot_delay_minutes,
+    )
+
+
+def emit_minimum_fuel_warning(
+    flight_id: str,
+    flight_number: str,
+    holding_minutes: int,
+    fuel_remaining_kg: int,
+    is_panpan: bool,
+    sim_time: datetime,
+) -> None:
+    """Emit MinimumFuelWarning event — aircraft in holding burning fuel."""
+    payload = {
+        "flight_id": flight_id,
+        "flight_number": flight_number,
+        "holding_minutes": holding_minutes,
+        "fuel_remaining_kg": fuel_remaining_kg,
+        "is_panpan": is_panpan,
+        "priority_landing": is_panpan,
+    }
+    _produce_event("MinimumFuelWarning", sim_time, payload, key=flight_id)
+    logger.info(
+        "Emitted MinimumFuelWarning: %s holding=%dmin panpan=%s",
+        flight_number, holding_minutes, is_panpan,
+    )
+
+
+def emit_flight_diverted(
+    flight_id: str,
+    flight_number: str,
+    reason: str,
+    sim_time: datetime,
+) -> None:
+    """Emit FlightDiverted event — flight diverted to alternate airport."""
+    payload = {
+        "flight_id": flight_id,
+        "flight_number": flight_number,
+        "reason": reason,
+    }
+    _produce_event("FlightDiverted", sim_time, payload, key=flight_id)
+    logger.info("Emitted FlightDiverted: %s reason=%s", flight_number, reason)
+
+
+# ---------------------------------------------------------------------------
+# Ground vehicle events → ground.events topic
+# ---------------------------------------------------------------------------
+
+def emit_ground_vehicle_dispatched(
+    vehicle_id: str,
+    vehicle_type: str,
+    gate_id: str,
+    flight_id: str,
+    task_name: str,
+    transit_minutes: int,
+    sim_time: datetime,
+) -> None:
+    """Emit GroundVehicleDispatched event."""
+    payload = {
+        "vehicle_id": vehicle_id,
+        "vehicle_type": vehicle_type,
+        "gate_id": gate_id,
+        "flight_id": flight_id,
+        "task_name": task_name,
+        "transit_minutes": transit_minutes,
+    }
+    _produce_event("GroundVehicleDispatched", sim_time, payload,
+                   key=vehicle_id, topic=GROUND_TOPIC)
+    logger.info("Emitted GroundVehicleDispatched: %s → gate %s for %s",
+                vehicle_id, gate_id, task_name)
+
+
+def emit_ground_vehicle_returned(
+    vehicle_id: str,
+    vehicle_type: str,
+    sim_time: datetime,
+) -> None:
+    """Emit GroundVehicleReturned event."""
+    payload = {
+        "vehicle_id": vehicle_id,
+        "vehicle_type": vehicle_type,
+    }
+    _produce_event("GroundVehicleReturned", sim_time, payload,
+                   key=vehicle_id, topic=GROUND_TOPIC)
+    logger.info("Emitted GroundVehicleReturned: %s", vehicle_id)
 
 
 async def check_kafka() -> bool:

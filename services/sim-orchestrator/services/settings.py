@@ -55,6 +55,22 @@ class SimSettings(BaseModel):
     sorting_capacity: int = Field(1800, ge=100, le=10000)
     dg_false_positive_rate: float = Field(0.003, ge=0.0, le=0.5)
 
+    # ── Noise & variability (Phase 1.2) ─────────────────────
+    crew_delay_probability: float = Field(0.05, ge=0.0, le=1.0)
+    crew_delay_min: int = Field(5, ge=1, le=60)
+    crew_delay_max: int = Field(15, ge=1, le=60)
+    ctot_probability_peak: float = Field(0.10, ge=0.0, le=1.0)
+    ctot_delay_min: int = Field(5, ge=1, le=120)
+    ctot_delay_max: int = Field(30, ge=1, le=120)
+    noshow_rate: float = Field(0.03, ge=0.0, le=0.5)
+    equipment_failure_rate: float = Field(0.01, ge=0.0, le=1.0)
+    equipment_failure_delay_min: int = Field(8, ge=1, le=120)
+    equipment_failure_delay_max: int = Field(20, ge=1, le=120)
+    diversion_rate: float = Field(0.003, ge=0.0, le=0.5)
+    holding_fuel_burn_kg_per_hr: int = Field(2500, ge=500, le=10000)
+    holding_fuel_warn_minutes: int = Field(30, ge=10, le=120)
+    holding_fuel_panpan_minutes: int = Field(45, ge=15, le=180)
+
 
 # ── Module-level singleton ──────────────────────────────────
 

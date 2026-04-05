@@ -179,3 +179,28 @@ async def list_turnarounds():
     for reg, plan in _state.turnaround_plans.items():
         plans.append(plan.to_dict())
     return {"turnarounds": plans, "total": len(plans)}
+
+
+@router.get("/flights/adsb-states")
+async def get_adsb_states():
+    """Return live ADS-B state vectors as GeoJSON FeatureCollection.
+
+    Aircraft within 1000 km of KART from OpenSky Network API.
+    """
+    from services.adsb import get_adsb_cache
+    cache = get_adsb_cache()
+    return cache.to_geojson()
+
+
+@router.get("/ground-vehicles")
+async def list_ground_vehicles():
+    """Return current ground vehicle status."""
+    from kafka.consumer import _state
+    vehicles = [v.to_dict() for v in _state.vehicle_pool.vehicles.values()]
+    utilisation = _state.vehicle_pool.utilisation_by_type()
+    return {
+        "vehicles": vehicles,
+        "total": len(vehicles),
+        "utilisation_pct": utilisation,
+        "pending_requests": len(_state.vehicle_pool.pending_requests),
+    }

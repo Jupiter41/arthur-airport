@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
@@ -105,6 +106,9 @@ class PassengerConsumerState:
         self.current_mode: str = "REALTIME"
         self.last_mode: str = "REALTIME"
         self.last_sync_sim_time: datetime | None = None
+        # No-show tracking (Phase 1.2)
+        self.noshow_drawn_flights: set[str] = set()  # flights that had no-show draw
+        self.noshow_rate: float = 0.03  # 2-4% no-show rate (default 3%)
 
     def check_idempotency(self, event_id: str) -> bool:
         if not event_id:
@@ -949,6 +953,40 @@ async def _advance_boarding(sim_time: datetime, delta_minutes: int = 1) -> None:
 
         if not estimated:
             continue
+
+        # P1-2-3: No-show draw — once per flight when boarding starts
+        if flight_id not in _state.noshow_drawn_flights:
+            boarding_eligible = (
+                should_start_boarding(sim_time, estimated, flight_status)
+                or flight_status in ("airborne", "departed", "taxiing")
+            )
+            if boarding_eligible:
+                _state.noshow_drawn_flights.add(flight_id)
+                noshow_ids: set[str] = set()
+                noshow_rate = _state.noshow_rate
+                for pax in pax_group:
+                    if random.random() < noshow_rate:
+                        noshow_ids.add(pax["id"])
+                if noshow_ids:
+                    gate_id = sample.get("gate_id")
+                    terminal = get_terminal_for_flight(gate_id, sample.get("terminal_id"), flight_id)
+                    for pax in pax_group:
+                        if pax["id"] in noshow_ids:
+                            old_zone = pax.get("location_zone") or ""
+                            await update_passenger_status(pax["id"], "departed_airport", "no-show", sim_time)
+                            remove_passenger(old_zone)
+                            await emit_passenger_status_changed(
+                                passenger_id=pax["id"],
+                                name=pax.get("name", ""),
+                                previous_status="at_gate",
+                                new_status="departed_airport",
+                                location_zone="no-show",
+                                sim_time=sim_time,
+                                flight_id=flight_id,
+                                flight_number=pax.get("flight_number"),
+                            )
+                    pax_group = [p for p in pax_group if p["id"] not in noshow_ids]
+                    logger.info("No-shows on flight %s: %d passengers", flight_id, len(noshow_ids))
 
         # If flight is already airborne/departed, bulk-board all remaining pax
         if flight_status in ("airborne", "departed", "taxiing"):
