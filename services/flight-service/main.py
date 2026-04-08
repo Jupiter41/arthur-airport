@@ -11,6 +11,7 @@ from db.neo4j import (
     check_neo4j,
     close_neo4j,
     create_constraints_and_indexes,
+    migrate_flight_properties,
     wait_for_neo4j,
 )
 from kafka.consumer import run_consumer, stop_consumer, is_consumer_running, set_ws_broadcast, _state as consumer_state
@@ -73,6 +74,9 @@ async def lifespan(app: FastAPI):
 
     # 4. Create constraints and indexes
     await create_constraints_and_indexes()
+
+    # 4b. Backfill missing properties on legacy Flight nodes
+    await migrate_flight_properties()
 
     # 5. Register WebSocket broadcast callback
     set_ws_broadcast(ws_broadcast)

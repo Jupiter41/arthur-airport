@@ -9,6 +9,7 @@ interface SimSettings {
   load_factor_mean: number;
   pax_multiplier: number;
   special_event: string | null;
+  hourly_weights: Record<string, number>;
   weather_lock: string | null;
   wind_kt: number;
   gust_enabled: boolean;
@@ -145,6 +146,82 @@ function Section({
         {title}
       </h3>
       <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+/* ──────── Hourly Weights Editor ──────── */
+
+const DEFAULT_HOURS = [
+  5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+];
+
+function HourlyWeightsEditor({
+  weights,
+  onChange,
+}: {
+  weights: Record<string, number>;
+  onChange: (w: Record<string, number>) => void;
+}) {
+  const maxWeight = Math.max(
+    1,
+    ...DEFAULT_HOURS.map((h) => weights[String(h)] ?? 0),
+  );
+
+  return (
+    <div>
+      <p className="text-[10px] text-gray-500 mb-2">
+        Drag bars to adjust departure distribution. Higher = more flights.
+      </p>
+      <div className="flex items-end gap-[2px] h-24">
+        {DEFAULT_HOURS.map((h) => {
+          const w = weights[String(h)] ?? 0;
+          const pct = maxWeight > 0 ? (w / maxWeight) * 100 : 0;
+          const isPeak = w >= maxWeight * 0.7;
+          return (
+            <div key={h} className="flex-1 flex flex-col items-center group">
+              <input
+                type="range"
+                min={0}
+                max={20}
+                value={w}
+                onChange={(e) => {
+                  const newWeights = {
+                    ...weights,
+                    [String(h)]: Number(e.target.value),
+                  };
+                  onChange(newWeights);
+                }}
+                className="sr-only"
+                id={`hw-${h}`}
+              />
+              <label
+                htmlFor={`hw-${h}`}
+                className={`w-full cursor-pointer rounded-t transition-all duration-200 ${
+                  isPeak
+                    ? "bg-blue-500 hover:bg-blue-400"
+                    : "bg-gray-600 hover:bg-gray-500"
+                }`}
+                style={{ height: `${Math.max(pct, 4)}%` }}
+                title={`${String(h).padStart(2, "0")}:00 — weight: ${w}`}
+                onClick={() => {
+                  const next = (w + 1) % 21;
+                  onChange({ ...weights, [String(h)]: next });
+                }}
+                onWheel={(e) => {
+                  e.preventDefault();
+                  const delta = e.deltaY < 0 ? 1 : -1;
+                  const next = Math.max(0, Math.min(20, w + delta));
+                  onChange({ ...weights, [String(h)]: next });
+                }}
+              />
+              <span className="text-[8px] text-gray-500 mt-0.5 leading-none">
+                {String(h).padStart(2, "0")}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -388,6 +465,14 @@ export default function SettingsPage() {
           />
         </Section>
 
+        {/* ── Schedule Distribution ── */}
+        <Section title="Hourly Distribution" icon="📊">
+          <HourlyWeightsEditor
+            weights={local.hourly_weights ?? {}}
+            onChange={(w) => patch("hourly_weights", w)}
+          />
+        </Section>
+
         {/* ── Weather ── */}
         <Section title="Weather" icon="🌤️">
           <SelectInput
@@ -585,10 +670,14 @@ function AutonomousSection() {
   return (
     <div className="bg-gray-800 rounded-lg p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">🤖 Autonomous Operations</h2>
+        <h2 className="text-lg font-bold text-white">
+          🤖 Autonomous Operations
+        </h2>
         <div className="flex items-center gap-2">
           {autoSaved && (
-            <span className="text-green-400 text-sm animate-pulse">✓ Saved</span>
+            <span className="text-green-400 text-sm animate-pulse">
+              ✓ Saved
+            </span>
           )}
           <button
             className="px-3 py-1.5 text-sm rounded font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40"
@@ -633,9 +722,9 @@ function AutonomousSection() {
           <p className="text-xs text-amber-300">
             ⚠ Autonomous mode will auto-apply recommendations with confidence ≥{" "}
             {(localAuto.confidence_threshold * 100).toFixed(0)}% every{" "}
-            {localAuto.check_interval_sim_minutes} sim-minutes.
-            Flight cancellation, runway closure, and GDP actions always
-            require human confirmation.
+            {localAuto.check_interval_sim_minutes} sim-minutes. Flight
+            cancellation, runway closure, and GDP actions always require human
+            confirmation.
           </p>
         </div>
       )}
@@ -652,7 +741,9 @@ function AutonomousSection() {
               className="bg-gray-900/50 rounded p-2 flex items-center justify-between"
             >
               <div>
-                <span className="text-xs text-white">{a.action_type as string}</span>
+                <span className="text-xs text-white">
+                  {a.action_type as string}
+                </span>
                 <span className="text-xs text-gray-400 ml-2">
                   {a.description as string}
                 </span>

@@ -471,7 +471,9 @@ async def inject_flight(req: FlightInjectRequest):
                 scheduled_time: $f.scheduled_time,
                 delay_minutes: $f.delay_minutes,
                 flight_type: $f.flight_type,
-                route_category: $f.route_category
+                route_category: $f.route_category,
+                actual_time: '',
+                arrival_estimated_time: ''
             })
             WITH f
             OPTIONAL MATCH (g:Gate {id: $f.gate_id})

@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+let _lastMsgMark = 0;
+
 interface ConnectionState {
   apiConnected: boolean | null;
   wsConnected: boolean;
@@ -27,8 +29,10 @@ export const useConnectionStore = create<ConnectionState>((set) => ({
       wsConnected: connected,
       lastWsError: connected ? null : (error ?? "WebSocket disconnected"),
     }),
-  markWsMessage: () =>
-    set({
-      wsLastMessageAt: new Date().toISOString(),
-    }),
+  markWsMessage: () => {
+    const now = Date.now();
+    if (now - _lastMsgMark < 1000) return;
+    _lastMsgMark = now;
+    set({ wsLastMessageAt: new Date(now).toISOString() });
+  },
 }));

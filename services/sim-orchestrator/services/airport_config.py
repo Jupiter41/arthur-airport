@@ -53,6 +53,13 @@ class AirportSimulation(BaseModel):
     daily_flight_target: int = Field(default=420, ge=20, le=5000)
     load_factor_mean: float = Field(default=0.80, ge=0.1, le=0.99)
     peak_hours: list[int] = Field(default_factory=lambda: [7, 8, 9, 17, 18, 19])
+    hourly_weights: dict[int, int] = Field(
+        default_factory=lambda: {
+            5: 2, 6: 8, 7: 14, 8: 16, 9: 12, 10: 10, 11: 9,
+            12: 8, 13: 9, 14: 10, 15: 10, 16: 12,
+            17: 15, 18: 14, 19: 10, 20: 7, 21: 5, 22: 3,
+        }
+    )
 
     @model_validator(mode="after")
     def validate_peak_hours(self) -> "AirportSimulation":

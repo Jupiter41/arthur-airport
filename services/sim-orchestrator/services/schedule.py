@@ -118,9 +118,10 @@ def _generate_flight_number(airline_code: str, rng: random.Random) -> str:
 
 
 def sample_departure_slots(n: int, sim_date: date, np_rng: np.random.Generator) -> list[datetime]:
-    """Sample n departure times from a realistic airport traffic distribution.
+    """Sample n departure times from a configurable airport traffic distribution.
 
-    Uses a piecewise hourly weight curve that models real mid-size hub traffic:
+    Uses hourly weights from SimSettings (configurable at runtime via REST API
+    or from config/airport.yaml). The default models real mid-size hub traffic:
     - Early morning ramp (05–07): gradual build-up
     - Morning peak (07–09): highest density
     - Mid-day plateau (09–16): steady base traffic
@@ -130,12 +131,10 @@ def sample_departure_slots(n: int, sim_date: date, np_rng: np.random.Generator) 
     Within each hour, departure times are uniformly jittered and rounded to
     the nearest 5 minutes.
     """
-    # Hourly weights (hour 0–23). Non-zero hours define the operational window.
-    hourly_weights = {
-        5: 2, 6: 8, 7: 14, 8: 16, 9: 12, 10: 10, 11: 9,
-        12: 8, 13: 9, 14: 10, 15: 10, 16: 12,
-        17: 15, 18: 14, 19: 10, 20: 7, 21: 5, 22: 3,
-    }
+    from services.settings import get_settings
+
+    settings = get_settings()
+    hourly_weights = settings.hourly_weights
     hours = sorted(hourly_weights.keys())
     weights = np.array([hourly_weights[h] for h in hours], dtype=float)
     weights /= weights.sum()
@@ -362,7 +361,9 @@ async def _persist_flights(flights: list[dict]) -> None:
                     flight_type: f.flight_type,
                     route_category: f.route_category,
                     flight_duration_minutes: COALESCE(f.flight_duration_minutes, 0),
-                    arrival_estimated_time: null
+                    actual_time: '',
+                    arrival_estimated_time: '',
+                    gate_id: f.gate_id
                 })
                 CREATE (fl)-[:ASSIGNED_TO]->(g)
                 CREATE (fl)-[:USES_RUNWAY {operation: CASE WHEN f.direction = 'departure' THEN 'takeoff' ELSE 'landing' END}]->(r)

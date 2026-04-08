@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { useFlightStore } from "../../stores/flightStore";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { useFlightBoardQueries } from "../../hooks/useQueries";
@@ -47,7 +47,7 @@ function FlightTypeBadge({ type }: { type: string | null }) {
 }
 
 /* ──────── Flight Row ──────── */
-function FlightRow({
+const FlightRow = memo(function FlightRow({
   flight,
   isFlashing,
   onClick,
@@ -153,7 +153,7 @@ function FlightRow({
       </td>
     </tr>
   );
-}
+});
 
 /* ──────── Flight Detail Drawer ──────── */
 function FlightDetailDrawer({
@@ -514,18 +514,19 @@ function FilterRow({
   onChange,
   direction,
   airlines,
+  visible,
 }: {
   filters: ColumnFilters;
   onChange: (f: ColumnFilters) => void;
   direction: "departure" | "arrival";
   airlines: string[];
+  visible: boolean;
 }) {
+  if (!visible) return null;
   const inputCls =
     "text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-1.5 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-500/40 placeholder-gray-500";
   const selectCls =
     "text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-1 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-500/40";
-
-  const hasAnyFilter = Object.values(filters).some((v) => v !== "");
 
   return (
     <tr className="border-b border-gray-700/30 bg-gray-800/40">
@@ -610,17 +611,7 @@ function FilterRow({
           ))}
         </select>
       </td>
-      <td className="px-2 py-1.5">
-        {hasAnyFilter && (
-          <button
-            onClick={() => onChange({ ...EMPTY_FILTERS })}
-            className="text-[10px] text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded px-1.5 py-0.5 transition-colors"
-            title="Clear all filters"
-          >
-            Clear
-          </button>
-        )}
-      </td>
+      <td className="px-2 py-1.5" />
     </tr>
   );
 }
@@ -673,6 +664,7 @@ function FIDSPanel({
 }) {
   const [page, setPage] = useState(0);
   const [filters, setFilters] = useState<ColumnFilters>({ ...EMPTY_FILTERS });
+  const [showFilters, setShowFilters] = useState(false);
   const PAGE_SIZE = 20;
   const { sort, toggle } = useSort<FlightSortCol>("time");
 
@@ -722,6 +714,41 @@ function FIDSPanel({
             {filtered.length}
             {hasAnyFilter ? `/${flights.length}` : ""})
           </h3>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`p-1 rounded transition-colors ${
+              showFilters || hasAnyFilter
+                ? "text-blue-400 bg-blue-900/40 hover:bg-blue-900/60"
+                : "text-gray-400 hover:text-white hover:bg-gray-700"
+            }`}
+            title={showFilters ? "Hide filters" : "Show filters"}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+          </button>
+          {hasAnyFilter && (
+            <button
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS });
+                setShowFilters(false);
+              }}
+              className="text-[10px] text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded px-1.5 py-0.5 transition-colors"
+              title="Clear all filters"
+            >
+              Clear
+            </button>
+          )}
         </div>
         {totalPages > 1 && (
           <div className="flex items-center gap-1">
@@ -793,6 +820,7 @@ function FIDSPanel({
               onChange={setFilters}
               direction={direction}
               airlines={airlines}
+              visible={showFilters}
             />
           </thead>
           <tbody>

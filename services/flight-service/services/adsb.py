@@ -54,6 +54,7 @@ class ADSBCache:
         self._states: list[dict[str, Any]] = []
         self._last_update: float = 0.0
         self._running = False
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def states(self) -> list[dict[str, Any]]:
@@ -78,10 +79,11 @@ class ADSBCache:
             "lomax": BBOX["lomax"],
         }
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(OPENSKY_URL, params=params)
-                resp.raise_for_status()
-                data = resp.json()
+            if self._client is None:
+                self._client = httpx.AsyncClient(timeout=15.0)
+            resp = await self._client.get(OPENSKY_URL, params=params)
+            resp.raise_for_status()
+            data = resp.json()
         except httpx.HTTPStatusError as e:
             # 429 rate limit is common on free tier
             logger.warning("OpenSky API error: %s", e.response.status_code)
@@ -137,6 +139,9 @@ class ADSBCache:
 
     def stop(self) -> None:
         self._running = False
+        if self._client:
+            asyncio.ensure_future(self._client.aclose())
+            self._client = None
 
     def to_geojson(self) -> dict:
         """Return current states as GeoJSON FeatureCollection."""

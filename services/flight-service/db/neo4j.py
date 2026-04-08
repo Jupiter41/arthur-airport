@@ -21,6 +21,9 @@ CONSTRAINTS = [
 INDEXES = [
     "CREATE INDEX flight_number IF NOT EXISTS FOR (f:Flight) ON (f.flight_number)",
     "CREATE INDEX flight_status IF NOT EXISTS FOR (f:Flight) ON (f.status)",
+    "CREATE INDEX flight_direction IF NOT EXISTS FOR (f:Flight) ON (f.direction)",
+    "CREATE INDEX flight_airline IF NOT EXISTS FOR (f:Flight) ON (f.airline_code)",
+    "CREATE INDEX flight_scheduled IF NOT EXISTS FOR (f:Flight) ON (f.scheduled_time)",
     "CREATE INDEX ground_vehicle_type IF NOT EXISTS FOR (v:GroundVehicle) ON (v.type)",
     "CREATE INDEX ground_vehicle_status IF NOT EXISTS FOR (v:GroundVehicle) ON (v.status)",
 ]
@@ -99,6 +102,26 @@ async def create_constraints_and_indexes() -> None:
         for stmt in CONSTRAINTS + INDEXES:
             await session.run(stmt)
     logger.info("Flight constraints and indexes created")
+
+
+async def migrate_flight_properties() -> None:
+    """Backfill missing properties on existing Flight nodes.
+
+    Ensures actual_time, gate_id, and arrival_estimated_time exist on every
+    Flight node so that Cypher projections don't trigger 'property does not
+    exist' warnings.
+    """
+    driver = get_driver()
+    async with driver.session() as session:
+        for prop in ("actual_time", "gate_id", "arrival_estimated_time"):
+            result = await session.run(
+                f"MATCH (f:Flight) WHERE f.{prop} IS NULL "  # noqa: S608
+                f'SET f.{prop} = "" RETURN count(f) AS n',
+            )
+            record = await result.single()
+            count = record["n"] if record else 0
+            if count:
+                logger.info("Backfilled %d Flight nodes missing '%s'", count, prop)
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +443,8 @@ async def assign_flight_to_gate(flight_id: str, gate_id: str, sim_time: datetime
     MERGE (f)-[r:ASSIGNED_TO]->(g)
     SET r.assigned_at = $assigned_at,
         g.status = 'occupied',
-        g.last_assigned_at = $assigned_at
+        g.last_assigned_at = $assigned_at,
+        f.gate_id = $gate_id
     """
     async with driver.session() as session:
         await session.run(

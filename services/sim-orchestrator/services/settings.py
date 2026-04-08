@@ -28,6 +28,9 @@ class SimSettings(BaseModel):
     load_factor_mean: float = Field(_runtime.simulation.load_factor_mean, ge=0.1, le=1.0)
     pax_multiplier: float = Field(1.0, ge=0.1, le=5.0)
     special_event: Optional[str] = None
+    hourly_weights: dict[int, int] = Field(
+        default_factory=lambda: dict(_runtime.simulation.hourly_weights),
+    )
 
     # ── Weather ─────────────────────────────────────────────
     weather_lock: Optional[str] = Field(

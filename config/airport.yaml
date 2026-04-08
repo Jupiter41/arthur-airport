@@ -19,6 +19,25 @@ simulation:
   daily_flight_target: 420
   load_factor_mean: 0.80
   peak_hours: [7, 8, 9, 17, 18, 19]
+  hourly_weights:
+    5: 2
+    6: 8
+    7: 14
+    8: 16
+    9: 12
+    10: 10
+    11: 9
+    12: 8
+    13: 9
+    14: 10
+    15: 10
+    16: 12
+    17: 15
+    18: 14
+    19: 10
+    20: 7
+    21: 5
+    22: 3
 
 flight_types:
   domestic: 0.42

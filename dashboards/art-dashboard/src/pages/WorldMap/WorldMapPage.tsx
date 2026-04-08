@@ -170,6 +170,8 @@ export default function WorldMapPage() {
   const [showSearchPanel, setShowSearchPanel] = useState(false);
   const [showAdsb, setShowAdsb] = useState(false);
   const [showNetwork, setShowNetwork] = useState(false);
+  const [timelineActive, setTimelineActive] = useState(false);
+  const [timelineOffset, setTimelineOffset] = useState(0); // minutes offset from sim start
   const [selectedAdsbInfo, setSelectedAdsbInfo] = useState<{
     callsign: string;
     altitude: string;
@@ -254,12 +256,20 @@ export default function WorldMapPage() {
     }
   };
 
+  // Effective sim time: live or overridden by timeline cursor
+  const effectiveSimTime = useMemo(() => {
+    if (!timelineActive) return simTime;
+    const base = new Date(simTime);
+    base.setMinutes(base.getMinutes() + timelineOffset);
+    return base.toISOString();
+  }, [simTime, timelineActive, timelineOffset]);
+
   const positionFeatures = useMemo(
     () =>
       activeFlights
-        .map((flight) => toPositionFeature(flight, simTime))
+        .map((flight) => toPositionFeature(flight, effectiveSimTime))
         .filter((feature): feature is PositionFeature => Boolean(feature)),
-    [activeFlights, simTime],
+    [activeFlights, effectiveSimTime],
   );
 
   const routeFeatures = useMemo(
@@ -338,8 +348,12 @@ export default function WorldMapPage() {
   // Track comparison: match selected simulated flight with a nearby ADS-B aircraft
   const trackComparison = useMemo(() => {
     if (!showAdsb || !selectedFlight || !adsbData?.features.length) return null;
-    return findMatchingAdsb(selectedFlight, simTime, adsbData.features);
-  }, [showAdsb, selectedFlight, adsbData, simTime]);
+    return findMatchingAdsb(
+      selectedFlight,
+      effectiveSimTime,
+      adsbData.features,
+    );
+  }, [showAdsb, selectedFlight, adsbData, effectiveSimTime]);
 
   useEffect(() => {
     if (!mapContainerRef.current) {
@@ -401,6 +415,14 @@ export default function WorldMapPage() {
             data: EMPTY_FEATURE_COLLECTION,
           });
           map.addSource("adsb-aircraft", {
+            type: "geojson",
+            data: EMPTY_FEATURE_COLLECTION,
+          });
+          map.addSource("network-arcs", {
+            type: "geojson",
+            data: EMPTY_FEATURE_COLLECTION,
+          });
+          map.addSource("network-airports", {
             type: "geojson",
             data: EMPTY_FEATURE_COLLECTION,
           });
@@ -585,6 +607,97 @@ export default function WorldMapPage() {
               "text-halo-color": "#0b1118",
               "text-halo-width": 1,
             },
+          });
+
+          // ── Network overlay layers ──
+          map.addLayer({
+            id: "network-arcs-line",
+            type: "line",
+            source: "network-arcs",
+            paint: {
+              "line-color": [
+                "case",
+                ["==", ["get", "status"], "red"],
+                "#ef4444",
+                ["==", ["get", "status"], "amber"],
+                "#f59e0b",
+                "#10b981",
+              ],
+              "line-width": ["interpolate", ["linear"], ["zoom"], 2, 2, 8, 4],
+              "line-opacity": 0.8,
+            },
+            layout: { visibility: "none" },
+          });
+
+          map.addLayer({
+            id: "network-airports-circles",
+            type: "circle",
+            source: "network-airports",
+            paint: {
+              "circle-color": [
+                "case",
+                ["==", ["get", "is_home"], 1],
+                "#fbbf24",
+                ["==", ["get", "disruption_level"], "red"],
+                "#ef4444",
+                ["==", ["get", "disruption_level"], "amber"],
+                "#f59e0b",
+                "#10b981",
+              ],
+              "circle-stroke-color": "#0f172a",
+              "circle-stroke-width": 2,
+              "circle-radius": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                2,
+                5,
+                8,
+                8,
+              ],
+            },
+            layout: { visibility: "none" },
+          });
+
+          map.addLayer({
+            id: "network-airports-labels",
+            type: "symbol",
+            source: "network-airports",
+            layout: {
+              "text-field": ["get", "iata"],
+              "text-size": 12,
+              "text-offset": [0, 1.4],
+              "text-allow-overlap": true,
+              "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+              visibility: "none",
+            },
+            paint: {
+              "text-color": "#f0fdf4",
+              "text-halo-color": "#0f172a",
+              "text-halo-width": 1.5,
+            },
+          });
+
+          // Click network airport to fly there
+          map.on(
+            "click",
+            "network-airports-circles",
+            (event: { lngLat?: { lng: number; lat: number } }) => {
+              const lngLat = event.lngLat;
+              if (lngLat) {
+                map.flyTo({
+                  center: [lngLat.lng, lngLat.lat],
+                  zoom: 6,
+                  duration: 1500,
+                });
+              }
+            },
+          );
+          map.on("mouseenter", "network-airports-circles", () => {
+            map.getCanvas().style.cursor = "pointer";
+          });
+          map.on("mouseleave", "network-airports-circles", () => {
+            map.getCanvas().style.cursor = "";
           });
 
           // Use inline SVG data URLs for stable icon rendering.
@@ -908,6 +1021,61 @@ export default function WorldMapPage() {
           "plane-icon",
         ]);
       }
+
+      // Update network overlay
+      const networkVis = showNetwork ? "visible" : "none";
+      if (map.isStyleLoaded?.()) {
+        for (const layerId of [
+          "network-arcs-line",
+          "network-airports-circles",
+          "network-airports-labels",
+        ]) {
+          if (map.getLayer?.(layerId)) {
+            map.setLayoutProperty?.(layerId, "visibility", networkVis);
+          }
+        }
+      }
+      if (showNetwork && networkData) {
+        const arcFeatures = (networkData.arcs ?? []).map((arc: NetworkArc) => ({
+          type: "Feature" as const,
+          geometry: {
+            type: "LineString" as const,
+            coordinates: [
+              [arc.source.lon, arc.source.lat],
+              [arc.target.lon, arc.target.lat],
+            ],
+          },
+          properties: {
+            source_iata: arc.source.iata,
+            target_iata: arc.target.iata,
+            status: arc.status,
+            outbound_delay: arc.outbound_delay_minutes,
+            inbound_delay: arc.inbound_delay_minutes,
+          },
+        }));
+        map
+          .getSource("network-arcs")
+          ?.setData?.({ type: "FeatureCollection", features: arcFeatures });
+
+        const netAirportFeatures = networkData.airports.map((a) => ({
+          type: "Feature" as const,
+          geometry: { type: "Point" as const, coordinates: [a.lon, a.lat] },
+          properties: {
+            iata: a.iata,
+            icao: a.icao,
+            name: a.name,
+            is_home: a.icao === networkData.home ? 1 : 0,
+            disruption_level: a.disruption_level,
+            delay_minutes: a.current_delay_minutes,
+          },
+        }));
+        map
+          .getSource("network-airports")
+          ?.setData?.({
+            type: "FeatureCollection",
+            features: netAirportFeatures,
+          });
+      }
       return;
     }
 
@@ -989,6 +1157,8 @@ export default function WorldMapPage() {
     routeFeatures,
     selectedFlightId,
     showAdsb,
+    showNetwork,
+    networkData,
   ]);
 
   return (
@@ -1004,7 +1174,10 @@ export default function WorldMapPage() {
                 ? "Mapbox satellite with real destination airports"
                 : "Leaflet OpenStreetMap fallback"}
               {" | Sim Time "}
-              {new Date(simTime).toISOString()}
+              {new Date(effectiveSimTime).toISOString()}
+              {timelineActive && (
+                <span className="text-amber-400 ml-1">(timeline)</span>
+              )}
             </p>
           </div>
           <div className="text-xs text-slate-300 flex items-center gap-2">
@@ -1039,7 +1212,7 @@ export default function WorldMapPage() {
               onClick={() => setShowNetwork(!showNetwork)}
               className={`px-3 py-1 rounded transition-colors font-medium ${
                 showNetwork
-                  ? "bg-purple-600 hover:bg-purple-700 text-white"
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                   : "bg-slate-700 hover:bg-slate-600 text-slate-300"
               }`}
               title="Toggle multi-airport network overlay"
@@ -1392,6 +1565,55 @@ export default function WorldMapPage() {
         )}
       </div>
 
+      {/* Timeline Cursor */}
+      <div className="px-4 py-1.5 border-t border-slate-800 bg-slate-900/95 flex items-center gap-3 text-xs">
+        <button
+          type="button"
+          onClick={() => {
+            setTimelineActive(!timelineActive);
+            setTimelineOffset(0);
+          }}
+          className={`px-2 py-1 rounded font-medium transition-colors ${
+            timelineActive
+              ? "bg-amber-600 hover:bg-amber-700 text-white"
+              : "bg-slate-700 hover:bg-slate-600 text-slate-300"
+          }`}
+          title="Toggle timeline scrubber"
+        >
+          🕐 Timeline
+        </button>
+        {timelineActive && (
+          <>
+            <input
+              type="range"
+              min={-360}
+              max={360}
+              value={timelineOffset}
+              onChange={(e) => setTimelineOffset(Number(e.target.value))}
+              className="flex-1 accent-amber-500 h-1.5"
+            />
+            <span className="text-slate-300 font-mono w-16 text-right">
+              {timelineOffset >= 0 ? "+" : ""}
+              {timelineOffset}m
+            </span>
+            <button
+              type="button"
+              onClick={() => setTimelineOffset(0)}
+              className="text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600"
+            >
+              Reset
+            </button>
+          </>
+        )}
+        {showAdsb && (
+          <span className="ml-auto text-slate-500">
+            <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 mr-1" />
+            Simulated
+            <span className="inline-block w-2 h-2 rounded-full bg-orange-400 ml-2 mr-1" />
+            Real (ADS-B)
+          </span>
+        )}
+      </div>
       <footer className="grid grid-cols-2 sm:grid-cols-5 gap-2 px-4 py-2 text-xs border-t border-slate-800 bg-slate-900">
         <div className="bg-slate-800/70 rounded px-2 py-1 text-slate-200">
           AIRBORNE: {stats.airborne}
@@ -1411,20 +1633,42 @@ export default function WorldMapPage() {
           </div>
         )}
         {showNetwork && networkData && (
-          <div className="bg-purple-900/50 rounded px-2 py-1 text-purple-200">
+          <div className="bg-emerald-900/50 rounded px-2 py-1 text-emerald-200">
             NET: {networkData.airports.length} airports
           </div>
         )}
       </footer>
 
       {/* Network status panel */}
-      {showNetwork && networkData && <NetworkPanel data={networkData} />}
+      {showNetwork && networkData && (
+        <NetworkPanel
+          data={networkData}
+          onFlyToAirport={(lat, lon) => {
+            if (!mapRef.current) return;
+            if (hasMapboxToken) {
+              const map = mapRef.current as { flyTo?: (opts: unknown) => void };
+              map.flyTo?.({ center: [lon, lat], zoom: 6, duration: 1500 });
+            } else {
+              const map = mapRef.current as {
+                flyTo?: (latLng: unknown, zoom: number, opts?: unknown) => void;
+              };
+              map.flyTo?.([lat, lon], 6, { duration: 1.5 });
+            }
+          }}
+        />
+      )}
     </section>
   );
 }
 
 /* ──────── Network Panel ──────── */
-function NetworkPanel({ data }: { data: NetworkStatus }) {
+function NetworkPanel({
+  data,
+  onFlyToAirport,
+}: {
+  data: NetworkStatus;
+  onFlyToAirport: (lat: number, lon: number) => void;
+}) {
   const statusColor = (level: string) => {
     switch (level) {
       case "red":
@@ -1448,8 +1692,8 @@ function NetworkPanel({ data }: { data: NetworkStatus }) {
   };
 
   return (
-    <aside className="absolute bottom-16 left-3 w-80 rounded border border-purple-700/50 bg-slate-950/96 text-xs shadow-lg backdrop-blur-sm p-3 max-h-80 overflow-y-auto">
-      <h2 className="text-sm font-semibold text-purple-300 mb-2">
+    <aside className="absolute bottom-16 left-3 w-80 rounded border border-emerald-700/50 bg-slate-950/96 text-xs shadow-lg backdrop-blur-sm p-3 max-h-80 overflow-y-auto">
+      <h2 className="text-sm font-semibold text-emerald-300 mb-2">
         🌐 {data.name}
       </h2>
 
@@ -1458,7 +1702,9 @@ function NetworkPanel({ data }: { data: NetworkStatus }) {
         {data.airports.map((airport) => (
           <div
             key={airport.icao}
-            className={`rounded border p-2 ${statusBg(airport.disruption_level)}`}
+            className={`rounded border p-2 cursor-pointer hover:brightness-125 transition-all ${statusBg(airport.disruption_level)}`}
+            onClick={() => onFlyToAirport(airport.lat, airport.lon)}
+            title={`Click to fly to ${airport.iata}`}
           >
             <div className="flex items-center justify-between">
               <div>
@@ -1509,7 +1755,7 @@ function NetworkPanel({ data }: { data: NetworkStatus }) {
       {/* Recent propagations */}
       {data.recent_propagations.length > 0 && (
         <div className="mt-3 pt-2 border-t border-slate-700">
-          <h3 className="text-[10px] uppercase tracking-wide text-purple-400 font-bold mb-1">
+          <h3 className="text-[10px] uppercase tracking-wide text-emerald-400 font-bold mb-1">
             Recent Delay Propagations
           </h3>
           {data.recent_propagations
