@@ -93,7 +93,7 @@ function AirportHeatmap({
 
   return (
     <div className="bg-gray-900 rounded-lg p-4">
-      <div className="text-xs text-gray-500 uppercase tracking-wide mb-3">
+      <div className="text-xs text-gray-400 uppercase tracking-wide mb-3">
         Airport Heatmap
       </div>
       {/* Header row */}
@@ -101,7 +101,7 @@ function AirportHeatmap({
         {columns.map((col) => (
           <div
             key={col}
-            className="text-xs text-gray-500 text-center uppercase"
+            className="text-xs text-gray-400 text-center uppercase"
           >
             {col}
           </div>
@@ -196,7 +196,7 @@ function AirportHeatmap({
 
       {/* Carousel row */}
       <div className="mt-3">
-        <div className="text-xs text-gray-500 uppercase mb-1">
+        <div className="text-xs text-gray-400 uppercase mb-1">
           Arrival Carousels
         </div>
         <div className="grid grid-cols-6 gap-2">
@@ -362,7 +362,7 @@ function KPIBar({
         value={summary.total_in_airport.toLocaleString()}
       />
       <div className="bg-gray-800 rounded px-3 py-2">
-        <div className="text-xs text-gray-500">Overall Capacity</div>
+        <div className="text-xs text-gray-400">Overall Capacity</div>
         <div
           className={`font-bold ${overallLoadPct > 85 ? "text-red-400" : overallLoadPct > 70 ? "text-amber-400" : "text-white"}`}
         >
@@ -398,7 +398,7 @@ function KPIBar({
             key={term}
             className="bg-gray-800 rounded px-3 py-2 min-w-[120px]"
           >
-            <div className="text-xs text-gray-500">Security {term}</div>
+            <div className="text-xs text-gray-400">Security {term}</div>
             <div className="font-bold text-white">{data.queue_length} pax</div>
             <div className="flex items-center gap-2 mt-0.5">
               <div
@@ -413,7 +413,7 @@ function KPIBar({
                 ~{data.wait_minutes} min wait
               </div>
             </div>
-            <div className="text-[10px] text-gray-500">
+            <div className="text-[10px] text-gray-400">
               {data.lanes_open} lanes open
             </div>
           </div>
@@ -433,7 +433,7 @@ function KPI({
 }) {
   return (
     <div className="bg-gray-800 rounded px-3 py-2">
-      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-xs text-gray-400">{label}</div>
       <div className={`font-bold ${color ?? "text-white"}`}>{value}</div>
     </div>
   );

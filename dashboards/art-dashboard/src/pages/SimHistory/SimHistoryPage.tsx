@@ -72,17 +72,17 @@ function DaySummaryCard({
       </div>
       <div className="grid grid-cols-3 gap-2 text-xs">
         <div>
-          <span className="text-gray-500">Flights</span>
+          <span className="text-gray-400">Flights</span>
           <div className="text-white font-bold">{day.flights_total}</div>
         </div>
         <div>
-          <span className="text-gray-500">Pax</span>
+          <span className="text-gray-400">Pax</span>
           <div className="text-white font-bold">
             {day.passengers_total.toLocaleString()}
           </div>
         </div>
         <div>
-          <span className="text-gray-500">Incidents</span>
+          <span className="text-gray-400">Incidents</span>
           <div
             className={
               day.incidents_total > 0
@@ -222,7 +222,7 @@ interface TimelineEvent {
 function TimelinePanel({ events }: { events: TimelineEvent[] }) {
   if (events.length === 0) {
     return (
-      <div className="bg-gray-800 rounded p-4 text-center text-gray-500 text-sm">
+      <div className="bg-gray-800 rounded p-4 text-center text-gray-400 text-sm">
         No events to display. Run the simulation to generate history.
       </div>
     );
@@ -245,7 +245,7 @@ function TimelinePanel({ events }: { events: TimelineEvent[] }) {
             key={i}
             className={`flex gap-3 text-xs border-l-2 ${typeColors[evt.type] ?? "border-gray-600"} pl-3 py-1`}
           >
-            <span className="text-gray-500 font-mono whitespace-nowrap w-12">
+            <span className="text-gray-400 font-mono whitespace-nowrap w-12">
               {formatTime(evt.time)}
             </span>
             <span
@@ -352,7 +352,7 @@ export default function SimHistoryPage() {
             Simulation Days ({days.length})
           </h3>
           {days.length === 0 && !historyQuery.isLoading && (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-400">
               No simulation history yet
             </div>
           )}

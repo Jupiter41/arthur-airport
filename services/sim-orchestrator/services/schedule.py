@@ -118,24 +118,49 @@ def _generate_flight_number(airline_code: str, rng: random.Random) -> str:
 
 
 def sample_departure_slots(n: int, sim_date: date, np_rng: np.random.Generator) -> list[datetime]:
-    """Sample n departure times from a bimodal distribution with peaks at 07:30 and 17:30."""
-    peak1 = np_rng.normal(loc=7.5, scale=1.5, size=n // 2)
-    peak2 = np_rng.normal(loc=17.5, scale=1.5, size=n - n // 2)
-    hours = np.concatenate([peak1, peak2])
-    hours = np.clip(hours, 5.0, 23.0)
-    slots = []
-    for h in sorted(hours):
-        hour = int(h)
-        minute = int((h - hour) * 60)
-        # Round to nearest 5 minutes
-        minute = round(minute / 5) * 5
-        if minute >= 60:
-            hour += 1
-            minute = 0
-        if hour > 23:
-            hour = 23
-            minute = 55
-        slots.append(datetime.combine(sim_date, time(hour=hour, minute=minute)))
+    """Sample n departure times from a realistic airport traffic distribution.
+
+    Uses a piecewise hourly weight curve that models real mid-size hub traffic:
+    - Early morning ramp (05–07): gradual build-up
+    - Morning peak (07–09): highest density
+    - Mid-day plateau (09–16): steady base traffic
+    - Evening peak (17–19): second highest density
+    - Evening wind-down (19–23): gradual decline
+
+    Within each hour, departure times are uniformly jittered and rounded to
+    the nearest 5 minutes.
+    """
+    # Hourly weights (hour 0–23). Non-zero hours define the operational window.
+    hourly_weights = {
+        5: 2, 6: 8, 7: 14, 8: 16, 9: 12, 10: 10, 11: 9,
+        12: 8, 13: 9, 14: 10, 15: 10, 16: 12,
+        17: 15, 18: 14, 19: 10, 20: 7, 21: 5, 22: 3,
+    }
+    hours = sorted(hourly_weights.keys())
+    weights = np.array([hourly_weights[h] for h in hours], dtype=float)
+    weights /= weights.sum()
+
+    # Distribute n flights across hours proportionally
+    counts = np.round(weights * n).astype(int)
+    # Fix rounding drift: adjust the largest bucket
+    diff = n - counts.sum()
+    if diff != 0:
+        idx = int(np.argmax(counts))
+        counts[idx] += diff
+
+    slots: list[datetime] = []
+    for hour, count in zip(hours, counts):
+        if count <= 0:
+            continue
+        # Uniformly jitter within the hour
+        minutes = np_rng.uniform(0, 59.99, size=count)
+        for m in sorted(minutes):
+            minute = round(float(m) / 5) * 5
+            if minute >= 60:
+                minute = 55
+            slots.append(datetime.combine(sim_date, time(hour=hour, minute=minute)))
+
+    slots.sort()
     return slots
 
 
@@ -169,10 +194,11 @@ async def generate_schedule(
 ) -> list[dict]:
     """Generate a full day's flight schedule and persist to Neo4j.
 
-    Creates *target_departures* departure flights using a bimodal time
-    distribution (peaks at 07:30 and 17:30), plus a paired arrival for
-    each departure (90-minute turnaround). Each flight gets an airline,
-    destination, aircraft type, gate, and runway assigned.
+    Creates *target_departures* departure flights using a realistic hourly
+    traffic distribution (morning and evening peaks with sustained mid-day
+    base), plus a paired arrival for each departure (90-minute turnaround).
+    Each flight gets an airline, destination, aircraft type, gate, and
+    runway assigned.
 
     Args:
         sim_date: The simulated date for the schedule.
@@ -335,7 +361,8 @@ async def _persist_flights(flights: list[dict]) -> None:
                     pax_count: f.pax_count,
                     flight_type: f.flight_type,
                     route_category: f.route_category,
-                    flight_duration_minutes: COALESCE(f.flight_duration_minutes, 0)
+                    flight_duration_minutes: COALESCE(f.flight_duration_minutes, 0),
+                    arrival_estimated_time: null
                 })
                 CREATE (fl)-[:ASSIGNED_TO]->(g)
                 CREATE (fl)-[:USES_RUNWAY {operation: CASE WHEN f.direction = 'departure' THEN 'takeoff' ELSE 'landing' END}]->(r)

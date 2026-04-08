@@ -76,7 +76,7 @@ function IncidentCard({
           ))}
         </div>
       )}
-      <div className="text-[10px] text-gray-500 mt-1">
+      <div className="text-[10px] text-gray-400 mt-1">
         ↓ {incident.cascade_depth} cascade
         {incident.cascade_depth !== 1 ? "s" : ""}
       </div>
@@ -106,7 +106,7 @@ function CascadeTree({
         </div>
         <div className="text-xs text-gray-400 mt-1">{node.description}</div>
         {node.affected_count > 0 && (
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-gray-400 mt-0.5">
             Affected: {node.affected_count} entities
           </div>
         )}
@@ -127,7 +127,7 @@ function CascadeTree({
 function CascadeVisualizerPanel({ incident }: { incident: Incident | null }) {
   if (!incident) {
     return (
-      <div className="bg-gray-800 rounded p-4 text-center text-gray-500 text-sm">
+      <div className="bg-gray-800 rounded p-4 text-center text-gray-400 text-sm">
         Select an incident to view its cascade tree
       </div>
     );
@@ -151,7 +151,7 @@ function CascadeVisualizerPanel({ incident }: { incident: Incident | null }) {
       {incident.cascade_tree ? (
         <CascadeTree node={incident.cascade_tree} />
       ) : (
-        <div className="text-xs text-gray-500">No cascade data available</div>
+        <div className="text-xs text-gray-400">No cascade data available</div>
       )}
     </div>
   );
@@ -182,7 +182,7 @@ function AlertFeed({ alerts }: { alerts: IncidentAlert[] }) {
       </h3>
       <div className="space-y-1 max-h-48 overflow-y-auto">
         {alerts.length === 0 && (
-          <div className="text-xs text-gray-500">No alerts yet</div>
+          <div className="text-xs text-gray-400">No alerts yet</div>
         )}
         {alerts.map((a) => (
           <div
@@ -193,7 +193,7 @@ function AlertFeed({ alerts }: { alerts: IncidentAlert[] }) {
                 : "pl-3"
             }`}
           >
-            <span className="text-gray-500 font-mono whitespace-nowrap">
+            <span className="text-gray-400 font-mono whitespace-nowrap">
               {formatSimTime(a.sim_time)}
             </span>
             <StatusBadge status={a.severity} className="text-[10px]" />
@@ -460,7 +460,7 @@ function ResolvedList({
             className="flex items-center justify-between text-sm bg-gray-700 rounded p-2"
           >
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 font-mono">
+              <span className="text-xs text-gray-400 font-mono">
                 {formatSimTime(i.started_at)}
               </span>
               <span className="text-white">{i.type.replace(/_/g, " ")}</span>
@@ -520,7 +520,7 @@ function CascadeModal({
           {incident.cascade_tree ? (
             <CascadeTree node={incident.cascade_tree} />
           ) : (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-400">
               No cascade data available for this incident.
             </div>
           )}
@@ -565,7 +565,7 @@ function RecommendationFeed({
 
   if (bottlenecks.length === 0 && recommendations.length === 0) {
     return (
-      <div className="bg-gray-800 rounded p-4 text-center text-gray-500 text-sm">
+      <div className="bg-gray-800 rounded p-4 text-center text-gray-400 text-sm">
         No active bottlenecks or recommendations
       </div>
     );
@@ -592,7 +592,7 @@ function RecommendationFeed({
             <StatusBadge status={bn.severity} />
           </div>
           <div className="text-sm text-gray-300 mt-1">{bn.root_cause}</div>
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-gray-400 mt-1">
             {bn.affected_entity_count} affected · ~{bn.estimated_duration_minutes} min
           </div>
         </div>
@@ -618,10 +618,10 @@ function RecommendationFeed({
           </div>
           <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-gray-400">
             <div>
-              <span className="text-gray-500">Impact:</span> {rec.expected_impact}
+              <span className="text-gray-400">Impact:</span> {rec.expected_impact}
             </div>
             <div>
-              <span className="text-gray-500">Cost:</span> {rec.cost}
+              <span className="text-gray-400">Cost:</span> {rec.cost}
             </div>
           </div>
           <div className="flex items-center justify-between mt-2">
@@ -634,7 +634,7 @@ function RecommendationFeed({
                   style={{ width: `${rec.confidence_score * 100}%` }}
                 />
               </div>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-400">
                 {(rec.confidence_score * 100).toFixed(0)}% conf.
               </span>
             </div>
@@ -778,7 +778,7 @@ export default function IncidentConsolePage() {
             Active Incidents ({activeIncidents.length})
           </h3>
           {activeIncidents.length === 0 && (
-            <div className="text-sm text-gray-500">No active incidents</div>
+            <div className="text-sm text-gray-400">No active incidents</div>
           )}
           {activeIncidents.map((i) => (
             <IncidentCard

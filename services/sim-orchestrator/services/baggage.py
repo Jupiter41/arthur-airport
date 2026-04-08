@@ -29,8 +29,16 @@ BAGS_LAMBDA_BY_TYPE: dict[str, float] = {
 
 
 def _generate_tag(counter: int) -> str:
-    """Generate a 10-digit barcode tag."""
+    """Generate a 10-digit barcode tag from a globally-unique counter."""
     return f"{counter:010d}"
+
+
+def _unique_tag_start() -> int:
+    """Return a high, random starting counter to avoid collisions with existing tags."""
+    import time
+    # Use timestamp-based offset + random jitter to avoid collisions across calls
+    base = int(time.time() * 1000) % 9_000_000_000 + 1_000_000_000
+    return base + random.randint(0, 999_999)
 
 
 async def generate_baggage(
@@ -54,7 +62,7 @@ async def generate_baggage(
     dg_class_ids = [d["class"] for d in dg_classes]
 
     all_baggage: list[dict] = []
-    tag_counter = 1
+    tag_counter = _unique_tag_start()
 
     for pax in passengers:
         # Determine bags-per-pax lambda based on flight type
@@ -114,7 +122,7 @@ async def generate_arrival_baggage(
     dg_class_ids = [d["class"] for d in dg_classes]
 
     all_baggage: list[dict] = []
-    tag_counter = 5_000_000_000
+    tag_counter = _unique_tag_start()
     flight_pax_counts: dict[str, int] = {}
 
     for flight in arrival_flights:

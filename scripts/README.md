@@ -231,3 +231,38 @@ Related:
 
 - [docs/lessons-learned/sprint-15-high-speed-simulation-modes.md](../docs/lessons-learned/sprint-15-high-speed-simulation-modes.md)
 - [PLAN-HIGH-SPEED.md](../PLAN-HIGH-SPEED.md)
+
+---
+
+## helper_test_debug_endpoints.sh
+
+End-to-end test of all debug injection endpoints in the sim-orchestrator.
+Tests flight injection, passenger injection, baggage injection, Cypher console,
+entity inspector, snapshot create/list, and ADS-B states.
+
+```bash
+./scripts/helper_test_debug_endpoints.sh
+```
+
+Requires: `curl`, `python3`, and all services running via `docker compose up`.
+
+---
+
+## helper_validate_schedule_distribution.py
+
+Standalone validation of the flight schedule departure slot distribution.
+Generates 210 departure slots using the same hourly weight algorithm as `sim-orchestrator`
+and prints an hourly histogram with validation checks.
+
+```bash
+python3 scripts/helper_validate_schedule_distribution.py
+```
+
+Checks verified:
+
+- Total slot count equals 210
+- Morning peak (07–09) > 30 flights
+- Evening peak (17–19) > 30 flights
+- No flights before 05:00 or after 23:00
+- Mid-day (10–16) between 60 and 120 flights
+- All slots are 5-minute aligned

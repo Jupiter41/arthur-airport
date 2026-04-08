@@ -56,7 +56,7 @@ function KPIBar({
     <div className="flex items-center justify-between py-1">
       <span className="text-xs text-gray-400">{label}</span>
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-500">{baseline.toFixed(1)}{unit}</span>
+        <span className="text-xs text-gray-400">{baseline.toFixed(1)}{unit}</span>
         <span className="text-xs text-gray-600">→</span>
         <span className={`text-xs font-bold ${color}`}>
           {projected.toFixed(1)}{unit} {arrow}
@@ -131,7 +131,7 @@ export default function WhatIfPanel() {
       {/* Action inputs */}
       {actions.map((action, i) => (
         <div key={i} className="flex items-center gap-2">
-          <span className="text-xs text-gray-500 w-4">{i + 1}.</span>
+          <span className="text-xs text-gray-400 w-4">{i + 1}.</span>
           <select
             className="bg-gray-700 text-white text-xs rounded px-2 py-1 flex-1"
             value={action.action_type}
@@ -186,7 +186,7 @@ export default function WhatIfPanel() {
       {/* P2-3-4: Multi-action comparison table */}
       {result && (
         <div className="space-y-3">
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-400">
             Projection at {new Date(result.sim_time_at_request).toLocaleTimeString()} +{result.horizon_minutes} min
           </div>
 
@@ -202,7 +202,7 @@ export default function WhatIfPanel() {
                 <div className="w-12 h-1 bg-gray-700 rounded-full overflow-hidden">
                   <div className="h-full bg-gray-500 rounded-full" style={{ width: `${result.baseline.confidence * 100}%` }} />
                 </div>
-                <span className="text-[10px] text-gray-500">{(result.baseline.confidence * 100).toFixed(0)}%</span>
+                <span className="text-[10px] text-gray-400">{(result.baseline.confidence * 100).toFixed(0)}%</span>
               </div>
             </div>
 
@@ -223,7 +223,7 @@ export default function WhatIfPanel() {
                       style={{ width: `${proj.confidence * 100}%` }}
                     />
                   </div>
-                  <span className="text-[10px] text-gray-500">{(proj.confidence * 100).toFixed(0)}%</span>
+                  <span className="text-[10px] text-gray-400">{(proj.confidence * 100).toFixed(0)}%</span>
                 </div>
               </div>
             ))}

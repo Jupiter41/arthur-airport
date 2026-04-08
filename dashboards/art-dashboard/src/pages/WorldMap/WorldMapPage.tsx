@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "leaflet/dist/leaflet.css";
-import { useFlightBoardQueries, useADSBQuery } from "../../hooks/useQueries";
+import {
+  useFlightBoardQueries,
+  useADSBQuery,
+  useNetworkStatusQuery,
+} from "../../hooks/useQueries";
 import { useSimStore } from "../../stores/simStore";
 import type { Flight, ADSBFeatureCollection } from "../../types";
+import type { NetworkStatus, NetworkArc } from "../../hooks/useApi";
 import {
   KART_COORDINATES,
   computeAircraftPosition,
@@ -61,7 +66,12 @@ function findMatchingAdsb(
   if (!dest) return null;
 
   const simHeading = pos.heading_deg;
-  let best: { callsign: string; lat: number; lon: number; deviationKm: number } | null = null;
+  let best: {
+    callsign: string;
+    lat: number;
+    lon: number;
+    deviationKm: number;
+  } | null = null;
   let bestDist = Infinity;
 
   for (const f of adsbFeatures) {
@@ -159,6 +169,7 @@ export default function WorldMapPage() {
   const [searchAirport, setSearchAirport] = useState<string>("");
   const [showSearchPanel, setShowSearchPanel] = useState(false);
   const [showAdsb, setShowAdsb] = useState(false);
+  const [showNetwork, setShowNetwork] = useState(false);
   const [selectedAdsbInfo, setSelectedAdsbInfo] = useState<{
     callsign: string;
     altitude: string;
@@ -170,6 +181,9 @@ export default function WorldMapPage() {
 
   const adsbQuery = useADSBQuery(showAdsb);
   const adsbData = adsbQuery.data as ADSBFeatureCollection | undefined;
+
+  const networkQuery = useNetworkStatusQuery(showNetwork);
+  const networkData = networkQuery.data as NetworkStatus | undefined;
 
   const token = (
     import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
@@ -712,7 +726,7 @@ export default function WorldMapPage() {
                     ],
                     "text-offset": [0, 2],
                     "text-allow-overlap": true,
-                    "visibility": "none",
+                    visibility: "none",
                   },
                   paint: {
                     "text-color": "#fed7aa",
@@ -725,8 +739,14 @@ export default function WorldMapPage() {
                   const props = event.features?.[0]?.properties;
                   if (props) {
                     const callsign = String(props.callsign ?? "").trim();
-                    const alt = props.altitude_m != null ? `${Math.round(Number(props.altitude_m))}m` : "—";
-                    const speed = props.velocity_ms != null ? `${Math.round(Number(props.velocity_ms) * 1.944)}kt` : "—";
+                    const alt =
+                      props.altitude_m != null
+                        ? `${Math.round(Number(props.altitude_m))}m`
+                        : "—";
+                    const speed =
+                      props.velocity_ms != null
+                        ? `${Math.round(Number(props.velocity_ms) * 1.944)}kt`
+                        : "—";
                     const dist = `${Number(props.distance_km).toFixed(0)}km`;
                     setSelectedAdsbInfo({
                       callsign,
@@ -1009,7 +1029,25 @@ export default function WorldMapPage() {
               }`}
               title="Toggle live ADS-B aircraft overlay"
             >
-              📡 ADS-B {showAdsb && adsbData ? `(${adsbData.metadata.aircraft_count})` : ""}
+              📡 ADS-B{" "}
+              {showAdsb && adsbData
+                ? `(${adsbData.metadata.aircraft_count})`
+                : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNetwork(!showNetwork)}
+              className={`px-3 py-1 rounded transition-colors font-medium ${
+                showNetwork
+                  ? "bg-purple-600 hover:bg-purple-700 text-white"
+                  : "bg-slate-700 hover:bg-slate-600 text-slate-300"
+              }`}
+              title="Toggle multi-airport network overlay"
+            >
+              🌐 Network{" "}
+              {showNetwork && networkData
+                ? `(${networkData.airports.length})`
+                : ""}
             </button>
             <button
               type="button"
@@ -1300,11 +1338,13 @@ export default function WorldMapPage() {
                 </div>
               </div>
             )}
-            {showAdsb && !trackComparison && selectedFlight.status === "airborne" && (
-              <div className="mt-3 pt-3 border-t border-slate-700 text-[10px] text-slate-500">
-                No nearby ADS-B match on similar heading
-              </div>
-            )}
+            {showAdsb &&
+              !trackComparison &&
+              selectedFlight.status === "airborne" && (
+                <div className="mt-3 pt-3 border-t border-slate-700 text-[10px] text-slate-500">
+                  No nearby ADS-B match on similar heading
+                </div>
+              )}
           </aside>
         )}
 
@@ -1370,7 +1410,119 @@ export default function WorldMapPage() {
             ADS-B: {adsbData?.metadata.aircraft_count ?? 0} real
           </div>
         )}
+        {showNetwork && networkData && (
+          <div className="bg-purple-900/50 rounded px-2 py-1 text-purple-200">
+            NET: {networkData.airports.length} airports
+          </div>
+        )}
       </footer>
+
+      {/* Network status panel */}
+      {showNetwork && networkData && <NetworkPanel data={networkData} />}
     </section>
+  );
+}
+
+/* ──────── Network Panel ──────── */
+function NetworkPanel({ data }: { data: NetworkStatus }) {
+  const statusColor = (level: string) => {
+    switch (level) {
+      case "red":
+        return "text-red-400";
+      case "amber":
+        return "text-amber-400";
+      default:
+        return "text-green-400";
+    }
+  };
+
+  const statusBg = (level: string) => {
+    switch (level) {
+      case "red":
+        return "bg-red-900/30 border-red-700/50";
+      case "amber":
+        return "bg-amber-900/30 border-amber-700/50";
+      default:
+        return "bg-slate-800/50 border-slate-700/50";
+    }
+  };
+
+  return (
+    <aside className="absolute bottom-16 left-3 w-80 rounded border border-purple-700/50 bg-slate-950/96 text-xs shadow-lg backdrop-blur-sm p-3 max-h-80 overflow-y-auto">
+      <h2 className="text-sm font-semibold text-purple-300 mb-2">
+        🌐 {data.name}
+      </h2>
+
+      {/* Airport status cards */}
+      <div className="space-y-1.5">
+        {data.airports.map((airport) => (
+          <div
+            key={airport.icao}
+            className={`rounded border p-2 ${statusBg(airport.disruption_level)}`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-bold text-slate-100">{airport.iata}</span>
+                <span className="text-slate-400 ml-1.5">{airport.name}</span>
+              </div>
+              <span
+                className={`font-bold uppercase text-[10px] ${statusColor(airport.disruption_level)}`}
+              >
+                {airport.disruption_level}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 mt-1 text-slate-400">
+              <span>Delay: {airport.current_delay_minutes} min</span>
+              {airport.gdp_active && (
+                <span className="text-red-400 font-bold">GDP ACTIVE</span>
+              )}
+              {airport.recovery_eta_minutes > 0 && (
+                <span>
+                  Recovery: ~{Math.ceil(airport.recovery_eta_minutes)} min
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Active GDPs */}
+      {data.active_gdps.length > 0 && (
+        <div className="mt-3 pt-2 border-t border-slate-700">
+          <h3 className="text-[10px] uppercase tracking-wide text-red-400 font-bold mb-1">
+            Active Ground Delay Programs
+          </h3>
+          {data.active_gdps.map((gdp) => (
+            <div key={gdp.airport_icao} className="text-slate-300 mb-1">
+              <span className="font-bold">{gdp.airport_icao}</span>:{" "}
+              {gdp.reason}
+              <br />
+              <span className="text-slate-400">
+                Departure rate: {Math.round(gdp.departure_rate_pct * 100)}% —
+                Feeders: {gdp.affected_feeder_airports.join(", ")}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Recent propagations */}
+      {data.recent_propagations.length > 0 && (
+        <div className="mt-3 pt-2 border-t border-slate-700">
+          <h3 className="text-[10px] uppercase tracking-wide text-purple-400 font-bold mb-1">
+            Recent Delay Propagations
+          </h3>
+          {data.recent_propagations
+            .slice(-5)
+            .reverse()
+            .map((p, i) => (
+              <div key={i} className="text-slate-400 mb-0.5">
+                {p.flight_number}: {p.source_icao} → {p.target_icao} (
+                {p.propagated_delay_minutes} min)
+              </div>
+            ))}
+        </div>
+      )}
+    </aside>
   );
 }

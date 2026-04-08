@@ -1,0 +1,92 @@
+# Multi-airport network configuration
+# Used by sim-orchestrator to model cross-airport delay propagation.
+# All airports are virtual representations; only KART runs a full simulation.
+# Remote airports maintain simplified state (delay level, active GDP, recovery ETA).
+
+network:
+  enabled: true
+  name: "Arthur Hub Network"
+
+  # Home airport — must match config/airport.yaml identity
+  home: "KART"
+
+  # Remote hub airports modelled as lightweight virtual nodes.
+  # Each hub has a base delay profile and turnaround buffer.
+  airports:
+    - icao: "KART"
+      iata: "ART"
+      name: "Arthur International Airport"
+      lat: 41.9742
+      lon: -87.9073
+      role: "home"
+      turnaround_narrow_min: 30
+      turnaround_wide_min: 45
+      base_delay_minutes: 0   # home airport: delay comes from simulation
+      daily_movements: 420
+
+    - icao: "EGLL"
+      iata: "LHR"
+      name: "London Heathrow"
+      lat: 51.4700
+      lon: -0.4543
+      role: "hub"
+      turnaround_narrow_min: 35
+      turnaround_wide_min: 50
+      base_delay_minutes: 12
+      daily_movements: 1300
+
+    - icao: "LFPG"
+      iata: "CDG"
+      name: "Paris Charles de Gaulle"
+      lat: 49.0097
+      lon: 2.5479
+      role: "hub"
+      turnaround_narrow_min: 35
+      turnaround_wide_min: 50
+      base_delay_minutes: 15
+      daily_movements: 1200
+
+    - icao: "EDDF"
+      iata: "FRA"
+      name: "Frankfurt Airport"
+      lat: 50.0379
+      lon: 8.5622
+      role: "hub"
+      turnaround_narrow_min: 35
+      turnaround_wide_min: 50
+      base_delay_minutes: 10
+      daily_movements: 1100
+
+    - icao: "OMDB"
+      iata: "DXB"
+      name: "Dubai International"
+      lat: 25.2532
+      lon: 55.3657
+      role: "hub"
+      turnaround_narrow_min: 40
+      turnaround_wide_min: 55
+      base_delay_minutes: 8
+      daily_movements: 1050
+
+  # How cascading delays propagate across the network
+  propagation:
+    # Minimum outbound delay (minutes) before it propagates to remote airport
+    min_propagation_delay: 15
+    # Maximum cascade depth across the network (home → remote → home → ...)
+    max_cascade_depth: 3
+    # Delay absorption factor: remote airport absorbs this fraction of incoming delay
+    # (e.g., 0.6 means 60% of incoming delay is absorbed by turnaround buffer)
+    absorption_factor: 0.6
+    # Recovery rate: minutes of delay recovered per sim-hour at remote airports
+    recovery_rate_per_hour: 5
+
+  # Ground Delay Program (GDP) parameters
+  gdp:
+    # Trigger GDP when arrival capacity drops below this fraction of normal
+    capacity_trigger_threshold: 0.60
+    # Maximum departure rate reduction at feeder airports (fraction of normal)
+    max_departure_rate_reduction: 0.50
+    # GDP minimum duration (sim-minutes) once declared
+    min_duration_minutes: 60
+    # GDP cooldown before re-declaration (sim-minutes)
+    cooldown_minutes: 120

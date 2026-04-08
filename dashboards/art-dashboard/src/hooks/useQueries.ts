@@ -6,6 +6,7 @@ import {
   baggageApi,
   incidentsApi,
   analysisApi,
+  networkApi,
 } from "./useApi";
 import type {
   Flight,
@@ -279,5 +280,15 @@ export function useAutonomousSettingsQuery() {
       return (data as Record<string, unknown>).autonomous ?? {};
     },
     refetchInterval: 30_000,
+  });
+}
+
+export function useNetworkStatusQuery(enabled = true) {
+  return useQuery({
+    queryKey: ["network", "status"],
+    queryFn: () => networkApi.status(),
+    refetchInterval: 10_000,
+    enabled,
+    retry: false,
   });
 }

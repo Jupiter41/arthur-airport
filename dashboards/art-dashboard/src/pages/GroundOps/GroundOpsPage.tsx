@@ -262,7 +262,7 @@ function RunwayQueuePanel({
                 Arr: {rw.arrivals_queued} · Dep: {rw.departures_queued}
               </span>
               {queued.length > 0 && (
-                <span className="text-gray-500 ml-2">
+                <span className="text-gray-400 ml-2">
                   {queued.map((f) => f.flight_number).join(" · ")}
                 </span>
               )}
@@ -425,7 +425,7 @@ function TurnaroundPanel() {
         <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
           Active Turnarounds
         </h3>
-        <div className="text-xs text-gray-500">No active turnarounds</div>
+        <div className="text-xs text-gray-400">No active turnarounds</div>
       </div>
     );
   }
@@ -445,7 +445,7 @@ function TurnaroundPanel() {
               <span className="font-bold text-white">
                 {plan.aircraft_registration}
               </span>
-              <span className="text-gray-500">
+              <span className="text-gray-400">
                 CP: {plan.critical_path_minutes}m
               </span>
             </div>
@@ -513,13 +513,13 @@ function TerminalActivityPanel({
             <div key={term} className="bg-gray-800 rounded p-3">
               <div className="text-sm font-bold text-white mb-2">
                 Terminal {term}
-                <span className="text-xs text-gray-500 ml-2">
+                <span className="text-xs text-gray-400 ml-2">
                   {termGates.length} active gate
                   {termGates.length !== 1 ? "s" : ""}
                 </span>
               </div>
               {termGates.length === 0 ? (
-                <div className="text-xs text-gray-500">No active flights</div>
+                <div className="text-xs text-gray-400">No active flights</div>
               ) : (
                 <div className="space-y-2 max-h-60 overflow-y-auto">
                   {termGates.map((g) => {
@@ -566,7 +566,7 @@ function TerminalActivityPanel({
                         </div>
                         {/* Passengers */}
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-gray-500 w-8">PAX</span>
+                          <span className="text-gray-400 w-8">PAX</span>
                           <div className="flex-1 bg-gray-600 rounded-full h-1.5">
                             <div
                               className="bg-green-500 h-1.5 rounded-full transition-all duration-700"
@@ -579,7 +579,7 @@ function TerminalActivityPanel({
                         </div>
                         {/* Baggage */}
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-500 w-8">BAG</span>
+                          <span className="text-gray-400 w-8">BAG</span>
                           <div className="flex-1 bg-gray-600 rounded-full h-1.5">
                             <div
                               className="bg-blue-500 h-1.5 rounded-full transition-all duration-700"
@@ -611,7 +611,7 @@ function NearbyFlightsPanel({ data }: { data: ADSBFeatureCollection | undefined 
         <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
           📡 Real Flights Nearby
         </h3>
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-gray-400">
           ADS-B disabled or no aircraft detected
         </div>
       </div>
@@ -653,7 +653,7 @@ function NearbyFlightsPanel({ data }: { data: ADSBFeatureCollection | undefined 
         })}
       </div>
       {data.metadata.last_update && (
-        <div className="mt-2 text-[10px] text-gray-500">
+        <div className="mt-2 text-[10px] text-gray-400">
           Updated: {new Date(data.metadata.last_update).toLocaleTimeString()}
         </div>
       )}
@@ -669,7 +669,7 @@ function GroundVehicleStatusPanel({ data }: { data: GroundVehicleSummary | undef
         <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
           Ground Vehicles
         </h3>
-        <div className="text-xs text-gray-500">Loading...</div>
+        <div className="text-xs text-gray-400">Loading...</div>
       </div>
     );
   }

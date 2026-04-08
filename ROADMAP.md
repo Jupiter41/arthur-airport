@@ -422,12 +422,12 @@ a simplified architectural plan rather than an abstract heatmap grid.
 A single airport twin is valuable. A network of interconnected twins reveals the
 propagation of disruptions across the entire aviation system.
 
-- [ ] **P3-1** — Define a `Network` configuration: a YAML file listing 3–5 airports (KART + 4 real airports used as hubs), each with their own `config/airport.yaml` profile and a distance matrix.
-- [ ] **P3-2** — Implement network-aware delay propagation: when KART delays an outbound flight to LHR, LHR's incoming flight is also delayed, affecting its turnaround and subsequent departures. Model this as a cross-airport cascade.
-- [ ] **P3-3** — Add a network map view: a Mapbox/Cesium overlay showing all network airports as nodes, with real-time arc colours reflecting disruption status (green/amber/red).
-- [ ] **P3-4** — Implement network ground delay program: when one airport declares a GDP (Phase 2), affected feeder airports receive flow control constraints limiting their departure rate to that airport.
-- [ ] **P3-5** — Add a `GET /network/status` endpoint returning the health of all network airports: active incidents, delay propagation in-flight, and estimated recovery time.
-- [ ] **P3-6** — Add a network disruption scenario: one YAML scenario triggering a cascading disruption across the full network (e.g. LIFR at LHR → inbound KART flights delayed → KART departures delayed → CDG inbounds affected).
+- [x] **P3-1** — Define a `Network` configuration: a YAML file listing 3–5 airports (KART + 4 real airports used as hubs), each with their own `config/airport.yaml` profile and a distance matrix.
+- [x] **P3-2** — Implement network-aware delay propagation: when KART delays an outbound flight to LHR, LHR's incoming flight is also delayed, affecting its turnaround and subsequent departures. Model this as a cross-airport cascade.
+- [x] **P3-3** — Add a network map view: a Mapbox/Cesium overlay showing all network airports as nodes, with real-time arc colours reflecting disruption status (green/amber/red).
+- [x] **P3-4** — Implement network ground delay program: when one airport declares a GDP (Phase 2), affected feeder airports receive flow control constraints limiting their departure rate to that airport.
+- [x] **P3-5** — Add a `GET /network/status` endpoint returning the health of all network airports: active incidents, delay propagation in-flight, and estimated recovery time.
+- [x] **P3-6** — Add a network disruption scenario: one YAML scenario triggering a cascading disruption across the full network (e.g. LIFR at LHR → inbound KART flights delayed → KART departures delayed → CDG inbounds affected).
 
 ---
 

@@ -23,4 +23,5 @@ Before doing any edit, do this:
 - ALWAYS run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
 
 Your mission is to:
-- finish to implement the features phase 2 of the ROADMAP.md
+
+- Implement phase 5. For any LLM use etc., either use a good free option or write the logic yourself. If the user need to provide an API key, precise it in the instructions and ask them to put it in a .env file or something like that. You can ask it in chat if you need me to provide you with an API key for testing.

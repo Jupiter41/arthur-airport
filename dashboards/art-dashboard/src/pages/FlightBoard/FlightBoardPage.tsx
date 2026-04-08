@@ -305,8 +305,8 @@ function FlightDetailDrawer({
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-gray-200">{value}</div>
+      <div className="text-xs text-gray-400 font-medium">{label}</div>
+      <div className="text-gray-100">{value}</div>
     </div>
   );
 }
@@ -318,8 +318,8 @@ function RunwayThroughputChart({ runways }: { runways: Runway[] }) {
   const maxCapacity = Math.max(...runways.map((rw) => rw.capacity_per_hour), 1);
 
   return (
-    <div className="bg-gray-800 rounded p-3">
-      <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-3">
+    <div className="bg-gray-800 rounded-lg p-3 border border-gray-700/50">
+      <h3 className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-3">
         Runway Throughput — Actual vs Capacity
       </h3>
       <div className="flex gap-4">
@@ -353,7 +353,7 @@ function RunwayThroughputChart({ runways }: { runways: Runway[] }) {
                     className={`w-full ${barColor} rounded-t transition-all duration-700`}
                     style={{ height: `${Math.max(actualPct, 2)}%` }}
                   />
-                  <span className="text-[9px] text-gray-500 mt-1">Act</span>
+                  <span className="text-[9px] text-gray-400 mt-1">Act</span>
                 </div>
                 {/* Capacity bar */}
                 <div className="flex flex-col items-center w-8">
@@ -364,7 +364,7 @@ function RunwayThroughputChart({ runways }: { runways: Runway[] }) {
                     className="w-full bg-gray-600 rounded-t border border-gray-500 border-dashed transition-all duration-700"
                     style={{ height: `${Math.max(capacityPct, 2)}%` }}
                   />
-                  <span className="text-[9px] text-gray-500 mt-1">Cap</span>
+                  <span className="text-[9px] text-gray-400 mt-1">Cap</span>
                 </div>
               </div>
               <div className="text-center mt-1">
@@ -380,12 +380,12 @@ function RunwayThroughputChart({ runways }: { runways: Runway[] }) {
                   {utilisation}%
                 </span>
                 {divergence > 0 && (
-                  <span className="text-[9px] text-gray-500 ml-1">
+                  <span className="text-[9px] text-gray-400 ml-1">
                     ({divergence} spare)
                   </span>
                 )}
               </div>
-              <div className="text-center text-[9px] text-gray-500 mt-0.5">
+              <div className="text-center text-[9px] text-gray-400 mt-0.5">
                 Arr: {rw.arrivals_queued} · Dep: {rw.departures_queued}
               </div>
             </div>
@@ -476,6 +476,190 @@ const FLIGHT_TYPE_OPTIONS = [
   { value: "charter", label: "Charter" },
 ];
 
+const STATUS_OPTIONS = [
+  "scheduled",
+  "boarding",
+  "delayed",
+  "departed",
+  "airborne",
+  "approach",
+  "landed",
+  "taxiing",
+  "at_gate",
+  "arrived",
+  "cancelled",
+];
+
+/* ──────── Filter Row Component ──────── */
+interface ColumnFilters {
+  flightSearch: string;
+  typeFilter: string;
+  destinationSearch: string;
+  gateSearch: string;
+  statusFilter: string;
+  airlineFilter: string;
+}
+
+const EMPTY_FILTERS: ColumnFilters = {
+  flightSearch: "",
+  typeFilter: "",
+  destinationSearch: "",
+  gateSearch: "",
+  statusFilter: "",
+  airlineFilter: "",
+};
+
+function FilterRow({
+  filters,
+  onChange,
+  direction,
+  airlines,
+}: {
+  filters: ColumnFilters;
+  onChange: (f: ColumnFilters) => void;
+  direction: "departure" | "arrival";
+  airlines: string[];
+}) {
+  const inputCls =
+    "text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-1.5 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-500/40 placeholder-gray-500";
+  const selectCls =
+    "text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-1 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-500/40";
+
+  const hasAnyFilter = Object.values(filters).some((v) => v !== "");
+
+  return (
+    <tr className="border-b border-gray-700/30 bg-gray-800/40">
+      <td className="px-2 py-1.5">
+        <div className="flex gap-1">
+          <input
+            type="text"
+            placeholder="Flight…"
+            value={filters.flightSearch}
+            onChange={(e) =>
+              onChange({ ...filters, flightSearch: e.target.value })
+            }
+            className={inputCls}
+            style={{ maxWidth: "5rem" }}
+          />
+          <select
+            value={filters.airlineFilter}
+            onChange={(e) =>
+              onChange({ ...filters, airlineFilter: e.target.value })
+            }
+            className={selectCls}
+            style={{ maxWidth: "4.5rem" }}
+          >
+            <option value="">All</option>
+            {airlines.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </div>
+      </td>
+      <td className="px-2 py-1.5">
+        <select
+          value={filters.typeFilter}
+          onChange={(e) => onChange({ ...filters, typeFilter: e.target.value })}
+          className={selectCls}
+        >
+          {FLIGHT_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td className="px-2 py-1.5">
+        <input
+          type="text"
+          placeholder={direction === "departure" ? "To…" : "From…"}
+          value={filters.destinationSearch}
+          onChange={(e) =>
+            onChange({ ...filters, destinationSearch: e.target.value })
+          }
+          className={inputCls}
+          style={{ maxWidth: "5rem" }}
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <input
+          type="text"
+          placeholder="Gate…"
+          value={filters.gateSearch}
+          onChange={(e) => onChange({ ...filters, gateSearch: e.target.value })}
+          className={inputCls}
+          style={{ maxWidth: "4rem" }}
+        />
+      </td>
+      <td className="px-2 py-1.5" />
+      <td className="px-2 py-1.5">
+        <select
+          value={filters.statusFilter}
+          onChange={(e) =>
+            onChange({ ...filters, statusFilter: e.target.value })
+          }
+          className={selectCls}
+        >
+          <option value="">All</option>
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td className="px-2 py-1.5">
+        {hasAnyFilter && (
+          <button
+            onClick={() => onChange({ ...EMPTY_FILTERS })}
+            className="text-[10px] text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded px-1.5 py-0.5 transition-colors"
+            title="Clear all filters"
+          >
+            Clear
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function applyFilters(
+  flights: Flight[],
+  filters: ColumnFilters,
+  direction: "departure" | "arrival",
+): Flight[] {
+  return flights.filter((f) => {
+    if (
+      filters.flightSearch &&
+      !f.flight_number
+        .toLowerCase()
+        .includes(filters.flightSearch.toLowerCase())
+    )
+      return false;
+    if (filters.airlineFilter && f.airline_code !== filters.airlineFilter)
+      return false;
+    if (filters.typeFilter && f.flight_type !== filters.typeFilter)
+      return false;
+    const city = direction === "departure" ? f.destination_iata : f.origin_iata;
+    if (
+      filters.destinationSearch &&
+      !city.toLowerCase().includes(filters.destinationSearch.toLowerCase())
+    )
+      return false;
+    if (
+      filters.gateSearch &&
+      !(f.gate_id ?? "")
+        .toLowerCase()
+        .includes(filters.gateSearch.toLowerCase())
+    )
+      return false;
+    if (filters.statusFilter && f.status !== filters.statusFilter) return false;
+    return true;
+  });
+}
+
 function FIDSPanel({
   flights,
   direction,
@@ -488,73 +672,71 @@ function FIDSPanel({
   onSelect: (f: Flight) => void;
 }) {
   const [page, setPage] = useState(0);
-  const [typeFilter, setTypeFilter] = useState("");
+  const [filters, setFilters] = useState<ColumnFilters>({ ...EMPTY_FILTERS });
   const PAGE_SIZE = 20;
   const { sort, toggle } = useSort<FlightSortCol>("time");
 
+  // Build airline list from current flights
+  const airlines = useMemo(() => {
+    const codes = new Set(flights.map((f) => f.airline_code));
+    return [...codes].sort();
+  }, [flights]);
+
   const filtered = useMemo(
-    () =>
-      typeFilter
-        ? flights.filter((f) => f.flight_type === typeFilter)
-        : flights,
-    [flights, typeFilter],
+    () => applyFilters(flights, filters, direction),
+    [flights, filters, direction],
   );
 
-  const sorted = useMemo(
-    () =>
-      [...filtered].sort((a, b) =>
-        compare(
-          flightSortValue(a, sort.column, direction),
-          flightSortValue(b, sort.column, direction),
-          sort.direction,
-        ),
-      ),
-    [filtered, sort, direction],
-  );
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    // New flights (flashing) go to top, rest sorted normally
+    list.sort((a, b) => {
+      const aNew = flashIds.has(a.id) ? 1 : 0;
+      const bNew = flashIds.has(b.id) ? 1 : 0;
+      if (aNew !== bNew) return bNew - aNew; // flashing first
+      return compare(
+        flightSortValue(a, sort.column, direction),
+        flightSortValue(b, sort.column, direction),
+        sort.direction,
+      );
+    });
+    return list;
+  }, [filtered, sort, direction, flashIds]);
+
+  const hasAnyFilter = Object.values(filters).some((v) => v !== "");
 
   // Reset page when filter changes
   useEffect(() => {
     setPage(0);
-  }, [typeFilter]);
+  }, [filters]);
 
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const pageFlights = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700">
+      <div className="flex items-center justify-between px-3 py-2.5 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center gap-3">
-          <h3 className="text-sm font-bold text-white uppercase">
-            {direction === "departure" ? "Departures" : "Arrivals"} (
+          <h3 className="text-sm font-bold text-white uppercase tracking-wide">
+            {direction === "departure" ? "✈ Departures" : "🛬 Arrivals"} (
             {filtered.length}
-            {typeFilter ? `/${flights.length}` : ""})
+            {hasAnyFilter ? `/${flights.length}` : ""})
           </h3>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="text-xs bg-gray-700 text-gray-300 border border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            {FLIGHT_TYPE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
         </div>
         {totalPages > 1 && (
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-1">
             <button
-              className="text-gray-400 hover:text-white disabled:opacity-30"
+              className="text-gray-300 hover:text-white hover:bg-gray-700 disabled:opacity-30 px-2 py-1 rounded transition-colors"
               disabled={page === 0}
               onClick={() => setPage(page - 1)}
             >
               ‹
             </button>
-            <span className="text-gray-400">
+            <span className="text-xs text-gray-300 font-medium px-2">
               {page + 1}/{totalPages}
             </span>
             <button
-              className="text-gray-400 hover:text-white disabled:opacity-30"
+              className="text-gray-300 hover:text-white hover:bg-gray-700 disabled:opacity-30 px-2 py-1 rounded transition-colors"
               disabled={page >= totalPages - 1}
               onClick={() => setPage(page + 1)}
             >
@@ -566,46 +748,52 @@ function FIDSPanel({
       <div className="overflow-y-auto flex-1">
         <table className="w-full text-left">
           <thead>
-            <tr className="text-xs text-gray-500 uppercase">
+            <tr className="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-700/50">
               <th
-                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("flight_number")}
               >
                 Flight <SortArrow column="flight_number" sort={sort} />
               </th>
               <th
-                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("type")}
               >
                 Type <SortArrow column="type" sort={sort} />
               </th>
               <th
-                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("destination")}
               >
                 {direction === "departure" ? "To" : "From"}{" "}
                 <SortArrow column="destination" sort={sort} />
               </th>
               <th
-                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("gate")}
               >
                 Gate <SortArrow column="gate" sort={sort} />
               </th>
               <th
-                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("time")}
               >
                 Time <SortArrow column="time" sort={sort} />
               </th>
               <th
-                className="px-3 py-1.5 cursor-pointer select-none hover:text-gray-300"
+                className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("status")}
               >
                 Status <SortArrow column="status" sort={sort} />
               </th>
-              <th className="px-3 py-1.5">Progress</th>
+              <th className="px-3 py-2">Progress</th>
             </tr>
+            <FilterRow
+              filters={filters}
+              onChange={setFilters}
+              direction={direction}
+              airlines={airlines}
+            />
           </thead>
           <tbody>
             {pageFlights.map((f) => (
@@ -682,9 +870,9 @@ function StatPill({
   color?: string;
 }) {
   return (
-    <div className="bg-gray-800 rounded px-3 py-1.5">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className={`font-bold ${color}`}>{value}</div>
+    <div className="bg-gray-800/80 rounded-lg px-3 py-1.5 border border-gray-700/50">
+      <div className="text-xs text-gray-400 font-medium">{label}</div>
+      <div className={`font-bold text-lg ${color}`}>{value}</div>
     </div>
   );
 }
@@ -789,7 +977,7 @@ export default function FlightBoardPage() {
       </div>
 
       {/* Bottom bar */}
-      <div className="bg-gray-800 border-t border-gray-700 p-3 space-y-3">
+      <div className="bg-gray-800 border-t border-gray-700/80 p-3 space-y-3">
         <div className="flex items-center justify-between">
           <FlightStats flights={flightList} />
           <ExportMenu onExport={handleExport} />

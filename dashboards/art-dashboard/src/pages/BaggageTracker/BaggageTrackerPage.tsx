@@ -293,19 +293,19 @@ function FlowSummaryPanel({ summary }: { summary: BaggageFlowSummary | null }) {
       </h3>
       <div className="grid grid-cols-2 gap-2 text-sm">
         <div className="bg-gray-800 rounded p-2">
-          <div className="text-xs text-gray-500">In System</div>
+          <div className="text-xs text-gray-400">In System</div>
           <div className="font-bold text-white">
             {(summary.total_in_system ?? 0).toLocaleString()}
           </div>
         </div>
         <div className="bg-gray-800 rounded p-2">
-          <div className="text-xs text-gray-500">Loaded</div>
+          <div className="text-xs text-gray-400">Loaded</div>
           <div className="font-bold text-teal-400">
             {loadedCount.toLocaleString()}
           </div>
         </div>
         <div className="bg-gray-800 rounded p-2">
-          <div className="text-xs text-gray-500">Flagged</div>
+          <div className="text-xs text-gray-400">Flagged</div>
           <div className="font-bold text-amber-400">{flaggedCount}</div>
         </div>
       </div>

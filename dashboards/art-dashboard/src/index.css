@@ -4,8 +4,15 @@
 
 @layer base {
   body {
-    @apply bg-gray-900 text-white antialiased;
+    @apply bg-gray-900 text-gray-100 antialiased;
     font-family: "Inter", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Improve default heading contrast */
+  h1, h2, h3 {
+    @apply text-white font-semibold;
   }
 
   /* Scrollbar styling for dark theme */
@@ -20,9 +27,53 @@
     background: rgb(75 85 99);
     border-radius: 3px;
   }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(107 114 128);
+  }
+
+  /* Better select/input styling in dark mode */
+  select, input[type="text"], input[type="number"], textarea {
+    @apply bg-gray-700 border-gray-600 text-gray-100 rounded-lg;
+  }
+  select:focus, input:focus, textarea:focus {
+    @apply ring-2 ring-blue-500/40 border-blue-500/50 outline-none;
+  }
 }
 
 @layer components {
+  /* Reusable card pattern */
+  .card {
+    @apply bg-gray-800 border border-gray-700/60 rounded-xl p-4 shadow-sm;
+  }
+  .card-compact {
+    @apply bg-gray-800 border border-gray-700/60 rounded-lg p-3 shadow-sm;
+  }
+
+  /* Primary action button */
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2 rounded-lg
+           transition-all duration-150 shadow-sm hover:shadow-md
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium px-4 py-2 rounded-lg
+           transition-all duration-150 border border-gray-600
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-danger {
+    @apply bg-red-600/80 hover:bg-red-500 text-white font-medium px-4 py-2 rounded-lg
+           transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-sm {
+    @apply text-xs px-3 py-1.5;
+  }
+
+  /* Section label */
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-wider text-gray-400;
+  }
+
   /* Flash animation for flight row updates */
   .flash-row {
     animation: flash 1.5s ease-out;

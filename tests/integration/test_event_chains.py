@@ -183,7 +183,12 @@ class TestBug3SystemFailureConveyorChain:
             if r.status_code != 200:
                 return None
             data = r.json()
-            zones = data.get("zones", {})
+            zones_raw = data.get("zones", [])
+            # zones may be a list of dicts or a dict — normalise to dict
+            if isinstance(zones_raw, list):
+                zones = {z["zone_id"]: z for z in zones_raw if "zone_id" in z}
+            else:
+                zones = zones_raw
             # power-A should affect induction-A, screening-unit-1, screening-unit-2
             affected = ["induction-A", "screening-unit-1", "screening-unit-2"]
             for zone_id in affected:
@@ -216,7 +221,11 @@ class TestBug3SystemFailureConveyorChain:
             r = requests.get(f"{BAGGAGE_SVC}/api/v1/flow/map", timeout=10)
             if r.status_code != 200:
                 return None
-            zones = r.json().get("zones", {})
+            zones_raw = r.json().get("zones", [])
+            if isinstance(zones_raw, list):
+                zones = {z["zone_id"]: z for z in zones_raw if "zone_id" in z}
+            else:
+                zones = zones_raw
             zone = zones.get("sorting-matrix", {})
             if zone.get("status") == "offline":
                 return True
@@ -278,7 +287,11 @@ class TestBug3SystemFailureConveyorChain:
             r = requests.get(f"{BAGGAGE_SVC}/api/v1/flow/map", timeout=10)
             if r.status_code != 200:
                 return None
-            zones = r.json().get("zones", {})
+            zones_raw = r.json().get("zones", [])
+            if isinstance(zones_raw, list):
+                zones = {z["zone_id"]: z for z in zones_raw if "zone_id" in z}
+            else:
+                zones = zones_raw
             affected = ["induction-B", "screening-unit-3", "screening-unit-4"]
             for zone_id in affected:
                 zone = zones.get(zone_id, {})

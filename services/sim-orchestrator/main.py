@@ -19,13 +19,16 @@ from kafka.producer import (
     init_kafka_producer,
     wait_for_kafka,
 )
+from kafka.consumer import init_kafka_consumer, start_consumer, stop_consumer
 from routers.sim import router as sim_router
 from routers.scenarios import router as scenarios_router
 from routers.debug import router as debug_router
+from routers.network import router as network_router
 from services.airport_config import load_airport_runtime_config
 from services import clock
 from services.fixtures import load_fixtures
 from services.injector import set_seed
+from services.network import get_network_engine, reset_network_engine
 from services.scenario_engine import get_engine
 from services.seeder import emit_initial_weather, seed_day
 
@@ -52,9 +55,12 @@ async def _on_day_boundary(next_day: int, sim_time):
 
 
 async def _on_tick(sim_time):
-    """Clock callback fired every sim-minute — drives the scenario engine."""
+    """Clock callback fired every sim-minute — drives the scenario engine and network."""
     engine = get_engine()
     await engine.on_tick(sim_time)
+    # Tick the network engine for delay recovery and GDP evaluation
+    net = get_network_engine()
+    net.on_tick(sim_time)
 
 
 @asynccontextmanager
@@ -115,6 +121,14 @@ async def lifespan(app: FastAPI):
     engine = get_engine()
     engine.load_definitions()
 
+    # 11. Initialize network engine and consumer for delay propagation
+    net_engine = get_network_engine()
+    if net_engine.enabled:
+        logger.info("Network simulation enabled: %s (%d airports)",
+                     net_engine.config.name, len(net_engine.config.airports))
+        init_kafka_consumer()
+        start_consumer()
+
     asyncio.create_task(clock.run_clock_loop())
 
     logger.info("sim-orchestrator startup complete — clock running")
@@ -122,7 +136,9 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     clock.stop()
+    stop_consumer()
     close_kafka_producer()
+    reset_network_engine()
     await close_neo4j()
     logger.info("sim-orchestrator shutdown complete")
 
@@ -134,6 +150,7 @@ Instrumentator().instrument(app).expose(app)
 app.include_router(sim_router)
 app.include_router(scenarios_router)
 app.include_router(debug_router)
+app.include_router(network_router)
 
 
 @app.get("/health")

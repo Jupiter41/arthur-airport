@@ -382,7 +382,7 @@ function EntityInspector() {
 
       {entity && (
         <div className="space-y-3">
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-400">
             Labels: {((entity.labels ?? []) as string[]).join(", ")}
           </div>
 
@@ -416,7 +416,7 @@ function EntityInspector() {
           {Array.isArray(entity.relationships) &&
             (entity.relationships as Record<string, unknown>[]).length > 0 && (
               <div>
-                <h4 className="text-xs text-gray-500 font-semibold mt-2 mb-1">
+                <h4 className="text-xs text-gray-400 font-semibold mt-2 mb-1">
                   Relationships
                 </h4>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
@@ -438,7 +438,7 @@ function EntityInspector() {
                         <span className="font-mono text-gray-300">
                           {String(r.type)}
                         </span>
-                        <span className="text-gray-500">
+                        <span className="text-gray-400">
                           {(r.target_labels as string[])?.join(":")} (
                           {String(r.target_id)})
                         </span>
@@ -507,7 +507,7 @@ function CypherConsole() {
         >
           {mutation.isPending ? "Running..." : "Execute (Ctrl+Enter)"}
         </button>
-        <span className="text-xs text-gray-500">Read-only queries only</span>
+        <span className="text-xs text-gray-400">Read-only queries only</span>
       </div>
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -545,7 +545,7 @@ function CypherConsole() {
               ))}
             </tbody>
           </table>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-gray-400 mt-2">
             {result.row_count} rows returned
           </p>
         </div>
@@ -642,7 +642,7 @@ function KafkaInspector() {
 
       <div className="space-y-1 max-h-96 overflow-y-auto">
         {filtered.length === 0 && (
-          <p className="text-sm text-gray-500 p-4 text-center">
+          <p className="text-sm text-gray-400 p-4 text-center">
             {events.length === 0
               ? "Waiting for events..."
               : "No events match filter"}
@@ -654,13 +654,13 @@ function KafkaInspector() {
             className="bg-gray-900 rounded border border-gray-800"
           >
             <summary className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-800/50">
-              <span className="text-xs text-gray-500 font-mono w-20 shrink-0">
+              <span className="text-xs text-gray-400 font-mono w-20 shrink-0">
                 {new Date(evt.timestamp).toLocaleTimeString()}
               </span>
               <span className="text-xs font-semibold text-blue-400 w-40 truncate">
                 {evt.event_type}
               </span>
-              <span className="text-xs text-gray-500">{evt.topic}</span>
+              <span className="text-xs text-gray-400">{evt.topic}</span>
             </summary>
             <pre className="text-xs text-green-400 p-3 font-mono overflow-x-auto">
               {JSON.stringify(evt.payload, null, 2)}
@@ -727,7 +727,7 @@ function WeatherSourcePanel() {
     <div className="space-y-4">
       {/* Current source */}
       <div className="bg-gray-900 rounded p-3">
-        <h4 className="text-xs text-gray-500 font-semibold mb-1">
+        <h4 className="text-xs text-gray-400 font-semibold mb-1">
           Current Source
         </h4>
         <pre className="text-xs text-green-400 font-mono">
@@ -787,7 +787,7 @@ function WeatherSourcePanel() {
         <h4 className="text-sm text-gray-400 font-semibold">
           Parameter Overrides
         </h4>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-400">
           Lock individual parameters regardless of active source. Leave empty to
           unlock.
         </p>
@@ -900,9 +900,9 @@ function SnapshotsPanel() {
 
       {/* Snapshot list */}
       {isLoading ? (
-        <p className="text-sm text-gray-500">Loading snapshots...</p>
+        <p className="text-sm text-gray-400">Loading snapshots...</p>
       ) : snapshots.length === 0 ? (
-        <p className="text-sm text-gray-500">No snapshots saved yet</p>
+        <p className="text-sm text-gray-400">No snapshots saved yet</p>
       ) : (
         <div className="space-y-2 max-h-80 overflow-y-auto">
           {snapshots.map((snap) => (
@@ -914,7 +914,7 @@ function SnapshotsPanel() {
                 <span className="text-sm text-white font-semibold">
                   {snap.name}
                 </span>
-                <span className="text-xs text-gray-500">{snap.size_kb} KB</span>
+                <span className="text-xs text-gray-400">{snap.size_kb} KB</span>
               </div>
               <div className="text-xs text-gray-400 space-y-0.5">
                 <div>Sim time: {new Date(snap.sim_time).toLocaleString()}</div>
@@ -986,7 +986,7 @@ function WeatherHistoryChart() {
 
   if (states.length === 0) {
     return (
-      <p className="text-xs text-gray-500">No weather history available</p>
+      <p className="text-xs text-gray-400">No weather history available</p>
     );
   }
 
@@ -995,7 +995,7 @@ function WeatherHistoryChart() {
 
   return (
     <div className="space-y-1">
-      <h4 className="text-xs text-gray-500 font-semibold">
+      <h4 className="text-xs text-gray-400 font-semibold">
         12h Weather History
       </h4>
       <div className="flex h-6 rounded overflow-hidden">
@@ -1023,7 +1023,7 @@ function WeatherHistoryChart() {
           );
         })}
       </div>
-      <div className="flex justify-between text-[10px] text-gray-500">
+      <div className="flex justify-between text-[10px] text-gray-400">
         <span>
           {states[0]?.from ? new Date(states[0].from).toLocaleTimeString() : ""}
         </span>
@@ -1048,7 +1048,7 @@ export default function DebugPage() {
         <h1 className="text-xl font-bold text-white flex items-center gap-2">
           🛠️ Debug Panel
         </h1>
-        <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded font-mono">
+        <span className="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded font-mono">
           Ctrl+D to toggle
         </span>
       </div>

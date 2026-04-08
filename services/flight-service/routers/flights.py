@@ -59,6 +59,17 @@ async def list_flights(
     }
 
 
+@router.get("/flights/adsb-states")
+async def get_adsb_states():
+    """Return live ADS-B state vectors as GeoJSON FeatureCollection.
+
+    Aircraft within 1000 km of KART from OpenSky Network API.
+    """
+    from services.adsb import get_adsb_cache
+    cache = get_adsb_cache()
+    return cache.to_geojson()
+
+
 @router.get("/flights/{flight_id}")
 async def get_flight(flight_id: str):
     """Full flight detail including gate, runway, and turnaround info."""
@@ -179,17 +190,6 @@ async def list_turnarounds():
     for reg, plan in _state.turnaround_plans.items():
         plans.append(plan.to_dict())
     return {"turnarounds": plans, "total": len(plans)}
-
-
-@router.get("/flights/adsb-states")
-async def get_adsb_states():
-    """Return live ADS-B state vectors as GeoJSON FeatureCollection.
-
-    Aircraft within 1000 km of KART from OpenSky Network API.
-    """
-    from services.adsb import get_adsb_cache
-    cache = get_adsb_cache()
-    return cache.to_geojson()
 
 
 @router.get("/ground-vehicles")

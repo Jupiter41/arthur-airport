@@ -188,12 +188,12 @@ function ScenarioCard({
             </span>
           )}
         </h3>
-        <span className="text-xs text-gray-500">{scenario.duration_sim_minutes}m</span>
+        <span className="text-xs text-gray-400">{scenario.duration_sim_minutes}m</span>
       </div>
       <p className="text-xs text-gray-400 line-clamp-2 mb-3">
         {scenario.description}
       </p>
-      <div className="flex gap-3 text-xs text-gray-500">
+      <div className="flex gap-3 text-xs text-gray-400">
         <span>⚡ {scenario.event_count} events</span>
         <span>📊 {scenario.outcome_count} checks</span>
       </div>
@@ -206,7 +206,7 @@ function ScenarioCard({
 function EventTimeline({ events }: { events: ScenarioEvent[] }) {
   if (events.length === 0) {
     return (
-      <div className="text-xs text-gray-500 italic">
+      <div className="text-xs text-gray-400 italic">
         No events (stress test)
       </div>
     );
@@ -237,7 +237,7 @@ function EventTimeline({ events }: { events: ScenarioEvent[] }) {
             <div className="text-sm text-white">
               {e.type.replace(/_/g, " ")}
             </div>
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-gray-400">
               📍 {e.location}
               {e.description && <span className="ml-1">— {e.description}</span>}
             </div>
@@ -260,7 +260,7 @@ function OutcomesTable({
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="text-gray-500 border-b border-gray-700">
+        <tr className="text-gray-400 border-b border-gray-700">
           <th className="text-left py-1.5 font-medium">Metric</th>
           <th className="text-left py-1.5 font-medium">Condition</th>
           <th className="text-left py-1.5 font-medium">Within</th>
@@ -307,7 +307,7 @@ function OutcomesTable({
 function MetricsChart({ snapshots }: { snapshots: MetricSnapshot[] }) {
   if (snapshots.length < 2) {
     return (
-      <div className="text-xs text-gray-500 italic py-4 text-center">
+      <div className="text-xs text-gray-400 italic py-4 text-center">
         Collecting metrics…
       </div>
     );
@@ -416,7 +416,7 @@ function ResultCard({
           {result.status}
         </span>
       </div>
-      <div className="flex gap-3 text-xs text-gray-500">
+      <div className="flex gap-3 text-xs text-gray-400">
         <span>🆔 {result.run_id}</span>
         <span>⏱ {result.duration_sim_minutes}m</span>
         <span>⚡ {result.events_injected} events</span>
@@ -703,7 +703,7 @@ export default function ScenariosPage() {
               />
             ))}
             {scenarios.length === 0 && (
-              <div className="text-xs text-gray-500 italic py-4 text-center">
+              <div className="text-xs text-gray-400 italic py-4 text-center">
                 No scenarios loaded. Check sim-orchestrator
                 scenarios/definitions/
               </div>
@@ -727,7 +727,7 @@ export default function ScenariosPage() {
               />
             ))}
             {results.length === 0 && (
-              <div className="text-xs text-gray-500 italic py-2 text-center">
+              <div className="text-xs text-gray-400 italic py-2 text-center">
                 No runs yet
               </div>
             )}
@@ -781,7 +781,7 @@ export default function ScenariosPage() {
                     </button>
                   )}
                   <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-500">Speed:</label>
+                    <label className="text-xs text-gray-400">Speed:</label>
                     <select
                       className="text-xs bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
                       value={runSpeed}
@@ -805,26 +805,26 @@ export default function ScenariosPage() {
               {/* Scenario params */}
               <div className="grid grid-cols-4 gap-3">
                 <div className="bg-gray-800 rounded p-3">
-                  <div className="text-xs text-gray-500">Duration</div>
+                  <div className="text-xs text-gray-400">Duration</div>
                   <div className="text-lg font-bold text-white">
                     {definition.duration_sim_minutes}m
                   </div>
                 </div>
                 <div className="bg-gray-800 rounded p-3">
-                  <div className="text-xs text-gray-500">Speed</div>
+                  <div className="text-xs text-gray-400">Speed</div>
                   <div className="text-lg font-bold text-white">
                     {definition.sim_speed}×
                   </div>
                 </div>
                 <div className="bg-gray-800 rounded p-3">
-                  <div className="text-xs text-gray-500">Start Time</div>
+                  <div className="text-xs text-gray-400">Start Time</div>
                   <div className="text-lg font-bold text-white">
                     {definition.start_time.split("T")[1]?.replace(/Z$/, "") ??
                       definition.start_time}
                   </div>
                 </div>
                 <div className="bg-gray-800 rounded p-3">
-                  <div className="text-xs text-gray-500">Seed Overrides</div>
+                  <div className="text-xs text-gray-400">Seed Overrides</div>
                   <div className="text-xs text-white mt-1">
                     {definition.seed_overrides ? (
                       <div className="space-y-0.5">
@@ -847,7 +847,7 @@ export default function ScenariosPage() {
                         )}
                       </div>
                     ) : (
-                      <span className="text-gray-500">Default</span>
+                      <span className="text-gray-400">Default</span>
                     )}
                   </div>
                 </div>
@@ -882,7 +882,7 @@ export default function ScenariosPage() {
                         <div className="text-2xl font-bold text-yellow-400">
                           {active.latest_metrics.flights_delayed_current}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-400">
                           Flights delayed
                         </div>
                       </div>
@@ -890,7 +890,7 @@ export default function ScenariosPage() {
                         <div className="text-2xl font-bold text-red-400">
                           {active.latest_metrics.holding_stack_depth}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-400">
                           Holding stack
                         </div>
                       </div>
@@ -898,7 +898,7 @@ export default function ScenariosPage() {
                         <div className="text-2xl font-bold text-blue-400">
                           {active.latest_metrics.avg_delay_minutes.toFixed(1)}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-400">
                           Avg delay (min)
                         </div>
                       </div>
@@ -906,7 +906,7 @@ export default function ScenariosPage() {
                         <div className="text-2xl font-bold text-purple-400">
                           {active.latest_metrics.incident_count_active}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-400">
                           Active incidents
                         </div>
                       </div>
@@ -948,7 +948,7 @@ export default function ScenariosPage() {
               </p>
 
               {editorMode === "edit" && editorSourceName && (
-                <p className="text-xs text-gray-500">Editing: {editorSourceName}</p>
+                <p className="text-xs text-gray-400">Editing: {editorSourceName}</p>
               )}
 
               {editorError && (
@@ -1007,7 +1007,7 @@ export default function ScenariosPage() {
                   <h3 className="text-sm font-bold text-gray-300 mb-3">
                     📊 Outcome Evaluation
                     {detail.pass_rate != null && (
-                      <span className="ml-2 text-xs font-normal text-gray-500">
+                      <span className="ml-2 text-xs font-normal text-gray-400">
                         ({detail.pass_rate.toFixed(0)}% pass rate)
                       </span>
                     )}
@@ -1031,7 +1031,7 @@ export default function ScenariosPage() {
 
           {/* Empty state */}
           {!selectedScenario && !selectedResult && !editorMode && (
-            <div className="flex items-center justify-center h-full text-gray-500">
+            <div className="flex items-center justify-center h-full text-gray-400">
               <div className="text-center">
                 <div className="text-4xl mb-3">🧪</div>
                 <div className="text-sm font-medium">

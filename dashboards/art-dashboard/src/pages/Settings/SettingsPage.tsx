@@ -67,7 +67,7 @@ function NumberInput({
           step={step}
           onChange={(e) => onChange(Number(e.target.value))}
         />
-        {unit && <span className="text-xs text-gray-500 w-8">{unit}</span>}
+        {unit && <span className="text-xs text-gray-400 w-8">{unit}</span>}
       </div>
     </div>
   );
@@ -653,11 +653,11 @@ function AutonomousSection() {
             >
               <div>
                 <span className="text-xs text-white">{a.action_type as string}</span>
-                <span className="text-xs text-gray-500 ml-2">
+                <span className="text-xs text-gray-400 ml-2">
                   {a.description as string}
                 </span>
               </div>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-400">
                 conf: {((a.confidence_score as number) * 100).toFixed(0)}%
               </span>
             </div>

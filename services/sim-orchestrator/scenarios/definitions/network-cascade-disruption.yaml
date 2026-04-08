@@ -1,0 +1,56 @@
+name: "Network cascade disruption"
+description: >
+  A severe weather event at London Heathrow (LHR) cascades through the
+  network: KART flights routed to LHR are delayed, causing turnaround
+  delays at LHR, which propagate back to inbound flights from LHR to
+  KART, and onward to CDG and FRA. A Ground Delay Program is declared
+  at LHR, constraining departure rates at all feeder airports including
+  KART. Tests the full Phase 3 multi-airport cascade model.
+
+sim_speed: 600
+start_time: "2024-06-15T08:00:00"
+duration_sim_minutes: 360
+
+seed_overrides:
+  weather: CAVOK
+  daily_flights: 420
+  load_factor: 0.82
+
+events:
+  # At T+30: Inject LIFR weather at KART to trigger local delays
+  - at_sim_offset_minutes: 30
+    type: severe_weather
+    severity: high
+    location: runway-09L
+    trigger: manual
+    description: "Severe weather — IMC conditions, runway capacity reduced"
+
+  # At T+60: GDP declared at LHR (via network API)
+  - at_sim_offset_minutes: 60
+    type: system_failure
+    severity: medium
+    location: terminal-B
+    trigger: manual
+    description: "Network cascade: LHR declares GDP due to weather — KART departures to LHR restricted"
+
+  # At T+120: Second incident — baggage system pressure from delayed flights
+  - at_sim_offset_minutes: 120
+    type: baggage_fire
+    severity: medium
+    location: conveyor-sorting
+    trigger: manual
+    description: "Baggage sorting overload from delayed flight backlog"
+
+  # At T+240: Weather recovery at KART
+  # (Implicit via weather FSM — CAVOK should be back by natural recovery)
+
+expected_outcomes:
+  - metric: flights_delayed_current
+    condition: ">= 8"
+    within_sim_minutes: 90
+  - metric: incident_count_active
+    condition: ">= 1"
+    within_sim_minutes: 45
+  - metric: flights_delayed_current
+    condition: "<= 3"
+    within_sim_minutes: 300

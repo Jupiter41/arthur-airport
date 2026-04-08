@@ -395,3 +395,68 @@ export const debugApi = {
       body: JSON.stringify({ filename }),
     }),
 };
+
+// ── Network ──
+export interface NetworkStatus {
+  enabled: boolean;
+  name: string;
+  home: string;
+  airports: NetworkAirportStatus[];
+  active_gdps: NetworkGDP[];
+  recent_propagations: NetworkPropagation[];
+  arcs: NetworkArc[];
+}
+
+export interface NetworkAirportStatus {
+  icao: string;
+  iata: string;
+  name: string;
+  lat: number;
+  lon: number;
+  role: string;
+  daily_movements: number;
+  current_delay_minutes: number;
+  disruption_level: string;
+  gdp_active: boolean;
+  gdp_departure_rate_pct: number;
+  recovery_eta_minutes: number;
+  active_incidents: number;
+}
+
+export interface NetworkGDP {
+  airport_icao: string;
+  start_time: string;
+  reason: string;
+  capacity_reduction_pct: number;
+  affected_feeder_airports: string[];
+  departure_rate_pct: number;
+}
+
+export interface NetworkPropagation {
+  source_icao: string;
+  target_icao: string;
+  flight_number: string;
+  original_delay_minutes: number;
+  propagated_delay_minutes: number;
+  sim_time: string;
+  cascade_depth: number;
+}
+
+export interface NetworkArc {
+  source: { icao: string; iata: string; lat: number; lon: number };
+  target: { icao: string; iata: string; lat: number; lon: number };
+  status: string;
+  outbound_delay_minutes: number;
+  inbound_delay_minutes: number;
+  gdp_active: boolean;
+}
+
+export const networkApi = {
+  status: () => apiFetch<NetworkStatus>("/network/status"),
+  airports: () =>
+    apiFetch<{ airports: NetworkAirportStatus[] }>("/network/airports"),
+  arcs: () => apiFetch<{ arcs: NetworkArc[] }>("/network/arcs"),
+  gdps: () => apiFetch<{ gdps: NetworkGDP[] }>("/network/gdps"),
+  propagations: () =>
+    apiFetch<{ propagations: NetworkPropagation[] }>("/network/propagations"),
+};

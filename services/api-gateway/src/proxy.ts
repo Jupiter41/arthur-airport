@@ -89,6 +89,13 @@ const PROXY_ROUTES: ProxyRoute[] = [
   },
   { service: "sim", mountPath: "/api/v1/sim", upstreamPrefix: "/api/v1/sim" },
 
+  // Network endpoints (sim-orchestrator)
+  {
+    service: "sim",
+    mountPath: "/api/v1/network",
+    upstreamPrefix: "/api/v1/network",
+  },
+
   // Debug endpoints (sim-orchestrator)
   {
     service: "sim",

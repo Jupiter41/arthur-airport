@@ -54,18 +54,24 @@ On startup (and each day boundary), the orchestrator generates a full day's flig
 
 ### Daily volume targets
 
-| Metric              | Target                                     |
-| ------------------- | ------------------------------------------ |
-| Total movements     | 420 (210 arrivals + 210 departures)        |
-| Peak hour movements | ~38 (07:00–09:00 and 17:00–19:00 sim time) |
-| Off-peak movements  | ~8–12/hour                                 |
-| Airlines            | 12 fictional carriers                      |
-| Aircraft types      | B738, A320, A321, B77W, A333, E195, DH8D   |
+| Metric              | Target                                        |
+| ------------------- | --------------------------------------------- |
+| Total movements     | 420 (210 arrivals + 210 departures)           |
+| Peak hour movements | ~30–33 (07:00–09:00 and 17:00–19:00 sim time) |
+| Off-peak movements  | ~16–22/hour (sustained base traffic)          |
+| Airlines            | 12 fictional carriers                         |
+| Aircraft types      | B738, A320, A321, B77W, A333, E195, DH8D      |
 
 ### Schedule generation algorithm
 
 ```
-1. Sample 210 departure slots from a bimodal distribution (peaks at 07:30 and 17:30)
+1. Sample 210 departure slots from a realistic hourly traffic distribution:
+   - 05:00–07:00  early ramp (~5% of daily flights)
+   - 07:00–09:00  morning peak (~14–16 flights/hour)
+   - 09:00–16:00  sustained mid-day base (~8–12 flights/hour)
+   - 17:00–19:00  evening peak (~14–15 flights/hour)
+   - 19:00–23:00  wind-down (~3–10 flights/hour)
+   Within each hour, departure times are uniformly jittered to nearest 5 minutes.
 2. For each departure slot, assign:
    a. A fictional airline code (weighted by market share)
    b. A fictional destination (pool of 40 airports)
@@ -345,13 +351,13 @@ This section makes explicit the simplifications and assumptions underlying the s
 
 ### Flight schedule
 
-| Assumption                                                                       | Rationale                                                    |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| 210 departures + 210 arrivals per day                                            | Mid-size hub approximation (~18M pax/year)                   |
-| Bimodal departure distribution (peaks 07:30, 17:30)                              | Standard airport morning and evening rush patterns           |
-| Each departure has exactly one paired arrival (same aircraft, 90 min turnaround) | Simplified rotation; real airports have multi-leg rotations  |
-| 12 fictional airlines with weighted market share                                 | Avoids real airline data while producing realistic diversity |
-| Deterministic seed per sim-day (`seed = 42 + sim_day`)                           | Ensures reproducible schedules for testing                   |
+| Assumption                                                                       | Rationale                                                      |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 210 departures + 210 arrivals per day                                            | Mid-size hub approximation (~18M pax/year)                     |
+| Bimodal departure distribution (peaks 07–09, 17–19) with sustained mid-day base  | Realistic hourly traffic curve matching real mid-size hub data |
+| Each departure has exactly one paired arrival (same aircraft, 90 min turnaround) | Simplified rotation; real airports have multi-leg rotations    |
+| 12 fictional airlines with weighted market share                                 | Avoids real airline data while producing realistic diversity   |
+| Deterministic seed per sim-day (`seed = 42 + sim_day`)                           | Ensures reproducible schedules for testing                     |
 
 ### Passenger flow
 
