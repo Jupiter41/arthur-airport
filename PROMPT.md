@@ -24,6 +24,4 @@ Before doing any edit, do this:
 
 Your mission is to:
 
-- I think you could have one filter icon for each column and no need to add a new line in the tab when the user click on it, you can just open a popup
-- Improve the documentation in particular for the configuration of the airport, precise each parameters, remove unnecessary ones, add interesting ones, and add examples of how to set them up for different scenarios (normal day, day with a special event, day with bad weather etc.). T
 - Implement phase 5. For any LLM use etc., either use a good free option or write the logic yourself. If the user need to provide an API key, precise it in the instructions and ask them to put it in a .env file or something like that. You can ask it in chat if you need me to provide you with an API key for testing.

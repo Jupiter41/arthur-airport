@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
 import { useFlightStore } from "../../stores/flightStore";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { useFlightBoardQueries } from "../../hooks/useQueries";
@@ -490,7 +490,120 @@ const STATUS_OPTIONS = [
   "cancelled",
 ];
 
-/* ──────── Filter Row Component ──────── */
+/* ──────── Filter Popup Component ──────── */
+function FilterIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill={active ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`inline-block ml-1 ${active ? "text-blue-400" : "text-gray-500"}`}
+    >
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </svg>
+  );
+}
+
+function ColumnFilterPopup({
+  type,
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  type: "text" | "select";
+  value: string;
+  onChange: (v: string) => void;
+  options?: { value: string; label: string }[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const isActive = value !== "";
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClick);
+      return () => document.removeEventListener("mousedown", handleClick);
+    }
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        className={`p-0.5 rounded transition-colors ${
+          isActive
+            ? "text-blue-400 hover:text-blue-300"
+            : "text-gray-500 hover:text-gray-300"
+        }`}
+        title={isActive ? `Filtered: ${value}` : "Filter this column"}
+      >
+        <FilterIcon active={isActive} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-2 min-w-[140px]">
+          {type === "text" ? (
+            <input
+              type="text"
+              placeholder={placeholder ?? "Filter…"}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              autoFocus
+              className="text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-gray-500"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setOpen(false);
+                if (e.key === "Enter") setOpen(false);
+              }}
+            />
+          ) : (
+            <select
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value);
+                setOpen(false);
+              }}
+              autoFocus
+              className="text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+            >
+              {options?.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          )}
+          {isActive && (
+            <button
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+              }}
+              className="mt-1.5 text-[10px] text-gray-400 hover:text-white w-full text-center py-0.5 rounded hover:bg-gray-700 transition-colors"
+            >
+              Clear filter
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ColumnFilters {
   flightSearch: string;
   typeFilter: string;
@@ -508,113 +621,6 @@ const EMPTY_FILTERS: ColumnFilters = {
   statusFilter: "",
   airlineFilter: "",
 };
-
-function FilterRow({
-  filters,
-  onChange,
-  direction,
-  airlines,
-  visible,
-}: {
-  filters: ColumnFilters;
-  onChange: (f: ColumnFilters) => void;
-  direction: "departure" | "arrival";
-  airlines: string[];
-  visible: boolean;
-}) {
-  if (!visible) return null;
-  const inputCls =
-    "text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-1.5 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-500/40 placeholder-gray-500";
-  const selectCls =
-    "text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-1 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-500/40";
-
-  return (
-    <tr className="border-b border-gray-700/30 bg-gray-800/40">
-      <td className="px-2 py-1.5">
-        <div className="flex gap-1">
-          <input
-            type="text"
-            placeholder="Flight…"
-            value={filters.flightSearch}
-            onChange={(e) =>
-              onChange({ ...filters, flightSearch: e.target.value })
-            }
-            className={inputCls}
-            style={{ maxWidth: "5rem" }}
-          />
-          <select
-            value={filters.airlineFilter}
-            onChange={(e) =>
-              onChange({ ...filters, airlineFilter: e.target.value })
-            }
-            className={selectCls}
-            style={{ maxWidth: "4.5rem" }}
-          >
-            <option value="">All</option>
-            {airlines.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-        </div>
-      </td>
-      <td className="px-2 py-1.5">
-        <select
-          value={filters.typeFilter}
-          onChange={(e) => onChange({ ...filters, typeFilter: e.target.value })}
-          className={selectCls}
-        >
-          {FLIGHT_TYPE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-2 py-1.5">
-        <input
-          type="text"
-          placeholder={direction === "departure" ? "To…" : "From…"}
-          value={filters.destinationSearch}
-          onChange={(e) =>
-            onChange({ ...filters, destinationSearch: e.target.value })
-          }
-          className={inputCls}
-          style={{ maxWidth: "5rem" }}
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <input
-          type="text"
-          placeholder="Gate…"
-          value={filters.gateSearch}
-          onChange={(e) => onChange({ ...filters, gateSearch: e.target.value })}
-          className={inputCls}
-          style={{ maxWidth: "4rem" }}
-        />
-      </td>
-      <td className="px-2 py-1.5" />
-      <td className="px-2 py-1.5">
-        <select
-          value={filters.statusFilter}
-          onChange={(e) =>
-            onChange({ ...filters, statusFilter: e.target.value })
-          }
-          className={selectCls}
-        >
-          <option value="">All</option>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-2 py-1.5" />
-    </tr>
-  );
-}
 
 function applyFilters(
   flights: Flight[],
@@ -664,7 +670,6 @@ function FIDSPanel({
 }) {
   const [page, setPage] = useState(0);
   const [filters, setFilters] = useState<ColumnFilters>({ ...EMPTY_FILTERS });
-  const [showFilters, setShowFilters] = useState(false);
   const PAGE_SIZE = 20;
   const { sort, toggle } = useSort<FlightSortCol>("time");
 
@@ -714,39 +719,13 @@ function FIDSPanel({
             {filtered.length}
             {hasAnyFilter ? `/${flights.length}` : ""})
           </h3>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`p-1 rounded transition-colors ${
-              showFilters || hasAnyFilter
-                ? "text-blue-400 bg-blue-900/40 hover:bg-blue-900/60"
-                : "text-gray-400 hover:text-white hover:bg-gray-700"
-            }`}
-            title={showFilters ? "Hide filters" : "Show filters"}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-            </svg>
-          </button>
           {hasAnyFilter && (
             <button
-              onClick={() => {
-                setFilters({ ...EMPTY_FILTERS });
-                setShowFilters(false);
-              }}
+              onClick={() => setFilters({ ...EMPTY_FILTERS })}
               className="text-[10px] text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded px-1.5 py-0.5 transition-colors"
               title="Clear all filters"
             >
-              Clear
+              Clear filters
             </button>
           )}
         </div>
@@ -780,26 +759,78 @@ function FIDSPanel({
                 className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("flight_number")}
               >
-                Flight <SortArrow column="flight_number" sort={sort} />
+                <span className="inline-flex items-center gap-1">
+                  Flight <SortArrow column="flight_number" sort={sort} />
+                  <ColumnFilterPopup
+                    type="text"
+                    value={filters.flightSearch}
+                    onChange={(v) =>
+                      setFilters({ ...filters, flightSearch: v })
+                    }
+                    placeholder="Flight #…"
+                  />
+                  <ColumnFilterPopup
+                    type="select"
+                    value={filters.airlineFilter}
+                    onChange={(v) =>
+                      setFilters({ ...filters, airlineFilter: v })
+                    }
+                    options={[
+                      { value: "", label: "All airlines" },
+                      ...airlines.map((a) => ({ value: a, label: a })),
+                    ]}
+                  />
+                </span>
               </th>
               <th
                 className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("type")}
               >
-                Type <SortArrow column="type" sort={sort} />
+                <span className="inline-flex items-center gap-1">
+                  Type <SortArrow column="type" sort={sort} />
+                  <ColumnFilterPopup
+                    type="select"
+                    value={filters.typeFilter}
+                    onChange={(v) => setFilters({ ...filters, typeFilter: v })}
+                    options={FLIGHT_TYPE_OPTIONS.map((o) => ({
+                      value: o.value,
+                      label: o.label,
+                    }))}
+                  />
+                </span>
               </th>
               <th
                 className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("destination")}
               >
-                {direction === "departure" ? "To" : "From"}{" "}
-                <SortArrow column="destination" sort={sort} />
+                <span className="inline-flex items-center gap-1">
+                  {direction === "departure" ? "To" : "From"}{" "}
+                  <SortArrow column="destination" sort={sort} />
+                  <ColumnFilterPopup
+                    type="text"
+                    value={filters.destinationSearch}
+                    onChange={(v) =>
+                      setFilters({ ...filters, destinationSearch: v })
+                    }
+                    placeholder={
+                      direction === "departure" ? "Dest…" : "Origin…"
+                    }
+                  />
+                </span>
               </th>
               <th
                 className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("gate")}
               >
-                Gate <SortArrow column="gate" sort={sort} />
+                <span className="inline-flex items-center gap-1">
+                  Gate <SortArrow column="gate" sort={sort} />
+                  <ColumnFilterPopup
+                    type="text"
+                    value={filters.gateSearch}
+                    onChange={(v) => setFilters({ ...filters, gateSearch: v })}
+                    placeholder="Gate…"
+                  />
+                </span>
               </th>
               <th
                 className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
@@ -811,17 +842,23 @@ function FIDSPanel({
                 className="px-3 py-2 cursor-pointer select-none hover:text-gray-200 transition-colors"
                 onClick={() => toggle("status")}
               >
-                Status <SortArrow column="status" sort={sort} />
+                <span className="inline-flex items-center gap-1">
+                  Status <SortArrow column="status" sort={sort} />
+                  <ColumnFilterPopup
+                    type="select"
+                    value={filters.statusFilter}
+                    onChange={(v) =>
+                      setFilters({ ...filters, statusFilter: v })
+                    }
+                    options={[
+                      { value: "", label: "All" },
+                      ...STATUS_OPTIONS.map((s) => ({ value: s, label: s })),
+                    ]}
+                  />
+                </span>
               </th>
               <th className="px-3 py-2">Progress</th>
             </tr>
-            <FilterRow
-              filters={filters}
-              onChange={setFilters}
-              direction={direction}
-              airlines={airlines}
-              visible={showFilters}
-            />
           </thead>
           <tbody>
             {pageFlights.map((f) => (
@@ -847,12 +884,15 @@ function FlightStats({ flights }: { flights: Flight[] }) {
       airborne = 0,
       boarding = 0,
       arrived = 0;
+    const byType: Record<string, number> = {};
     for (const f of flights) {
       if (f.status === "delayed") delayed++;
       else if (f.status === "cancelled") cancelled++;
       else if (f.status === "airborne") airborne++;
       else if (f.status === "boarding") boarding++;
       else if (f.status === "arrived") arrived++;
+      const ft = f.flight_type ?? "unknown";
+      byType[ft] = (byType[ft] ?? 0) + 1;
     }
     return {
       delayed,
@@ -861,29 +901,54 @@ function FlightStats({ flights }: { flights: Flight[] }) {
       boarding,
       arrived,
       total: flights.length,
+      byType,
     };
   }, [flights]);
 
   return (
-    <div className="flex gap-4 text-sm">
-      <StatPill label="Total" value={stats.total} />
-      <StatPill
-        label="Boarding"
-        value={stats.boarding}
-        color="text-green-400"
-      />
-      <StatPill label="Airborne" value={stats.airborne} color="text-blue-400" />
-      <StatPill
-        label="Arrived"
-        value={stats.arrived}
-        color="text-emerald-400"
-      />
-      <StatPill label="Delayed" value={stats.delayed} color="text-amber-400" />
-      <StatPill
-        label="Cancelled"
-        value={stats.cancelled}
-        color="text-red-400"
-      />
+    <div className="space-y-2">
+      <div className="flex gap-3 text-sm flex-wrap">
+        <StatPill label="Total" value={stats.total} />
+        <StatPill
+          label="Boarding"
+          value={stats.boarding}
+          color="text-green-400"
+        />
+        <StatPill
+          label="Airborne"
+          value={stats.airborne}
+          color="text-blue-400"
+        />
+        <StatPill
+          label="Arrived"
+          value={stats.arrived}
+          color="text-emerald-400"
+        />
+        <StatPill
+          label="Delayed"
+          value={stats.delayed}
+          color="text-amber-400"
+        />
+        <StatPill
+          label="Cancelled"
+          value={stats.cancelled}
+          color="text-red-400"
+        />
+        <div className="border-l border-gray-700 mx-1" />
+        {Object.entries(stats.byType)
+          .sort((a, b) => b[1] - a[1])
+          .map(([type, count]) => {
+            const style = FLIGHT_TYPE_STYLES[type];
+            return (
+              <StatPill
+                key={type}
+                label={style?.label ?? type}
+                value={count}
+                color="text-gray-300"
+              />
+            );
+          })}
+      </div>
     </div>
   );
 }
@@ -929,6 +994,7 @@ export default function FlightBoardPage() {
   const setRunways = useFlightStore((s) => s.setRunways);
   const setCurrent = useWeatherStore((s) => s.setCurrent);
   const [selectedFlight, setSelectedFlight] = useState<Flight | null>(null);
+  const [bottomExpanded, setBottomExpanded] = useState(true);
 
   const queries = useFlightBoardQueries();
 
@@ -1004,16 +1070,47 @@ export default function FlightBoardPage() {
         </div>
       </div>
 
-      {/* Bottom bar */}
-      <div className="bg-gray-800 border-t border-gray-700/80 p-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <FlightStats flights={flightList} />
+      {/* Bottom bar — collapsible */}
+      <div className="bg-gray-800 border-t border-gray-700/80">
+        <div className="flex items-center justify-between px-3 py-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setBottomExpanded(!bottomExpanded)}
+              className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
+              title={
+                bottomExpanded ? "Collapse stats panel" : "Expand stats panel"
+              }
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`transform transition-transform duration-200 ${bottomExpanded ? "rotate-180" : ""}`}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">
+              Stats &amp; Runways
+            </span>
+          </div>
           <ExportMenu onExport={handleExport} />
         </div>
-        {runways.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            <RunwayStatusBar runways={runways} />
-            <RunwayThroughputChart runways={runways} />
+        {bottomExpanded && (
+          <div className="px-3 pb-3 space-y-3">
+            <FlightStats flights={flightList} />
+            {runways.length > 0 && (
+              <div className="grid grid-cols-2 gap-3">
+                <RunwayStatusBar runways={runways} />
+                <RunwayThroughputChart runways={runways} />
+              </div>
+            )}
           </div>
         )}
       </div>

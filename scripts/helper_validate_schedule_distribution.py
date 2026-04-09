@@ -9,7 +9,6 @@ Usage:
     python3 scripts/helper_validate_schedule_distribution.py
 """
 
-import sys
 from collections import Counter
 from datetime import date, datetime, time, timedelta
 
@@ -102,7 +101,6 @@ def main():
     # Arrivals distribution (paired 90 min before departure)
     arr_hours: Counter[int] = Counter()
     for slot in slots:
-        from datetime import timedelta, time as dt_time
         arr = slot - timedelta(minutes=90)
         if arr.hour < 4:
             arr = arr.replace(hour=4, minute=0)
