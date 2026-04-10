@@ -1,5 +1,7 @@
 # Arthur International Airport — Digital Twin
 
+![CI](https://github.com/arthur-airport/arthur-airport/actions/workflows/ci.yml/badge.svg)
+
 > **IATA:** `ART` · **ICAO:** `KART` · **Location:** fictional mid-size hub
 > **Throughput:** ~18M passengers/year · **Runways:** 2 (09L/27R · 09R/27L) · **Terminals:** 3 (A, B, C)
 

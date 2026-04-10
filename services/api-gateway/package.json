@@ -8,6 +8,11 @@
     "dev": "ts-node src/index.ts"
   },
   "dependencies": {
+    "@opentelemetry/auto-instrumentations-node": "^0.46.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.51.0",
+    "@opentelemetry/resources": "^1.24.0",
+    "@opentelemetry/sdk-node": "^0.51.0",
+    "@opentelemetry/semantic-conventions": "^1.24.0",
     "express": "^5.0.1",
     "express-rate-limit": "^7.5.0",
     "http-proxy-middleware": "^3.0.0",

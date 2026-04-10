@@ -65,6 +65,16 @@ def _produce_event(
         "payload": payload,
     }
 
+    # P6-1: Inject OpenTelemetry trace context into envelope
+    try:
+        from _tracing import get_trace_context
+        ctx = get_trace_context()
+        if ctx.get("trace_id"):
+            envelope["trace_id"] = ctx["trace_id"]
+            envelope["span_id"] = ctx["span_id"]
+    except Exception:
+        pass
+
     _producer.produce(
         topic=TOPIC,
         key=key.encode("utf-8") if key else None,

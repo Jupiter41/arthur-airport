@@ -79,3 +79,22 @@ groups:
           severity: critical
         annotations:
           summary: "Upstream service {{ $labels.service }} returning errors"
+
+  - name: performance
+    rules:
+      - alert: TickBudgetExceeded
+        expr: service_tick_budget_utilisation_pct > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} consuming > 80% of tick budget for > 10 minutes"
+          description: "Current utilisation: {{ $value }}%. Service may not keep up at current simulation speed."
+
+      - alert: TickBudgetCritical
+        expr: service_tick_budget_utilisation_pct > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} consuming > 95% of tick budget — simulation falling behind"

@@ -478,12 +478,12 @@ propagation of disruptions across the entire aviation system.
 
 ### _Production-grade reliability and deep system introspection_
 
-- [ ] **P6-1** — Add distributed tracing with OpenTelemetry: instrument all FastAPI services and the Node.js gateway. Export traces to Jaeger. Each Kafka event carries a `trace_id` in its envelope, enabling end-to-end trace from `SimClockTick` through all downstream effects.
-- [ ] **P6-2** — Add structured logging with Loki: replace `print()` and standard `logging` with structlog producing JSON log lines. Ship to Grafana Loki. Add a Grafana Explore panel for log-to-trace correlation.
-- [ ] **P6-3** — Add a simulation performance profiler: measure and report the real-time processing budget consumed by each service per tick. Alert if any service consumes > 80% of the available real-time budget at the current speed.
-- [ ] **P6-4** — Implement Kubernetes manifests: `k8s/` directory with Deployment, Service, ConfigMap, and HorizontalPodAutoscaler manifests for all services. Target: `kubectl apply -f k8s/` deploys the full stack.
-- [ ] **P6-5** — Add a CI/CD pipeline: GitHub Actions workflow running lint, unit tests, integration tests (against real Neo4j + Kafka containers), and docker-compose build on every PR. Badge on README.
-- [ ] **P6-6** — Add load testing: a `tests/load/` directory with k6 scripts simulating 100 concurrent WebSocket connections and 1,000 REST requests/minute to the API gateway. Document the performance envelope.
+- [x] **P6-1** — Add distributed tracing with OpenTelemetry: instrument all FastAPI services and the Node.js gateway. Export traces to Jaeger. Each Kafka event carries a `trace_id` in its envelope, enabling end-to-end trace from `SimClockTick` through all downstream effects.
+- [x] **P6-2** — Add structured logging with Loki: replace `print()` and standard `logging` with structlog producing JSON log lines. Ship to Grafana Loki. Add a Grafana Explore panel for log-to-trace correlation.
+- [x] **P6-3** — Add a simulation performance profiler: measure and report the real-time processing budget consumed by each service per tick. Alert if any service consumes > 80% of the available real-time budget at the current speed.
+- [x] **P6-4** — Implement Kubernetes manifests: `k8s/` directory with Deployment, Service, ConfigMap, and HorizontalPodAutoscaler manifests for all services. Target: `kubectl apply -f k8s/` deploys the full stack.
+- [x] **P6-5** — Add a CI/CD pipeline: GitHub Actions workflow running lint, unit tests, integration tests (against real Neo4j + Kafka containers), and docker-compose build on every PR. Badge on README.
+- [x] **P6-6** — Add load testing: a `tests/load/` directory with k6 scripts simulating 100 concurrent WebSocket connections and 1,000 REST requests/minute to the API gateway. Document the performance envelope.
 
 ---
 

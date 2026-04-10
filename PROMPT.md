@@ -24,4 +24,6 @@ Before doing any edit, do this:
 
 Your mission is to:
 
-- Implement phase 5. For any LLM use etc., either use a good free option or write the logic yourself. If the user need to provide an API key, precise it in the instructions and ask them to put it in a .env file or something like that. You can ask it in chat if you need me to provide you with an API key for testing.
+- Add a ML.md file at the root of the project with a summary of all the ML related features in the project, and how they work together (including LLM route). Precise how to use them etc.
+- One noted follow-up: The \_profiler.py module's tick_timer() context manager is deployed to all services but not yet wired into the actual SimClockTick consumer handlers in kafka/consumer.py. The /perf endpoint works, but tick-level metrics will only populate once consumers wrap their processing with with tick_timer():.
+- Implement phase 6

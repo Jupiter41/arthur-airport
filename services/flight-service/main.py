@@ -7,26 +7,26 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from db.neo4j import (
+from _logging import setup_logging
+
+setup_logging("flight-service")
+
+from db.neo4j import (  # noqa: E402
     check_neo4j,
     close_neo4j,
     create_constraints_and_indexes,
     migrate_flight_properties,
     wait_for_neo4j,
 )
-from kafka.consumer import run_consumer, stop_consumer, is_consumer_running, set_ws_broadcast, _state as consumer_state
-from kafka.producer import (
+from kafka.consumer import run_consumer, stop_consumer, is_consumer_running, set_ws_broadcast, _state as consumer_state  # noqa: E402
+from kafka.producer import (  # noqa: E402
     check_kafka,
     close_kafka_producer,
     init_kafka_producer,
     wait_for_kafka,
 )
-from routers.flights import router as flights_router
+from routers.flights import router as flights_router  # noqa: E402
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-)
 logger = logging.getLogger("flight-service")
 
 # --- WebSocket connection manager ---
@@ -102,10 +102,15 @@ async def lifespan(app: FastAPI):
         get_adsb_cache().stop()
     close_kafka_producer()
     await close_neo4j()
+    from _tracing import shutdown_tracing
+    shutdown_tracing()
     logger.info("flight-service shutdown complete")
 
 
 app = FastAPI(title="flight-service", lifespan=lifespan)
+
+from _tracing import init_tracing  # noqa: E402
+init_tracing(app, "flight-service")
 
 Instrumentator().instrument(app).expose(app)
 
@@ -149,6 +154,13 @@ async def websocket_flights(ws: WebSocket):
 async def health():
     """Liveness probe — always returns 200 if the process is running."""
     return {"status": "ok"}
+
+
+@app.get("/perf")
+async def perf():
+    """P6-3: Tick processing performance stats."""
+    from _profiler import get_perf_stats
+    return get_perf_stats()
 
 
 @app.get("/ready")

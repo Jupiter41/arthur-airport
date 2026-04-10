@@ -10,6 +10,8 @@ x-python-service: &python-service
     NEO4J_PASSWORD: art-digital-twin
     KAFKA_BROKERS: kafka:9092
     LOG_LEVEL: INFO
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    OTEL_ENABLED: "true"
 
 services:
   # ─── Infrastructure ────────────────────────────────────────────
@@ -341,6 +343,8 @@ services:
       SIM_ORCHESTRATOR_URL: http://sim-orchestrator:8006
       ANALYSIS_SERVICE_URL: http://analysis-service:8007
       NODE_ENV: development
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: api-gateway
     depends_on:
       kafka:
         condition: service_healthy
@@ -371,6 +375,39 @@ services:
         condition: service_healthy
 
   # ─── Observability ─────────────────────────────────────────────
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.55
+    restart: unless-stopped
+    networks: [art-net]
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4318:4318" # OTLP HTTP receiver
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  loki:
+    image: grafana/loki:2.9.4
+    restart: unless-stopped
+    networks: [art-net]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infra/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:2.9.4
+    restart: unless-stopped
+    networks: [art-net]
+    volumes:
+      - ./infra/promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - loki
 
   prometheus:
     image: prom/prometheus:v2.51.0
@@ -427,3 +464,4 @@ volumes:
   kafka-data:
   prometheus-data:
   grafana-data:
+  loki-data:

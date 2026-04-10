@@ -1,0 +1,659 @@
+# Domain service Deployments + Services + HPAs
+# All services follow the same pattern: Deployment + ClusterIP Service + HPA
+
+---
+# flight-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flight-service
+  namespace: arthur-airport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flight-service
+  template:
+    metadata:
+      labels:
+        app: flight-service
+    spec:
+      containers:
+        - name: flight-service
+          image: arthur-airport/flight-service:latest
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "flight-service"
+            - name: ADSB_ENABLED
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flight-service
+  namespace: arthur-airport
+spec:
+  selector:
+    app: flight-service
+  ports:
+    - port: 8001
+      targetPort: 8001
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flight-service
+  namespace: arthur-airport
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flight-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# passenger-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: passenger-service
+  namespace: arthur-airport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: passenger-service
+  template:
+    metadata:
+      labels:
+        app: passenger-service
+    spec:
+      containers:
+        - name: passenger-service
+          image: arthur-airport/passenger-service:latest
+          ports:
+            - containerPort: 8002
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "passenger-service"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 150m
+              memory: 384Mi
+            limits:
+              cpu: 750m
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: passenger-service
+  namespace: arthur-airport
+spec:
+  selector:
+    app: passenger-service
+  ports:
+    - port: 8002
+      targetPort: 8002
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: passenger-service
+  namespace: arthur-airport
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: passenger-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# baggage-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baggage-service
+  namespace: arthur-airport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: baggage-service
+  template:
+    metadata:
+      labels:
+        app: baggage-service
+    spec:
+      containers:
+        - name: baggage-service
+          image: arthur-airport/baggage-service:latest
+          ports:
+            - containerPort: 8003
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "baggage-service"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8003
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: baggage-service
+  namespace: arthur-airport
+spec:
+  selector:
+    app: baggage-service
+  ports:
+    - port: 8003
+      targetPort: 8003
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: baggage-service
+  namespace: arthur-airport
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: baggage-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# weather-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-service
+  namespace: arthur-airport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: weather-service
+  template:
+    metadata:
+      labels:
+        app: weather-service
+    spec:
+      containers:
+        - name: weather-service
+          image: arthur-airport/weather-service:latest
+          ports:
+            - containerPort: 8004
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "weather-service"
+            - name: WEATHER_SOURCE
+              value: "simulated"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: weather-service
+  namespace: arthur-airport
+spec:
+  selector:
+    app: weather-service
+  ports:
+    - port: 8004
+      targetPort: 8004
+
+---
+# incident-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-service
+  namespace: arthur-airport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: incident-service
+  template:
+    metadata:
+      labels:
+        app: incident-service
+    spec:
+      containers:
+        - name: incident-service
+          image: arthur-airport/incident-service:latest
+          ports:
+            - containerPort: 8005
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "incident-service"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8005
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8005
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: incident-service
+  namespace: arthur-airport
+spec:
+  selector:
+    app: incident-service
+  ports:
+    - port: 8005
+      targetPort: 8005
+
+---
+# sim-orchestrator
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sim-orchestrator
+  namespace: arthur-airport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sim-orchestrator
+  template:
+    metadata:
+      labels:
+        app: sim-orchestrator
+    spec:
+      containers:
+        - name: sim-orchestrator
+          image: arthur-airport/sim-orchestrator:latest
+          ports:
+            - containerPort: 8006
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "sim-orchestrator"
+            - name: SIM_SPEED_MULTIPLIER
+              value: "60"
+            - name: SIM_START_TIME
+              value: "2024-06-15T06:00:00Z"
+            - name: DAILY_FLIGHT_TARGET
+              value: "420"
+            - name: DAILY_LOAD_FACTOR_MEAN
+              value: "0.80"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8006
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8006
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 384Mi
+            limits:
+              cpu: 1000m
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sim-orchestrator
+  namespace: arthur-airport
+spec:
+  selector:
+    app: sim-orchestrator
+  ports:
+    - port: 8006
+      targetPort: 8006
+
+---
+# analysis-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analysis-service
+  namespace: arthur-airport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analysis-service
+  template:
+    metadata:
+      labels:
+        app: analysis-service
+    spec:
+      containers:
+        - name: analysis-service
+          image: arthur-airport/analysis-service:latest
+          ports:
+            - containerPort: 8007
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "analysis-service"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8007
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8007
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analysis-service
+  namespace: arthur-airport
+spec:
+  selector:
+    app: analysis-service
+  ports:
+    - port: 8007
+      targetPort: 8007
+
+---
+# api-gateway
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: arthur-airport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: arthur-airport/api-gateway:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: PORT
+              value: "3000"
+            - name: OTEL_SERVICE_NAME
+              value: "api-gateway"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger:4318"
+            - name: KAFKA_GROUP_ID
+              value: "api-gateway"
+            - name: FLIGHT_SERVICE_URL
+              value: "http://flight-service:8001"
+            - name: PASSENGER_SERVICE_URL
+              value: "http://passenger-service:8002"
+            - name: BAGGAGE_SERVICE_URL
+              value: "http://baggage-service:8003"
+            - name: WEATHER_SERVICE_URL
+              value: "http://weather-service:8004"
+            - name: INCIDENT_SERVICE_URL
+              value: "http://incident-service:8005"
+            - name: SIM_ORCHESTRATOR_URL
+              value: "http://sim-orchestrator:8006"
+            - name: ANALYSIS_SERVICE_URL
+              value: "http://analysis-service:8007"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: arthur-airport
+spec:
+  type: LoadBalancer
+  selector:
+    app: api-gateway
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway
+  namespace: arthur-airport
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# dashboard
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: arthur-airport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: arthur-airport/dashboard:latest
+          ports:
+            - containerPort: 5173
+          env:
+            - name: VITE_API_BASE_URL
+              value: "http://api-gateway:3000"
+            - name: VITE_WS_URL
+              value: "ws://api-gateway:3000/ws"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: arthur-airport
+spec:
+  type: LoadBalancer
+  selector:
+    app: dashboard
+  ports:
+    - port: 5173
+      targetPort: 5173

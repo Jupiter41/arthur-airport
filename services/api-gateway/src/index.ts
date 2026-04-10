@@ -1,3 +1,6 @@
+// P6-1: OpenTelemetry must be imported before all other modules
+import { shutdownTracing } from "./tracing";
+
 import express, { Request, Response } from "express";
 import { createServer } from "http";
 import client from "prom-client";
@@ -104,6 +107,7 @@ server.listen(PORT, "0.0.0.0", async () => {
 async function shutdown(): Promise<void> {
   console.log("[Gateway] Shutting down...");
   await shutdownKafka();
+  await shutdownTracing();
   server.close();
   process.exit(0);
 }

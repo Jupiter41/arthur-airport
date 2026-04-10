@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -20,12 +19,12 @@ from kafka.producer import (
     init_kafka_producer,
     wait_for_kafka,
 )
-from routers.incidents import router as incidents_router
+from _logging import setup_logging
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-)
+setup_logging("incident-service")
+
+from routers.incidents import router as incidents_router  # noqa: E402
+
 logger = logging.getLogger("incident-service")
 
 # --- WebSocket connection manager ---
@@ -78,10 +77,15 @@ async def lifespan(app: FastAPI):
     stop_consumer()
     close_kafka_producer()
     await close_neo4j()
+    from _tracing import shutdown_tracing
+    shutdown_tracing()
     logger.info("incident-service shutdown complete")
 
 
 app = FastAPI(title="incident-service", lifespan=lifespan)
+
+from _tracing import init_tracing  # noqa: E402
+init_tracing(app, "incident-service")
 
 Instrumentator().instrument(app).expose(app)
 
@@ -117,6 +121,13 @@ async def websocket_incidents(ws: WebSocket):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/perf")
+async def perf():
+    """P6-3: Tick processing performance stats."""
+    from _profiler import get_perf_stats
+    return get_perf_stats()
 
 
 @app.get("/ready")
