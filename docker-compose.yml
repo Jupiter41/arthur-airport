@@ -297,6 +297,18 @@ services:
     build: ./services/analysis-service
     ports:
       - "8007:8007"
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: art-digital-twin
+      KAFKA_BROKERS: kafka:9092
+      LOG_LEVEL: INFO
+      # Phase 5: LLM configuration (optional — template fallback if not set)
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      # Phase 5: RL model path
+      RL_MODEL_PATH: ${RL_MODEL_PATH:-/app/models/rl_policy.zip}
     depends_on:
       neo4j:
         condition: service_healthy

@@ -6,7 +6,13 @@ if its confidence score exceeds the configured threshold.
 Safety guards prevent autonomous application of destructive actions
 (flight cancellation, runway closure, terminal evacuation).
 
-P2-4-1 through P2-4-4.
+Modes (P5-1-5):
+  - off: No autonomous actions
+  - rule_based: Apply all recommendations meeting threshold
+  - threshold: Apply top recommendation only if confidence > threshold
+  - rl_agent: Use trained PPO policy to select actions
+
+P2-4-1 through P2-4-4, P5-1-5.
 """
 
 from __future__ import annotations
@@ -175,3 +181,66 @@ def record_outcome(
             entry["actual_outcome"] = actual_outcome
             entry["outcome_measured_at"] = sim_time.isoformat()
             break
+
+
+def evaluate_rl_agent(
+    state,
+    sim_time: datetime,
+) -> list[dict]:
+    """P5-1-5: Use trained RL agent to select and apply an action.
+
+    Called when autonomous mode is 'rl_agent'. Uses the PPO policy
+    to predict an action from the current observation, then logs it.
+    """
+    from services.rl.agent import is_loaded, predict_action, get_action_name, load_policy
+    from services.rl.env import AirportOpsEnv, state_from_operational
+
+    # Lazy-load RL policy
+    if not is_loaded():
+        if not load_policy():
+            logger.warning("RL agent requested but no model available")
+            return []
+
+    # Convert operational state to RL observation
+    try:
+        state_dict = state_from_operational(state)
+        env = AirportOpsEnv(initial_state=state_dict)
+        obs, _ = env.reset(options={"state": state_dict})
+
+        action_idx, confidence = predict_action(obs)
+        action_name = get_action_name(action_idx)
+
+        if action_idx == 0:  # no_action
+            return []
+
+        if confidence < _settings.confidence_threshold:
+            logger.debug(
+                "RL agent: confidence %.2f < threshold %.2f for %s",
+                confidence, _settings.confidence_threshold, action_name,
+            )
+            return []
+
+        log_entry = {
+            "id": f"rl-{uuid4().hex[:12]}",
+            "action_type": action_name,
+            "action_index": action_idx,
+            "description": f"RL agent selected: {action_name}",
+            "confidence_score": confidence,
+            "applied_at": sim_time.isoformat(),
+            "mode": "rl_agent",
+            "actual_outcome": None,
+            "outcome_measured_at": None,
+        }
+        _action_log.append(log_entry)
+        if len(_action_log) > MAX_ACTION_LOG:
+            _action_log.pop(0)
+
+        logger.info(
+            "RL agent: applied %s (confidence=%.2f)",
+            action_name, confidence,
+        )
+        return [log_entry]
+
+    except Exception:
+        logger.exception("RL agent evaluation failed")
+        return []

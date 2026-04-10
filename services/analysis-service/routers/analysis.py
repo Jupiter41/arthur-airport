@@ -8,6 +8,13 @@ Endpoints:
   GET  /api/v1/analysis/autonomous       → P2-4-1 (get settings)
   PATCH /api/v1/analysis/autonomous      → P2-4-1 (update settings)
   GET  /api/v1/analysis/autonomous/log   → P2-4-2
+  GET  /api/v1/analysis/anomalies        → P5-3-1
+  POST /api/v1/analysis/query            → P5-2-1
+  POST /api/v1/analysis/nl-inject        → P5-2-2
+  GET  /api/v1/analysis/narration        → P5-2-3
+  PATCH /api/v1/analysis/narration       → P5-2-3 (toggle)
+  POST /api/v1/analysis/report           → P5-2-4
+  GET  /api/v1/analysis/llm-config       → LLM status
 """
 
 import logging
@@ -29,6 +36,12 @@ from models.domain import (
 )
 from services.autonomous import get_action_log, get_settings, update_settings
 from services.whatif import get_analysis_log, run_what_if
+from services.anomaly import detector as anomaly_detector
+from services.nlp.query import query as nl_query
+from services.nlp.inject import parse_incident_command
+from services.nlp.narration import narration as narration_engine
+from services.nlp.report import generate_report
+from services.nlp.llm import get_config as get_llm_config
 
 logger = logging.getLogger(__name__)
 
@@ -156,3 +169,146 @@ async def autonomous_action_log(
         "actions": list(reversed(log))[:limit],
         "total": len(log),
     }
+
+
+# ── P5-3-1: Anomaly detection ───────────────────────────────
+
+
+@router.get("/anomalies")
+async def get_anomalies() -> dict[str, Any]:
+    """Return current anomaly detection status and deviations from baseline.
+
+    P5-3-1: Isolation forest scoring with z-scores per metric.
+    P5-3-3: Root cause trace for detected anomalies.
+    """
+    status = anomaly_detector.get_status()
+    return {
+        **status,
+        "sim_time": (
+            get_state().sim_time.isoformat() if get_state().sim_time else None
+        ),
+    }
+
+
+# ── P5-2-1: Natural language query ──────────────────────────
+
+
+@router.post("/query")
+async def natural_language_query(
+    body: dict[str, Any],
+) -> dict[str, Any]:
+    """Answer a natural language question about the current airport state.
+
+    Body: {"question": "How many flights are delayed?"}
+    """
+    question = body.get("question", "")
+    if not question:
+        return {"error": "Missing 'question' field"}
+
+    state = get_state()
+    bottlenecks = [
+        bn.model_dump(mode="json")
+        for bn in get_active_bottlenecks().values()
+        if bn.resolved_at is None
+    ]
+    recommendations = [
+        r.model_dump(mode="json")
+        for r in get_active_recommendations()
+    ]
+
+    return await nl_query(question, state, bottlenecks, recommendations)
+
+
+# ── P5-2-2: Natural language incident injection ──────────────
+
+
+@router.post("/nl-inject")
+async def nl_incident_inject(
+    body: dict[str, Any],
+) -> dict[str, Any]:
+    """Parse a natural language incident injection command.
+
+    Body: {"command": "Inject a severe security breach in Terminal B"}
+    Returns the structured incident payload ready for injection.
+    """
+    command = body.get("command", "")
+    if not command:
+        return {"error": "Missing 'command' field"}
+
+    return await parse_incident_command(command)
+
+
+# ── P5-2-3: Simulation narration ────────────────────────────
+
+
+@router.get("/narration")
+async def get_narration(
+    limit: int = Query(20, ge=1, le=100),
+) -> dict[str, Any]:
+    """Return narration settings and recent narration history."""
+    return {
+        "settings": narration_engine.get_settings(),
+        "history": narration_engine.get_history(limit),
+    }
+
+
+@router.patch("/narration")
+async def update_narration(
+    body: dict[str, Any],
+) -> dict[str, Any]:
+    """Toggle narration mode on/off and update settings.
+
+    Body: {"enabled": true, "interval_minutes": 5}
+    """
+    if "enabled" in body:
+        narration_engine.enabled = bool(body["enabled"])
+    if "interval_minutes" in body:
+        narration_engine._interval = max(1, min(30, int(body["interval_minutes"])))
+    return {"settings": narration_engine.get_settings()}
+
+
+# ── P5-2-4: After-action report ─────────────────────────────
+
+
+@router.post("/report")
+async def after_action_report(
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Generate an after-action report for the current simulation state.
+
+    Optional body: {"scenario_name": "Peak hour stress test"}
+    """
+    scenario_name = body.get("scenario_name") if body else None
+
+    state = get_state()
+    bottleneck_history = [
+        bn.model_dump(mode="json")
+        for bn in get_active_bottlenecks().values()
+    ]
+    recommendation_history = [
+        r.model_dump(mode="json")
+        for r in get_active_recommendations()
+    ]
+    autonomous_log = get_action_log()
+    whatif_log = [
+        entry.model_dump(mode="json")
+        for entry in get_analysis_log()
+    ]
+
+    return await generate_report(
+        state,
+        bottleneck_history=bottleneck_history,
+        recommendation_history=recommendation_history,
+        autonomous_log=autonomous_log,
+        whatif_log=whatif_log,
+        scenario_name=scenario_name,
+    )
+
+
+# ── LLM configuration status ────────────────────────────────
+
+
+@router.get("/llm-config")
+async def llm_config() -> dict[str, Any]:
+    """Return current LLM configuration and availability."""
+    return get_llm_config()

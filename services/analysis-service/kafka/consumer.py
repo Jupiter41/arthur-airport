@@ -23,12 +23,16 @@ from models.domain import Bottleneck
 from services.state import OperationalState
 from services.detectors import check_resolved, detect_all
 from services.recommender import generate_recommendations
-from services.autonomous import evaluate_and_apply, should_evaluate
+from services.autonomous import evaluate_and_apply, evaluate_rl_agent, should_evaluate, get_settings as get_autonomous_settings
+from services.anomaly import detector as anomaly_detector
+from services.nlp.narration import narration as narration_engine
 from kafka.producer import (
     emit_bottleneck_detected,
     emit_bottleneck_resolved,
     emit_recommendation_generated,
     emit_autonomous_action,
+    emit_anomaly_detected,
+    emit_narration_generated,
 )
 from db.neo4j import query_connection_clusters
 from metrics import (
@@ -38,6 +42,9 @@ from metrics import (
     autonomous_actions_total,
     consumer_lag,
     envelope_invalid_total,
+    anomaly_score,
+    anomaly_status,
+    anomaly_feature_zscore,
 )
 
 logger = logging.getLogger(__name__)
@@ -187,6 +194,71 @@ def _dispatch_event(
         except Exception:
             logger.exception("Error handling event %s", event_type)
 
+    # Record event for anomaly root cause analysis (P5-3-3)
+    if event_type != "SimClockTick" and state.sim_time:
+        summary = _event_summary(event_type, payload)
+        anomaly_detector.record_event(event_type, state.sim_time, summary)
+
+        # Record for narration (P5-2-3)
+        significance = _event_significance(event_type, payload)
+        if significance > 0:
+            narration_engine.record_event(
+                event_type, state.sim_time, summary, significance,
+            )
+
+
+def _event_summary(event_type: str, payload: dict) -> str:
+    """Build a short summary string for a Kafka event (anomaly root cause)."""
+    if event_type == "FlightStatusChanged":
+        return (
+            f"Flight {payload.get('flight_id', '?')[:8]} → "
+            f"{payload.get('new_status', '?')} "
+            f"(delay={payload.get('delay_minutes', 0)}min)"
+        )
+    if event_type == "IncidentCreated":
+        return (
+            f"Incident {payload.get('type', '?')} "
+            f"severity={payload.get('severity', '?')} "
+            f"at {payload.get('location', '?')}"
+        )
+    if event_type == "WeatherStateChanged":
+        return f"Weather → {payload.get('category', '?')}"
+    if event_type == "SecurityCongestionDetected":
+        return (
+            f"Security congestion {payload.get('terminal', '?')} "
+            f"queue={payload.get('queue_depth', 0)}"
+        )
+    return event_type
+
+
+def _event_significance(event_type: str, payload: dict) -> int:
+    """Determine significance level for narration (0=skip, 1=routine, 2=notable, 3=critical)."""
+    if event_type == "IncidentCreated":
+        severity = payload.get("severity", "")
+        if severity in ("critical", "high"):
+            return 3
+        return 2
+    if event_type == "FlightStatusChanged":
+        new_status = payload.get("new_status", "")
+        delay = payload.get("delay_minutes", 0)
+        if new_status == "cancelled":
+            return 3
+        if delay > 30:
+            return 2
+        if delay > 10:
+            return 1
+        return 0
+    if event_type == "WeatherStateChanged":
+        category = payload.get("category", "")
+        if category in ("LIFR", "IMC"):
+            return 2
+        return 1
+    if event_type == "SecurityCongestionDetected":
+        return 2
+    if event_type in ("FlightCTOTAssigned", "MinimumFuelWarning"):
+        return 2
+    return 0
+
 
 async def _on_tick(payload: dict) -> None:
     """Run bottleneck detection and recommendation generation on each tick."""
@@ -251,13 +323,55 @@ async def _on_tick(payload: dict) -> None:
         active_recommendations = []
 
     # Autonomous mode evaluation
-    if should_evaluate(now) and active_recommendations:
-        actions = evaluate_and_apply(active_recommendations, now)
+    if should_evaluate(now):
+        auto_settings = get_autonomous_settings()
+        actions = []
+
+        if auto_settings.mode.value == "rl_agent":
+            # P5-1-5: Use RL agent
+            actions = evaluate_rl_agent(state, now)
+        elif active_recommendations:
+            # Rule-based / threshold mode
+            actions = evaluate_and_apply(active_recommendations, now)
+
         for action in actions:
             emit_autonomous_action(action, now)
             autonomous_actions_total.labels(
                 action_type=action.get("action_type", ""),
             ).inc()
+
+    # P5-3-1: Anomaly detection
+    anomaly_result = anomaly_detector.on_tick(
+        state, active_bottleneck_count=len(active_bottlenecks),
+    )
+    if anomaly_result:
+        # P5-3-2: Update Prometheus metrics
+        anomaly_score.set(anomaly_result.score)
+        status_val = {"normal": 0, "amber": 1, "red": 2}.get(
+            anomaly_result.status, 0,
+        )
+        anomaly_status.set(status_val)
+        for feat, z in anomaly_result.z_scores.items():
+            anomaly_feature_zscore.labels(feature=feat).set(z)
+
+        # Emit anomaly event for non-normal status
+        if anomaly_result.status != "normal":
+            emit_anomaly_detected(
+                {
+                    "score": anomaly_result.score,
+                    "normalized_score": anomaly_result.normalized_score,
+                    "status": anomaly_result.status,
+                    "root_cause": anomaly_result.root_cause,
+                    "root_cause_feature": anomaly_result.root_cause_feature,
+                    "z_scores": anomaly_result.z_scores,
+                },
+                now,
+            )
+
+    # P5-2-3: Narration generation
+    narration_entry = await narration_engine.on_tick(state)
+    if narration_entry:
+        emit_narration_generated(narration_entry, now)
 
     # Broadcast to WebSocket clients
     if _ws_broadcast and (new_bottlenecks or resolved_ids or active_recommendations):

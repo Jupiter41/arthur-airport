@@ -450,27 +450,27 @@ propagation of disruptions across the entire aviation system.
 
 ### 5.1 — Reinforcement learning for operations optimisation
 
-- [ ] **P5-1-1** — Define the RL environment: state space (queue depths, gate utilisation, weather category, active incidents), action space (open lane, reassign gate, hold flight, issue GDP), reward function (negative delay minutes + negative missed connections).
-- [ ] **P5-1-2** — Implement a `GymEnvironment` wrapper around the simulation engine using `gymnasium`. Each step advances the simulation by 1 sim-minute and returns the new state vector.
-- [ ] **P5-1-3** — Train a PPO (Proximal Policy Optimisation) agent using `stable-baselines3`. Training runs the simulation in BULK mode at 3600× to generate episodes quickly.
-- [ ] **P5-1-4** — Compare RL agent performance against: (a) no intervention baseline, (b) rule-based recommendation engine from Phase 2, (c) human operator in user study.
-- [ ] **P5-1-5** — Deploy the trained RL agent as a fourth option in the autonomous mode toggle (alongside off / rule-based / threshold).
+- [x] **P5-1-1** — Define the RL environment: state space (queue depths, gate utilisation, weather category, active incidents), action space (open lane, reassign gate, hold flight, issue GDP), reward function (negative delay minutes + negative missed connections).
+- [x] **P5-1-2** — Implement a `GymEnvironment` wrapper around the simulation engine using `gymnasium`. Each step advances the simulation by 1 sim-minute and returns the new state vector.
+- [x] **P5-1-3** — Train a PPO (Proximal Policy Optimisation) agent using `stable-baselines3`. Training runs the simulation in BULK mode at 3600× to generate episodes quickly.
+- [x] **P5-1-4** — Compare RL agent performance against: (a) no intervention baseline, (b) rule-based recommendation engine from Phase 2, (c) human operator in user study.
+- [x] **P5-1-5** — Deploy the trained RL agent as a fourth option in the autonomous mode toggle (alongside off / rule-based / threshold).
 
 ### 5.2 — Natural language operations interface
 
-- [ ] **P5-2-1** — Add a natural language query endpoint `POST /query`: accepts plain English questions about the current simulation state and returns structured answers. Powered by an LLM with the current airport state as context.
+- [x] **P5-2-1** — Add a natural language query endpoint `POST /query`: accepts plain English questions about the current simulation state and returns structured answers. Powered by an LLM with the current airport state as context.
   - "How many flights are delayed and what is the main cause?"
   - "Which connecting passengers are most at risk right now?"
   - "What would happen if I closed runway 09L for 20 minutes?"
-- [ ] **P5-2-2** — Add a natural language incident injection: "Inject a severe security breach in Terminal B affecting gate B07" → parses intent → calls `POST /incidents/inject` with the correct parameters.
-- [ ] **P5-2-3** — Add a simulation narration mode: the LLM generates a real-time running commentary of significant events ("At 08:32, flight AX412 entered the holding stack due to runway capacity constraints. This is the third holding event this hour..."). Displayed as a scrolling text feed in the dashboard.
-- [ ] **P5-2-4** — Add an after-action report generator: at the end of a scenario run, generate a 2-page natural language summary of what happened, what interventions were applied, and what could have been done differently.
+- [x] **P5-2-2** — Add a natural language incident injection: "Inject a severe security breach in Terminal B affecting gate B07" → parses intent → calls `POST /incidents/inject` with the correct parameters.
+- [x] **P5-2-3** — Add a simulation narration mode: the LLM generates a real-time running commentary of significant events ("At 08:32, flight AX412 entered the holding stack due to runway capacity constraints. This is the third holding event this hour..."). Displayed as a scrolling text feed in the dashboard.
+- [x] **P5-2-4** — Add an after-action report generator: at the end of a scenario run, generate a 2-page natural language summary of what happened, what interventions were applied, and what could have been done differently.
 
 ### 5.3 — Anomaly detection
 
-- [ ] **P5-3-1** — Train an isolation forest on normal simulation metrics (queue depths, conveyor throughput, delay rates) to define a baseline. Deploy as a `GET /analysis/anomalies` endpoint returning current deviations from baseline with z-scores.
-- [ ] **P5-3-2** — Add anomaly indicators to Grafana: red/amber/green status per service based on isolation forest score. Alert when any service deviates more than 3σ from baseline.
-- [ ] **P5-3-3** — Add a "root cause" trace for each anomaly: walk the Kafka event log backwards from the anomaly timestamp to identify the originating event that triggered the deviation.
+- [x] **P5-3-1** — Train an isolation forest on normal simulation metrics (queue depths, conveyor throughput, delay rates) to define a baseline. Deploy as a `GET /analysis/anomalies` endpoint returning current deviations from baseline with z-scores.
+- [x] **P5-3-2** — Add anomaly indicators to Grafana: red/amber/green status per service based on isolation forest score. Alert when any service deviates more than 3σ from baseline.
+- [x] **P5-3-3** — Add a "root cause" trace for each anomaly: walk the Kafka event log backwards from the anomaly timestamp to identify the originating event that triggered the deviation.
 
 ---
 

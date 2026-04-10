@@ -140,3 +140,23 @@ def emit_autonomous_action(action: dict, sim_time: datetime) -> None:
         action,
         key=action.get("id", ""),
     )
+
+
+def emit_anomaly_detected(anomaly: dict, sim_time: datetime) -> None:
+    """Emit AnomalyDetected event (P5-3-1)."""
+    _produce_event(
+        "AnomalyDetected",
+        sim_time,
+        anomaly,
+        key="anomaly",
+    )
+
+
+def emit_narration_generated(narration: dict, sim_time: datetime) -> None:
+    """Emit NarrationGenerated event (P5-2-3)."""
+    _produce_event(
+        "NarrationGenerated",
+        sim_time,
+        narration,
+        key="narration",
+    )

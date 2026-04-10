@@ -614,8 +614,11 @@ export default function SettingsPage() {
 
 /* ──────── Autonomous Operations Panel (P2-4-1) ──────── */
 
+type AutonomousMode = "off" | "rule_based" | "threshold" | "rl_agent";
+
 interface AutonomousState {
   enabled: boolean;
+  mode: AutonomousMode;
   confidence_threshold: number;
   check_interval_sim_minutes: number;
   blocked_actions: string[];
@@ -690,11 +693,28 @@ function AutonomousSection() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Toggle
-          label="Autonomous Mode"
-          checked={localAuto.enabled}
-          onChange={(v) => setLocalAuto({ ...localAuto, enabled: v })}
-        />
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">
+            Autonomous Mode
+          </label>
+          <select
+            className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm text-white"
+            value={localAuto.mode ?? (localAuto.enabled ? "threshold" : "off")}
+            onChange={(e) => {
+              const mode = e.target.value as AutonomousMode;
+              setLocalAuto({
+                ...localAuto,
+                mode,
+                enabled: mode !== "off",
+              });
+            }}
+          >
+            <option value="off">Off</option>
+            <option value="rule_based">Rule-based</option>
+            <option value="threshold">Threshold</option>
+            <option value="rl_agent">RL Agent (PPO)</option>
+          </select>
+        </div>
         <NumberInput
           label="Confidence threshold"
           value={localAuto.confidence_threshold}
@@ -720,11 +740,14 @@ function AutonomousSection() {
       {localAuto.enabled && (
         <div className="bg-amber-900/20 border border-amber-600/30 rounded p-3">
           <p className="text-xs text-amber-300">
-            ⚠ Autonomous mode will auto-apply recommendations with confidence ≥{" "}
+            ⚠ Autonomous mode ({localAuto.mode ?? "threshold"}) will auto-apply
+            recommendations with confidence ≥{" "}
             {(localAuto.confidence_threshold * 100).toFixed(0)}% every{" "}
-            {localAuto.check_interval_sim_minutes} sim-minutes. Flight
-            cancellation, runway closure, and GDP actions always require human
-            confirmation.
+            {localAuto.check_interval_sim_minutes} sim-minutes.
+            {localAuto.mode === "rl_agent" &&
+              " RL agent uses a PPO-trained policy — ensure RL_MODEL_PATH is configured."}{" "}
+            Flight cancellation, runway closure, and GDP actions always require
+            human confirmation.
           </p>
         </div>
       )}

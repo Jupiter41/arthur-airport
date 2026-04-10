@@ -296,6 +296,38 @@ export const analysisApi = {
     apiFetch<{ actions: unknown[]; total: number }>(
       `/analysis/autonomous/log?limit=${limit}`,
     ),
+  // Phase 5: Anomaly detection (P5-3-1)
+  anomalies: () => apiFetch<unknown>("/analysis/anomalies"),
+  // Phase 5: Natural language query (P5-2-1)
+  query: (question: string) =>
+    apiFetch<{ answer: string; source: string; context_summary?: string }>(
+      "/analysis/query",
+      { method: "POST", body: JSON.stringify({ question }) },
+    ),
+  // Phase 5: Natural language incident injection (P5-2-2)
+  nlInject: (command: string) =>
+    apiFetch<unknown>("/analysis/nl-inject", {
+      method: "POST",
+      body: JSON.stringify({ command }),
+    }),
+  // Phase 5: Narration (P5-2-3)
+  narration: (limit = 20) =>
+    apiFetch<{ settings: unknown; history: unknown[] }>(
+      `/analysis/narration?limit=${limit}`,
+    ),
+  updateNarration: (body: Record<string, unknown>) =>
+    apiFetch<unknown>("/analysis/narration", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  // Phase 5: After-action report (P5-2-4)
+  generateReport: (scenarioName?: string) =>
+    apiFetch<{ report: string; source: string }>("/analysis/report", {
+      method: "POST",
+      body: JSON.stringify(scenarioName ? { scenario_name: scenarioName } : {}),
+    }),
+  // Phase 5: LLM config
+  llmConfig: () => apiFetch<unknown>("/analysis/llm-config"),
 };
 
 // ── Scenarios ──

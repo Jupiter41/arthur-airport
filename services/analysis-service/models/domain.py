@@ -158,9 +158,21 @@ class AnalysisLogEntry(BaseModel):
 # ── Autonomous Mode ──────────────────────────────────────────
 
 
+class AutonomousMode(str, Enum):
+    """P5-1-5: Autonomous mode options."""
+    OFF = "off"
+    RULE_BASED = "rule_based"
+    THRESHOLD = "threshold"
+    RL_AGENT = "rl_agent"
+
+
 class AutonomousSettings(BaseModel):
     """Configuration for autonomous operations mode."""
     enabled: bool = False
+    mode: AutonomousMode = Field(
+        default=AutonomousMode.THRESHOLD,
+        description="Autonomous decision mode: off, rule_based, threshold, rl_agent",
+    )
     confidence_threshold: float = Field(
         default=0.80, ge=0.5, le=1.0,
         description="Minimum confidence score to auto-apply",

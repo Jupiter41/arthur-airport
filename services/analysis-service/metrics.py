@@ -59,3 +59,21 @@ envelope_invalid_total = Counter(
     "analysis_envelope_invalid_total",
     "Invalid Kafka envelopes received",
 )
+
+# ── P5-3-2: Anomaly detection metrics ───────────────────────
+
+anomaly_score = Gauge(
+    "analysis_anomaly_score",
+    "Isolation forest anomaly score (negative = anomalous)",
+)
+
+anomaly_status = Gauge(
+    "analysis_anomaly_status",
+    "Anomaly status: 0=normal, 1=amber, 2=red",
+)
+
+anomaly_feature_zscore = Gauge(
+    "analysis_anomaly_feature_zscore",
+    "Per-feature z-score from anomaly detector",
+    ["feature"],
+)

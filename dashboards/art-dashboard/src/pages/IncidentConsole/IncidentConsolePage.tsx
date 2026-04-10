@@ -15,6 +15,13 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { ExportMenu } from "../../components/ExportMenu";
 import { exportData } from "../../utils/exportData";
 import WhatIfPanel from "./WhatIfPanel";
+import {
+  NLQueryPanel,
+  NLInjectPanel,
+  AnomalyPanel,
+  NarrationFeed,
+  ReportGenerator,
+} from "./Phase5Panels";
 import type { ExportFormat } from "../../utils/exportData";
 import type {
   Incident,
@@ -582,7 +589,9 @@ function RecommendationFeed({
         <div
           key={bn.id}
           className={`border-l-4 ${
-            bn.severity === "critical" ? "border-red-500 bg-red-900/20" : "border-amber-500 bg-amber-900/20"
+            bn.severity === "critical"
+              ? "border-red-500 bg-red-900/20"
+              : "border-amber-500 bg-amber-900/20"
           } rounded p-3`}
         >
           <div className="flex items-center justify-between">
@@ -593,7 +602,8 @@ function RecommendationFeed({
           </div>
           <div className="text-sm text-gray-300 mt-1">{bn.root_cause}</div>
           <div className="text-xs text-gray-400 mt-1">
-            {bn.affected_entity_count} affected · ~{bn.estimated_duration_minutes} min
+            {bn.affected_entity_count} affected · ~
+            {bn.estimated_duration_minutes} min
           </div>
         </div>
       ))}
@@ -604,7 +614,8 @@ function RecommendationFeed({
           key={rec.id}
           className={`ring-1 ${
             SEVERITY_RING[
-              bottlenecks.find((b) => b.id === rec.bottleneck_id)?.severity ?? "warning"
+              bottlenecks.find((b) => b.id === rec.bottleneck_id)?.severity ??
+                "warning"
             ] ?? "ring-gray-600"
           } bg-gray-800 rounded p-3`}
         >
@@ -612,13 +623,12 @@ function RecommendationFeed({
             <span className="text-sm text-white font-medium">
               {ACTION_ICON[rec.action_type] ?? "💡"} {rec.description}
             </span>
-            <span className="text-xs text-gray-400">
-              #{rec.priority_rank}
-            </span>
+            <span className="text-xs text-gray-400">#{rec.priority_rank}</span>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-gray-400">
             <div>
-              <span className="text-gray-400">Impact:</span> {rec.expected_impact}
+              <span className="text-gray-400">Impact:</span>{" "}
+              {rec.expected_impact}
             </div>
             <div>
               <span className="text-gray-400">Cost:</span> {rec.cost}
@@ -629,7 +639,11 @@ function RecommendationFeed({
               <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full ${
-                    rec.confidence_score >= 0.8 ? "bg-green-500" : rec.confidence_score >= 0.6 ? "bg-amber-500" : "bg-red-500"
+                    rec.confidence_score >= 0.8
+                      ? "bg-green-500"
+                      : rec.confidence_score >= 0.6
+                        ? "bg-amber-500"
+                        : "bg-red-500"
                   }`}
                   style={{ width: `${rec.confidence_score * 100}%` }}
                 />
@@ -812,6 +826,23 @@ export default function IncidentConsolePage() {
 
       {/* What-If Analysis (P2-3-3) */}
       <WhatIfPanel />
+
+      {/* ── Phase 5: Advanced ML & AI ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* P5-3-1: Anomaly Detection */}
+        <AnomalyPanel />
+        {/* P5-2-3: Live Narration */}
+        <NarrationFeed />
+      </div>
+
+      {/* P5-2-1: Natural Language Query */}
+      <NLQueryPanel />
+
+      {/* P5-2-2 + P5-2-4: NL Injection & Report */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <NLInjectPanel />
+        <ReportGenerator />
+      </div>
 
       {/* Resolved */}
       <ResolvedList
