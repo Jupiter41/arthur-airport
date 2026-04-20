@@ -3,6 +3,8 @@ kind: ConfigMap
 metadata:
   name: shared-config
   namespace: arthur-airport
+  labels:
+    app.kubernetes.io/part-of: arthur-airport
 data:
   NEO4J_URI: "bolt://neo4j:7687"
   NEO4J_USER: "neo4j"
@@ -16,7 +18,10 @@ kind: Secret
 metadata:
   name: shared-secrets
   namespace: arthur-airport
+  labels:
+    app.kubernetes.io/part-of: arthur-airport
 type: Opaque
 stringData:
   NEO4J_PASSWORD: "art-digital-twin"
   JWT_SECRET: "art-digital-twin-dev"
+  GRAFANA_PASSWORD: "art-grafana"

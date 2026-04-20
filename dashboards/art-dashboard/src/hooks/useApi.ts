@@ -330,6 +330,7 @@ export const analysisApi = {
   llmConfig: () => apiFetch<unknown>("/analysis/llm-config"),
   // Training management
   trainingStatus: () => apiFetch<unknown>("/analysis/training/status"),
+  trainingConfig: () => apiFetch<unknown>("/analysis/training/config"),
   trainingStart: (modelType = "rl", timesteps = 50000) =>
     apiFetch<unknown>(
       "/analysis/training/start" +

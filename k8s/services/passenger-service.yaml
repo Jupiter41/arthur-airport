@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: passenger-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: passenger-service
+    app.kubernetes.io/part-of: arthur-airport
+    app.kubernetes.io/component: domain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: passenger-service
+  template:
+    metadata:
+      labels:
+        app: passenger-service
+        app.kubernetes.io/name: passenger-service
+        app.kubernetes.io/part-of: arthur-airport
+    spec:
+      containers:
+        - name: passenger-service
+          image: arthur-airport/passenger-service:latest
+          ports:
+            - containerPort: 8002
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "passenger-service"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 150m
+              memory: 384Mi
+            limits:
+              cpu: 750m
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: passenger-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: passenger-service
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  selector:
+    app: passenger-service
+  ports:
+    - port: 8002
+      targetPort: 8002
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: passenger-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: passenger-service
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: passenger-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: weather-service
+    app.kubernetes.io/part-of: arthur-airport
+    app.kubernetes.io/component: domain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: weather-service
+  template:
+    metadata:
+      labels:
+        app: weather-service
+        app.kubernetes.io/name: weather-service
+        app.kubernetes.io/part-of: arthur-airport
+    spec:
+      containers:
+        - name: weather-service
+          image: arthur-airport/weather-service:latest
+          ports:
+            - containerPort: 8004
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "weather-service"
+            - name: WEATHER_SOURCE
+              value: "simulated"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: weather-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: weather-service
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  selector:
+    app: weather-service
+  ports:
+    - port: 8004
+      targetPort: 8004

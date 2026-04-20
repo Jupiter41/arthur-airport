@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baggage-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: baggage-service
+    app.kubernetes.io/part-of: arthur-airport
+    app.kubernetes.io/component: domain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: baggage-service
+  template:
+    metadata:
+      labels:
+        app: baggage-service
+        app.kubernetes.io/name: baggage-service
+        app.kubernetes.io/part-of: arthur-airport
+    spec:
+      containers:
+        - name: baggage-service
+          image: arthur-airport/baggage-service:latest
+          ports:
+            - containerPort: 8003
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "baggage-service"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8003
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: baggage-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: baggage-service
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  selector:
+    app: baggage-service
+  ports:
+    - port: 8003
+      targetPort: 8003
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: baggage-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: baggage-service
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: baggage-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: incident-service
+    app.kubernetes.io/part-of: arthur-airport
+    app.kubernetes.io/component: domain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: incident-service
+  template:
+    metadata:
+      labels:
+        app: incident-service
+        app.kubernetes.io/name: incident-service
+        app.kubernetes.io/part-of: arthur-airport
+    spec:
+      containers:
+        - name: incident-service
+          image: arthur-airport/incident-service:latest
+          ports:
+            - containerPort: 8005
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "incident-service"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8005
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8005
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: incident-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: incident-service
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  selector:
+    app: incident-service
+  ports:
+    - port: 8005
+      targetPort: 8005

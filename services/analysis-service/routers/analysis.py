@@ -324,6 +324,12 @@ async def training_status() -> dict[str, Any]:
     return training_manager.get_status()
 
 
+@router.get("/training/config")
+async def training_config() -> dict[str, Any]:
+    """Return training environment config, model paths, and loaded status."""
+    return training_manager.get_config()
+
+
 @router.post("/training/start")
 async def training_start(
     model_type: str = Query(default="rl", description="Model type: rl, anomaly, forecast"),

@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: dashboard
+    app.kubernetes.io/part-of: arthur-airport
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+        app.kubernetes.io/name: dashboard
+        app.kubernetes.io/part-of: arthur-airport
+    spec:
+      containers:
+        - name: dashboard
+          image: arthur-airport/dashboard:latest
+          ports:
+            - containerPort: 5173
+          env:
+            - name: VITE_API_BASE_URL
+              value: "http://api-gateway:3000"
+            - name: VITE_WS_URL
+              value: "ws://api-gateway:3000/ws"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: dashboard
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  type: LoadBalancer
+  selector:
+    app: dashboard
+  ports:
+    - port: 5173
+      targetPort: 5173

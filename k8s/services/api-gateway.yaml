@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/part-of: arthur-airport
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        app.kubernetes.io/name: api-gateway
+        app.kubernetes.io/part-of: arthur-airport
+    spec:
+      containers:
+        - name: api-gateway
+          image: arthur-airport/api-gateway:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: PORT
+              value: "3000"
+            - name: OTEL_SERVICE_NAME
+              value: "api-gateway"
+            - name: KAFKA_GROUP_ID
+              value: "api-gateway"
+            - name: FLIGHT_SERVICE_URL
+              value: "http://flight-service:8001"
+            - name: PASSENGER_SERVICE_URL
+              value: "http://passenger-service:8002"
+            - name: BAGGAGE_SERVICE_URL
+              value: "http://baggage-service:8003"
+            - name: WEATHER_SERVICE_URL
+              value: "http://weather-service:8004"
+            - name: INCIDENT_SERVICE_URL
+              value: "http://incident-service:8005"
+            - name: SIM_ORCHESTRATOR_URL
+              value: "http://sim-orchestrator:8006"
+            - name: ANALYSIS_SERVICE_URL
+              value: "http://analysis-service:8007"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  type: LoadBalancer
+  selector:
+    app: api-gateway
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -71,6 +71,38 @@ class TrainingManager:
             "available_models": models,
         }
 
+    def get_config(self) -> dict[str, Any]:
+        """Return training-related environment config and model status."""
+        from services.rl.agent import is_loaded as rl_is_loaded, MODEL_PATH as rl_model_path
+
+        rl_model_exists = Path(rl_model_path).exists()
+        models_dir = str(MODELS_DIR)
+        models_dir_exists = MODELS_DIR.exists()
+
+        # Collect all .zip and .lgbm model files
+        model_files: list[str] = []
+        if models_dir_exists:
+            for p in sorted(MODELS_DIR.rglob("*")):
+                if p.is_file() and p.suffix in (".zip", ".lgbm", ".pkl"):
+                    model_files.append(str(p.relative_to(MODELS_DIR)))
+
+        return {
+            "rl_model_path": rl_model_path,
+            "rl_model_exists": rl_model_exists,
+            "rl_model_loaded": rl_is_loaded(),
+            "models_dir": models_dir,
+            "models_dir_exists": models_dir_exists,
+            "model_files": model_files,
+            "env": {
+                "RL_MODEL_PATH": os.getenv("RL_MODEL_PATH", "(not set)"),
+                "RL_TIMESTEPS": os.getenv("RL_TIMESTEPS", "(not set)"),
+                "RL_OUTPUT": os.getenv("RL_OUTPUT", "(not set)"),
+                "LLM_BASE_URL": os.getenv("LLM_BASE_URL", "(not set)"),
+                "LLM_MODEL": os.getenv("LLM_MODEL", "(not set)"),
+                "LLM_API_KEY": "***" if os.getenv("LLM_API_KEY") else "(not set)",
+            },
+        }
+
     def _list_models(self) -> list[dict[str, Any]]:
         """List trained model files in the models directory."""
         models: list[dict[str, Any]] = []

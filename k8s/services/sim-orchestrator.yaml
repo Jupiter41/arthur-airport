@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sim-orchestrator
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: sim-orchestrator
+    app.kubernetes.io/part-of: arthur-airport
+    app.kubernetes.io/component: simulation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sim-orchestrator
+  template:
+    metadata:
+      labels:
+        app: sim-orchestrator
+        app.kubernetes.io/name: sim-orchestrator
+        app.kubernetes.io/part-of: arthur-airport
+    spec:
+      containers:
+        - name: sim-orchestrator
+          image: arthur-airport/sim-orchestrator:latest
+          ports:
+            - containerPort: 8006
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "sim-orchestrator"
+            - name: SIM_SPEED_MULTIPLIER
+              value: "60"
+            - name: SIM_START_TIME
+              value: "2024-06-15T06:00:00Z"
+            - name: DAILY_FLIGHT_TARGET
+              value: "420"
+            - name: DAILY_LOAD_FACTOR_MEAN
+              value: "0.80"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8006
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8006
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 384Mi
+            limits:
+              cpu: 1000m
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sim-orchestrator
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: sim-orchestrator
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  selector:
+    app: sim-orchestrator
+  ports:
+    - port: 8006
+      targetPort: 8006

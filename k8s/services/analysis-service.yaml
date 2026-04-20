@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analysis-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: analysis-service
+    app.kubernetes.io/part-of: arthur-airport
+    app.kubernetes.io/component: domain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analysis-service
+  template:
+    metadata:
+      labels:
+        app: analysis-service
+        app.kubernetes.io/name: analysis-service
+        app.kubernetes.io/part-of: arthur-airport
+    spec:
+      containers:
+        - name: analysis-service
+          image: arthur-airport/analysis-service:latest
+          ports:
+            - containerPort: 8007
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "analysis-service"
+            # LLM configuration (optional — template fallback if not set)
+            - name: LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secrets
+                  key: LLM_BASE_URL
+                  optional: true
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secrets
+                  key: LLM_API_KEY
+                  optional: true
+            - name: LLM_MODEL
+              value: "gpt-4o-mini"
+            # RL model path
+            - name: RL_MODEL_PATH
+              value: "/app/models/rl_policy.zip"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8007
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8007
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analysis-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: analysis-service
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  selector:
+    app: analysis-service
+  ports:
+    - port: 8007
+      targetPort: 8007
