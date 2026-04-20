@@ -3,11 +3,23 @@ import { useQuery } from "@tanstack/react-query";
 import { useFlightStore } from "../../stores/flightStore";
 import { useWeatherStore } from "../../stores/weatherStore";
 import { useIncidentStore } from "../../stores/incidentStore";
-import { useGroundOpsQueries, useADSBQuery, useGroundVehiclesQuery } from "../../hooks/useQueries";
+import {
+  useGroundOpsQueries,
+  useADSBQuery,
+  useGroundVehiclesQuery,
+} from "../../hooks/useQueries";
 import { StatusBadge } from "../../components/StatusBadge";
 import { flightsApi } from "../../hooks/useApi";
 import { WeatherHistoryChart } from "../Debug/DebugPage";
-import type { Flight, Runway, Gate, WeatherState, Incident, ADSBFeatureCollection, GroundVehicleSummary } from "../../types";
+import type {
+  Flight,
+  Runway,
+  Gate,
+  WeatherState,
+  Incident,
+  ADSBFeatureCollection,
+  GroundVehicleSummary,
+} from "../../types";
 
 /* ──────── Gate Cell ──────── */
 function GateCell({ gate }: { gate: Gate }) {
@@ -502,7 +514,10 @@ function TerminalActivityPanel({
       <div className="grid grid-cols-3 gap-4">
         {terminals.map((term) => {
           const termGates = gates
-            .filter((g) => (g.terminal || g.gate_id.charAt(0)) === term)
+            .filter((g) => {
+              const raw = g.terminal || g.gate_id.charAt(0);
+              return raw.replace(/^T-/, "") === term;
+            })
             .filter(
               (g) =>
                 g.status === "occupied" ||
@@ -604,7 +619,11 @@ function TerminalActivityPanel({
 }
 
 /* ──────── Real Flights Nearby (ADS-B) Panel ──────── */
-function NearbyFlightsPanel({ data }: { data: ADSBFeatureCollection | undefined }) {
+function NearbyFlightsPanel({
+  data,
+}: {
+  data: ADSBFeatureCollection | undefined;
+}) {
   if (!data || data.features.length === 0) {
     return (
       <div className="bg-gray-800 rounded p-3">
@@ -629,12 +648,14 @@ function NearbyFlightsPanel({ data }: { data: ADSBFeatureCollection | undefined 
       </h3>
       <div className="space-y-1 max-h-48 overflow-y-auto">
         {sorted.slice(0, 12).map((f) => {
-          const alt = f.properties.altitude_m != null
-            ? `FL${Math.round(f.properties.altitude_m / 30.48 / 100)}`
-            : "—";
-          const speed = f.properties.velocity_ms != null
-            ? `${Math.round(f.properties.velocity_ms * 1.944)}kt`
-            : "—";
+          const alt =
+            f.properties.altitude_m != null
+              ? `FL${Math.round(f.properties.altitude_m / 30.48 / 100)}`
+              : "—";
+          const speed =
+            f.properties.velocity_ms != null
+              ? `${Math.round(f.properties.velocity_ms * 1.944)}kt`
+              : "—";
           return (
             <div
               key={f.properties.icao24}
@@ -662,7 +683,11 @@ function NearbyFlightsPanel({ data }: { data: ADSBFeatureCollection | undefined 
 }
 
 /* ──────── Ground Vehicle Status Panel ──────── */
-function GroundVehicleStatusPanel({ data }: { data: GroundVehicleSummary | undefined }) {
+function GroundVehicleStatusPanel({
+  data,
+}: {
+  data: GroundVehicleSummary | undefined;
+}) {
   if (!data) {
     return (
       <div className="bg-gray-800 rounded p-3">
@@ -705,7 +730,11 @@ function GroundVehicleStatusPanel({ data }: { data: GroundVehicleSummary | undef
           const meta = VEHICLE_LABELS[type] ?? { label: type, icon: "🚗" };
           const pct = data.utilisation_pct[type] ?? 0;
           const barColor =
-            pct > 85 ? "bg-red-500" : pct > 60 ? "bg-amber-500" : "bg-green-500";
+            pct > 85
+              ? "bg-red-500"
+              : pct > 60
+                ? "bg-amber-500"
+                : "bg-green-500";
           return (
             <div key={type} className="text-xs">
               <div className="flex items-center justify-between mb-0.5">
@@ -742,7 +771,14 @@ const VEHICLE_ICONS: Record<string, { color: string; symbol: string }> = {
 function GroundVehicleOverlay({
   vehicles,
 }: {
-  vehicles: { id: string; type: string; status: string; current_gate: string | null; position_x: number; position_y: number }[];
+  vehicles: {
+    id: string;
+    type: string;
+    status: string;
+    current_gate: string | null;
+    position_x: number;
+    position_y: number;
+  }[];
 }) {
   // Map vehicle grid positions to a small SVG overlay area
   // Vehicle positions are in grid coordinates (0-1000). We scale to SVG viewport.
@@ -784,11 +820,7 @@ function GroundVehicleOverlay({
                 >
                   {meta.symbol}
                 </text>
-                <text
-                  x={18}
-                  y={11}
-                  className="fill-gray-300 text-[6px]"
-                >
+                <text x={18} y={11} className="fill-gray-300 text-[6px]">
                   ×{count}
                 </text>
               </g>
@@ -907,7 +939,9 @@ export default function GroundOpsPage() {
   const gatesByTerminal = useMemo(() => {
     const m: Record<string, Gate[]> = { A: [], B: [], C: [] };
     for (const g of gates) {
-      const term = g.terminal || g.gate_id.charAt(0);
+      // terminal_id from backend is "T-A"/"T-B"/"T-C"; normalize to single letter
+      const raw = g.terminal || g.gate_id.charAt(0);
+      const term = raw.replace(/^T-/, "");
       (m[term] ??= []).push(g);
     }
     return m;
@@ -1045,7 +1079,9 @@ export default function GroundOpsPage() {
         {/* Weather side panel (1 col) */}
         <div className="space-y-4">
           <WeatherSidePanel weather={weather} />
-          <GroundVehicleStatusPanel data={vehiclesQuery.data as GroundVehicleSummary | undefined} />
+          <GroundVehicleStatusPanel
+            data={vehiclesQuery.data as GroundVehicleSummary | undefined}
+          />
         </div>
       </div>
 
@@ -1058,7 +1094,9 @@ export default function GroundOpsPage() {
         <GroundStopPanel incidents={activeIncidents} />
         <RunwayQueuePanel runways={runways} flights={flightList} />
         <TurnaroundPanel />
-        <NearbyFlightsPanel data={adsbQuery.data as ADSBFeatureCollection | undefined} />
+        <NearbyFlightsPanel
+          data={adsbQuery.data as ADSBFeatureCollection | undefined}
+        />
       </div>
 
       {/* Terminal Activity — flight/passenger/baggage links */}

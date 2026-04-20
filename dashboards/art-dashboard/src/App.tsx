@@ -12,6 +12,7 @@ import ScenariosPage from "./pages/Scenarios/ScenariosPage";
 import SettingsPage from "./pages/Settings/SettingsPage";
 import WorldMapPage from "./pages/WorldMap/WorldMapPage";
 import DebugPage from "./pages/Debug/DebugPage";
+import MLTrainingPage from "./pages/MLTraining/MLTrainingPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,6 +43,7 @@ function AppShell() {
           <Route path="/scenarios" element={<ScenariosPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/debug" element={<DebugPage />} />
+          <Route path="/ml" element={<MLTrainingPage />} />
         </Routes>
       </main>
     </div>

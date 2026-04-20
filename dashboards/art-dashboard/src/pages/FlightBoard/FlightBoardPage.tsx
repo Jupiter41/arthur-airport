@@ -227,7 +227,7 @@ function FlightDetailDrawer({
 
         <div>
           <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
-            Baggage
+            {flight.direction === "arrival" ? "Baggage Claimed" : "Baggage"}
           </h3>
           <div className="flex items-center gap-3">
             <div className="w-full bg-gray-700 rounded-full h-3">

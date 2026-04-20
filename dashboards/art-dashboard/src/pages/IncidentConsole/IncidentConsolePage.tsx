@@ -689,6 +689,15 @@ function RecommendationFeed({
   );
 }
 
+/* ──────── Tab bar ──────── */
+const TABS = [
+  { id: "ops", label: "Operations", icon: "🚨" },
+  { id: "analysis", label: "Analysis", icon: "📊" },
+  { id: "ai", label: "AI Tools", icon: "🤖" },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
 /* ──────── Main Page ──────── */
 export default function IncidentConsolePage() {
   const incidents = useIncidentStore((s) => s.incidents);
@@ -699,6 +708,7 @@ export default function IncidentConsolePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cascadeViewId, setCascadeViewId] = useState<string | null>(null);
   const [injectOpen, setInjectOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabId>("ops");
 
   const queries = useIncidentConsoleQueries();
   const bnQuery = useBottlenecksQuery();
@@ -784,71 +794,104 @@ export default function IncidentConsolePage() {
         </div>
       </div>
 
-      {/* Main panel */}
-      <div className="grid grid-cols-3 gap-4">
-        {/* Active incidents */}
-        <div className="space-y-3">
-          <h3 className="text-xs text-gray-400 uppercase tracking-wide">
-            Active Incidents ({activeIncidents.length})
-          </h3>
-          {activeIncidents.length === 0 && (
-            <div className="text-sm text-gray-400">No active incidents</div>
-          )}
-          {activeIncidents.map((i) => (
-            <IncidentCard
-              key={i.id}
-              incident={i}
-              selected={selectedId === i.id}
-              onSelect={() => setSelectedId(i.id)}
-            />
-          ))}
-        </div>
-
-        {/* Cascade visualizer + protocol bar */}
-        <div className="col-span-2 space-y-3">
-          <CascadeVisualizerPanel incident={selectedIncident} />
-          <ProtocolBar incident={selectedIncident} />
-        </div>
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-gray-700 pb-0">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`text-sm font-medium px-4 py-2 rounded-t-lg transition-all duration-150 ${
+              activeTab === tab.id
+                ? "bg-gray-800 text-white border border-gray-700 border-b-gray-800 -mb-px"
+                : "text-gray-400 hover:text-white hover:bg-gray-800/50"
+            }`}
+          >
+            <span className="mr-1.5">{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* Alert feed */}
-      <AlertFeed alerts={alerts} />
+      {/* ── Tab: Operations ── */}
+      {activeTab === "ops" && (
+        <>
+          {/* Main panel */}
+          <div className="grid grid-cols-3 gap-4">
+            {/* Active incidents */}
+            <div className="space-y-3">
+              <h3 className="text-xs text-gray-400 uppercase tracking-wide">
+                Active Incidents ({activeIncidents.length})
+              </h3>
+              {activeIncidents.length === 0 && (
+                <div className="text-sm text-gray-400">No active incidents</div>
+              )}
+              {activeIncidents.map((i) => (
+                <IncidentCard
+                  key={i.id}
+                  incident={i}
+                  selected={selectedId === i.id}
+                  onSelect={() => setSelectedId(i.id)}
+                />
+              ))}
+            </div>
 
-      {/* Recommendation feed (P2-2-7) */}
-      <RecommendationFeed
-        bottlenecks={
-          (bnQuery.data as AnalysisBottleneck[] | undefined) ?? storeBottlenecks
-        }
-        recommendations={
-          (recQuery.data as AnalysisRecommendation[] | undefined) ?? storeRecs
-        }
-      />
+            {/* Cascade visualizer + protocol bar */}
+            <div className="col-span-2 space-y-3">
+              <CascadeVisualizerPanel incident={selectedIncident} />
+              <ProtocolBar incident={selectedIncident} />
+            </div>
+          </div>
 
-      {/* What-If Analysis (P2-3-3) */}
-      <WhatIfPanel />
+          {/* Alert feed */}
+          <AlertFeed alerts={alerts} />
 
-      {/* ── Phase 5: Advanced ML & AI ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* P5-3-1: Anomaly Detection */}
-        <AnomalyPanel />
-        {/* P5-2-3: Live Narration */}
-        <NarrationFeed />
-      </div>
+          {/* Resolved */}
+          <ResolvedList
+            incidents={resolvedIncidents}
+            onViewCascade={(id) => setCascadeViewId(id)}
+          />
+        </>
+      )}
 
-      {/* P5-2-1: Natural Language Query */}
-      <NLQueryPanel />
+      {/* ── Tab: Analysis ── */}
+      {activeTab === "analysis" && (
+        <>
+          {/* Recommendation feed (P2-2-7) */}
+          <RecommendationFeed
+            bottlenecks={
+              (bnQuery.data as AnalysisBottleneck[] | undefined) ??
+              storeBottlenecks
+            }
+            recommendations={
+              (recQuery.data as AnalysisRecommendation[] | undefined) ??
+              storeRecs
+            }
+          />
 
-      {/* P5-2-2 + P5-2-4: NL Injection & Report */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <NLInjectPanel />
-        <ReportGenerator />
-      </div>
+          {/* What-If Analysis (P2-3-3) */}
+          <WhatIfPanel />
+        </>
+      )}
 
-      {/* Resolved */}
-      <ResolvedList
-        incidents={resolvedIncidents}
-        onViewCascade={(id) => setCascadeViewId(id)}
-      />
+      {/* ── Tab: AI Tools ── */}
+      {activeTab === "ai" && (
+        <>
+          {/* P5-3-1: Anomaly Detection + P5-2-3: Narration */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <AnomalyPanel />
+            <NarrationFeed />
+          </div>
+
+          {/* P5-2-1: Natural Language Query */}
+          <NLQueryPanel />
+
+          {/* P5-2-2 + P5-2-4: NL Injection & Report */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <NLInjectPanel />
+            <ReportGenerator />
+          </div>
+        </>
+      )}
 
       {/* Cascade view modal */}
       {cascadeViewIncident && (

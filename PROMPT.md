@@ -24,6 +24,10 @@ Before doing any edit, do this:
 
 Your mission is to:
 
-- Add a ML.md file at the root of the project with a summary of all the ML related features in the project, and how they work together (including LLM route). Precise how to use them etc.
-- One noted follow-up: The \_profiler.py module's tick_timer() context manager is deployed to all services but not yet wired into the actual SimClockTick consumer handlers in kafka/consumer.py. The /perf endpoint works, but tick-level metrics will only populate once consumers wrap their processing with with tick_timer():.
-- Implement phase 6
+- Identify big refactor, logic issues, bugs, improvements that can be done in the codebase.
+- Write a plan to implement the changes you identified, and then implement them step by step.
+- Make sure to test the changes you made and validate the behaviour of the services.
+- Document the changes you made, the issues you fixed, the tests you ran and the results you got in a md file in docs/lessons-learned/.
+- Mark issues as completed in the relevant file if needed.
+- Run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
+- Write an IMPROVEMENTS.md file in the root of the project of things you would add or change in the project, BESIDES the big things you already saw, to make the project more interesting for a scientific paper, future contributors, community.

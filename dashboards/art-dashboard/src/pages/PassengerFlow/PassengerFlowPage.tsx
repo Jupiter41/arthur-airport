@@ -23,13 +23,14 @@ import type {
 
 /* ──────── Heat color from load percentage ──────── */
 function heatColor(loadPct: number, locked: boolean): string {
-  if (locked) return "#6b7280"; // gray
-  if (loadPct <= 25) return "#86efac"; // light green
-  if (loadPct <= 50) return "#22c55e"; // green
-  if (loadPct <= 70) return "#a3e635"; // yellow-green
-  if (loadPct <= 85) return "#f59e0b"; // amber
-  if (loadPct <= 95) return "#f97316"; // orange
-  return "#ef4444"; // red
+  if (locked) return "#4b5563"; // gray-600
+  if (loadPct <= 15) return "#065f46"; // emerald-800 (very calm)
+  if (loadPct <= 35) return "#047857"; // emerald-700 (low)
+  if (loadPct <= 55) return "#0d9488"; // teal-600 (moderate)
+  if (loadPct <= 70) return "#d97706"; // amber-600 (busy)
+  if (loadPct <= 85) return "#ea580c"; // orange-600 (high)
+  if (loadPct <= 95) return "#dc2626"; // red-600 (near cap)
+  return "#991b1b"; // red-800 (full)
 }
 
 /* ──────── Zone cell for heatmap ──────── */
@@ -46,15 +47,17 @@ function ZoneCell({
 
   return (
     <div
-      className="relative rounded p-2 cursor-pointer transition-all duration-700 hover:ring-2 hover:ring-white/40 min-h-[56px]"
+      className="relative rounded-lg p-2.5 cursor-pointer transition-all duration-700 hover:ring-2 hover:ring-white/40 min-h-[60px] shadow-sm"
       style={{ backgroundColor: bg, opacity: locked ? 0.5 : 1 }}
       onClick={onClick}
     >
-      <div className="text-[10px] font-bold text-white/90 truncate">
+      <div className="text-[10px] font-bold text-white drop-shadow-sm truncate">
         {zone.zone_id}
       </div>
-      <div className="text-xs text-white/80">{zone.density} pax</div>
-      <div className="text-[9px] text-white/60">
+      <div className="text-sm font-semibold text-white drop-shadow-sm">
+        {zone.density} pax
+      </div>
+      <div className="text-[9px] text-white/70">
         {zone.load_pct}% ·{" "}
         {zone.capacity - zone.density > 0 ? zone.capacity - zone.density : 0}{" "}
         free
@@ -225,8 +228,9 @@ function AirportHeatmap({
       {/* Legend */}
       <div className="flex items-center gap-3 mt-3 text-[10px] text-gray-400">
         {[
-          { pct: 10, label: "Low" },
-          { pct: 40, label: "Moderate" },
+          { pct: 10, label: "Calm" },
+          { pct: 30, label: "Low" },
+          { pct: 50, label: "Moderate" },
           { pct: 65, label: "Busy" },
           { pct: 80, label: "High" },
           { pct: 92, label: "Near Cap" },

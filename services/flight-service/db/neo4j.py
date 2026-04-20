@@ -189,7 +189,9 @@ async def get_all_flights(
     OPTIONAL MATCH (b:Baggage)-[:LOADED_ON]->(f)
     WITH f, g, r, pax_total, pax_boarded,
          count(b) AS baggage_count,
-         sum(CASE WHEN b.status IN ['loaded', 'in_hold', 'arrived', 'on_carousel', 'collected'] THEN 1 ELSE 0 END) AS baggage_loaded
+         sum(CASE WHEN f.direction = 'departure' AND b.status IN ['loaded', 'in_hold'] THEN 1
+                  WHEN f.direction = 'arrival' AND b.status = 'collected' THEN 1
+                  ELSE 0 END) AS baggage_loaded
     RETURN f {{
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .origin_iata, .destination_iata,
@@ -249,7 +251,9 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
     OPTIONAL MATCH (b:Baggage)-[:LOADED_ON]->(f)
     WITH f, g, r, pax_total, pax_boarded, pax_at_gate, pax_airside, pax_security, pax_connections_at_risk,
          count(b) AS baggage_count,
-         sum(CASE WHEN b.status IN ['loaded', 'in_hold', 'arrived', 'on_carousel', 'collected'] THEN 1 ELSE 0 END) AS baggage_loaded,
+         sum(CASE WHEN f.direction = 'departure' AND b.status IN ['loaded', 'in_hold'] THEN 1
+                  WHEN f.direction = 'arrival' AND b.status = 'collected' THEN 1
+                  ELSE 0 END) AS baggage_loaded,
          sum(CASE WHEN b.status IN ['sorting', 'screening', 'inducted'] THEN 1 ELSE 0 END) AS baggage_in_sorting,
          sum(CASE WHEN b.status = 'flagged' THEN 1 ELSE 0 END) AS baggage_flagged
     RETURN f {

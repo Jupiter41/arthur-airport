@@ -37,8 +37,12 @@ export const eventHandlers: Record<string, EventHandler> = {
     const tickFromPayload = payload?.sim_time;
     const nextTick =
       typeof tickFromPayload === "string" ? tickFromPayload : sim_time;
+    const dayOfSim =
+      typeof payload?.day_of_sim === "number"
+        ? (payload.day_of_sim as number)
+        : undefined;
     if (nextTick) {
-      useSimStore.getState().updateFromTick(nextTick);
+      useSimStore.getState().updateFromTick(nextTick, dayOfSim);
     }
   },
 

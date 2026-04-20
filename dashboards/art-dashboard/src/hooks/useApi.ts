@@ -328,6 +328,18 @@ export const analysisApi = {
     }),
   // Phase 5: LLM config
   llmConfig: () => apiFetch<unknown>("/analysis/llm-config"),
+  // Training management
+  trainingStatus: () => apiFetch<unknown>("/analysis/training/status"),
+  trainingStart: (modelType = "rl", timesteps = 50000) =>
+    apiFetch<unknown>(
+      "/analysis/training/start" +
+        `?model_type=${encodeURIComponent(modelType)}&timesteps=${timesteps}`,
+      {
+        method: "POST",
+      },
+    ),
+  trainingStop: () =>
+    apiFetch<unknown>("/analysis/training/stop", { method: "POST" }),
 };
 
 // ── Scenarios ──

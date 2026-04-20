@@ -42,6 +42,7 @@ from services.nlp.inject import parse_incident_command
 from services.nlp.narration import narration as narration_engine
 from services.nlp.report import generate_report
 from services.nlp.llm import get_config as get_llm_config
+from services.training_manager import manager as training_manager
 
 logger = logging.getLogger(__name__)
 
@@ -312,3 +313,32 @@ async def after_action_report(
 async def llm_config() -> dict[str, Any]:
     """Return current LLM configuration and availability."""
     return get_llm_config()
+
+
+# ── Training management ─────────────────────────────────────
+
+
+@router.get("/training/status")
+async def training_status() -> dict[str, Any]:
+    """Return current training status, history, and available models."""
+    return training_manager.get_status()
+
+
+@router.post("/training/start")
+async def training_start(
+    model_type: str = Query(default="rl", description="Model type: rl, anomaly, forecast"),
+    timesteps: int = Query(default=50000, ge=1000, le=1000000, description="Training timesteps"),
+) -> dict[str, Any]:
+    """Start a new training run."""
+    try:
+        run = await training_manager.start_training(model_type, timesteps)
+        return run.to_dict()
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+@router.post("/training/stop")
+async def training_stop() -> dict[str, Any]:
+    """Stop the active training run."""
+    stopped = await training_manager.stop_training()
+    return {"stopped": stopped}

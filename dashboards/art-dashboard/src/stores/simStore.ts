@@ -3,7 +3,7 @@ import type { SimStatus } from "../types";
 
 interface SimState {
   status: SimStatus;
-  updateFromTick: (simTime: string) => void;
+  updateFromTick: (simTime: string, dayOfSim?: number) => void;
   setStatus: (status: SimStatus) => void;
   setPaused: (paused: boolean) => void;
   setSpeed: (speed: number) => void;
@@ -18,12 +18,13 @@ export const useSimStore = create<SimState>((set) => ({
     day_number: 1,
     tick_count: 0,
   },
-  updateFromTick: (simTime) =>
+  updateFromTick: (simTime, dayOfSim?) =>
     set((s) => ({
       status: {
         ...s.status,
         sim_time: simTime,
         tick_count: s.status.tick_count + 1,
+        ...(dayOfSim != null ? { day_number: dayOfSim } : {}),
       },
     })),
   setStatus: (status) => set({ status }),
