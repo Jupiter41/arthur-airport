@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from confluent_kafka import Producer
@@ -20,8 +20,6 @@ _producer: Producer | None = None
 _tick_batch_mode: bool = False
 _TICK_EMIT_SAMPLE_RATE = 0.02  # emit ~2% of per-passenger events during tick
 _bulk_mode: bool = False  # In BULK mode, suppress ALL per-passenger events
-
-_producer: Producer | None = None
 
 PRODUCER_NAME = "passenger-service"
 TOPIC = "passengers.events"
@@ -74,7 +72,7 @@ def _produce_event(
         "event_id": str(uuid4()),
         "event_type": event_type,
         "schema_version": "1.0",
-        "produced_at": datetime.utcnow().isoformat(),
+        "produced_at": datetime.now(timezone.utc).isoformat(),
         "sim_time": sim_time.isoformat(),
         "producer": PRODUCER_NAME,
         "payload": payload,

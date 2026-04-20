@@ -249,10 +249,20 @@ async def search_passengers(pnr: str | None = None, name: str | None = None) -> 
     return items
 
 
+_VALID_STATUSES = frozenset({
+    "booked", "checked_in", "security_queue", "airside", "at_gate",
+    "boarding", "on_board", "departed", "arrived", "deplaning",
+    "baggage_claim", "landside", "completed", "no_show", "cancelled",
+    "connecting",
+})
+
+
 async def update_passenger_status(
     passenger_id: str, new_status: str, new_zone: str, sim_time: datetime,
 ) -> dict | None:
     """Update passenger status and location zone, setting the timestamp field."""
+    if new_status not in _VALID_STATUSES:
+        raise ValueError(f"Invalid passenger status: {new_status!r}")
     driver = get_driver()
     ts_field = f"{new_status}_at"
     sim_str = sim_time.isoformat()
@@ -277,6 +287,8 @@ async def bulk_update_status(
     """Bulk update status for multiple passengers. Returns count updated."""
     if not passenger_ids:
         return 0
+    if new_status not in _VALID_STATUSES:
+        raise ValueError(f"Invalid passenger status: {new_status!r}")
     driver = get_driver()
     ts_field = f"{new_status}_at"
     sim_str = sim_time.isoformat()

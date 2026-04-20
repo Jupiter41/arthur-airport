@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from models.domain import (
@@ -55,7 +55,7 @@ def run_what_if(
     effects of each action over the requested horizon. No Kafka events
     or Neo4j writes are produced.
     """
-    now = state.sim_time or datetime.utcnow()
+    now = state.sim_time or datetime.now(timezone.utc)
 
     # 1. Compute baseline KPIs from current state
     baseline = _compute_kpis(state, action_index=-1)

@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from confluent_kafka import Producer
@@ -56,7 +56,7 @@ def produce_event(
         "event_id": str(uuid4()),
         "event_type": event_type,
         "schema_version": "1.0",
-        "produced_at": datetime.utcnow().isoformat(),
+        "produced_at": datetime.now(timezone.utc).isoformat(),
         "sim_time": sim_time.isoformat(),
         "producer": PRODUCER_NAME,
         "payload": payload,
@@ -104,7 +104,7 @@ def emit_clock_tick(
     """Emit a SimClockTick event to sim.clock."""
     payload = {
         "sim_time": sim_time.isoformat(),
-        "real_time": datetime.utcnow().isoformat(),
+        "real_time": datetime.now(timezone.utc).isoformat(),
         "speed_multiplier": speed_multiplier,
         "tick_number": tick_number,
         "day_of_sim": day_of_sim,

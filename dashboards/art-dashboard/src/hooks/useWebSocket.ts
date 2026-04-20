@@ -277,6 +277,8 @@ export function useWebSocket() {
                 "weather",
                 "incidents",
                 "alerts",
+                "sim",
+                "analysis",
               ],
             }),
           );

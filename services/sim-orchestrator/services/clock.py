@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from kafka.producer import emit_clock_tick
 from metrics import (
@@ -61,7 +61,7 @@ def get_state() -> dict:
         "running": _running,
         "paused": _paused,
         "sim_time": _sim_time.isoformat(),
-        "real_time": datetime.utcnow().isoformat(),
+        "real_time": datetime.now(timezone.utc).isoformat(),
         "speed_multiplier": _speed_multiplier,
         "mode": compute_mode(),
         "day_number": _sim_day,

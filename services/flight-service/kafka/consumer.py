@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import random
+from collections import deque
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
@@ -80,6 +81,7 @@ class FlightConsumerState:
         self.incident_affected_gates: set[str] = set()
         self.incident_affected_runways: set[str] = set()
         self.processed_events: set[str] = set()
+        self.processed_events_order: deque[str] = deque()
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
         self.turnaround_plans: dict[str, TurnaroundPlan] = {}  # keyed by aircraft_registration
         # Spatial layout caches (populated from Neo4j on startup)
@@ -131,10 +133,12 @@ class FlightConsumerState:
         if event_id in self.processed_events:
             return True
         self.processed_events.add(event_id)
+        self.processed_events_order.append(event_id)
         if len(self.processed_events) > self.MAX_PROCESSED:
             excess = len(self.processed_events) - self.MAX_PROCESSED
             for _ in range(excess):
-                self.processed_events.pop()
+                oldest = self.processed_events_order.popleft()
+                self.processed_events.discard(oldest)
         return False
 
     async def rebuild_from_neo4j(self) -> None:
@@ -928,6 +932,8 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
                     sim_time=sim_time,
                     delay_minutes=flight.get("delay_minutes", 0),
                     reason="diverted",
+                    direction=direction,
+                    destination_iata=flight.get("destination_iata"),
                 )
             _state.runway_queue.remove(flight_id)
             _state.holding_minutes.pop(flight_id, None)
@@ -968,6 +974,8 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
                     sim_time=sim_time,
                     delay_minutes=new_delay,
                     reason="crew_readiness",
+                    direction=direction,
+                    destination_iata=flight.get("destination_iata"),
                 )
             new_status = None  # suppress the departed transition this tick
 
@@ -1208,6 +1216,8 @@ async def _execute_transition(
         gate_id=flight.get("gate_id"),
         runway_id=flight.get("runway_id"),
         delay_minutes=delay_minutes,
+        direction=direction,
+        destination_iata=flight.get("destination_iata"),
     )
 
     # Update Prometheus counters
@@ -1257,6 +1267,8 @@ async def _emit_status_changed_callback(
         sim_time=sim_time,
         delay_minutes=flight.get("delay_minutes", 0),
         reason="turnaround_delay",
+        direction=flight.get("direction"),
+        destination_iata=flight.get("destination_iata"),
     )
 
 
@@ -1389,6 +1401,8 @@ async def hold_flight(flight_id: str, reason: str, duration_min: int, sim_time: 
             sim_time=sim_time,
             delay_minutes=duration_min,
             reason=reason,
+            direction=flight.get("direction"),
+            destination_iata=flight.get("destination_iata"),
         )
 
         # Broadcast to WebSocket
@@ -1432,6 +1446,8 @@ async def release_flight(flight_id: str, sim_time: datetime) -> dict | None:
             previous_status="delayed",
             new_status=new_status,
             sim_time=sim_time,
+            direction=direction,
+            destination_iata=flight.get("destination_iata"),
         )
 
     return updated

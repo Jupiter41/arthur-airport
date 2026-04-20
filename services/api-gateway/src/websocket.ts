@@ -29,6 +29,7 @@ const VALID_TOPICS = new Set([
   "incidents",
   "alerts",
   "sim",
+  "analysis",
 ]);
 
 const clients = new Set<WsClient>();

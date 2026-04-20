@@ -48,11 +48,14 @@ def _poll_loop() -> None:
             logger.exception("Error processing flight event")
 
 
-def _handle_flight_event(payload: dict) -> None:
+def _handle_flight_event(envelope: dict) -> None:
     """Process a FlightStatusChanged event for network delay propagation."""
-    event_type = payload.get("event_type", "")
+    event_type = envelope.get("event_type", "")
     if event_type != "FlightStatusChanged":
         return
+
+    # Extract inner payload from Kafka envelope
+    payload = envelope.get("payload", {})
 
     direction = payload.get("direction", "")
     new_status = payload.get("new_status", "")

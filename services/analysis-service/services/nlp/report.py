@@ -8,7 +8,7 @@ and lessons learned.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from services.nlp.llm import is_llm_available, llm_chat
@@ -53,7 +53,7 @@ async def generate_report(
             return {
                 "report": report,
                 "source": "llm",
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
                 "scenario": scenario_name,
             }
 
@@ -65,7 +65,7 @@ async def generate_report(
     return {
         "report": report,
         "source": "template",
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "scenario": scenario_name,
     }
 
@@ -154,7 +154,7 @@ def _template_report(
     lines = [
         "# After-Action Report — Arthur International Airport (KART)",
         "",
-        f"**Report generated:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+        f"**Report generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         f"**Simulation time:** {sim_time}",
     ]
 

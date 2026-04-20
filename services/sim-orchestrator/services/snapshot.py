@@ -10,7 +10,7 @@ import gzip
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -94,7 +94,7 @@ async def create_snapshot(
     _ensure_snapshots_dir()
 
     snapshot_id = str(uuid4())
-    timestamp = datetime.utcnow().isoformat().replace(":", "-")
+    timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-")
     safe_name = name.replace(" ", "_").replace("/", "_")[:50]
     filename = f"{safe_name}_{timestamp}.json.gz"
     filepath = SNAPSHOTS_DIR / filename
@@ -104,7 +104,7 @@ async def create_snapshot(
     snapshot_data = {
         "snapshot_id": snapshot_id,
         "name": name,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "sim_time": sim_time.isoformat(),
         "day_number": day_number,
         "tick_number": tick_number,

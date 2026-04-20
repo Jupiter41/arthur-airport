@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import random
+from collections import deque
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
@@ -94,6 +95,7 @@ class PassengerConsumerState:
         self.alerts: list[dict] = []
         self.at_risk_connections: list[dict] = []
         self.processed_events: set[str] = set()
+        self.processed_events_order: deque[str] = deque()
         self.security_enqueued: set[str] = set()
         self.airside_transitioned: set[str] = set()
         self.baggage_collected: set[str] = set()
@@ -116,10 +118,12 @@ class PassengerConsumerState:
         if event_id in self.processed_events:
             return True
         self.processed_events.add(event_id)
+        self.processed_events_order.append(event_id)
         if len(self.processed_events) > self.MAX_PROCESSED:
             excess = len(self.processed_events) - self.MAX_PROCESSED
             for _ in range(excess):
-                self.processed_events.pop()
+                oldest = self.processed_events_order.popleft()
+                self.processed_events.discard(oldest)
         return False
 
     def add_alert(self, alert: dict) -> None:
@@ -824,7 +828,9 @@ async def _sync_security_from_db() -> dict[str, str]:
     # Remove stale IDs from in-memory queues when they are no longer in security_queue.
     for cp in _state.security.checkpoints.values():
         cp.queue = [pid for pid in cp.queue if pid in security_ids]
+        cp._queue_set = set(cp.queue)
         cp.sa_queue = [pid for pid in cp.sa_queue if pid in security_ids]
+        cp._sa_queue_set = set(cp.sa_queue)
 
     return zone_by_pid
 

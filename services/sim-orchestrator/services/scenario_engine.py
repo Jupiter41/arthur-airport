@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -270,7 +270,7 @@ class ScenarioEngine:
             run_id=run_id,
             scenario_name=name,
             status=ScenarioRunStatus.RUNNING,
-            started_at=datetime.utcnow().isoformat(),
+            started_at=datetime.now(timezone.utc).isoformat(),
             sim_start_time=sim_time.isoformat(),
             duration_sim_minutes=defn.duration_sim_minutes,
         )
@@ -283,7 +283,7 @@ class ScenarioEngine:
         if self._active_run is None:
             return None
         self._active_run.status = ScenarioRunStatus.STOPPED
-        self._active_run.completed_at = datetime.utcnow().isoformat()
+        self._active_run.completed_at = datetime.now(timezone.utc).isoformat()
         result = self._active_run
         self._finalize_run(result)
         return result
@@ -503,7 +503,7 @@ class ScenarioEngine:
         self._update_peaks(final_snap)
 
         self._active_run.status = ScenarioRunStatus.COMPLETED
-        self._active_run.completed_at = datetime.utcnow().isoformat()
+        self._active_run.completed_at = datetime.now(timezone.utc).isoformat()
         self._active_run.sim_end_time = sim_time.isoformat()
 
         # Evaluate outcomes

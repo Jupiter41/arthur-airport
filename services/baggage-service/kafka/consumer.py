@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+from collections import deque
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
@@ -78,6 +79,7 @@ class BaggageConsumerState:
         self.last_tick_sim_time: datetime | None = None
         self.conveyor = ConveyorSystem()
         self.processed_events: set[str] = set()
+        self.processed_events_order: deque[str] = deque()
         self.inducted_bag_ids: set[str] = set()
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
         # Speed mode tracking (REALTIME / FAST / BULK)
@@ -91,10 +93,12 @@ class BaggageConsumerState:
         if event_id in self.processed_events:
             return True
         self.processed_events.add(event_id)
+        self.processed_events_order.append(event_id)
         if len(self.processed_events) > self.MAX_PROCESSED:
             excess = len(self.processed_events) - self.MAX_PROCESSED
             for _ in range(excess):
-                self.processed_events.pop()
+                oldest = self.processed_events_order.popleft()
+                self.processed_events.discard(oldest)
         return False
 
     async def rebuild_from_neo4j(self) -> None:

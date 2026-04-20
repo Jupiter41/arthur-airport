@@ -25,7 +25,9 @@ class SecurityCheckpoint:
         self.terminal = terminal
         self.lanes_open = lanes_open or LANES_PER_TERMINAL
         self.queue: list[str] = []  # passenger IDs in main queue
+        self._queue_set: set[str] = set()  # O(1) membership check
         self.sa_queue: list[str] = []  # special assistance queue
+        self._sa_queue_set: set[str] = set()  # O(1) membership check
         self.frozen = False  # True during security_breach
 
     @property
@@ -87,11 +89,13 @@ class SecurityCheckpoint:
     def enqueue(self, passenger_id: str, special_assistance: bool = False) -> None:
         """Add passenger to the appropriate queue."""
         if special_assistance:
-            if passenger_id not in self.sa_queue:
+            if passenger_id not in self._sa_queue_set:
                 self.sa_queue.append(passenger_id)
+                self._sa_queue_set.add(passenger_id)
         else:
-            if passenger_id not in self.queue:
+            if passenger_id not in self._queue_set:
                 self.queue.append(passenger_id)
+                self._queue_set.add(passenger_id)
 
     def drain(self, forecast_queue: int, delta_minutes: int = 1) -> tuple[list[str], list[str]]:
         """Drain passengers through security. Returns (main_drained, sa_drained)."""
@@ -99,6 +103,7 @@ class SecurityCheckpoint:
         main_count = self.drain_per_tick(forecast_queue, delta_minutes)
         main_drained = self.queue[:main_count]
         self.queue = self.queue[main_count:]
+        self._queue_set -= set(main_drained)
 
         # SA queue — drain at SA rate, minimum 1 every 3 minutes
         sa_count = self.sa_drain_per_tick(delta_minutes)
@@ -107,6 +112,7 @@ class SecurityCheckpoint:
             sa_count = 1  # fractional throughput: process 1 pax
         sa_drained = self.sa_queue[:sa_count]
         self.sa_queue = self.sa_queue[sa_count:]
+        self._sa_queue_set -= set(sa_drained)
 
         return main_drained, sa_drained
 

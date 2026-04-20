@@ -133,31 +133,31 @@ async def run_consumer() -> None:
 
     try:
         while _running:
-            msg = await loop.run_in_executor(None, lambda: _consumer.poll(0.5))
-            if msg is None:
-                continue
-            if msg.error():
-                logger.warning("Consumer error: %s", msg.error())
-                continue
+            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(num_messages=50, timeout=0.5))
 
-            try:
-                envelope = json.loads(msg.value().decode("utf-8"))
-            except Exception:
-                envelope_invalid_total.inc()
-                continue
+            for msg in msgs:
+                if msg.error():
+                    logger.warning("Consumer error: %s", msg.error())
+                    continue
 
-            event_type = envelope.get("event_type", "")
-            payload = envelope.get("payload", {})
-            topic = msg.topic()
+                try:
+                    envelope = json.loads(msg.value().decode("utf-8"))
+                except Exception:
+                    envelope_invalid_total.inc()
+                    continue
 
-            consumer_lag.labels(topic=topic).inc()
+                event_type = envelope.get("event_type", "")
+                payload = envelope.get("payload", {})
+                topic = msg.topic()
 
-            # Route to state handler
-            _dispatch_event(event_type, payload, topic, envelope)
+                consumer_lag.labels(topic=topic).inc()
 
-            # On clock ticks, run analysis
-            if event_type == "SimClockTick":
-                await _on_tick(payload)
+                # Route to state handler
+                _dispatch_event(event_type, payload, topic, envelope)
+
+                # On clock ticks, run analysis
+                if event_type == "SimClockTick":
+                    await _on_tick(payload)
 
     except Exception:
         logger.exception("Consumer fatal error")

@@ -24,10 +24,26 @@ Before doing any edit, do this:
 
 Your mission is to:
 
-- Identify big refactor, logic issues, bugs, improvements that can be done in the codebase.
-- Write a plan to implement the changes you identified, and then implement them step by step.
-- Make sure to test the changes you made and validate the behaviour of the services.
-- Document the changes you made, the issues you fixed, the tests you ran and the results you got in a md file in docs/lessons-learned/.
-- Mark issues as completed in the relevant file if needed.
-- Run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
-- Write an IMPROVEMENTS.md file in the root of the project of things you would add or change in the project, BESIDES the big things you already saw, to make the project more interesting for a scientific paper, future contributors, community.
+1. **Shared idempotency module** — The FIFO eviction logic is now duplicated across 3
+   services. Extract to a shared `_common/idempotency.py` module.
+
+2. **Structured logging** — All services use plain-text logging. Switching to JSON structured
+   logging (e.g., `python-json-logger`) would improve log aggregation in Grafana/Loki.
+
+3. **Consumer health checks** — Kafka consumers run in background threads with no health
+   signal. If a consumer thread dies, the service continues serving HTTP but processes no
+   events. Add a liveness check (e.g., last-processed timestamp exposed via `/health`).
+
+4. **Schema registry** — Event schemas are implicit (Python dicts). Adding a schema registry
+   (or at least Pydantic models for all event types) would catch envelope mismatches at
+   produce time rather than at consume time.
+
+5. **Neo4j connection pooling tuning** — Default driver settings may not be optimal for the
+   burst-heavy access pattern during high-speed simulation ticks.
+
+6. **WebSocket reconnection backoff** — The dashboard WebSocket reconnects on a fixed
+   interval. Implementing exponential backoff with jitter would reduce thundering-herd
+   reconnection storms.
+
+7. **Test coverage for analysis-service** — Currently has no unit or integration tests.
+   The bottleneck detection, recommendation engine, and anomaly detector are untested.

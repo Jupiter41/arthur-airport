@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from confluent_kafka import Producer
@@ -65,7 +65,7 @@ def _produce_event(
         "event_id": str(uuid4()),
         "event_type": event_type,
         "schema_version": "1.0",
-        "produced_at": datetime.utcnow().isoformat(),
+        "produced_at": datetime.now(timezone.utc).isoformat(),
         "sim_time": sim_time.isoformat(),
         "producer": PRODUCER_NAME,
         "payload": payload,
@@ -100,6 +100,8 @@ def emit_flight_status_changed(
     runway_id: str | None = None,
     delay_minutes: int = 0,
     reason: str | None = None,
+    direction: str | None = None,
+    destination_iata: str | None = None,
 ) -> None:
     """Emit FlightStatusChanged event."""
     payload = {
@@ -111,6 +113,8 @@ def emit_flight_status_changed(
         "runway_id": runway_id,
         "delay_minutes": delay_minutes,
         "reason": reason,
+        "direction": direction,
+        "destination_iata": destination_iata,
     }
     _produce_event("FlightStatusChanged", sim_time, payload, key=flight_id)
     logger.info(
