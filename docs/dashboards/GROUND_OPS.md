@@ -6,6 +6,8 @@
 **Data sources:** `flight-service`, `weather-service`, `incident-service` via API gateway  
 **Real-time:** WebSocket topics `flights`, `weather`, `incidents`
 
+> **See also:** [ROUTES.md](../architecture/ROUTES.md) (endpoint inventory) · [EVENT_BUS.md](../architecture/EVENT_BUS.md) (Kafka schemas) · [DATA_MODEL.md](../architecture/DATA_MODEL.md) (Neo4j graph) · [flight-service SPEC](../services/flight-service/SPEC.md) · [analysis-service](../../services/analysis-service/) (recommendations)
+
 ---
 
 ## 1. Purpose
@@ -124,14 +126,14 @@ When arrivals are in the holding stack, small circling icons appear in the upper
 
 Each runway strip shows:
 
-| Element | Description |
-|---|---|
-| Runway ID | `09L / 27R` |
-| Status badge | `OPEN` / `RESTRICTED` / `CLOSED` / `INCIDENT` |
-| Active movements | Animated flight arrows |
-| Capacity display | `Current: 18/hr ← Max: 32/hr` |
-| Queue indicator | `Arr queue: 3 · Dep queue: 2` |
-| ILS indicator | `ILS CAT III` badge when active (LIFR) |
+| Element          | Description                                   |
+| ---------------- | --------------------------------------------- |
+| Runway ID        | `09L / 27R`                                   |
+| Status badge     | `OPEN` / `RESTRICTED` / `CLOSED` / `INCIDENT` |
+| Active movements | Animated flight arrows                        |
+| Capacity display | `Current: 18/hr ← Max: 32/hr`                 |
+| Queue indicator  | `Arr queue: 3 · Dep queue: 2`                 |
+| ILS indicator    | `ILS CAT III` badge when active (LIFR)        |
 
 When a runway incursion incident is active, the runway strip turns red with a `⚠ INCURSION` badge and the animated aircraft icons freeze.
 
@@ -141,12 +143,12 @@ When a runway incursion incident is active, the runway strip turns red with a `�
 
 Shows all arrivals currently in the simulated holding pattern:
 
-| Field | Description |
-|---|---|
-| Flight number | |
-| Entry time | How long in holding (relative) |
-| Fuel state | Simulated: `NORMAL` / `MIN FUEL` (if holding > 30 sim-min) |
-| Expected approach time | When the flight is next in the runway queue |
+| Field                  | Description                                                |
+| ---------------------- | ---------------------------------------------------------- |
+| Flight number          |                                                            |
+| Entry time             | How long in holding (relative)                             |
+| Fuel state             | Simulated: `NORMAL` / `MIN FUEL` (if holding > 30 sim-min) |
+| Expected approach time | When the flight is next in the runway queue                |
 
 Holding stack entries are ordered by entry time (earliest first = next to land). The `MIN FUEL` state triggers an amber highlight and a `PassengerAlert` (informational only — no real emergency in the simulation unless the operator injects one).
 
@@ -156,11 +158,11 @@ Holding stack entries are ordered by entry time (earliest first = next to land).
 
 Displays the current departure ground stop status per runway.
 
-| State | Display |
-|---|---|
-| No stop | `NORMAL — Departures active` (green) |
-| Stop active | `⛔ GROUND STOP — Departures suspended` (red) with trigger incident |
-| Partial stop | `⚠ REDUCED — Departure rate: N/hr` (amber) |
+| State        | Display                                                             |
+| ------------ | ------------------------------------------------------------------- |
+| No stop      | `NORMAL — Departures active` (green)                                |
+| Stop active  | `⛔ GROUND STOP — Departures suspended` (red) with trigger incident |
+| Partial stop | `⚠ REDUCED — Departure rate: N/hr` (amber)                          |
 
 The panel also shows the estimated stop duration and affected departure count.
 
@@ -198,27 +200,27 @@ A compact vertical panel on the right side of the airfield view:
 
 Subscriptions: `flights`, `weather`, `incidents`
 
-| Event type | Handler |
-|---|---|
-| `FlightStatusChanged` | Update gate cell colour, update runway strip |
-| `FlightGateAssigned` | Update gate cell assignment |
-| `FlightRunwayAssigned` | Add/update movement on runway strip |
-| `WeatherStateChanged` | Update side panel, runway strip colours + capacity |
-| `IncidentCreated` (runway_incursion) | Freeze runway strip, show red overlay |
-| `IncidentCreated` (security_breach) | Mark terminal blocks with locked overlay |
-| `IncidentStatusChanged` (resolved) | Restore normal display |
+| Event type                           | Handler                                            |
+| ------------------------------------ | -------------------------------------------------- |
+| `FlightStatusChanged`                | Update gate cell colour, update runway strip       |
+| `FlightGateAssigned`                 | Update gate cell assignment                        |
+| `FlightRunwayAssigned`               | Add/update movement on runway strip                |
+| `WeatherStateChanged`                | Update side panel, runway strip colours + capacity |
+| `IncidentCreated` (runway_incursion) | Freeze runway strip, show red overlay              |
+| `IncidentCreated` (security_breach)  | Mark terminal blocks with locked overlay           |
+| `IncidentStatusChanged` (resolved)   | Restore normal display                             |
 
 ---
 
 ## 11. API calls on mount
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /runways` | Runway status + queues |
-| `GET /gates` | All gate statuses |
-| `GET /flights?status=approach,taxiing,boarding,at_gate,departed` | Active airfield movements |
-| `GET /weather/current` | Side panel |
-| `GET /incidents?status=active` | Active incidents for overlays |
+| Endpoint                                                         | Purpose                       |
+| ---------------------------------------------------------------- | ----------------------------- |
+| `GET /runways`                                                   | Runway status + queues        |
+| `GET /gates`                                                     | All gate statuses             |
+| `GET /flights?status=approach,taxiing,boarding,at_gate,departed` | Active airfield movements     |
+| `GET /weather/current`                                           | Side panel                    |
+| `GET /incidents?status=active`                                   | Active incidents for overlays |
 
 ---
 

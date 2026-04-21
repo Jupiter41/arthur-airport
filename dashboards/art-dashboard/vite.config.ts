@@ -1,4 +1,5 @@
-import { defineConfig } from "vitest/config";
+/// <reference types="vitest" />
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const gatewayHttpTarget =
@@ -28,5 +29,16 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          mapbox: ["mapbox-gl"],
+          leaflet: ["leaflet"],
+          recharts: ["recharts"],
+        },
+      },
+    },
   },
 });

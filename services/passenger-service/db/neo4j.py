@@ -33,6 +33,9 @@ async def init_neo4j() -> None:
             os.getenv("NEO4J_USER", "neo4j"),
             os.getenv("NEO4J_PASSWORD", "art-digital-twin"),
         ),
+        max_connection_pool_size=int(os.getenv("NEO4J_POOL_SIZE", "50")),
+        connection_acquisition_timeout=float(os.getenv("NEO4J_POOL_TIMEOUT", "60")),
+        max_connection_lifetime=int(os.getenv("NEO4J_CONN_LIFETIME", "3600")),
     )
     await _driver.verify_connectivity()
     logger.info("Neo4j driver initialized")
@@ -251,9 +254,8 @@ async def search_passengers(pnr: str | None = None, name: str | None = None) -> 
 
 _VALID_STATUSES = frozenset({
     "booked", "checked_in", "security_queue", "airside", "at_gate",
-    "boarding", "on_board", "departed", "arrived", "deplaning",
-    "baggage_claim", "landside", "completed", "no_show", "cancelled",
-    "connecting",
+    "boarded", "deplaning", "customs", "baggage_claim", "departed_airport",
+    "missed_connection", "disrupted", "no_show", "cancelled",
 })
 
 

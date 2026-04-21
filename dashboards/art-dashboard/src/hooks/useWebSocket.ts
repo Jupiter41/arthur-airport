@@ -224,6 +224,8 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempt = useRef(0);
   const heartbeatTimer = useRef<ReturnType<typeof setTimeout>>();
+  const pendingEvents = useRef<KafkaEvent[]>([]);
+  const rafHandle = useRef(0);
 
   const dispatch = useCallback((event: KafkaEvent) => {
     const { event_type, payload, sim_time } = event;
@@ -232,6 +234,30 @@ export function useWebSocket() {
       handler(payload as Record<string, unknown>, sim_time, event);
     }
   }, []);
+
+  /** Flush all pending events in a single animation frame. */
+  const flushPending = useCallback(() => {
+    rafHandle.current = 0;
+    const batch = pendingEvents.current;
+    pendingEvents.current = [];
+    for (const event of batch) {
+      dispatch(event);
+      window.dispatchEvent(
+        new MessageEvent("ws-event", { data: JSON.stringify(event) }),
+      );
+    }
+  }, [dispatch]);
+
+  /** Queue an event and schedule a batched flush for the next frame. */
+  const enqueue = useCallback(
+    (event: KafkaEvent) => {
+      pendingEvents.current.push(event);
+      if (!rafHandle.current) {
+        rafHandle.current = requestAnimationFrame(flushPending);
+      }
+    },
+    [flushPending],
+  );
 
   const resetHeartbeat = useCallback(() => {
     clearTimeout(heartbeatTimer.current);
@@ -242,10 +268,11 @@ export function useWebSocket() {
   }, []);
 
   const scheduleReconnect = useCallback((connectFn: () => void) => {
-    const delay = Math.min(
+    const base = Math.min(
       RECONNECT_BASE_MS * 2 ** reconnectAttempt.current,
       RECONNECT_MAX_MS,
     );
+    const delay = base * (0.75 + Math.random() * 0.5);
     reconnectAttempt.current += 1;
     setTimeout(connectFn, delay);
   }, []);
@@ -326,11 +353,7 @@ export function useWebSocket() {
 
           // Regular event envelope
           if (data.event_type) {
-            dispatch(data as unknown as KafkaEvent);
-            // Dispatch a custom DOM event for the Kafka inspector
-            window.dispatchEvent(
-              new MessageEvent("ws-event", { data: ev.data }),
-            );
+            enqueue(data as unknown as KafkaEvent);
           }
         };
 
@@ -355,12 +378,13 @@ export function useWebSocket() {
           .setWsConnected(false, "WebSocket auth failed");
         scheduleReconnect(connect);
       });
-  }, [dispatch, resetHeartbeat, scheduleReconnect]);
+  }, [dispatch, enqueue, resetHeartbeat, scheduleReconnect]);
 
   useEffect(() => {
     connect();
     return () => {
       clearTimeout(heartbeatTimer.current);
+      cancelAnimationFrame(rafHandle.current);
       wsRef.current?.close();
     };
   }, [connect]);

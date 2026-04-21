@@ -120,7 +120,8 @@ async def websocket_incidents(ws: WebSocket):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    from kafka.consumer import get_consumer_health
+    return {"status": "ok", "consumer": get_consumer_health()}
 
 
 @app.get("/perf")

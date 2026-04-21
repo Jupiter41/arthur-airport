@@ -116,6 +116,34 @@ Routes are grouped by service, listing the HTTP method, path, and a one-line des
 
 ---
 
+## analysis-service (port 8007)
+
+| Method  | Path                               | Description                                                |
+| ------- | ---------------------------------- | ---------------------------------------------------------- |
+| `GET`   | `/api/v1/analysis/bottlenecks`     | List active bottlenecks with optional severity/type filter |
+| `GET`   | `/api/v1/analysis/recommendations` | Top 3 ranked recommendations by impact/cost ratio          |
+| `POST`  | `/api/v1/analysis/what-if`         | Run what-if projection for 1–3 proposed actions            |
+| `GET`   | `/api/v1/analysis/what-if/log`     | What-if analysis log, most recent first                    |
+| `GET`   | `/api/v1/analysis/autonomous`      | Get autonomous mode settings                               |
+| `PATCH` | `/api/v1/analysis/autonomous`      | Update autonomous mode settings                            |
+| `GET`   | `/api/v1/analysis/autonomous/log`  | Autonomous action log, most recent first                   |
+| `GET`   | `/api/v1/analysis/anomalies`       | Anomaly detection status and deviations from baseline      |
+| `POST`  | `/api/v1/analysis/query`           | Natural language question about current airport state      |
+| `POST`  | `/api/v1/analysis/nl-inject`       | Parse natural language incident injection command          |
+| `GET`   | `/api/v1/analysis/narration`       | Get narration settings and recent history                  |
+| `PATCH` | `/api/v1/analysis/narration`       | Toggle narration mode on/off and update settings           |
+| `POST`  | `/api/v1/analysis/report`          | Generate after-action report for current simulation        |
+| `GET`   | `/api/v1/analysis/llm-config`      | Current LLM configuration and availability                 |
+| `GET`   | `/api/v1/analysis/training/status` | Training status, history, and available models             |
+| `GET`   | `/api/v1/analysis/training/config` | Training environment config, model paths, loaded status    |
+| `POST`  | `/api/v1/analysis/training/start`  | Start a new training run (rl/anomaly/forecast)             |
+| `POST`  | `/api/v1/analysis/training/stop`   | Stop the active training run                               |
+| `GET`   | `/health`                          | Liveness probe with Kafka consumer status                  |
+| `GET`   | `/ready`                           | Readiness probe (Neo4j + Kafka + consumer)                 |
+| `GET`   | `/perf`                            | Tick processing performance stats                          |
+
+---
+
 ## API Gateway (port 3000)
 
 ### Gateway-native endpoints
@@ -151,16 +179,18 @@ share similar path segments (e.g. `/flow/summary` exists on both passenger and b
 | `/api/v1/baggage/flow/*`           | baggage-service:8003   | `/api/v1/flow/*`        |
 | `/api/v1/baggage/flagged/*`        | baggage-service:8003   | `/api/v1/flagged/*`     |
 | `/api/v1/baggage/*`                | baggage-service:8003   | `/api/v1/baggage/*`     |
+| `/api/v1/analysis/*`               | analysis-service:8007  | `/api/v1/analysis/*`    |
 
 ### WebSocket topics
 
 Clients subscribe to event topics via the gateway WebSocket:
 
-| Topic key    | Source            | Events forwarded                                                               |
-| ------------ | ----------------- | ------------------------------------------------------------------------------ |
-| `flights`    | flights.events    | FlightStatusChanged, FlightGateAssigned, FlightRunwayAssigned, FlightCancelled |
-| `passengers` | passengers.events | PassengerStatusChanged, PassengerAlert, SecurityCongestionDetected             |
-| `baggage`    | baggage.events    | BaggageStatusChanged, BaggageFlagged                                           |
-| `weather`    | weather.events    | WeatherStateChanged, METARIssued                                               |
-| `incidents`  | incidents.events  | IncidentCreated, IncidentStatusChanged, IncidentCascaded                       |
-| `alerts`     | incidents.alerts  | IncidentAlert (high-priority feed)                                             |
+| Topic key    | Source            | Events forwarded                                                                 |
+| ------------ | ----------------- | -------------------------------------------------------------------------------- |
+| `flights`    | flights.events    | FlightStatusChanged, FlightGateAssigned, FlightRunwayAssigned, FlightCancelled   |
+| `passengers` | passengers.events | PassengerStatusChanged, PassengerAlert, SecurityCongestionDetected               |
+| `baggage`    | baggage.events    | BaggageStatusChanged, BaggageFlagged                                             |
+| `weather`    | weather.events    | WeatherStateChanged, METARIssued                                                 |
+| `incidents`  | incidents.events  | IncidentCreated, IncidentStatusChanged, IncidentCascaded                         |
+| `alerts`     | incidents.alerts  | IncidentAlert (high-priority feed)                                               |
+| `analysis`   | analysis.events   | BottleneckDetected, RecommendationIssued, AutonomousActionTaken, AnomalyDetected |

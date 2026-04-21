@@ -6,6 +6,8 @@
 **Data sources:** `incident-service`, `flight-service`, `passenger-service`, `baggage-service` via API gateway  
 **Real-time:** WebSocket topics `incidents`, `alerts`
 
+> **See also:** [ROUTES.md](../architecture/ROUTES.md) (endpoint inventory) · [EVENT_BUS.md](../architecture/EVENT_BUS.md) (Kafka schemas) · [DATA_MODEL.md](../architecture/DATA_MODEL.md) (Neo4j graph) · [incident-service SPEC](../services/incident-service/SPEC.md) · [analysis-service](../../services/analysis-service/) (recommendations & what-if)
+
 ---
 
 ## 1. Purpose
@@ -80,16 +82,16 @@ The incident dashboard is the safety and operations nerve centre of the KART dig
 
 Cards sorted by severity descending, then by start time.
 
-| Field | Display |
-|---|---|
-| Severity border | red (critical) · orange (high) · amber (medium) · gray (low) |
-| Type icon | Symbolic icon per type |
-| Title + location | `incident.title` · `incident.location` |
-| Started at | Relative ("4 min ago") + absolute sim time |
-| Protocol badge | Active protocol code |
-| Status | `ACTIVE` (pulse) / `CONTAINED` (solid) |
-| Cascade count | `↓ 3 cascades` |
-| Actions | `[Contain]` `[Resolve]` |
+| Field            | Display                                                      |
+| ---------------- | ------------------------------------------------------------ |
+| Severity border  | red (critical) · orange (high) · amber (medium) · gray (low) |
+| Type icon        | Symbolic icon per type                                       |
+| Title + location | `incident.title` · `incident.location`                       |
+| Started at       | Relative ("4 min ago") + absolute sim time                   |
+| Protocol badge   | Active protocol code                                         |
+| Status           | `ACTIVE` (pulse) / `CONTAINED` (solid)                       |
+| Cascade count    | `↓ 3 cascades`                                               |
+| Actions          | `[Contain]` `[Resolve]`                                      |
 
 `CRITICAL` cards have a slow red pulse border (2s period). Clicking selects the incident and loads the cascade visualizer.
 
@@ -137,22 +139,22 @@ Reverse-chronological scrolling log of all `IncidentAlert` events. Format:
 
 Opened by `[+ INJECT]`. Form fields:
 
-| Field | Options |
-|---|---|
-| Event type | runway_incursion, baggage_fire, security_breach, severe_weather, system_failure |
-| Severity | low, medium, high, critical |
-| Location | Dynamically populated per type (see below) |
-| Description | Optional override |
+| Field       | Options                                                                         |
+| ----------- | ------------------------------------------------------------------------------- |
+| Event type  | runway_incursion, baggage_fire, security_breach, severe_weather, system_failure |
+| Severity    | low, medium, high, critical                                                     |
+| Location    | Dynamically populated per type (see below)                                      |
+| Description | Optional override                                                               |
 
 Location options per type:
 
-| Type | Locations |
-|---|---|
-| `runway_incursion` | runway-09L/09R/27R/27L |
-| `baggage_fire` | make-up-{A/B/C}-{1–5} |
-| `security_breach` | gate-{id}, terminal-{A/B/C}, airside-{A/B/C} |
-| `severe_weather` | airport-wide |
-| `system_failure` | conveyor-sorting, conveyor-induction-{A/B/C}, power-{A/B/C}, screening-unit-{1–6} |
+| Type               | Locations                                                                         |
+| ------------------ | --------------------------------------------------------------------------------- |
+| `runway_incursion` | runway-09L/09R/27R/27L                                                            |
+| `baggage_fire`     | make-up-{A/B/C}-{1–5}                                                             |
+| `security_breach`  | gate-{id}, terminal-{A/B/C}, airside-{A/B/C}                                      |
+| `severe_weather`   | airport-wide                                                                      |
+| `system_failure`   | conveyor-sorting, conveyor-induction-{A/B/C}, power-{A/B/C}, screening-unit-{1–6} |
 
 After form completion, a **confirmation preview** shows expected immediate effects and cascade chain before submission — teaching the causal model:
 
@@ -182,12 +184,12 @@ The report modal fetches `GET /incidents/{id}/report` and displays a formatted s
 
 Subscriptions: `incidents`, `alerts`
 
-| Event type | Handler |
-|---|---|
-| `IncidentCreated` | Add card, animate in |
+| Event type              | Handler                                           |
+| ----------------------- | ------------------------------------------------- |
+| `IncidentCreated`       | Add card, animate in                              |
 | `IncidentStatusChanged` | Update badge; if resolved: move to resolved panel |
-| `IncidentCascaded` | Add child node to cascade tree |
-| `IncidentAlert` | Append to feed |
+| `IncidentCascaded`      | Add child node to cascade tree                    |
+| `IncidentAlert`         | Append to feed                                    |
 
 On `critical` + `sound_alert: true`: viewport flashes red once (250ms), auto-dismiss toast appears (10s), nav icon pulses red if user is on another page.
 
@@ -195,11 +197,11 @@ On `critical` + `sound_alert: true`: viewport flashes red once (250ms), auto-dis
 
 ## 11. API calls on mount
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /incidents?status=active,contained` | Active list |
-| `GET /incidents?status=resolved` | Resolved panel |
-| `GET /alerts?limit=100` | Initial feed |
+| Endpoint                                 | Purpose        |
+| ---------------------------------------- | -------------- |
+| `GET /incidents?status=active,contained` | Active list    |
+| `GET /incidents?status=resolved`         | Resolved panel |
+| `GET /alerts?limit=100`                  | Initial feed   |
 
 ---
 

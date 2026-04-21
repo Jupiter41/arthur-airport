@@ -10,20 +10,21 @@ clients:
 
 scrape_configs:
   - job_name: docker
-    docker_sd_configs:
-      - host: unix:///var/run/docker.sock
-        refresh_interval: 5s
-        filters:
-          - name: label
-            values: ["com.docker.compose.project=arthur-airport"]
-    relabel_configs:
-      - source_labels: ["__meta_docker_container_name"]
-        regex: "/(.*)"
-        target_label: "container"
-      - source_labels: ["__meta_docker_container_log_stream"]
-        target_label: "logstream"
-      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
-        target_label: "service"
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: containerlogs
+          __path__: /var/lib/docker/containers/**/*.log
+    pipeline_stages:
+      # Docker JSON log driver wraps each line in {"log":"...","stream":"...","time":"..."}
+      - docker: {}
+      # Extract container name from file path
+      - regex:
+          source: filename
+          expression: "/var/lib/docker/containers/(?P<container_id>[a-f0-9]+)/"
+      - labels:
+          container_id:
     pipeline_stages:
       # Try to parse JSON log lines (structlog output)
       - json:

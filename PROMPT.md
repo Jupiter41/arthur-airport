@@ -24,26 +24,76 @@ Before doing any edit, do this:
 
 Your mission is to:
 
-1. **Shared idempotency module** — The FIFO eviction logic is now duplicated across 3
-   services. Extract to a shared `_common/idempotency.py` module.
+- The website is slow, improve performance.
+- Make the website more nice and modern: colors, fonts, layout, responsiveness etc.
+- All flights are stuck at boarding and get cancelled in the end because they aren't being filled with baggages and passengers. Fix the logic to make sure flights get filled and take off.
+- Arrived flights with 0 passengers and baggages are showing as "AT GATE" instead of "ARRIVED". Fix the logic to show them as "ARRIVED".
+- Passenger repartition is weird and the carroussel aren't being used:
+  Airport Heatmap
+  check-in
+  security
+  airside
+  gate
+  check-in-A
+  1118 pax
+  559% · 0 free
+  security-A
+  569 pax
+  474.2% · 0 free
+  airside-A
+  740 pax
+  92.5% · 60 free
+  gate-A01
+  1187 pax
+  659.4% · 0 free
+  check-in-B
+  1905 pax
+  952.5% · 0 free
+  security-B
+  242 pax
+  201.7% · 0 free
+  airside-B
+  782 pax
+  97.8% · 18 free
+  gate-B01
+  1514 pax
+  841.1% · 0 free
+  check-in-C
+  1462 pax
+  731% · 0 free
+  security-C
+  37 pax
+  30.8% · 83 free
+  airside-C
+  555 pax
+  69.4% · 245 free
+  gate-C01
+  740 pax
+  411.1% · 0 free
+  Arrival Carousels
+  carousel-1
+  0 pax
+  0% · 150 free
+  carousel-2
+  0 pax
+  0% · 150 free
+  carousel-3
+  0 pax
+  0% · 150 free
+  carousel-4
+  0 pax
+  0% · 150 free
+  carousel-5
+  0 pax
+  0% · 150 free
+  carousel-6
+  0 pax
+  0% · 150 free
+  Calm
+  Low
+  Moderate
+  Busy
+  High
+  Near Cap
 
-2. **Structured logging** — All services use plain-text logging. Switching to JSON structured
-   logging (e.g., `python-json-logger`) would improve log aggregation in Grafana/Loki.
-
-3. **Consumer health checks** — Kafka consumers run in background threads with no health
-   signal. If a consumer thread dies, the service continues serving HTTP but processes no
-   events. Add a liveness check (e.g., last-processed timestamp exposed via `/health`).
-
-4. **Schema registry** — Event schemas are implicit (Python dicts). Adding a schema registry
-   (or at least Pydantic models for all event types) would catch envelope mismatches at
-   produce time rather than at consume time.
-
-5. **Neo4j connection pooling tuning** — Default driver settings may not be optimal for the
-   burst-heavy access pattern during high-speed simulation ticks.
-
-6. **WebSocket reconnection backoff** — The dashboard WebSocket reconnects on a fixed
-   interval. Implementing exponential backoff with jitter would reduce thundering-herd
-   reconnection storms.
-
-7. **Test coverage for analysis-service** — Currently has no unit or integration tests.
-   The bottleneck detection, recommendation engine, and anomaly detector are untested.
+- In Ground Op tab, there is a weird B icon over Terminal C

@@ -2,9 +2,11 @@
 
 **File:** `FLIGHT_BOARD.md`  
 **App:** `art-dashboard` (React + TypeScript)  
-**Route:** `/`  (default landing view)  
+**Route:** `/` (default landing view)  
 **Data sources:** `flight-service`, `weather-service`, `sim-orchestrator` via API gateway  
 **Real-time:** WebSocket topics `flights`, `weather`
+
+> **See also:** [ROUTES.md](../architecture/ROUTES.md) (endpoint inventory) · [EVENT_BUS.md](../architecture/EVENT_BUS.md) (Kafka schemas) · [DATA_MODEL.md](../architecture/DATA_MODEL.md) (Neo4j graph) · [flight-service SPEC](../services/flight-service/SPEC.md) · [weather-service SPEC](../services/weather-service/SPEC.md)
 
 ---
 
@@ -75,33 +77,33 @@ The flight board is the primary operational view of Arthur International Airport
 
 Each row in the FIDS displays:
 
-| Field | Source | Notes |
-|---|---|---|
-| Flight number | `flight.flight_number` | bold |
-| Airline logo (text code) | `flight.airline_code` | 2-letter code pill |
-| Destination / Origin | `flight.destination_iata` / `flight.origin_iata` | |
-| Gate | `flight.gate_id` | highlighted if changed recently |
-| Scheduled time | `flight.scheduled_time` | |
-| Estimated time | `flight.estimated_time` | strikethrough + amber if delayed |
-| Status badge | `flight.status` | colour-coded (see below) |
-| Delay indicator | `flight.delay_minutes` | only shown if > 0 |
-| Boarding progress bar | `passengers.boarded / pax_count` | only on boarding status |
+| Field                    | Source                                           | Notes                            |
+| ------------------------ | ------------------------------------------------ | -------------------------------- |
+| Flight number            | `flight.flight_number`                           | bold                             |
+| Airline logo (text code) | `flight.airline_code`                            | 2-letter code pill               |
+| Destination / Origin     | `flight.destination_iata` / `flight.origin_iata` |                                  |
+| Gate                     | `flight.gate_id`                                 | highlighted if changed recently  |
+| Scheduled time           | `flight.scheduled_time`                          |                                  |
+| Estimated time           | `flight.estimated_time`                          | strikethrough + amber if delayed |
+| Status badge             | `flight.status`                                  | colour-coded (see below)         |
+| Delay indicator          | `flight.delay_minutes`                           | only shown if > 0                |
+| Boarding progress bar    | `passengers.boarded / pax_count`                 | only on boarding status          |
 
 ### Status badge colours
 
-| Status | Badge colour | Label |
-|---|---|---|
-| `scheduled` | gray | SCHEDULED |
-| `boarding` | green | BOARDING |
-| `departed` | blue | DEPARTED |
-| `airborne` | blue | AIRBORNE |
-| `approach` | teal | APPROACH |
-| `landed` | teal | LANDED |
-| `taxiing` | teal | TAXIING |
-| `at_gate` | purple | AT GATE |
-| `delayed` | amber | DELAYED +Nmin |
-| `cancelled` | red | CANCELLED |
-| `diverted` | red | DIVERTED |
+| Status      | Badge colour | Label         |
+| ----------- | ------------ | ------------- |
+| `scheduled` | gray         | SCHEDULED     |
+| `boarding`  | green        | BOARDING      |
+| `departed`  | blue         | DEPARTED      |
+| `airborne`  | blue         | AIRBORNE      |
+| `approach`  | teal         | APPROACH      |
+| `landed`    | teal         | LANDED        |
+| `taxiing`   | teal         | TAXIING       |
+| `at_gate`   | purple       | AT GATE       |
+| `delayed`   | amber        | DELAYED +Nmin |
+| `cancelled` | red          | CANCELLED     |
+| `diverted`  | red          | DIVERTED      |
 
 ### Row update animation
 
@@ -164,12 +166,12 @@ Clicking opens a weather modal: raw METAR, TAF, 12-hour category history chart, 
 
 Located in the header bar (operator role only):
 
-| Control | Action |
-|---|---|
+| Control        | Action                                              |
+| -------------- | --------------------------------------------------- |
 | Speed selector | Dropdown 1×/10×/60×/600×/3600× → `PATCH /sim/speed` |
-| Pause / Resume | `POST /sim/pause` or `POST /sim/resume` |
-| Reset | `POST /sim/reset` — requires confirmation modal |
-| Inject event | Opens incident injection modal (see `INCIDENT.md`) |
+| Pause / Resume | `POST /sim/pause` or `POST /sim/resume`             |
+| Reset          | `POST /sim/reset` — requires confirmation modal     |
+| Inject event   | Opens incident injection modal (see `INCIDENT.md`)  |
 
 ---
 
@@ -177,25 +179,25 @@ Located in the header bar (operator role only):
 
 Subscriptions on mount: `flights`, `weather`, `incidents`
 
-| Event type | Handler |
-|---|---|
+| Event type            | Handler                                    |
+| --------------------- | ------------------------------------------ |
 | `FlightStatusChanged` | Update row status, trigger flash animation |
-| `FlightGateAssigned` | Update gate cell, show gate-change pill |
-| `FlightCancelled` | Mark row cancelled, red highlight |
-| `WeatherStateChanged` | Update weather strip + runway capacity |
-| `IncidentAlert` | Increment badge, show toast |
-| `SimClockTick` | Tick the sim clock display |
+| `FlightGateAssigned`  | Update gate cell, show gate-change pill    |
+| `FlightCancelled`     | Mark row cancelled, red highlight          |
+| `WeatherStateChanged` | Update weather strip + runway capacity     |
+| `IncidentAlert`       | Increment badge, show toast                |
+| `SimClockTick`        | Tick the sim clock display                 |
 
 ---
 
 ## 11. API calls on mount
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /airport` | Populate all counters |
-| `GET /flights?limit=200` | Populate FIDS |
-| `GET /weather/current` | Weather strip |
-| `GET /runways` | Runway panel |
+| Endpoint                 | Purpose               |
+| ------------------------ | --------------------- |
+| `GET /airport`           | Populate all counters |
+| `GET /flights?limit=200` | Populate FIDS         |
+| `GET /weather/current`   | Weather strip         |
+| `GET /runways`           | Runway panel          |
 
 All state kept live via WebSocket after mount — no polling.
 

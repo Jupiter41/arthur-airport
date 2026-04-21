@@ -11,9 +11,11 @@ import json
 import logging
 import os
 import random
-from collections import deque
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
+
+from _common.idempotency import IdempotencyTracker
+from _common.consumer_health import ConsumerHealthTracker
 
 from confluent_kafka import Consumer
 
@@ -94,12 +96,12 @@ class PassengerConsumerState:
         self.cached_pax_next_90: dict[str, float] = {"A": 0.0, "B": 0.0, "C": 0.0}
         self.alerts: list[dict] = []
         self.at_risk_connections: list[dict] = []
-        self.processed_events: set[str] = set()
-        self.processed_events_order: deque[str] = deque()
+        self._idempotency = IdempotencyTracker(max_size=20_000)
         self.security_enqueued: set[str] = set()
         self.airside_transitioned: set[str] = set()
         self.baggage_collected: set[str] = set()
         self.passengers_at_carousel: set[str] = set()
+        self.flight_carousel_zone: dict[str, str] = {}  # flight_id → carousel zone
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
         # Spatial data for walking time computation
         self.gate_positions: dict[str, dict] = {}
@@ -113,18 +115,7 @@ class PassengerConsumerState:
         self.noshow_rate: float = 0.03  # 2-4% no-show rate (default 3%)
 
     def check_idempotency(self, event_id: str) -> bool:
-        if not event_id:
-            return False
-        if event_id in self.processed_events:
-            return True
-        self.processed_events.add(event_id)
-        self.processed_events_order.append(event_id)
-        if len(self.processed_events) > self.MAX_PROCESSED:
-            excess = len(self.processed_events) - self.MAX_PROCESSED
-            for _ in range(excess):
-                oldest = self.processed_events_order.popleft()
-                self.processed_events.discard(oldest)
-        return False
+        return self._idempotency.is_duplicate(event_id)
 
     def add_alert(self, alert: dict) -> None:
         self.alerts.append(alert)
@@ -136,6 +127,7 @@ class PassengerConsumerState:
 _state = PassengerConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
+_consumer_health = ConsumerHealthTracker()
 
 
 async def rebuild_security_from_neo4j() -> None:
@@ -226,6 +218,11 @@ def is_consumer_running() -> bool:
     return _consumer_running
 
 
+def get_consumer_health() -> dict:
+    """Return consumer health metrics for /health endpoint."""
+    return _consumer_health.status()
+
+
 def stop_consumer() -> None:
     global _consumer_running
     _consumer_running = False
@@ -302,6 +299,8 @@ async def run_consumer() -> None:
                     await _dispatch(latest_tick_envelope)
                 except Exception as e:
                     logger.error("Processing error: %s", e, exc_info=True)
+
+            _consumer_health.mark_message()
     finally:
         _consumer.close()
         _consumer_running = False
@@ -1084,6 +1083,24 @@ async def _advance_arrivals(sim_time: datetime) -> None:
                 flight_id=pax.get("flight_id"),
                 flight_number=pax.get("flight_number"),
             )
+        # Assign to carousel if bags already on carousel for this flight
+        for pax in to_baggage_claim:
+            fid = pax.get("flight_id")
+            pid = pax["id"]
+            carousel_zone = _state.flight_carousel_zone.get(fid) if fid else None
+            if not carousel_zone and fid:
+                # Deterministic fallback: derive carousel from gate/terminal
+                # A→1-2, B→3-4, C→5-6 (matches baggage-service logic)
+                gate = pax.get("gate_id") or ""
+                terminal = pax.get("terminal_id") or (gate[0].upper() if gate else "A")
+                carousel_map = {"A": [1, 2], "B": [3, 4], "C": [5, 6]}
+                carousels = carousel_map.get(terminal, [1, 2])
+                carousel_num = carousels[hash(fid) % len(carousels)]
+                carousel_zone = f"carousel-{carousel_num}"
+            if carousel_zone and pid not in _state.passengers_at_carousel:
+                move_passenger("baggage-claim", carousel_zone)
+                _state.passengers_at_carousel.add(pid)
+                await update_passenger_location(pid, carousel_zone)
 
     # customs → baggage_claim
     try:
@@ -1114,6 +1131,22 @@ async def _advance_arrivals(sim_time: datetime) -> None:
                 flight_id=pax.get("flight_id"),
                 flight_number=pax.get("flight_number"),
             )
+        # Assign to carousel if bags already on carousel for this flight
+        for pax in customs_to_bc:
+            fid = pax.get("flight_id")
+            pid = pax["id"]
+            carousel_zone = _state.flight_carousel_zone.get(fid) if fid else None
+            if not carousel_zone and fid:
+                gate = pax.get("gate_id") or ""
+                terminal = pax.get("terminal_id") or (gate[0].upper() if gate else "A")
+                carousel_map = {"A": [1, 2], "B": [3, 4], "C": [5, 6]}
+                carousels = carousel_map.get(terminal, [1, 2])
+                carousel_num = carousels[hash(fid) % len(carousels)]
+                carousel_zone = f"carousel-{carousel_num}"
+            if carousel_zone and pid not in _state.passengers_at_carousel:
+                move_passenger("baggage-claim", carousel_zone)
+                _state.passengers_at_carousel.add(pid)
+                await update_passenger_location(pid, carousel_zone)
 
     # baggage_claim → departed_airport
     try:
@@ -1425,6 +1458,10 @@ async def _on_baggage_status_changed(payload: dict, sim_time: datetime) -> None:
             return
         belt_num = scan_zone.rsplit("-", 1)[-1]
         carousel_zone = f"carousel-{belt_num}"
+
+        # Track flight→carousel mapping so late-arriving passengers get assigned
+        if flight_id:
+            _state.flight_carousel_zone[flight_id] = carousel_zone
 
         if passenger_id and passenger_id not in _state.passengers_at_carousel:
             # Departure bag with known passenger

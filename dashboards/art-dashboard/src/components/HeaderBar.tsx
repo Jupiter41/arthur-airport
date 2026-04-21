@@ -79,32 +79,32 @@ function NavDropdown({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`text-sm font-medium px-3.5 py-2 rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
+        className={`text-sm font-medium px-3 py-1.5 rounded-xl transition-all duration-200 flex items-center gap-1.5 ${
           isActive
-            ? "bg-gray-900 text-white shadow-inner border border-blue-500/30"
-            : "text-gray-300 hover:text-white hover:bg-gray-700/60"
+            ? "bg-accent/15 text-accent border border-accent/25"
+            : "text-gray-400 hover:text-white hover:bg-panel-hover/60"
         }`}
       >
         <span className="text-base">{item.icon}</span>
-        {item.label}
+        <span className="hidden lg:inline">{item.label}</span>
         <span
-          className={`text-[10px] ml-0.5 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+          className={`text-[10px] ml-0.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
         >
           ▾
         </span>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl shadow-black/30 z-50 min-w-[180px] py-1 backdrop-blur-sm">
+        <div className="absolute top-full left-0 mt-1.5 bg-surface-card/95 border border-panel-border rounded-xl shadow-xl shadow-black/40 z-50 min-w-[180px] py-1.5 backdrop-blur-md">
           {item.children.map((child) => (
             <NavLink
               key={child.path}
               to={child.path}
               onClick={() => setOpen(false)}
               className={({ isActive: active }) =>
-                `flex items-center text-sm px-4 py-2.5 transition-colors ${
+                `flex items-center text-sm px-4 py-2 transition-colors rounded-lg mx-1.5 ${
                   active
-                    ? "bg-blue-500/15 text-blue-400 border-l-2 border-blue-400"
-                    : "text-gray-300 hover:bg-gray-700/60 hover:text-white border-l-2 border-transparent"
+                    ? "bg-accent/15 text-accent"
+                    : "text-gray-300 hover:bg-panel-hover/60 hover:text-white"
                 }`
               }
             >
@@ -149,32 +149,59 @@ export function HeaderBar() {
   }, []);
 
   return (
-    <header className="bg-gray-800/95 backdrop-blur-sm border-b border-gray-700/80 shadow-lg shadow-black/20 relative z-50">
-      {/* Top row */}
-      <div className="flex items-center justify-between px-5 py-2.5">
-        <div className="flex items-center gap-5">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xl">✈️</span>
-            <span className="text-xl font-bold tracking-tight text-blue-400">
+    <header className="bg-surface-card/80 backdrop-blur-md border-b border-panel-border/60 shadow-lg shadow-black/20 relative z-50">
+      <div className="flex items-center justify-between px-4 py-2 gap-3">
+        {/* Logo + nav */}
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-lg">✈️</span>
+            <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-accent to-blue-300 bg-clip-text text-transparent">
               KART
             </span>
-            <span className="text-sm text-gray-400 hidden sm:inline">
-              Arthur International Airport
+            <span className="text-xs text-gray-500 hidden sm:inline font-medium">
+              Arthur International
             </span>
           </div>
+
+          <div className="h-5 w-px bg-panel-border/60 hidden md:block" />
+
+          <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide">
+            {NAV_ITEMS.map((item) =>
+              item.children ? (
+                <NavDropdown key={item.label} item={item} />
+              ) : (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `text-sm font-medium px-3 py-1.5 rounded-xl transition-all duration-200 whitespace-nowrap flex items-center gap-1.5 ${
+                      isActive
+                        ? "bg-accent/15 text-accent border border-accent/25"
+                        : "text-gray-400 hover:text-white hover:bg-panel-hover/60"
+                    }`
+                  }
+                  end={item.path === "/"}
+                >
+                  <span className="text-base">{item.icon}</span>
+                  <span className="hidden lg:inline">{item.label}</span>
+                </NavLink>
+              ),
+            )}
+          </nav>
+        </div>
+
+        {/* Status bar */}
+        <div className="flex items-center gap-2 shrink-0">
           <div className="hidden md:block">
             <WeatherStrip />
           </div>
-        </div>
-
-        <div className="flex items-center gap-3">
           <button
-            className="text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-2 rounded-lg transition-all duration-150 disabled:opacity-40 border border-gray-600 hover:border-gray-500"
+            className="text-xs font-medium bg-panel hover:bg-panel-hover text-gray-300 px-2.5 py-1.5 rounded-lg transition-all duration-200 disabled:opacity-40 border border-panel-border hover:border-gray-500"
             onClick={handleGlobalExport}
             disabled={exporting}
             title="Export full simulation snapshot"
           >
-            {exporting ? "Exporting…" : "⬇ Export"}
+            {exporting ? "…" : "⬇"}
           </button>
           <ConnectionStatus />
           <IncidentBadge />
@@ -182,31 +209,6 @@ export function HeaderBar() {
           <SimControls />
         </div>
       </div>
-
-      {/* Nav row */}
-      <nav className="flex items-center gap-1 px-5 pb-2">
-        {NAV_ITEMS.map((item) =>
-          item.children ? (
-            <NavDropdown key={item.label} item={item} />
-          ) : (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                `text-sm font-medium px-3.5 py-2 rounded-lg transition-all duration-150 ${
-                  isActive
-                    ? "bg-gray-900 text-white shadow-inner border border-blue-500/30"
-                    : "text-gray-300 hover:text-white hover:bg-gray-700/60"
-                }`
-              }
-              end={item.path === "/"}
-            >
-              <span className="mr-1.5 text-base">{item.icon}</span>
-              {item.label}
-            </NavLink>
-          ),
-        )}
-      </nav>
     </header>
   );
 }

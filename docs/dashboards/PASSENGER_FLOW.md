@@ -6,6 +6,8 @@
 **Data sources:** `passenger-service`, `flight-service` via API gateway  
 **Real-time:** WebSocket topics `passengers`, `incidents`
 
+> **See also:** [ROUTES.md](../architecture/ROUTES.md) (endpoint inventory) · [EVENT_BUS.md](../architecture/EVENT_BUS.md) (Kafka schemas) · [DATA_MODEL.md](../architecture/DATA_MODEL.md) (Neo4j graph) · [passenger-service SPEC](../services/passenger-service/SPEC.md)
+
 ---
 
 ## 1. Purpose
@@ -86,13 +88,13 @@ A schematic grid representing all passenger zones at KART. Each zone is a colour
 
 The heatmap is organised in 4 columns (left to right: check-in → security → airside → gates) and 3 rows (terminals A, B, C). A fourth row below shows arrival carousels.
 
-| Column | Zones |
-|---|---|
-| Check-in | check-in-A, check-in-B, check-in-C |
-| Security | security-A, security-B, security-C |
-| Airside | airside-A, airside-B, airside-C |
-| Gates | gate-A01..A14, gate-B01..B14, gate-C01..C14 (grouped per terminal) |
-| Arrivals | carousel-1 through carousel-6 |
+| Column   | Zones                                                              |
+| -------- | ------------------------------------------------------------------ |
+| Check-in | check-in-A, check-in-B, check-in-C                                 |
+| Security | security-A, security-B, security-C                                 |
+| Airside  | airside-A, airside-B, airside-C                                    |
+| Gates    | gate-A01..A14, gate-B01..B14, gate-C01..C14 (grouped per terminal) |
+| Arrivals | carousel-1 through carousel-6                                      |
 
 Gate cells are smaller (14 per terminal) and sit in a sub-grid within the gates column. The cell for a gate-level zone is clickable and shows the specific gate number on hover.
 
@@ -100,16 +102,16 @@ Gate cells are smaller (14 per terminal) and sit in a sub-grid within the gates 
 
 Heatmap colour represents `density / capacity` (load percentage):
 
-| Load % | Colour |
-|---|---|
-| 0–25% | Light green |
-| 26–50% | Green |
-| 51–70% | Yellow-green |
-| 71–85% | Amber |
-| 86–95% | Orange |
-| 96–100% | Red |
+| Load %            | Colour                   |
+| ----------------- | ------------------------ |
+| 0–25%             | Light green              |
+| 26–50%            | Green                    |
+| 51–70%            | Yellow-green             |
+| 71–85%            | Amber                    |
+| 86–95%            | Orange                   |
+| 96–100%           | Red                      |
 | Locked (incident) | Gray + lock icon overlay |
-| Evacuating | Red pulse animation |
+| Evacuating        | Red pulse animation      |
 
 Colour transitions are smoothly animated (CSS transition 0.8s) rather than instant jumps, giving a natural "heat rising and falling" feel.
 
@@ -120,6 +122,7 @@ On `PassengerStatusChanged` events, the affected zone's density counter updates 
 ### Zone click
 
 Clicking a zone opens the `ZoneDetailPanel` (right side) showing:
+
 - Zone name + capacity
 - Current density + load percentage
 - Estimated wait time (security zones only)
@@ -152,14 +155,14 @@ Sorted by urgency (most critical first — least time until departure).
 
 Each row:
 
-| Field | Description |
-|---|---|
-| Passenger name | Link to passenger detail |
-| Inbound flight | `AX201 +38min delayed` |
-| Connection flight | `→ AX508` |
-| Time until connection departs | In simulated minutes |
-| Risk level badge | `WATCH` (gray) / `AT RISK` (amber) / `MISSED` (red) |
-| Baggage indicator | Number of checked bags (adds complexity to re-booking) |
+| Field                         | Description                                            |
+| ----------------------------- | ------------------------------------------------------ |
+| Passenger name                | Link to passenger detail                               |
+| Inbound flight                | `AX201 +38min delayed`                                 |
+| Connection flight             | `→ AX508`                                              |
+| Time until connection departs | In simulated minutes                                   |
+| Risk level badge              | `WATCH` (gray) / `AT RISK` (amber) / `MISSED` (red)    |
+| Baggage indicator             | Number of checked bags (adds complexity to re-booking) |
 
 The list updates in real time as delay values change. Passengers who miss their connection transition to `MISSED` (red) and remain in the list for 10 sim-minutes before auto-archiving.
 
@@ -187,13 +190,13 @@ The list updates in real time as delay values change. Passengers who miss their 
 
 When incident events arrive via WebSocket, the heatmap responds visually:
 
-| Incident type | Heatmap effect |
-|---|---|
-| `security_breach` (zone_lockdown) | Affected zone turns gray with lock icon; adjacent zones amber |
-| `security_breach` (terminal_lockdown) | Entire terminal column turns gray; pulsing red border |
-| `security_breach` (full_evacuation) | All zones pulse red; `EVACUATION IN PROGRESS` banner overlaid |
-| `runway_incursion` | No direct heatmap effect (airside only) |
-| `system_failure` | No heatmap effect (baggage system only) |
+| Incident type                         | Heatmap effect                                                |
+| ------------------------------------- | ------------------------------------------------------------- |
+| `security_breach` (zone_lockdown)     | Affected zone turns gray with lock icon; adjacent zones amber |
+| `security_breach` (terminal_lockdown) | Entire terminal column turns gray; pulsing red border         |
+| `security_breach` (full_evacuation)   | All zones pulse red; `EVACUATION IN PROGRESS` banner overlaid |
+| `runway_incursion`                    | No direct heatmap effect (airside only)                       |
+| `system_failure`                      | No heatmap effect (baggage system only)                       |
 
 Incident overlay persists until `IncidentStatusChanged` (resolved) is received.
 
@@ -203,23 +206,23 @@ Incident overlay persists until `IncidentStatusChanged` (resolved) is received.
 
 Subscriptions: `passengers`, `incidents`
 
-| Event type | Handler |
-|---|---|
-| `PassengerStatusChanged` | Update zone density, refresh connection risk if relevant |
-| `PassengerAlert` | Show notification toast if currently viewing that passenger |
-| `IncidentCreated` | Apply heatmap incident overlay |
-| `IncidentStatusChanged` (resolved) | Remove overlay, restore zones |
+| Event type                         | Handler                                                     |
+| ---------------------------------- | ----------------------------------------------------------- |
+| `PassengerStatusChanged`           | Update zone density, refresh connection risk if relevant    |
+| `PassengerAlert`                   | Show notification toast if currently viewing that passenger |
+| `IncidentCreated`                  | Apply heatmap incident overlay                              |
+| `IncidentStatusChanged` (resolved) | Remove overlay, restore zones                               |
 
 ---
 
 ## 10. API calls on mount
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /flow/summary` | KPI bar counts |
-| `GET /flow/heatmap` | Zone density data |
+| Endpoint                   | Purpose              |
+| -------------------------- | -------------------- |
+| `GET /flow/summary`        | KPI bar counts       |
+| `GET /flow/heatmap`        | Zone density data    |
 | `GET /connections/at-risk` | Connection risk list |
-| `GET /security/queues` | Security card stats |
+| `GET /security/queues`     | Security card stats  |
 
 ---
 

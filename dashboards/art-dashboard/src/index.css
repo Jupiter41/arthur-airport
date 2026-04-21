@@ -4,15 +4,16 @@
 
 @layer base {
   body {
-    @apply bg-gray-900 text-gray-100 antialiased;
+    @apply bg-surface text-gray-100 antialiased;
     font-family: "Inter", system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
   }
 
   /* Improve default heading contrast */
   h1, h2, h3 {
-    @apply text-white font-semibold;
+    @apply text-white font-semibold tracking-tight;
   }
 
   /* Scrollbar styling for dark theme */
@@ -21,48 +22,52 @@
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: rgb(17 24 39);
+    background: rgb(15 18 25);
   }
   ::-webkit-scrollbar-thumb {
-    background: rgb(75 85 99);
+    background: rgb(47 55 73);
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgb(107 114 128);
+    background: rgb(75 85 99);
   }
 
   /* Better select/input styling in dark mode */
   select, input[type="text"], input[type="number"], textarea {
-    @apply bg-gray-700 border-gray-600 text-gray-100 rounded-lg;
+    @apply bg-panel border-panel-border text-gray-100 rounded-xl;
   }
   select:focus, input:focus, textarea:focus {
-    @apply ring-2 ring-blue-500/40 border-blue-500/50 outline-none;
+    @apply ring-2 ring-accent/30 border-accent/40 outline-none;
   }
 }
 
 @layer components {
-  /* Reusable card pattern */
+  /* Reusable card pattern — glass-morphism inspired */
   .card {
-    @apply bg-gray-800 border border-gray-700/60 rounded-xl p-4 shadow-sm;
+    @apply bg-surface-card border border-panel-border/60 rounded-2xl p-4 shadow-card
+           backdrop-blur-sm transition-shadow duration-200;
+  }
+  .card:hover {
+    @apply shadow-card-hover;
   }
   .card-compact {
-    @apply bg-gray-800 border border-gray-700/60 rounded-lg p-3 shadow-sm;
+    @apply bg-surface-card border border-panel-border/60 rounded-xl p-3 shadow-card;
   }
 
   /* Primary action button */
   .btn-primary {
-    @apply bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2 rounded-lg
-           transition-all duration-150 shadow-sm hover:shadow-md
+    @apply bg-accent hover:bg-accent-hover text-white font-medium px-4 py-2 rounded-xl
+           transition-all duration-200 shadow-sm hover:shadow-glow
            disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    @apply bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium px-4 py-2 rounded-lg
-           transition-all duration-150 border border-gray-600
+    @apply bg-panel hover:bg-panel-hover text-gray-200 font-medium px-4 py-2 rounded-xl
+           transition-all duration-200 border border-panel-border
            disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-danger {
-    @apply bg-red-600/80 hover:bg-red-500 text-white font-medium px-4 py-2 rounded-lg
-           transition-all duration-150
+    @apply bg-red-600/80 hover:bg-red-500 text-white font-medium px-4 py-2 rounded-xl
+           transition-all duration-200
            disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-sm {
@@ -71,7 +76,12 @@
 
   /* Section label */
   .section-label {
-    @apply text-xs font-semibold uppercase tracking-wider text-gray-400;
+    @apply text-[11px] font-semibold uppercase tracking-widest text-gray-500;
+  }
+
+  /* Monospaced data values */
+  .data-value {
+    @apply font-mono text-sm tabular-nums;
   }
 
   /* Flash animation for flight row updates */

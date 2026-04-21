@@ -1,35 +1,18 @@
 """Unit tests for idempotency and duplicate event handling across all consumers.
 
-Tests the check_idempotency method and envelope validation logic.
-Since consumer modules import confluent_kafka (not available in test env),
-we test the patterns directly — the same logic is used across all 5 consumers.
+Tests the shared IdempotencyTracker from _common.idempotency and envelope
+validation logic.
 """
 
+import sys
+import os
 from datetime import datetime
 
+# Make _common importable by adding the services directory to the path
+_SERVICES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "services")
+sys.path.insert(0, _SERVICES_DIR)
 
-# ── Idempotency logic (exact same pattern as all consumer state holders) ──
-
-
-class IdempotencyChecker:
-    """Minimal reproduction of the check_idempotency pattern used by all consumers."""
-
-    MAX_PROCESSED = 100  # smaller for testing
-
-    def __init__(self):
-        self.processed_events: set[str] = set()
-
-    def check_idempotency(self, event_id: str) -> bool:
-        if not event_id:
-            return False
-        if event_id in self.processed_events:
-            return True
-        self.processed_events.add(event_id)
-        if len(self.processed_events) > self.MAX_PROCESSED:
-            excess = len(self.processed_events) - self.MAX_PROCESSED
-            for _ in range(excess):
-                self.processed_events.pop()
-        return False
+from _common.idempotency import IdempotencyTracker
 
 
 def validate_envelope(envelope: dict) -> tuple[str, datetime, dict] | None:
@@ -57,44 +40,64 @@ def validate_envelope(envelope: dict) -> tuple[str, datetime, dict] | None:
 
 
 class TestIdempotencyChecker:
-    """Test the check_idempotency pattern used by all consumer state holders."""
+    """Test the shared IdempotencyTracker used by all consumer state holders."""
 
     def test_first_event_not_duplicate(self):
-        checker = IdempotencyChecker()
-        assert checker.check_idempotency("evt-001") is False
+        tracker = IdempotencyTracker(max_size=100)
+        assert tracker.is_duplicate("evt-001") is False
 
     def test_second_same_event_is_duplicate(self):
-        checker = IdempotencyChecker()
-        checker.check_idempotency("evt-001")
-        assert checker.check_idempotency("evt-001") is True
+        tracker = IdempotencyTracker(max_size=100)
+        tracker.is_duplicate("evt-001")
+        assert tracker.is_duplicate("evt-001") is True
 
     def test_different_events_not_duplicate(self):
-        checker = IdempotencyChecker()
-        checker.check_idempotency("evt-001")
-        assert checker.check_idempotency("evt-002") is False
+        tracker = IdempotencyTracker(max_size=100)
+        tracker.is_duplicate("evt-001")
+        assert tracker.is_duplicate("evt-002") is False
 
     def test_empty_event_id_never_duplicate(self):
-        checker = IdempotencyChecker()
-        assert checker.check_idempotency("") is False
-        assert checker.check_idempotency("") is False
+        tracker = IdempotencyTracker(max_size=100)
+        assert tracker.is_duplicate("") is False
+        assert tracker.is_duplicate("") is False
 
     def test_eviction_at_max(self):
-        checker = IdempotencyChecker()
-        for i in range(checker.MAX_PROCESSED + 50):
-            checker.check_idempotency(f"evt-{i}")
-        assert len(checker.processed_events) <= checker.MAX_PROCESSED
+        tracker = IdempotencyTracker(max_size=100)
+        for i in range(150):
+            tracker.is_duplicate(f"evt-{i}")
+        assert len(tracker) <= 100
+
+    def test_fifo_eviction_oldest_removed(self):
+        tracker = IdempotencyTracker(max_size=5)
+        for i in range(5):
+            tracker.is_duplicate(f"evt-{i}")
+        # Fill up — evt-0 through evt-4 are stored
+        assert "evt-0" in tracker
+        # Insert one more — evt-0 should be evicted
+        tracker.is_duplicate("evt-5")
+        assert "evt-0" not in tracker
+        assert "evt-5" in tracker
+        # evt-1 should also still be there
+        assert "evt-1" in tracker
 
     def test_many_duplicates_all_rejected(self):
-        checker = IdempotencyChecker()
-        checker.check_idempotency("evt-X")
+        tracker = IdempotencyTracker(max_size=100)
+        tracker.is_duplicate("evt-X")
         for _ in range(100):
-            assert checker.check_idempotency("evt-X") is True
+            assert tracker.is_duplicate("evt-X") is True
 
     def test_independent_instances(self):
-        a = IdempotencyChecker()
-        b = IdempotencyChecker()
-        a.check_idempotency("shared-id")
-        assert b.check_idempotency("shared-id") is False  # different instance
+        a = IdempotencyTracker(max_size=100)
+        b = IdempotencyTracker(max_size=100)
+        a.is_duplicate("shared-id")
+        assert b.is_duplicate("shared-id") is False  # different instance
+
+    def test_clear(self):
+        tracker = IdempotencyTracker(max_size=100)
+        tracker.is_duplicate("evt-001")
+        tracker.clear()
+        assert tracker.is_duplicate("evt-001") is False
+        assert len(tracker) == 1
 
 
 class TestEnvelopeValidation:

@@ -9,9 +9,11 @@ import asyncio
 import json
 import logging
 import os
-from collections import deque
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
+
+from _common.idempotency import IdempotencyTracker
+from _common.consumer_health import ConsumerHealthTracker
 
 from confluent_kafka import Consumer
 
@@ -78,8 +80,7 @@ class BaggageConsumerState:
         self.sim_time: datetime | None = None
         self.last_tick_sim_time: datetime | None = None
         self.conveyor = ConveyorSystem()
-        self.processed_events: set[str] = set()
-        self.processed_events_order: deque[str] = deque()
+        self._idempotency = IdempotencyTracker(max_size=20_000)
         self.inducted_bag_ids: set[str] = set()
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
         # Speed mode tracking (REALTIME / FAST / BULK)
@@ -88,18 +89,7 @@ class BaggageConsumerState:
         self.last_sync_sim_time: datetime | None = None
 
     def check_idempotency(self, event_id: str) -> bool:
-        if not event_id:
-            return False
-        if event_id in self.processed_events:
-            return True
-        self.processed_events.add(event_id)
-        self.processed_events_order.append(event_id)
-        if len(self.processed_events) > self.MAX_PROCESSED:
-            excess = len(self.processed_events) - self.MAX_PROCESSED
-            for _ in range(excess):
-                oldest = self.processed_events_order.popleft()
-                self.processed_events.discard(oldest)
-        return False
+        return self._idempotency.is_duplicate(event_id)
 
     async def rebuild_from_neo4j(self) -> None:
         """Rebuild in-memory state from Neo4j on startup (catch-up)."""
@@ -135,6 +125,7 @@ class BaggageConsumerState:
 _state = BaggageConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
+_consumer_health = ConsumerHealthTracker()
 
 # System failure impact mapping (constant, from SKILL.md)
 FAILURE_IMPACT: dict[str, list[str]] = {
@@ -168,6 +159,11 @@ def get_conveyor() -> ConveyorSystem:
 
 def is_consumer_running() -> bool:
     return _consumer_running
+
+
+def get_consumer_health() -> dict:
+    """Return consumer health metrics for /health endpoint."""
+    return _consumer_health.status()
 
 
 def stop_consumer() -> None:
@@ -236,6 +232,8 @@ async def run_consumer() -> None:
                     await _dispatch(latest_tick_envelope)
                 except Exception as e:
                     logger.error("Processing error: %s", e, exc_info=True)
+
+            _consumer_health.mark_message()
     finally:
         _consumer.close()
         _consumer_running = False

@@ -18,6 +18,8 @@ from typing import Callable, Awaitable
 
 from confluent_kafka import Consumer
 
+from _common.consumer_health import ConsumerHealthTracker
+
 from db.neo4j import find_active_incident_by_type_and_location
 from kafka.producer import (
     emit_incident_alert,
@@ -109,6 +111,7 @@ class IncidentConsumerState:
 _state = IncidentConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
+_consumer_health = ConsumerHealthTracker()
 
 
 def set_ws_broadcast(fn):
@@ -125,6 +128,11 @@ def get_active_alerts() -> list[dict]:
 
 def is_consumer_running() -> bool:
     return _consumer_running
+
+
+def get_consumer_health() -> dict:
+    """Return consumer health metrics for /health endpoint."""
+    return _consumer_health.status()
 
 
 # ── Lifecycle callbacks (wired at startup) ───────────────────
@@ -283,6 +291,8 @@ async def run_consumer() -> None:
                     await _dispatch(latest_tick_envelope)
                 except Exception as e:
                     logger.error("Consumer processing error: %s", e, exc_info=True)
+
+            _consumer_health.mark_message()
     finally:
         if _consumer:
             _consumer.close()

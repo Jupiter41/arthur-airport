@@ -9,7 +9,7 @@
 ## 1. Service inventory
 
 | Service             | Image                             | Port (host)              | Depends on                        |
-| ------------------- | --------------------------------- | ------------------------ | --------------------------------- |
+| ------------------- | --------------------------------- | ------------------------ | --------------------------------- | --- | ------------------ | ----------------------------- | ---- | ------------ | --- | ------------- | ------------------------ | ---- | -------------------------- |
 | `neo4j`             | `neo4j:5`                         | 7474 (HTTP), 7687 (Bolt) | —                                 |
 | `zookeeper`         | `confluentinc/cp-zookeeper:7.6`   | 2181                     | —                                 |
 | `kafka`             | `confluentinc/cp-kafka:7.6`       | 9092                     | zookeeper                         |
@@ -20,8 +20,7 @@
 | `baggage-service`   | `./services/baggage-service`      | 8003                     | neo4j, kafka                      |
 | `weather-service`   | `./services/weather-service`      | 8004                     | neo4j, kafka                      |
 | `incident-service`  | `./services/incident-service`     | 8005                     | neo4j, kafka                      |
-| `sim-orchestrator`  | `./services/sim-orchestrator`     | 8006                     | neo4j, kafka, all domain services |
-| `api-gateway`       | `./services/api-gateway`          | 3000                     | kafka, all domain services        |
+| `sim-orchestrator`  | `./services/sim-orchestrator`     | 8006                     | neo4j, kafka, all domain services |     | `analysis-service` | `./services/analysis-service` | 8007 | neo4j, kafka |     | `api-gateway` | `./services/api-gateway` | 3000 | kafka, all domain services |
 | `dashboard`         | `./dashboards/art-dashboard`      | 5173                     | api-gateway                       |
 | `prometheus`        | `prom/prometheus:v2.51`           | 9090                     | all services                      |
 | `grafana`           | `grafana/grafana:10.4`            | 3001                     | prometheus                        |
@@ -391,7 +390,7 @@ infra/
 
 ## 4. Python service Dockerfile template
 
-All six Python services use the same Dockerfile structure:
+All seven Python services use the same Dockerfile structure:
 
 ```dockerfile
 FROM python:3.11-slim

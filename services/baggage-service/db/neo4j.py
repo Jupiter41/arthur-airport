@@ -30,6 +30,9 @@ async def init_neo4j() -> None:
             os.getenv("NEO4J_USER", "neo4j"),
             os.getenv("NEO4J_PASSWORD", "art-digital-twin"),
         ),
+        max_connection_pool_size=int(os.getenv("NEO4J_POOL_SIZE", "50")),
+        connection_acquisition_timeout=float(os.getenv("NEO4J_POOL_TIMEOUT", "60")),
+        max_connection_lifetime=int(os.getenv("NEO4J_CONN_LIFETIME", "3600")),
     )
     await _driver.verify_connectivity()
     logger.info("Neo4j driver initialized")

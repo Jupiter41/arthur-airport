@@ -25,37 +25,44 @@ External world (simulated)
   └── Incident injector    → fires hazardous events (manual or probabilistic)
 
 Airport Digital Twin
-  ├── 6 domain microservices  (Python / FastAPI)
+  ├── 7 domain microservices  (Python / FastAPI)
   ├── 1 API gateway            (Node.js / Express)
   ├── 1 simulation orchestrator
   ├── Kafka event bus          (async inter-service communication)
   ├── Neo4j graph database     (entity state + relationships)
   ├── Prometheus + Grafana     (metrics + dashboards)
-  └── React frontend           (5 operator dashboards)
+  └── React frontend           (11 dashboard pages)
 ```
 
 ---
 
 ## 3. Service map
 
-| Service | Language | Responsibility |
-|---|---|---|
-| `flight-service` | Python / FastAPI | Flight lifecycle: scheduled → boarding → airborne → landed |
-| `passenger-service` | Python / FastAPI | Passenger flow: check-in → security → gate → boarded |
-| `baggage-service` | Python / FastAPI | Baggage flow: drop-off → sorting → carousel |
-| `weather-service` | Python / FastAPI | Weather state machine, METAR simulation, runway impact |
-| `incident-service` | Python / FastAPI | Hazard lifecycle, alert generation, cascade triggering |
-| `sim-orchestrator` | Python | Simulation clock, schedule seeding, event injection |
-| `api-gateway` | Node.js / Express | REST aggregation, WebSocket fan-out, auth (JWT stub) |
+| Service             | Language          | Port | Responsibility                                                             |
+| ------------------- | ----------------- | ---- | -------------------------------------------------------------------------- |
+| `flight-service`    | Python / FastAPI  | 8001 | Flight lifecycle: scheduled → boarding → airborne → landed                 |
+| `passenger-service` | Python / FastAPI  | 8002 | Passenger flow: check-in → security → gate → boarded                       |
+| `baggage-service`   | Python / FastAPI  | 8003 | Baggage flow: drop-off → sorting → carousel                                |
+| `weather-service`   | Python / FastAPI  | 8004 | Weather state machine, METAR simulation, runway impact                     |
+| `incident-service`  | Python / FastAPI  | 8005 | Hazard lifecycle, alert generation, cascade triggering                     |
+| `sim-orchestrator`  | Python / FastAPI  | 8006 | Simulation clock, schedule seeding, event injection                        |
+| `analysis-service`  | Python / FastAPI  | 8007 | Bottleneck detection, recommendations, what-if analysis, anomaly detection |
+| `api-gateway`       | Node.js / Express | 3000 | REST aggregation, WebSocket fan-out, auth (JWT stub)                       |
+
+> **See also:** [ROUTES.md](ROUTES.md) for the full endpoint inventory,
+> [EVENT_BUS.md](EVENT_BUS.md) for Kafka topic schemas,
+> [DATA_MODEL.md](DATA_MODEL.md) for the Neo4j graph schema.
 
 ---
 
 ## 4. Communication patterns
 
 ### Synchronous (REST)
+
 Used exclusively between the API gateway and external clients (dashboards, developers). No service-to-service REST calls — all cross-domain communication is async via Kafka.
 
 ### Asynchronous (Kafka)
+
 Every state change in any domain produces a Kafka event. Other services consume relevant topics and update their own state independently. This decouples producers from consumers and enables replay.
 
 ```
@@ -65,9 +72,11 @@ baggage-service  → topic: baggage.events
 weather-service  → topic: weather.events
 incident-service → topic: incidents.events
                    topic: incidents.alerts
+analysis-service → topic: analysis.events
 ```
 
 ### Real-time push (WebSocket)
+
 The API gateway subscribes to all Kafka topics and fans out relevant events to connected dashboard clients over WebSocket. Dashboards never poll — they react to pushed events.
 
 ---
@@ -75,14 +84,17 @@ The API gateway subscribes to all Kafka topics and fans out relevant events to c
 ## 5. Data stores
 
 ### Neo4j (primary entity store)
+
 All airport entities and their relationships live in Neo4j. The graph model is the single source of truth for structural state (which flight is at which gate, which passenger is on which flight, which baggage belongs to which passenger).
 
 See [DATA_MODEL.md](DATA_MODEL.md) for the full schema.
 
 ### In-process state (per service)
+
 Each service maintains a small in-memory state cache (Python dict / Redis optional) for hot-path reads (e.g. current runway status, active queue lengths). This cache is always derived from Neo4j and Kafka — it can be rebuilt on restart.
 
 ### Kafka (event log)
+
 Kafka is the system's event log. Every domain event is persisted in Kafka with a configurable retention (default: 7 days simulated time). This enables time-travel replay and audit.
 
 ---
@@ -91,12 +103,12 @@ Kafka is the system's event log. Every domain event is persisted in Kafka with a
 
 The simulation orchestrator controls a virtual clock that can run at configurable speeds:
 
-| Speed | 1 simulated minute = |
-|---|---|
-| 1× (real time) | 1 real second |
-| 10× | 6 real seconds |
-| 60× (default) | 1 real second |
-| 3600× (fast-forward) | 1 real millisecond |
+| Speed                | 1 simulated minute = |
+| -------------------- | -------------------- |
+| 1× (real time)       | 1 real second        |
+| 10×                  | 6 real seconds       |
+| 60× (default)        | 1 real second        |
+| 3600× (fast-forward) | 1 real millisecond   |
 
 All services consume the `sim.clock` Kafka topic to advance their internal time. No service has a wall-clock dependency.
 
@@ -144,14 +156,14 @@ All services consume the `sim.clock` Kafka topic to advance their internal time.
 
 ## 8. Non-functional requirements
 
-| Concern | Target |
-|---|---|
-| Simulated throughput | 420 flight movements/day, 18M pax/year (scaled to sim time) |
-| WebSocket latency | < 200ms from Kafka event to dashboard render |
-| API response time | < 100ms p95 for all GET endpoints |
-| Service startup time | < 10s per service (Docker cold start) |
-| Fault tolerance | Each service restarts independently; state recoverable from Neo4j + Kafka |
-| Observability | All services expose `/metrics` (Prometheus), `/health`, `/ready` |
+| Concern              | Target                                                                    |
+| -------------------- | ------------------------------------------------------------------------- |
+| Simulated throughput | 420 flight movements/day, 18M pax/year (scaled to sim time)               |
+| WebSocket latency    | < 200ms from Kafka event to dashboard render                              |
+| API response time    | < 100ms p95 for all GET endpoints                                         |
+| Service startup time | < 10s per service (Docker cold start)                                     |
+| Fault tolerance      | Each service restarts independently; state recoverable from Neo4j + Kafka |
+| Observability        | All services expose `/metrics` (Prometheus), `/health`, `/ready`          |
 
 ---
 

@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from confluent_kafka import Consumer
 
+from _common.consumer_health import ConsumerHealthTracker
 from db.neo4j import persist_weather_state, get_current_weather, get_airport_identity
 from kafka.producer import emit_weather_state_changed, emit_metar_issued
 from services.fsm import evaluate_transition
@@ -473,6 +474,7 @@ class WeatherConsumerState:
 _state = WeatherConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
+_consumer_health = ConsumerHealthTracker()
 
 
 def set_ws_broadcast(fn):
@@ -656,6 +658,8 @@ async def run_consumer() -> None:
                     await _dispatch(latest_tick_envelope)
                 except Exception as e:
                     logger.error("Processing error: %s", e, exc_info=True)
+
+            _consumer_health.mark_message()
     finally:
         _consumer.close()
         _consumer_running = False
@@ -669,3 +673,8 @@ def stop_consumer() -> None:
 
 def is_consumer_running() -> bool:
     return _consumer_running
+
+
+def get_consumer_health() -> dict:
+    """Return consumer health metrics for /health endpoint."""
+    return _consumer_health.status()

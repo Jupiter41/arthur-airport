@@ -6,6 +6,8 @@
 **Data sources:** `baggage-service`, `flight-service` via API gateway  
 **Real-time:** WebSocket topics `baggage`, `incidents`
 
+> **See also:** [ROUTES.md](../architecture/ROUTES.md) (endpoint inventory) · [EVENT_BUS.md](../architecture/EVENT_BUS.md) (Kafka schemas) · [DATA_MODEL.md](../architecture/DATA_MODEL.md) (Neo4j graph) · [baggage-service SPEC](../services/baggage-service/SPEC.md)
+
 ---
 
 ## 1. Purpose
@@ -91,11 +93,11 @@ An SVG-based schematic of the KART baggage handling system. Zones are drawn as l
 
 ### Zone colour coding
 
-| Utilisation | Colour |
-|---|---|
-| 0–60% | green |
-| 61–80% | amber |
-| 81–100% | red |
+| Utilisation        | Colour                   |
+| ------------------ | ------------------------ |
+| 0–60%              | green                    |
+| 61–80%             | amber                    |
+| 81–100%            | red                      |
 | Offline (incident) | gray + `⚠ OFFLINE` badge |
 
 ### Live updates
@@ -112,13 +114,13 @@ Clicking any zone opens a zone detail panel listing all items currently in that 
 
 All departing flights in the next 3 simulated hours, sorted by ETD.
 
-| Field | Description |
-|---|---|
-| Flight number + gate | Link to flight detail |
-| Progress bar | `loaded / total_baggage_items` |
-| Percentage loaded | |
-| Estimated departure | ETD |
-| Warning indicator | `⚠ SLOW` if loading pace won't complete before T-15 min |
+| Field                | Description                                             |
+| -------------------- | ------------------------------------------------------- |
+| Flight number + gate | Link to flight detail                                   |
+| Progress bar         | `loaded / total_baggage_items`                          |
+| Percentage loaded    |                                                         |
+| Estimated departure  | ETD                                                     |
+| Warning indicator    | `⚠ SLOW` if loading pace won't complete before T-15 min |
 
 ### Loading pace warning logic
 
@@ -137,14 +139,14 @@ if estimated_completion_min > time_remaining_min → show ⚠ SLOW
 
 All items in `flagged` or `held_for_review` status:
 
-| Field | Description |
-|---|---|
-| Baggage tag | 10-digit code |
-| Flag reason | `dangerous_goods_detected` / `false_positive` |
-| DG class | Class number + description if DG |
-| Passenger + flight | Links |
-| Current zone | Location in system |
-| Review status | `PENDING` / `CLEARED` / `REJECTED` |
+| Field              | Description                                   |
+| ------------------ | --------------------------------------------- |
+| Baggage tag        | 10-digit code                                 |
+| Flag reason        | `dangerous_goods_detected` / `false_positive` |
+| DG class           | Class number + description if DG              |
+| Passenger + flight | Links                                         |
+| Current zone       | Location in system                            |
+| Review status      | `PENDING` / `CLEARED` / `REJECTED`            |
 
 DG class 3 (flammable) items are highlighted red. New flagged items animate amber on appearance.
 
@@ -171,23 +173,23 @@ Accepts: 10-digit tag (exact), PNR (6-char), passenger name (partial), or flight
 
 Subscriptions: `baggage`, `incidents`
 
-| Event type | Handler |
-|---|---|
-| `BaggageStatusChanged` | Update zone count + loading panel |
-| `BaggageFlagged` | Add to flagged panel, flash amber |
-| `IncidentCreated` (system_failure) | Mark zone offline on map |
-| `IncidentStatusChanged` (resolved) | Restore zone |
+| Event type                         | Handler                           |
+| ---------------------------------- | --------------------------------- |
+| `BaggageStatusChanged`             | Update zone count + loading panel |
+| `BaggageFlagged`                   | Add to flagged panel, flash amber |
+| `IncidentCreated` (system_failure) | Mark zone offline on map          |
+| `IncidentStatusChanged` (resolved) | Restore zone                      |
 
 ---
 
 ## 10. API calls on mount
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /baggage/flow/map` | Zone counts for conveyor map |
-| `GET /baggage/flow/summary` | Aggregate stats |
-| `GET /baggage/flagged` | Flagged panel |
-| `GET /flights?direction=departure&status=boarding,scheduled` | Loading progress |
+| Endpoint                                                     | Purpose                      |
+| ------------------------------------------------------------ | ---------------------------- |
+| `GET /baggage/flow/map`                                      | Zone counts for conveyor map |
+| `GET /baggage/flow/summary`                                  | Aggregate stats              |
+| `GET /baggage/flagged`                                       | Flagged panel                |
+| `GET /flights?direction=departure&status=boarding,scheduled` | Loading progress             |
 
 ---
 

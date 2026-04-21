@@ -25,14 +25,14 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
     "approach": {"landed", "delayed", "diverted"},
     "landed": {"taxiing"},
     "taxiing": {"at_gate"},
-    "at_gate": set(),       # terminal state for arrivals
-    "arrived": set(),       # terminal state for departures at destination
+    "at_gate": {"arrived"},  # arrivals: at_gate → arrived when deplaning complete
+    "arrived": set(),       # terminal state
     "cancelled": set(),     # terminal state
     "diverted": set(),      # terminal state — flight diverted to alternate airport
 }
 
 # Terminal states — flights in these states are never processed by the FSM
-TERMINAL_STATES = {"at_gate", "arrived", "cancelled", "diverted"}
+TERMINAL_STATES = {"arrived", "cancelled", "diverted"}
 
 # Active departure states (flight hasn't departed yet)
 PRE_DEPARTURE_STATES = {"scheduled", "boarding", "delayed"}
@@ -234,5 +234,17 @@ def _eval_taxiing(flight: dict, sim_time: datetime, gate_available: bool,
 
 
 def _eval_at_gate(flight: dict, sim_time: datetime, direction: str) -> str | None:
-    """At-gate is terminal for arrivals in the current FSM."""
+    """Arrivals transition to arrived after deplaning time (30 min from gate arrival).
+
+    Departures never reach at_gate — they go boarding → departed.
+    The turnaround gating in consumer.py may block this until deplaning_done.
+    """
+    if direction != "arrival":
+        return None
+    actual_time = _parse_time(flight.get("actual_time"))
+    if actual_time is None:
+        return None
+    # Default 30 min for deplaning; turnaround plan in consumer provides fine-grained gating
+    if sim_time >= actual_time + timedelta(minutes=30):
+        return "arrived"
     return None

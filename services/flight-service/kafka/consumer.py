@@ -9,9 +9,11 @@ import json
 import logging
 import os
 import random
-from collections import deque
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
+
+from _common.idempotency import IdempotencyTracker
+from _common.consumer_health import ConsumerHealthTracker
 
 from confluent_kafka import Consumer
 
@@ -80,8 +82,7 @@ class FlightConsumerState:
         self.held_flights: dict[str, dict] = {}
         self.incident_affected_gates: set[str] = set()
         self.incident_affected_runways: set[str] = set()
-        self.processed_events: set[str] = set()
-        self.processed_events_order: deque[str] = deque()
+        self._idempotency = IdempotencyTracker(max_size=10_000)
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
         self.turnaround_plans: dict[str, TurnaroundPlan] = {}  # keyed by aircraft_registration
         # Spatial layout caches (populated from Neo4j on startup)
@@ -124,22 +125,9 @@ class FlightConsumerState:
         # Track which tasks already have a vehicle dispatched: (reg, task_name) → vehicle_id
         self.task_vehicles: dict[tuple[str, str], str] = {}
 
-    MAX_PROCESSED = 10000
-
     def check_idempotency(self, event_id: str) -> bool:
         """Returns True if the event has already been processed (duplicate)."""
-        if not event_id:
-            return False
-        if event_id in self.processed_events:
-            return True
-        self.processed_events.add(event_id)
-        self.processed_events_order.append(event_id)
-        if len(self.processed_events) > self.MAX_PROCESSED:
-            excess = len(self.processed_events) - self.MAX_PROCESSED
-            for _ in range(excess):
-                oldest = self.processed_events_order.popleft()
-                self.processed_events.discard(oldest)
-        return False
+        return self._idempotency.is_duplicate(event_id)
 
     async def rebuild_from_neo4j(self) -> None:
         """Rebuild in-memory incident impact sets from Neo4j on startup."""
@@ -232,6 +220,7 @@ class FlightConsumerState:
 _state = FlightConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
+_consumer_health = ConsumerHealthTracker()
 
 
 def set_ws_broadcast(fn):
@@ -256,6 +245,11 @@ def get_held_flights() -> dict:
 def is_consumer_running() -> bool:
     """Return True if the Kafka consumer loop is actively polling."""
     return _consumer_running
+
+
+def get_consumer_health() -> dict:
+    """Return consumer health metrics for /health endpoint."""
+    return _consumer_health.status()
 
 
 def stop_consumer() -> None:
@@ -328,6 +322,9 @@ async def run_consumer() -> None:
                     await _dispatch(latest_tick_envelope)
                 except Exception as e:
                     logger.error("Processing error: %s", e, exc_info=True)
+
+            # Mark health tracker after processing batch
+            _consumer_health.mark_message()
     finally:
         _consumer.close()
         _consumer_running = False

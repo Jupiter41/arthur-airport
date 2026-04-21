@@ -152,8 +152,9 @@ async def websocket_flights(ws: WebSocket):
 
 @app.get("/health")
 async def health():
-    """Liveness probe — always returns 200 if the process is running."""
-    return {"status": "ok"}
+    """Liveness probe — returns 200 with consumer health metrics."""
+    from kafka.consumer import get_consumer_health
+    return {"status": "ok", "consumer": get_consumer_health()}
 
 
 @app.get("/perf")

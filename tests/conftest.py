@@ -18,6 +18,7 @@ SERVICE_PATHS = {
     "baggage": os.path.join(ROOT, "services", "baggage-service"),
     "incident": os.path.join(ROOT, "services", "incident-service"),
     "sim": os.path.join(ROOT, "services", "sim-orchestrator"),
+    "analysis": os.path.join(ROOT, "services", "analysis-service"),
 }
 
 

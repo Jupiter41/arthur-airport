@@ -19,6 +19,8 @@ from typing import Awaitable, Callable
 
 from confluent_kafka import Consumer
 
+from _common.consumer_health import ConsumerHealthTracker
+
 from models.domain import Bottleneck
 from services.state import OperationalState
 from services.detectors import check_resolved, detect_all
@@ -53,6 +55,7 @@ logger = logging.getLogger(__name__)
 
 _consumer: Consumer | None = None
 _running = False
+_consumer_health = ConsumerHealthTracker()
 _ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
 
 # Shared operational state
@@ -92,6 +95,11 @@ def set_ws_broadcast(fn: Callable[[dict], Awaitable[None]]) -> None:
 
 def is_consumer_running() -> bool:
     return _running
+
+
+def get_consumer_health() -> dict:
+    """Return consumer health metrics for /health endpoint."""
+    return _consumer_health.status()
 
 
 def stop_consumer() -> None:
@@ -158,6 +166,8 @@ async def run_consumer() -> None:
                 # On clock ticks, run analysis
                 if event_type == "SimClockTick":
                     await _on_tick(payload)
+
+            _consumer_health.mark_message()
 
     except Exception:
         logger.exception("Consumer fatal error")

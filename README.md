@@ -23,6 +23,7 @@ This repository now includes major roadmap delivery work beyond the initial simu
 Follow project evolution in:
 
 - [TIMELINE.md](TIMELINE.md) for phase-by-phase vision and capability layering
+- [QUICKSTART.md](QUICKSTART.md) for a quick start and dashboard overview
 - [ROADMAP.md](ROADMAP.md) for gap tracking and implementation status
 - [CHANGELOG.md](CHANGELOG.md) for sprint-level delivered work
 - [docs/lessons-learned/](docs/lessons-learned/) for implementation reports and postmortems
@@ -136,23 +137,24 @@ For detailed configuration options, constraints, and advanced features, see **[H
 ┌──────────────────────────────────────────────────────────────────┐
 │                        React Dashboards                          │
 │  Flight Board · Baggage Tracker · Passenger Flow (+ forecast)   │
-│  Incident Console (cascade tree) · Ground Ops View              │
+│  Incident Console · Ground Ops · World Map · History            │
+│  Scenarios · ML Training · Settings · Debug                     │
 └─────────────────────────┬────────────────────────────────────────┘
                           │ REST + WebSocket
 ┌─────────────────────────▼────────────────────────────────────────┐
 │                    API Gateway  (Node.js / Express)              │
 │         JWT auth · rate limiting · Kafka → WS fan-out           │
-└──┬──────────┬──────────┬──────────┬──────────┬───────────────────┘
-   │          │          │          │          │          │
-   ▼          ▼          ▼          ▼          ▼          ▼
-Flight   Passenger  Baggage   Weather   Incident   Sim-Orch
-FastAPI   FastAPI   FastAPI   FastAPI   FastAPI     Python
-   │          │          │          │          │          │
-   └──────────┴──────────┴──────────┴──────────┴──────────┘
+└──┬──────┬──────┬──────┬──────┬──────┬──────┬─────────────────────┘
+   │      │      │      │      │      │      │
+   ▼      ▼      ▼      ▼      ▼      ▼      ▼
+Flight  Pax   Baggage Weather Incident SimOrch Analysis
+:8001  :8002  :8003   :8004   :8005   :8006  :8007
+   │      │      │      │      │      │      │
+   └──────┴──────┴──────┴──────┴──────┴──────┘
                           │
                ┌──────────▼──────────┐
                │    Kafka Event Bus   │
-               │  9 topics · schemas  │
+               │  10 topics · schemas │
                └──────────┬──────────┘
                           │
                ┌──────────▼──────────┐
@@ -282,6 +284,7 @@ The full stack is ready in ~60–90 seconds on first run.
 | Weather Service (OpenAPI)   | http://localhost:8004/docs | —                        |
 | Incident Service (OpenAPI)  | http://localhost:8005/docs | —                        |
 | Sim Orchestrator (OpenAPI)  | http://localhost:8006/docs | —                        |
+| Analysis Service (OpenAPI)  | http://localhost:8007/docs | —                        |
 | Neo4j Browser               | http://localhost:7474      | neo4j / art-digital-twin |
 | Kafka UI                    | http://localhost:8080      | —                        |
 | Grafana                     | http://localhost:3001      | admin / art-grafana      |
@@ -458,7 +461,8 @@ arthur-airport/
 │   ├── baggage-service/               ← Python / FastAPI  (port 8003)
 │   ├── weather-service/               ← Python / FastAPI  (port 8004)
 │   ├── incident-service/              ← Python / FastAPI  (port 8005)
-│   ├── sim-orchestrator/              ← Python            (port 8006)
+│   ├── sim-orchestrator/              ← Python / FastAPI  (port 8006)
+│   ├── analysis-service/              ← Python / FastAPI  (port 8007)
 │   └── api-gateway/                   ← Node.js / Express (port 3000)
 │
 ├── dashboards/

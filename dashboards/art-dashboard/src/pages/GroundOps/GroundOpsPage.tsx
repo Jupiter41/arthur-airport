@@ -764,7 +764,7 @@ const VEHICLE_ICONS: Record<string, { color: string; symbol: string }> = {
   fuel_truck: { color: "#f59e0b", symbol: "F" },
   catering_truck: { color: "#8b5cf6", symbol: "C" },
   pushback_tug: { color: "#3b82f6", symbol: "T" },
-  baggage_loader: { color: "#10b981", symbol: "B" },
+  baggage_loader: { color: "#10b981", symbol: "L" },
   stairs: { color: "#ec4899", symbol: "S" },
 };
 

@@ -4,6 +4,8 @@ x-python-service: &python-service
   restart: unless-stopped
   networks:
     - art-net
+  volumes:
+    - ./services/_common:/app/_common:ro
   environment:
     NEO4J_URI: bolt://neo4j:7687
     NEO4J_USER: neo4j
@@ -241,6 +243,7 @@ services:
       WEATHER_HISTORY_FILE: /app/data/weather/EGLL_30days.csv
       WEATHER_LIVE_ICAO: ${WEATHER_LIVE_ICAO:-EGLL}
     volumes:
+      - ./services/_common:/app/_common:ro
       - ./data/weather:/app/data/weather:ro
     depends_on:
       neo4j:
@@ -305,6 +308,7 @@ services:
       DAILY_FLIGHT_TARGET: 420
       DAILY_LOAD_FACTOR_MEAN: 0.80
     volumes:
+      - ./services/_common:/app/_common:ro
       - ./config:/app/config:ro
     depends_on:
       flight-service:
