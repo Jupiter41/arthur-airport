@@ -248,6 +248,19 @@ Requires: `curl`, `python3`, and all services running via `docker compose up`.
 
 ---
 
+## helper_check_flights.sh
+
+Quick diagnostic for flight states and consumer lag. Shows flight status distribution,
+top boarding delays, and Kafka consumer offsets for all groups.
+
+```bash
+./scripts/helper_check_flights.sh
+```
+
+Requires: `docker` with running containers.
+
+---
+
 ## helper_validate_schedule_distribution.py
 
 Standalone validation of the flight schedule departure slot distribution.

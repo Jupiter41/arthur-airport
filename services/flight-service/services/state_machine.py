@@ -154,6 +154,19 @@ def _eval_boarding(flight: dict, sim_time: datetime, estimated_time: datetime,
     if sim_time >= estimated_time and boarded_pct >= 0.95:
         return "departed"
 
+    # Grace departure: after extended delay, lower threshold progressively.
+    # Real airports close doors and depart rather than wait indefinitely.
+    #   30-59 min delay → depart at 80%
+    #   60-89 min delay → depart at 50%
+    #   90+ min delay   → depart regardless (doors close)
+    if sim_time >= estimated_time and delay_minutes >= 30:
+        if delay_minutes >= 90:
+            return "departed"
+        elif delay_minutes >= 60 and boarded_pct >= 0.50:
+            return "departed"
+        elif delay_minutes >= 30 and boarded_pct >= 0.80:
+            return "departed"
+
     # If past departure time but not enough passengers, add delay and keep boarding
     # (the consumer loop will handle incrementing delay_minutes)
     return None

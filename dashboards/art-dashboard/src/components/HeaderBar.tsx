@@ -149,23 +149,20 @@ export function HeaderBar() {
   }, []);
 
   return (
-    <header className="bg-surface-card/80 backdrop-blur-md border-b border-panel-border/60 shadow-lg shadow-black/20 relative z-50">
-      <div className="flex items-center justify-between px-4 py-2 gap-3">
-        {/* Logo + nav */}
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="flex items-center gap-2 shrink-0">
+    <header className="bg-surface-card/80 backdrop-blur-md border-b border-panel-border/60 shadow-lg shadow-black/20 relative z-[100] shrink-0">
+      <div className="flex items-center justify-between px-4 h-12 gap-4">
+        {/* Left: Logo + nav */}
+        <div className="flex items-center gap-3 min-w-0">
+          <NavLink to="/" className="flex items-center gap-2 shrink-0">
             <span className="text-lg">✈️</span>
             <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-accent to-blue-300 bg-clip-text text-transparent">
               KART
             </span>
-            <span className="text-xs text-gray-500 hidden sm:inline font-medium">
-              Arthur International
-            </span>
-          </div>
+          </NavLink>
 
-          <div className="h-5 w-px bg-panel-border/60 hidden md:block" />
+          <div className="h-5 w-px bg-panel-border/40 hidden md:block" />
 
-          <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide">
+          <nav className="flex items-center gap-0.5">
             {NAV_ITEMS.map((item) =>
               item.children ? (
                 <NavDropdown key={item.label} item={item} />
@@ -190,23 +187,28 @@ export function HeaderBar() {
           </nav>
         </div>
 
-        {/* Status bar */}
+        {/* Center: Weather (hidden on small screens) */}
+        <div className="hidden xl:flex items-center min-w-0">
+          <WeatherStrip />
+        </div>
+
+        {/* Right: status + controls */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="hidden md:block">
-            <WeatherStrip />
-          </div>
-          <button
-            className="text-xs font-medium bg-panel hover:bg-panel-hover text-gray-300 px-2.5 py-1.5 rounded-lg transition-all duration-200 disabled:opacity-40 border border-panel-border hover:border-gray-500"
-            onClick={handleGlobalExport}
-            disabled={exporting}
-            title="Export full simulation snapshot"
-          >
-            {exporting ? "…" : "⬇"}
-          </button>
-          <ConnectionStatus />
           <IncidentBadge />
+          <ConnectionStatus />
+          <div className="h-5 w-px bg-panel-border/40 hidden sm:block" />
           <SimClock />
           <SimControls />
+          <div className="h-5 w-px bg-panel-border/40" />
+          <button
+            className="text-xs font-medium bg-panel hover:bg-panel-hover text-gray-300 px-3 py-1.5 rounded-lg transition-all duration-200 disabled:opacity-40 border border-panel-border hover:border-gray-500 flex items-center gap-1.5"
+            onClick={handleGlobalExport}
+            disabled={exporting}
+            title="Export full simulation snapshot as JSON"
+          >
+            <span>{exporting ? "…" : "⬇"}</span>
+            <span className="hidden sm:inline">Export</span>
+          </button>
         </div>
       </div>
     </header>
