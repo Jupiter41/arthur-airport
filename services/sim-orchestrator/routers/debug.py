@@ -429,27 +429,47 @@ async def inject_flight(req: FlightInjectRequest):
     if direction == "arrival":
         origin, destination_iata = destination_iata, runtime.identity.iata
 
+    # Classify flight type from destination data
+    distance_nm = dest.get("distance_nm", 500)
+    flight_duration_minutes = max(30, int(distance_nm / 7.5))
+    if distance_nm < 600:
+        flight_type_val = "domestic"
+        route_cat = "short_haul"
+    elif distance_nm < 2000:
+        flight_type_val = "international_short"
+        route_cat = "medium_haul"
+    else:
+        flight_type_val = "international_long"
+        route_cat = "long_haul"
+
+    runway_id = runtime.departure_runway_ids[0] if direction == "departure" else runtime.arrival_runway_ids[0]
+    registration = f"ART-D{rng.randint(100, 999)}"
+
     flight = {
         "id": flight_id,
         "flight_number": flight_number,
         "direction": direction,
         "airline_code": airline["code"],
-        "airline_name": airline["name"],
+        "airline_name": airline.get("name", airline["code"]),
         "aircraft_type": ac["icao"],
+        "aircraft_registration": registration,
         "aircraft_body": "wide" if ac.get("wide_body") else "narrow",
         "seat_capacity": ac["seat_capacity"],
-        "origin": origin,
-        "destination": destination_iata,
+        "origin_iata": origin,
+        "destination_iata": destination_iata,
         "gate_id": gate,
-        "runway_id": runtime.departure_runway_ids[0] if direction == "departure" else runtime.arrival_runway_ids[0],
+        "runway_id": runway_id,
         "status": "scheduled",
         "scheduled_time": dep_time.isoformat(),
+        "estimated_time": dep_time.isoformat(),
         "delay_minutes": 0,
-        "flight_type": "domestic",
-        "route_category": "short_haul",
+        "pax_count": 0,
+        "flight_type": flight_type_val,
+        "route_category": route_cat,
+        "flight_duration_minutes": flight_duration_minutes,
     }
 
-    # Write flight to Neo4j
+    # Write flight to Neo4j (matching normal seeding schema)
     driver = get_driver()
     async with driver.session() as session:
         await session.run(
@@ -461,17 +481,22 @@ async def inject_flight(req: FlightInjectRequest):
                 airline_code: $f.airline_code,
                 airline_name: $f.airline_name,
                 aircraft_type: $f.aircraft_type,
+                aircraft_registration: $f.aircraft_registration,
                 aircraft_body: $f.aircraft_body,
                 seat_capacity: $f.seat_capacity,
-                origin: $f.origin,
-                destination: $f.destination,
+                origin_iata: $f.origin_iata,
+                destination_iata: $f.destination_iata,
                 gate_id: $f.gate_id,
                 runway_id: $f.runway_id,
                 status: $f.status,
                 scheduled_time: $f.scheduled_time,
+                estimated_time: $f.estimated_time,
                 delay_minutes: $f.delay_minutes,
+                delay_reason: '',
+                pax_count: $f.pax_count,
                 flight_type: $f.flight_type,
                 route_category: $f.route_category,
+                flight_duration_minutes: $f.flight_duration_minutes,
                 actual_time: '',
                 arrival_estimated_time: ''
             })
@@ -480,11 +505,16 @@ async def inject_flight(req: FlightInjectRequest):
             FOREACH (_ IN CASE WHEN g IS NOT NULL THEN [1] ELSE [] END |
                 CREATE (f)-[:ASSIGNED_TO]->(g)
             )
+            WITH f
+            OPTIONAL MATCH (r:Runway {id: $f.runway_id})
+            FOREACH (_ IN CASE WHEN r IS NOT NULL THEN [1] ELSE [] END |
+                CREATE (f)-[:USES_RUNWAY {operation: CASE WHEN $f.direction = 'departure' THEN 'takeoff' ELSE 'landing' END}]->(r)
+            )
             """,
             f=flight,
         )
 
-    # Emit FlightScheduleSeeded event
+    # Emit FlightScheduleSeeded for the flight-service consumer
     produce_event(
         topic="flights.schedule",
         event_type="FlightScheduleSeeded",
@@ -495,6 +525,25 @@ async def inject_flight(req: FlightInjectRequest):
             "total_flights": 1,
             "flight_ids": [flight_id],
         },
+    )
+
+    # Emit FlightStatusChanged to flights.events so the gateway/WebSocket
+    # notifies all connected dashboard clients about the new flight
+    produce_event(
+        topic="flights.events",
+        event_type="FlightStatusChanged",
+        sim_time=sim_time,
+        payload={
+            "flight_id": flight_id,
+            "flight_number": flight_number,
+            "previous_status": None,
+            "new_status": "scheduled",
+            "delay_minutes": 0,
+            "gate_id": gate,
+            "estimated_time": dep_time.isoformat(),
+            "affected_pax_count": 0,
+        },
+        key=flight_id,
     )
 
     pax_count = 0

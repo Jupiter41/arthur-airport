@@ -419,12 +419,12 @@ async def _warm_start_departures(sim_time: datetime) -> None:
             # Past departure → boarded
             zone = zone_for_status("boarded", terminal, gate_id)
             await bulk_update_status(ids, "boarded", zone, sim_time)
-        elif minutes_until <= 30:
-            # Departs in <30 min → at gate
+        elif minutes_until <= 50:
+            # Departs in <50 min → at gate (GATE_OPEN_MINUTES)
             zone = zone_for_status("at_gate", terminal, gate_id)
             await bulk_update_status(ids, "at_gate", zone, sim_time)
         elif minutes_until <= 90:
-            # Departs in 30-90 min → airside (through security already)
+            # Departs in 50-90 min → airside (through security already)
             zone = f"airside-{terminal}"
             await bulk_update_status(ids, "airside", zone, sim_time)
             dwell_items = [(pid, 0) for pid in ids]
@@ -1315,6 +1315,34 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
                     sim_time=sim_time,
                     flight_id=flight_id,
                 )
+
+    # Departure: flight departed → boarded passengers become departed_airport
+    if new_status == "departed" and payload.get("direction") == "departure":
+        try:
+            pax_list = await get_passengers_by_flight(flight_id)
+        except Exception:
+            pax_list = []
+
+        eligible = [
+            pax for pax in pax_list
+            if pax.get("status") == "boarded"
+        ]
+        if eligible:
+            ids = [pax["id"] for pax in eligible]
+            await bulk_update_status(ids, "departed_airport", "departed", sim_time)
+            for pax in eligible:
+                old_zone = pax.get("location_zone") or ""
+                remove_passenger(old_zone)
+                await emit_passenger_status_changed(
+                    passenger_id=pax["id"],
+                    name=pax.get("name", ""),
+                    previous_status="boarded",
+                    new_status="departed_airport",
+                    location_zone="departed",
+                    sim_time=sim_time,
+                    flight_id=flight_id,
+                )
+            logger.info("Flight %s departed: %d passengers departed_airport", flight_id, len(eligible))
 
     # Delay: update load factor
     if new_status == "delayed":

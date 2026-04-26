@@ -47,6 +47,7 @@ interface StatusBadgeProps {
   status: string;
   label?: string;
   delay?: number;
+  direction?: "arrival" | "departure";
   className?: string;
 }
 
@@ -54,6 +55,7 @@ export function StatusBadge({
   status,
   label,
   delay,
+  direction,
   className = "",
 }: StatusBadgeProps) {
   const colorClass =
@@ -62,10 +64,17 @@ export function StatusBadge({
     INCIDENT_STATUS_COLORS[status as IncidentStatus] ??
     "bg-gray-600 text-gray-200";
 
-  const displayLabel =
+  let displayLabel =
     label ??
     FLIGHT_STATUS_LABELS[status as FlightStatus] ??
     status.toUpperCase();
+
+  // Departure flights with 'arrived' status means they reached their
+  // destination — show "COMPLETED" instead of "ARRIVED" which is
+  // confusing on a departure board.
+  if (!label && status === "arrived" && direction === "departure") {
+    displayLabel = "COMPLETED";
+  }
 
   const delayStr =
     status === "delayed" && delay && delay > 0 ? ` +${delay}` : "";

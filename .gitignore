@@ -43,6 +43,7 @@ infra/prometheus/data/
 *.swo
 .DS_Store
 Thumbs.db
+tmp*
 
 # Test artefacts
 .pytest_cache/

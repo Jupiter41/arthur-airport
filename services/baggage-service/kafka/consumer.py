@@ -667,7 +667,27 @@ async def _process_bag_exit(
             })
 
     elif from_zone.startswith("arrival-belt"):
-        # Bags exiting arrival belt → collected
+        # Bags exiting arrival belt: arrived → on_carousel (visible) → collected
+        # First transition to on_carousel (passenger can see it on the belt)
+        await update_baggage_status(
+            bag.baggage_id, "on_carousel", from_zone, sim_time
+        )
+        event_payload = await _emit_status_changed_with_metric(
+            baggage_id=bag.baggage_id,
+            tag=bag.tag,
+            previous_status="arrived",
+            new_status="on_carousel",
+            scan_zone=from_zone,
+            sim_time=sim_time,
+            passenger_id=bag.passenger_id,
+            flight_id=bag.flight_id,
+        )
+        if _state.ws_broadcast:
+            await _state.ws_broadcast({
+                "event_type": "BaggageStatusChanged",
+                "payload": event_payload,
+            })
+        # Then immediately transition to collected (passenger picks it up)
         await update_baggage_status(
             bag.baggage_id, "collected", from_zone, sim_time
         )
@@ -737,7 +757,9 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
     elif new_status == "at_gate" and payload.get("previous_status") in (
         "taxiing", "landed"
     ):
-        # Arrival flight reached gate — bags 'in_hold' → 'arrived' → 'on_carousel'
+        # Arrival flight reached gate — bags 'in_hold' → 'arrived' (queued on belt)
+        # Bags stay 'arrived' until the conveyor belt actually processes them,
+        # at which point they transition to 'on_carousel' → 'collected'.
         from db.neo4j import get_flight_baggage
         from services.spatial import arrival_carousel_for_terminal
         bags = await get_flight_baggage(flight_id, statuses=["in_hold"])
@@ -751,7 +773,8 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
                 bag["id"], "arrived", f"arrival-belt-{carousel}", sim_time
             )
 
-            # Place bag on arrival belt in conveyor
+            # Place bag on arrival belt in conveyor — it will be drained
+            # on subsequent ticks and transition to on_carousel then collected.
             bag_in_zone = BagInZone(
                 baggage_id=bag["id"],
                 tag=bag["tag"],
@@ -766,9 +789,6 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
             if arrival_zone:
                 arrival_zone.queue.append(bag_in_zone)
 
-            await update_baggage_status(
-                bag["id"], "on_carousel", f"arrival-belt-{carousel}", sim_time
-            )
             from db.neo4j import set_baggage_carousel
             await set_baggage_carousel(bag["id"], carousel, sim_time)
 
@@ -776,7 +796,7 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
                 baggage_id=bag["id"],
                 tag=bag["tag"],
                 previous_status="in_hold",
-                new_status="on_carousel",
+                new_status="arrived",
                 scan_zone=f"arrival-belt-{carousel}",
                 sim_time=sim_time,
                 passenger_id=bag.get("passenger_id"),

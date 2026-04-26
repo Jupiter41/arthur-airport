@@ -188,7 +188,7 @@ async def get_all_flights(
     OPTIONAL MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
     WITH f, g, r,
          count(p) AS pax_total,
-         sum(CASE WHEN p.status = 'boarded' THEN 1 ELSE 0 END) AS pax_boarded
+         sum(CASE WHEN p.status IN ['boarded', 'departed_airport'] THEN 1 ELSE 0 END) AS pax_boarded
     OPTIONAL MATCH (b:Baggage)-[:LOADED_ON]->(f)
     WITH f, g, r, pax_total, pax_boarded,
          count(b) AS baggage_count,
@@ -246,7 +246,7 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
     OPTIONAL MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
     WITH f, g, r,
          count(p) AS pax_total,
-         sum(CASE WHEN p.status = 'boarded' THEN 1 ELSE 0 END) AS pax_boarded,
+         sum(CASE WHEN p.status IN ['boarded', 'departed_airport'] THEN 1 ELSE 0 END) AS pax_boarded,
          sum(CASE WHEN p.status = 'at_gate' THEN 1 ELSE 0 END) AS pax_at_gate,
          sum(CASE WHEN p.status = 'airside' THEN 1 ELSE 0 END) AS pax_airside,
          sum(CASE WHEN p.status = 'security_queue' THEN 1 ELSE 0 END) AS pax_security,

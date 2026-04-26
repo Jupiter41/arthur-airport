@@ -190,7 +190,8 @@ export default function WorldMapPage() {
   const token = (
     import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
   )?.trim();
-  const hasMapboxToken = Boolean(token);
+  const [mapboxFailed, setMapboxFailed] = useState(false);
+  const hasMapboxToken = Boolean(token) && !mapboxFailed;
 
   const activeFlights = useMemo(
     () =>
@@ -236,6 +237,38 @@ export default function WorldMapPage() {
     if (!flight) return;
 
     setSelectedFlightId(flightId);
+
+    // Compute position using current sim time
+    const currentSimTime = timelineActive
+      ? (() => {
+          const base = new Date(simTime);
+          base.setMinutes(base.getMinutes() + timelineOffset);
+          return base.toISOString();
+        })()
+      : simTime;
+
+    // Fly to the plane's current position
+    const pos = computeAircraftPosition(flight, currentSimTime);
+    if (pos && mapRef.current) {
+      if (hasMapboxToken) {
+        (mapRef.current as { flyTo?: (options: unknown) => void }).flyTo?.({
+          center: [pos.lon, pos.lat],
+          zoom: 6,
+          duration: 1500,
+          pitch: 30,
+        });
+      } else {
+        (
+          mapRef.current as {
+            flyTo?: (
+              latLng: unknown,
+              zoom: number,
+              options?: unknown,
+            ) => void;
+          }
+        ).flyTo?.([pos.lat, pos.lon], 6, { duration: 1.5 });
+      }
+    }
   };
 
   const flyToAirport = (iata: string) => {
@@ -363,17 +396,53 @@ export default function WorldMapPage() {
     if (hasMapboxToken) {
       let disposed = false;
       void (async () => {
-        const mapboxgl = (await import("mapbox-gl")).default;
+        let mapboxgl;
+        try {
+          mapboxgl = (await import("mapbox-gl")).default;
+        } catch (err) {
+          console.warn("[WorldMap] Failed to load mapbox-gl, falling back to Leaflet:", err);
+          setMapboxFailed(true);
+          return;
+        }
+        if (disposed || !mapContainerRef.current) return;
         mapboxgl.accessToken = token as string;
 
-        const map = new mapboxgl.Map({
-          container: mapContainerRef.current as HTMLElement,
-          style: "mapbox://styles/mapbox/satellite-streets-v12",
-          center: [KART_COORDINATES.lon, KART_COORDINATES.lat],
-          zoom: 3,
-          pitch: 34,
-          antialias: true,
+        let map: InstanceType<typeof mapboxgl.Map>;
+        try {
+          map = new mapboxgl.Map({
+            container: mapContainerRef.current as HTMLElement,
+            style: "mapbox://styles/mapbox/satellite-streets-v12",
+            center: [KART_COORDINATES.lon, KART_COORDINATES.lat],
+            zoom: 3,
+            pitch: 34,
+            antialias: true,
+          });
+        } catch (err) {
+          console.warn("[WorldMap] Mapbox constructor failed, falling back to Leaflet:", err);
+          setMapboxFailed(true);
+          return;
+        }
+
+        // Fall back to Leaflet on ANY Mapbox error (token, style, WebGL, network, etc.)
+        map.on("error", (e) => {
+          if (disposed) return;
+          const msg = String(e?.error?.message ?? e?.error ?? "");
+          console.warn("[WorldMap] Mapbox error, falling back to Leaflet:", msg);
+          map.remove();
+          mapRef.current = null;
+          setMapboxFailed(true);
         });
+
+        // Timeout fallback: if the map hasn't loaded after 10s, switch to Leaflet
+        const loadTimeout = setTimeout(() => {
+          if (disposed || !mapRef.current) return;
+          if (!(map as unknown as { loaded: () => boolean }).loaded?.()) {
+            console.warn("[WorldMap] Mapbox load timeout, falling back to Leaflet");
+            map.remove();
+            mapRef.current = null;
+            setMapboxFailed(true);
+          }
+        }, 10_000);
 
         mapRef.current = map;
         map.addControl(
@@ -382,9 +451,13 @@ export default function WorldMapPage() {
         );
 
         map.on("load", () => {
+          clearTimeout(loadTimeout);
           if (disposed) {
             return;
           }
+
+          // Ensure the canvas matches the (now correctly-sized) container
+          map.resize();
 
           const staticSources = [
             "apron",
@@ -1270,7 +1343,11 @@ export default function WorldMapPage() {
       </div>
 
       <div className="relative flex-1 min-h-0">
-        <div ref={mapContainerRef} className="absolute inset-0" />
+        {/* Wrapper keeps absolute positioning even after Mapbox injects
+            position:relative via .mapboxgl-map on the inner div. */}
+        <div className="absolute inset-0">
+          <div ref={mapContainerRef} className="w-full h-full" />
+        </div>
 
         {/* Search/Navigation Panel */}
         {showSearchPanel && (

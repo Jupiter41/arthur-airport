@@ -1,11 +1,11 @@
-import { createProxyMiddleware, Options } from "http-proxy-middleware";
+import {
+  createProxyMiddleware,
+  fixRequestBody,
+  Options,
+} from "http-proxy-middleware";
 import { Express } from "express";
 import { IncomingMessage, ServerResponse } from "http";
 import client from "prom-client";
-
-type BodyRequest = IncomingMessage & {
-  body?: unknown;
-};
 
 const upstreamErrors =
   (client.register.getSingleMetric(
@@ -169,18 +169,7 @@ export function setupProxy(app: Express): void {
       // Follow FastAPI 307 trailing-slash redirects internally
       followRedirects: true,
       on: {
-        proxyReq: (proxyReq, req) => {
-          const request = req as BodyRequest;
-          const body = request.body;
-          if (!body || typeof body !== "object") {
-            return;
-          }
-
-          const bodyData = JSON.stringify(body);
-          proxyReq.setHeader("Content-Type", "application/json");
-          proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
-          proxyReq.write(bodyData);
-        },
+        proxyReq: fixRequestBody,
         error: (
           _err: Error,
           _req: IncomingMessage,

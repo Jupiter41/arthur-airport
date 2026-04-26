@@ -114,7 +114,7 @@ const FlightRow = memo(function FlightRow({
         )}
       </td>
       <td className="px-3 py-2">
-        <StatusBadge status={flight.status} delay={flight.delay_minutes} />
+        <StatusBadge status={flight.status} delay={flight.delay_minutes} direction={flight.direction} />
       </td>
       <td className="px-3 py-2">
         {flight.status === "boarding" && (
@@ -202,6 +202,7 @@ function FlightDetailDrawer({
           <StatusBadge
             status={flight.status}
             delay={flight.delay_minutes}
+            direction={flight.direction}
             className="text-sm"
           />
         </div>
@@ -883,13 +884,15 @@ function FlightStats({ flights }: { flights: Flight[] }) {
       cancelled = 0,
       airborne = 0,
       boarding = 0,
-      arrived = 0;
+      arrived = 0,
+      completed = 0;
     const byType: Record<string, number> = {};
     for (const f of flights) {
       if (f.status === "delayed") delayed++;
       else if (f.status === "cancelled") cancelled++;
       else if (f.status === "airborne") airborne++;
       else if (f.status === "boarding") boarding++;
+      else if (f.status === "arrived" && f.direction === "departure") completed++;
       else if (f.status === "arrived") arrived++;
       const ft = f.flight_type ?? "unknown";
       byType[ft] = (byType[ft] ?? 0) + 1;
@@ -900,6 +903,7 @@ function FlightStats({ flights }: { flights: Flight[] }) {
       airborne,
       boarding,
       arrived,
+      completed,
       total: flights.length,
       byType,
     };
@@ -923,6 +927,11 @@ function FlightStats({ flights }: { flights: Flight[] }) {
           label="Arrived"
           value={stats.arrived}
           color="text-emerald-400"
+        />
+        <StatPill
+          label="Completed"
+          value={stats.completed}
+          color="text-indigo-400"
         />
         <StatPill
           label="Delayed"

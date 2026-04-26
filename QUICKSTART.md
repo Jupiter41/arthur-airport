@@ -21,7 +21,7 @@ Once you see `sim-orchestrator` emitting clock ticks in the logs, the simulation
 running. Open your browser:
 
 | URL                                     | What                                      |
-| --------------------------------------- | ----------------------------------------- |
+| --------------------------------------- | ----------------------------------------- |- Runaway queue depth in Grafanisn't dfisplayed- 
 | [localhost:5173](http://localhost:5173) | React dashboard (main operator interface) |
 | [localhost:3001](http://localhost:3001) | Grafana (metrics & system dashboards)     |
 | [localhost:7474](http://localhost:7474) | Neo4j Browser (graph data explorer)       |

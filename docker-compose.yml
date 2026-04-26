@@ -399,7 +399,7 @@ services:
     build:
       context: ./dashboards/art-dashboard
       args:
-        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-pk.eyJ1IjoidGhlLWFyY3R1cnVzIiwiYSI6ImNtbjRkZHRqMjA2enQycHF6Nm16bGpwMGEifQ.ZWr7iEm6l4CUbNKMN-5nwQ}
+        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-pk.eyJ1IjoidGhlYXJjdHVydXMiLCJhIjoiY21uYmczZHdtMHBjbjJxcGp2ZWx6MnNqbSJ9.flQGqurUYRcYhQkZmpVw3A}
     restart: unless-stopped
     networks: [ art-net ]
     ports:

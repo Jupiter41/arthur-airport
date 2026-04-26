@@ -297,18 +297,28 @@ function WeatherSidePanel({ weather }: { weather: WeatherState | null }) {
     LIFR: "bg-red-600",
   };
 
+  const catDescriptions: Record<string, string> = {
+    CAVOK: "Clear skies, visibility >10 km",
+    VMC: "Visual conditions, good visibility",
+    IMC: "Instrument conditions, reduced visibility",
+    LIFR: "Low IFR, very poor visibility",
+  };
+
   const windDir = weather.wind_direction_deg;
 
   return (
     <div className="bg-gray-800 rounded p-3 space-y-3">
       <h3 className="text-xs text-gray-400 uppercase tracking-wide">Weather</h3>
 
-      {/* Category badge */}
-      <div className="flex justify-center">
+      {/* Category badge with description */}
+      <div className="flex flex-col items-center gap-1">
         <span
           className={`${catColors[weather.category] ?? "bg-gray-600"} text-white text-lg font-bold px-4 py-2 rounded`}
         >
           {weather.category}
+        </span>
+        <span className="text-[10px] text-gray-400">
+          {catDescriptions[weather.category] ?? "Unknown category"}
         </span>
       </div>
 
@@ -385,6 +395,22 @@ function WeatherSidePanel({ weather }: { weather: WeatherState | null }) {
       {/* Impact */}
       <div className="text-xs text-gray-300 space-y-1">
         <div className="flex justify-between">
+          <span>Visibility</span>
+          <span className="text-white font-bold">
+            {weather.visibility_m >= 9999
+              ? ">10 km"
+              : `${(weather.visibility_m / 1000).toFixed(1)} km`}
+          </span>
+        </div>
+        {weather.ceiling_ft != null && (
+          <div className="flex justify-between">
+            <span>Ceiling</span>
+            <span className="text-white font-bold">
+              {weather.ceiling_ft} ft
+            </span>
+          </div>
+        )}
+        <div className="flex justify-between">
           <span>Arrival rate</span>
           <span className="text-white font-bold">
             {weather.arrival_rate}/hr
@@ -396,6 +422,29 @@ function WeatherSidePanel({ weather }: { weather: WeatherState | null }) {
             {weather.departure_rate}/hr
           </span>
         </div>
+      </div>
+
+      {/* Category legend */}
+      <div className="border-t border-gray-700 pt-2 space-y-1">
+        {(["CAVOK", "VMC", "IMC", "LIFR"] as const).map((cat) => (
+          <div key={cat} className="flex items-center gap-2 text-[10px]">
+            <span
+              className={`inline-block w-2 h-2 rounded-full ${catColors[cat]}`}
+            />
+            <span
+              className={
+                cat === weather.category
+                  ? "text-white font-bold"
+                  : "text-gray-500"
+              }
+            >
+              {cat}
+            </span>
+            <span className="text-gray-500">
+              {catDescriptions[cat]}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -795,10 +844,10 @@ function GroundVehicleOverlay({
     <div className="absolute inset-0 pointer-events-none">
       <svg viewBox="0 0 560 330" className="w-full h-auto">
         {/* Vehicle depot area */}
-        <g transform="translate(10, 280)">
+        <g transform="translate(10, 275)">
           <rect
-            width={120}
-            height={40}
+            width={180}
+            height={48}
             rx={4}
             className="fill-gray-800/60 stroke-gray-600"
             strokeWidth={0.5}
@@ -809,7 +858,7 @@ function GroundVehicleOverlay({
           {[...depotByType.entries()].map(([type, count], i) => {
             const meta = VEHICLE_ICONS[type] ?? { color: "#999", symbol: "?" };
             return (
-              <g key={type} transform={`translate(${5 + i * 24}, 16)`}>
+              <g key={type} transform={`translate(${5 + i * 34}, 18)`}>
                 <circle cx={8} cy={8} r={7} fill={meta.color} opacity={0.6} />
                 <text
                   x={8}
@@ -878,6 +927,100 @@ function GroundVehicleOverlay({
           );
         })}
       </svg>
+    </div>
+  );
+}
+
+/* ──────── Vehicle Position Table ──────── */
+const VEHICLE_TYPE_LABELS: Record<string, { label: string; icon: string }> = {
+  fuel_truck: { label: "Fuel Truck", icon: "⛽" },
+  catering_truck: { label: "Catering", icon: "🍽️" },
+  pushback_tug: { label: "Pushback Tug", icon: "🚜" },
+  baggage_loader: { label: "Baggage Loader", icon: "🧳" },
+  stairs: { label: "Stairs", icon: "🪜" },
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  available: "text-gray-400",
+  dispatched: "text-amber-400",
+  at_gate: "text-green-400",
+  returning: "text-blue-400",
+};
+
+function VehiclePositionTable({
+  vehicles,
+}: {
+  vehicles: {
+    id: string;
+    type: string;
+    status: string;
+    current_gate: string | null;
+    position_x: number;
+    position_y: number;
+    task_name: string | null;
+    flight_id: string | null;
+  }[];
+}) {
+  const activeFirst = [...vehicles].sort((a, b) => {
+    const order = { at_gate: 0, dispatched: 1, returning: 2, available: 3 };
+    return (
+      (order[a.status as keyof typeof order] ?? 4) -
+      (order[b.status as keyof typeof order] ?? 4)
+    );
+  });
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-4">
+      <h3 className="text-sm font-semibold text-white mb-3">
+        🚗 Vehicle Position Tracker
+      </h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs text-left">
+          <thead>
+            <tr className="text-gray-400 border-b border-gray-700">
+              <th className="pb-2 pr-4">Type</th>
+              <th className="pb-2 pr-4">Status</th>
+              <th className="pb-2 pr-4">Gate</th>
+              <th className="pb-2 pr-4">Task</th>
+              <th className="pb-2 pr-4">Position</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activeFirst.map((v) => {
+              const meta = VEHICLE_TYPE_LABELS[v.type] ?? {
+                label: v.type,
+                icon: "🚗",
+              };
+              const statusColor = STATUS_COLORS[v.status] ?? "text-gray-400";
+              return (
+                <tr
+                  key={v.id}
+                  className="border-b border-gray-700/50 hover:bg-gray-700/30"
+                >
+                  <td className="py-1.5 pr-4 text-gray-200">
+                    {meta.icon} {meta.label}
+                  </td>
+                  <td className={`py-1.5 pr-4 font-medium ${statusColor}`}>
+                    {v.status === "dispatched" && (
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-1 animate-pulse" />
+                    )}
+                    {v.status}
+                  </td>
+                  <td className="py-1.5 pr-4 text-gray-300">
+                    {v.current_gate ?? "—"}
+                  </td>
+                  <td className="py-1.5 pr-4 text-gray-400">
+                    {v.task_name ?? "—"}
+                  </td>
+                  <td className="py-1.5 pr-4 text-gray-500 font-mono">
+                    ({v.position_x}, {v.position_y})
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -1105,6 +1248,11 @@ export default function GroundOpsPage() {
         gates={gates}
         flights={flightList}
       />
+
+      {/* Vehicle Position Tracker */}
+      {vehiclesQuery.data && vehiclesQuery.data.vehicles.length > 0 && (
+        <VehiclePositionTable vehicles={vehiclesQuery.data.vehicles} />
+      )}
     </div>
   );
 }

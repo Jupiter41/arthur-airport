@@ -1006,14 +1006,19 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
             new_status = None  # suppress the departed transition this tick
 
     if new_status is None:
-        # Check for delay accumulation on boarding flights past departure time
+        # Check for delay accumulation on boarding flights past departure time.
+        # Use scheduled_time (original schedule) so delay_minutes tracks total
+        # delay consistently with noise-model delays (crew/CTOT) that push
+        # estimated_time forward.  Previously this used estimated_time, which
+        # caused delay_minutes to stall after noise delays and the 90-min
+        # force-departure grace to trigger much too late.
         if current_status == "boarding" and direction == "departure":
-            estimated = flight.get("estimated_time")
-            if estimated:
+            scheduled = flight.get("scheduled_time") or flight.get("estimated_time")
+            if scheduled:
                 try:
-                    est = datetime.fromisoformat(str(estimated))
-                    if sim_time > est and boarded_pct < 0.95:
-                        delay = int((sim_time - est).total_seconds() / 60)
+                    sched = datetime.fromisoformat(str(scheduled))
+                    if sim_time > sched and boarded_pct < 0.95:
+                        delay = int((sim_time - sched).total_seconds() / 60)
                         if delay > (flight.get("delay_minutes", 0) or 0):
                             # Preserve noise-model delay reasons
                             current_reason = flight.get("delay_reason", "")

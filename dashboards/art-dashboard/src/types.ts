@@ -100,7 +100,7 @@ export interface PassengerFlowSummary {
   by_status: Record<string, number>;
   security: Record<
     string,
-    { queue_length: number; wait_minutes: number; lanes_open: number }
+    { queue_length: number; wait_minutes: number; lanes_open: number; frozen?: boolean }
   >;
   connections_at_risk: number;
   connections_missed: number;

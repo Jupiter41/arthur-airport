@@ -33,7 +33,7 @@ async def list_flights(
     terminal: str | None = Query(None, description="Filter by terminal (A, B, C)"),
     from_time: str | None = Query(None, alias="from", description="Scheduled time >= (ISO 8601)"),
     to_time: str | None = Query(None, alias="to", description="Scheduled time <= (ISO 8601)"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
     """List all flights for the current simulated day."""

@@ -31,9 +31,10 @@ export function useFlightBoardQueries() {
   const flights = useQuery({
     queryKey: ["flights", "board"],
     queryFn: async () => {
-      const data = await flightsApi.list({ limit: "200" });
+      const data = await flightsApi.list({ limit: "500" });
       return (data as { flights: Flight[] }).flights ?? [];
     },
+    refetchInterval: 10_000,
   });
 
   const runways = useQuery({
@@ -94,6 +95,7 @@ export function useBaggageTrackerQueries() {
       const md = data as { zones?: BaggageZone[] };
       return md.zones ?? (Array.isArray(data) ? (data as BaggageZone[]) : []);
     },
+    refetchInterval: 5_000,
   });
 
   const summary = useQuery({
@@ -112,6 +114,7 @@ export function useBaggageTrackerQueries() {
           0,
       } as BaggageFlowSummary;
     },
+    refetchInterval: 5_000,
   });
 
   const flagged = useQuery({
@@ -123,6 +126,7 @@ export function useBaggageTrackerQueries() {
         fd.flagged ?? (Array.isArray(data) ? (data as FlaggedBaggage[]) : [])
       );
     },
+    refetchInterval: 5_000,
   });
 
   const flights = useQuery({

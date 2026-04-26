@@ -44,12 +44,18 @@ async def list_baggage(
     return {"total": total, "items": items}
 
 
-@router.get("/baggage/{baggage_id}")
-async def get_baggage_detail(baggage_id: str):
-    bag = await get_baggage_by_id(baggage_id)
-    if not bag:
-        raise HTTPException(status_code=404, detail="Baggage not found")
-    return bag
+@router.get("/baggage/conveyor-status")
+async def conveyor_status():
+    """Overall conveyor system status — used by integration tests and dashboard."""
+    conveyor = get_conveyor()
+    sim_time = get_sim_time()
+    zones = conveyor.get_zone_summary()
+    total_in_system = sum(z.get("items", 0) for z in zones)
+    return {
+        "sim_time": sim_time.isoformat() if sim_time else None,
+        "total_in_system": total_in_system,
+        "zones": zones,
+    }
 
 
 @router.get("/baggage/tag/{tag}")
@@ -57,6 +63,14 @@ async def get_baggage_by_tag_endpoint(tag: str):
     bag = await get_baggage_by_tag(tag)
     if not bag:
         raise HTTPException(status_code=404, detail="Baggage tag not found")
+    return bag
+
+
+@router.get("/baggage/{baggage_id}")
+async def get_baggage_detail(baggage_id: str):
+    bag = await get_baggage_by_id(baggage_id)
+    if not bag:
+        raise HTTPException(status_code=404, detail="Baggage not found")
     return bag
 
 
@@ -114,17 +128,3 @@ async def list_flagged():
             "review_status": item.get("review_status", "pending"),
         })
     return {"flagged": flagged}
-
-
-@router.get("/baggage/conveyor-status")
-async def conveyor_status():
-    """Overall conveyor system status — used by integration tests and dashboard."""
-    conveyor = get_conveyor()
-    sim_time = get_sim_time()
-    zones = conveyor.get_zone_summary()
-    total_in_system = sum(z.get("items", 0) for z in zones)
-    return {
-        "sim_time": sim_time.isoformat() if sim_time else None,
-        "total_in_system": total_in_system,
-        "zones": zones,
-    }

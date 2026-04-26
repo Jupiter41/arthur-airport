@@ -10,6 +10,7 @@ import { useGroundVehicleStore } from "../stores/groundVehicleStore";
 import { useAnalysisStore } from "../stores/analysisStore";
 import { getAuthToken } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
+import { queryClient } from "../queryClient";
 
 const RAW_WS_URL = (import.meta.env.VITE_WS_URL as string | undefined)
   ?.trim()
@@ -48,14 +49,19 @@ export const eventHandlers: Record<string, EventHandler> = {
 
   FlightStatusChanged: (payload) => {
     const { flight_id, new_status, delay_minutes } = payload;
-    useFlightStore
-      .getState()
-      .updateFlightStatus(
+    const store = useFlightStore.getState();
+    const existing = store.flights[flight_id as string];
+    if (existing) {
+      store.updateFlightStatus(
         flight_id as string,
         new_status as string,
         delay_minutes as number | undefined,
       );
-    useFlightStore.getState().flashRow(flight_id as string);
+    } else {
+      // New flight — invalidate the flights query so the board re-fetches
+      queryClient.invalidateQueries({ queryKey: ["flights"] });
+    }
+    store.flashRow(flight_id as string);
     setTimeout(
       () => useFlightStore.getState().clearFlash(flight_id as string),
       1500,

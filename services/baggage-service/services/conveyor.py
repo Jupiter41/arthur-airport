@@ -56,8 +56,8 @@ class ZoneState:
 
 
 # Zone throughput capacities from SPEC.md §3
-# Arrival belts increased from 200→600 to handle peak arrival volumes
-# (210 arrivals/day × ~150 bags/flight requires ~1300 bags/hr across 6 belts)
+# Arrival belts at 2400/hr = 40 bags/min to handle peak arrival volumes
+# (a real carousel clears a ~150-bag flight in ~5 min, shared across 2 belts/terminal)
 ZONE_THROUGHPUT: dict[str, int] = {
     "induction-A": 600, "induction-B": 600, "induction-C": 600,
     "screening-unit-1": 300, "screening-unit-2": 300,
@@ -65,7 +65,7 @@ ZONE_THROUGHPUT: dict[str, int] = {
     "screening-unit-5": 300, "screening-unit-6": 300,
     "sorting-matrix": 1800,
     **{f"make-up-{t}-{n}": 150 for t in "ABC" for n in range(1, 6)},
-    **{f"arrival-belt-{n}": 600 for n in range(1, 7)},
+    **{f"arrival-belt-{n}": 2400 for n in range(1, 7)},
 }
 
 # Mapping terminals to screening units (2 per terminal)

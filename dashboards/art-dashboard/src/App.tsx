@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./queryClient";
 import { HeaderBar } from "./components/HeaderBar";
 import { WebSocketManager } from "./components/WebSocketManager";
 import FlightBoardPage from "./pages/FlightBoard/FlightBoardPage";
@@ -22,18 +23,6 @@ const SettingsPage = lazy(() => import("./pages/Settings/SettingsPage"));
 const WorldMapPage = lazy(() => import("./pages/WorldMap/WorldMapPage"));
 const DebugPage = lazy(() => import("./pages/Debug/DebugPage"));
 const MLTrainingPage = lazy(() => import("./pages/MLTraining/MLTrainingPage"));
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchInterval: 15_000,
-      retry: 2,
-      staleTime: 10_000,
-      refetchOnWindowFocus: false,
-      refetchIntervalInBackground: false,
-    },
-  },
-});
 
 const PageFallback = () => (
   <div className="flex items-center justify-center h-full text-gray-400">

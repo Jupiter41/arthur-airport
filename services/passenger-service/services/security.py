@@ -169,5 +169,6 @@ class SecuritySystem:
                 "queue_depth": cp.queue_depth,
                 "wait_minutes": round(cp.wait_minutes(forecast), 1),
                 "lanes_open": cp.lanes_open,
+                "frozen": cp.frozen,
             }
         return summary

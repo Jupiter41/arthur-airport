@@ -7,18 +7,22 @@ from collections import defaultdict
 
 from db.neo4j import get_driver
 
-# Zone capacity definitions (from SPEC §7)
+# Zone capacity definitions — physical space limits for heatmap display.
+# Values calibrated against sim throughput: 420 flights/day, ~50K pax,
+# 3 terminals × 14 gates.  These represent the comfortable maximum
+# occupancy; the heatmap turns red above ~85%.
 ZONE_CAPACITIES: dict[str, int] = {
-    "check-in-A": 200, "check-in-B": 200, "check-in-C": 200,
-    "security-A": 120, "security-B": 120, "security-C": 120,
-    "airside-A": 800, "airside-B": 800, "airside-C": 800,
-    "arrivals-hall": 500,
-    "baggage-claim": 900,  # 6 carousels × 150
+    "check-in-A": 2000, "check-in-B": 2000, "check-in-C": 2000,
+    "security-A": 500, "security-B": 500, "security-C": 500,
+    "airside-A": 2000, "airside-B": 2000, "airside-C": 2000,
+    "arrivals-hall": 1000,
+    "baggage-claim": 1500,  # 6 carousels × 250
+    "customs": 800,
 }
 
-# Gate capacities default to 180 per gate
+# Gate capacities default to 180 per gate (single-gate hold room)
 DEFAULT_GATE_CAPACITY = 180
-DEFAULT_CAROUSEL_CAPACITY = 150
+DEFAULT_CAROUSEL_CAPACITY = 400
 
 _zone_density: dict[str, int] = defaultdict(int)
 

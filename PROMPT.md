@@ -24,4 +24,6 @@ Before doing any edit, do this:
 
 Your mission is to:
 
-- See sprint-header-ux-stuck-boarding, now all the flights departing are stuck... they don't get filled with passeners and baggages...
+- zoom on plane when look for plane on world map
+- hourly distribution is all at 0
+- ~999 min waiting time in checking

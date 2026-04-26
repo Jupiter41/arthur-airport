@@ -173,13 +173,13 @@ function HourlyWeightsEditor({
       <p className="text-[10px] text-gray-500 mb-2">
         Drag bars to adjust departure distribution. Higher = more flights.
       </p>
-      <div className="flex items-end gap-[2px] h-24">
+      <div className="flex gap-[2px] h-24">
         {DEFAULT_HOURS.map((h) => {
           const w = weights[String(h)] ?? 0;
           const pct = maxWeight > 0 ? (w / maxWeight) * 100 : 0;
           const isPeak = w >= maxWeight * 0.7;
           return (
-            <div key={h} className="flex-1 flex flex-col items-center group">
+            <div key={h} className="flex-1 flex flex-col justify-end items-center">
               <input
                 type="range"
                 min={0}

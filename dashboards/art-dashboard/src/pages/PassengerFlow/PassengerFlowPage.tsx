@@ -260,8 +260,9 @@ function SecurityQueueChart({
   const data = Object.entries(summary.security).map(([term, info]) => ({
     terminal: `Terminal ${term.replace("terminal_", "")}`,
     queue: info.queue_length,
-    wait: info.wait_minutes,
+    wait: info.frozen ? 0 : info.wait_minutes,
     lanes: info.lanes_open,
+    frozen: info.frozen ?? false,
   }));
 
   function barColor(wait: number): string {
@@ -405,20 +406,28 @@ function KPIBar({
             <div className="text-xs text-gray-400">Security {term}</div>
             <div className="font-bold text-white">{data.queue_length} pax</div>
             <div className="flex items-center gap-2 mt-0.5">
-              <div
-                className={`text-xs font-semibold ${
-                  data.wait_minutes > 20
-                    ? "text-red-400"
-                    : data.wait_minutes > 10
-                      ? "text-amber-400"
-                      : "text-green-400"
-                }`}
-              >
-                ~{data.wait_minutes} min wait
-              </div>
+              {data.frozen ? (
+                <div className="text-xs font-semibold text-red-400 animate-pulse">
+                  🔒 FROZEN
+                </div>
+              ) : (
+                <div
+                  className={`text-xs font-semibold ${
+                    data.wait_minutes > 20
+                      ? "text-red-400"
+                      : data.wait_minutes > 10
+                        ? "text-amber-400"
+                        : "text-green-400"
+                  }`}
+                >
+                  ~{data.wait_minutes} min wait
+                </div>
+              )}
             </div>
             <div className="text-[10px] text-gray-400">
-              {data.lanes_open} lanes open
+              {data.frozen
+                ? "Security breach — lanes closed"
+                : `${data.lanes_open} lanes open`}
             </div>
           </div>
         ))}

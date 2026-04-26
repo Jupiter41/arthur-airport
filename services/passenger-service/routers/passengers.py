@@ -102,16 +102,19 @@ async def flow_summary():
             "queue_length": sec_summary_raw.get("terminal_a", {}).get("queue_depth", 0),
             "wait_minutes": sec_summary_raw.get("terminal_a", {}).get("wait_minutes", 0),
             "lanes_open": sec_summary_raw.get("terminal_a", {}).get("lanes_open", 0),
+            "frozen": sec_summary_raw.get("terminal_a", {}).get("frozen", False),
         },
         "B": {
             "queue_length": sec_summary_raw.get("terminal_b", {}).get("queue_depth", 0),
             "wait_minutes": sec_summary_raw.get("terminal_b", {}).get("wait_minutes", 0),
             "lanes_open": sec_summary_raw.get("terminal_b", {}).get("lanes_open", 0),
+            "frozen": sec_summary_raw.get("terminal_b", {}).get("frozen", False),
         },
         "C": {
             "queue_length": sec_summary_raw.get("terminal_c", {}).get("queue_depth", 0),
             "wait_minutes": sec_summary_raw.get("terminal_c", {}).get("wait_minutes", 0),
             "lanes_open": sec_summary_raw.get("terminal_c", {}).get("lanes_open", 0),
+            "frozen": sec_summary_raw.get("terminal_c", {}).get("frozen", False),
         },
     }
 
