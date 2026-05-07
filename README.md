@@ -5,7 +5,7 @@
 > **IATA:** `ART` · **ICAO:** `KART` · **Location:** fictional mid-size hub
 > **Throughput:** ~18M passengers/year · **Runways:** 2 (09L/27R · 09R/27L) · **Terminals:** 3 (A, B, C)
 
-A high-fidelity airport digital twin built on a microservices architecture with fully simulated, fake data. Models real-time flight operations, passenger flows, baggage handling, weather impacts, and hazardous incident propagation — including cascading delay effects and a LightGBM forecasting model for security queue prediction.
+A high-fidelity airport digital twin built on a microservices architecture with simulation-first behavior and optional real-data adapters. Models real-time flight operations, passenger flows, baggage handling, weather impacts, and hazardous incident propagation — including cascading delay effects and a LightGBM forecasting model for security queue prediction.
 
 This project is **spec-first and agent-ready**: every service, data model, and API contract is fully documented before any code is written, and the repository is structured so that AI coding agents (Claude Code, Cursor, GitHub Copilot, OpenAI Codex) can navigate, implement, and extend the codebase with minimal manual explanation.
 
@@ -37,7 +37,7 @@ Follow project evolution in:
 - A **playground** for incident response, cascading failure visualization, and hazardous event simulation
 - A **reference implementation** for agent-assisted development workflows with SKILL.md files
 
-All data is 100% synthetic. No real airport, airline, or passenger data is used.
+Default runtime behavior is synthetic/simulated. The repo also includes optional external-data adapters (for example OpenSky ADS-B overlay and weather live/historical modes) plus offline fixture generation from open datasets (OurAirports/OpenFlights/IEM).
 
 ---
 
@@ -210,7 +210,7 @@ Each service is independently deployable, has its own README with setup instruct
 > For full technical details, see [docs/architecture/SIMULATION.md](docs/architecture/SIMULATION.md)
 > For architectural diagrams, see [docs/architecture/ARCHITECTURE_DIAGRAM.md](docs/architecture/ARCHITECTURE_DIAGRAM.md)
 
-The simulation is the heart of the digital twin. It is entirely self-contained — no external data feeds are needed. Everything is generated, propagated, and visualised within the system.
+The simulation is the heart of the digital twin. By default it is self-contained and does not require external feeds. Optional adapters can be enabled for specific domains (for example ADS-B overlay and weather live/historical sources).
 
 ### What is simulated
 
