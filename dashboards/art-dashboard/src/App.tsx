@@ -23,6 +23,9 @@ const SettingsPage = lazy(() => import("./pages/Settings/SettingsPage"));
 const WorldMapPage = lazy(() => import("./pages/WorldMap/WorldMapPage"));
 const DebugPage = lazy(() => import("./pages/Debug/DebugPage"));
 const MLTrainingPage = lazy(() => import("./pages/MLTraining/MLTrainingPage"));
+const DataSourcesPage = lazy(
+  () => import("./pages/DataSources/DataSourcesPage"),
+);
 
 const PageFallback = () => (
   <div className="flex items-center justify-center h-full text-gray-400">
@@ -49,6 +52,7 @@ function AppShell() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/debug" element={<DebugPage />} />
             <Route path="/ml" element={<MLTrainingPage />} />
+            <Route path="/data-sources" element={<DataSourcesPage />} />
           </Routes>
         </Suspense>
       </main>

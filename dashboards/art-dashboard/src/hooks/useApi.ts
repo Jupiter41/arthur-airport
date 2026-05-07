@@ -505,3 +505,28 @@ export const networkApi = {
   propagations: () =>
     apiFetch<{ propagations: NetworkPropagation[] }>("/network/propagations"),
 };
+
+// ── Data Sources ──
+export interface DataSourceStatus {
+  id: string;
+  name: string;
+  service: string;
+  type: "weather" | "flights" | "passengers" | "baggage" | "incidents";
+  current_source: string;
+  available_sources: string[];
+  status: "active" | "degraded" | "unavailable";
+  last_updated: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface DataSourcesResponse {
+  sources: DataSourceStatus[];
+  timestamp: string;
+}
+
+export const dataSourcesApi = {
+  list: () => apiFetch<DataSourcesResponse>("/data-sources"),
+  switchWeatherSource: (source: string, csvPath?: string, liveIcao?: string) =>
+    weatherApi.switchSource(source, csvPath, liveIcao),
+  getWeatherCurrent: () => weatherApi.current(),
+};

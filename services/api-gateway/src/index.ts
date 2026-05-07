@@ -7,6 +7,7 @@ import client from "prom-client";
 import { handleToken, authMiddleware } from "./auth";
 import { setupProxy } from "./proxy";
 import { handleAggregate } from "./aggregate";
+import { handleDataSources } from "./dataSources";
 import { handleServicesHealth, handleReady } from "./health";
 import { setupKafka, shutdownKafka } from "./kafka";
 import { setupWebSocket } from "./websocket";
@@ -80,6 +81,7 @@ app.use(defaultLimiter);
 
 // Aggregate and health
 app.get("/api/v1/airport", handleAggregate);
+app.get("/api/v1/data-sources", handleDataSources);
 app.get("/api/v1/health/services", handleServicesHealth);
 
 // Proxy routes to upstream services

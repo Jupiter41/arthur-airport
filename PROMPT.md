@@ -22,8 +22,9 @@ Before doing any edit, do this:
 - ALWAYS mark issues as completed in the relevant file if needed.
 - ALWAYS run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
 
-Your mission is to:
+The current task is "Build a pluggable adapter system: each service can consume data from either simulation or real API, selectable at runtime ". Your mission is to implement:
 
 - zoom on plane when look for plane on world map
-- hourly distribution is all at 0
-- ~999 min waiting time in checking
+- Data page with a summary of data sources, their status, and the ability to switch between them.
+- If you can, show differences in data when switching between sources to highlight discrepancies or changes.
+- Adding of new data sources should be easy and well-documented, with clear guidelines for integration. (for changing data source, add BTS etc. for example)

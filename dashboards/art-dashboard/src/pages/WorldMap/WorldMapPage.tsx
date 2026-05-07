@@ -247,15 +247,15 @@ export default function WorldMapPage() {
         })()
       : simTime;
 
-    // Fly to the plane's current position
+    // Fly to the plane's current position with a close zoom
     const pos = computeAircraftPosition(flight, currentSimTime);
     if (pos && mapRef.current) {
       if (hasMapboxToken) {
         (mapRef.current as { flyTo?: (options: unknown) => void }).flyTo?.({
           center: [pos.lon, pos.lat],
-          zoom: 6,
-          duration: 1500,
-          pitch: 30,
+          zoom: 9,
+          duration: 1800,
+          pitch: 45,
         });
       } else {
         (
@@ -266,7 +266,7 @@ export default function WorldMapPage() {
               options?: unknown,
             ) => void;
           }
-        ).flyTo?.([pos.lat, pos.lon], 6, { duration: 1.5 });
+        ).flyTo?.([pos.lat, pos.lon], 9, { duration: 1.8 });
       }
     }
   };
