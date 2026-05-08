@@ -145,6 +145,7 @@ export const weatherApi = {
   },
   impact: () => apiFetch<unknown>("/weather/impact"),
   history: (hours = 12) => apiFetch<unknown>(`/weather/history?hours=${hours}`),
+  compare: () => apiFetch<unknown>("/weather/compare"),
   source: () => apiFetch<unknown>("/weather/source"),
   switchSource: (source: string, csvPath?: string, liveIcao?: string) =>
     apiFetch<unknown>("/weather/source", {

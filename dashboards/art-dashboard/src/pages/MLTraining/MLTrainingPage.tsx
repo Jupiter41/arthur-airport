@@ -135,6 +135,7 @@ function AutonomousPanel() {
   );
   const [log, setLog] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -142,7 +143,9 @@ function AutonomousPanel() {
         analysisApi.autonomousSettings(),
         analysisApi.autonomousLog(10),
       ]);
-      setSettings(s as Record<string, unknown>);
+      // API returns { autonomous: { mode, ... } } — unwrap to get inner settings
+      const resp = s as Record<string, unknown>;
+      setSettings((resp.autonomous as Record<string, unknown>) ?? resp);
       setLog((l as { actions: unknown[] }).actions ?? []);
     } catch {
       /* ignore */
@@ -158,9 +161,29 @@ function AutonomousPanel() {
   const toggleMode = useCallback(
     async (mode: string) => {
       setLoading(true);
+      setFeedback(null);
       try {
-        await analysisApi.updateAutonomous({ mode });
+        const result = (await analysisApi.updateAutonomous({ mode })) as Record<
+          string,
+          unknown
+        >;
         await refresh();
+        // Show contextual feedback
+        const auto = (result.autonomous ?? result) as Record<string, unknown>;
+        const enabled = auto.enabled as boolean;
+        if (mode === "off") {
+          setFeedback("Autonomous mode disabled.");
+        } else if (mode === "rl_agent") {
+          setFeedback(
+            enabled
+              ? "RL Agent mode active. Actions will be selected when the RL model is loaded and bottlenecks are detected."
+              : "RL Agent mode set but no trained model is loaded. Train a model first.",
+          );
+        } else {
+          setFeedback(
+            `${mode === "rule_based" ? "Rule-based" : "Threshold"} mode active. Recommendations will be auto-applied when bottlenecks are detected (every ${(auto.check_interval_sim_minutes as number) ?? 5} sim-minutes).`,
+          );
+        }
       } finally {
         setLoading(false);
       }
@@ -168,31 +191,51 @@ function AutonomousPanel() {
     [refresh],
   );
 
+  // Clear feedback after 8 seconds
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = setTimeout(() => setFeedback(null), 8000);
+    return () => clearTimeout(timer);
+  }, [feedback]);
+
   const currentMode = (settings?.mode as string) ?? "off";
+
+  const modeDescriptions: Record<string, string> = {
+    off: "No automatic decisions",
+    rule_based: "Deterministic rules apply all qualifying recommendations",
+    threshold: "Applies top recommendation only if confidence > threshold",
+    rl_agent: "PPO-trained neural network selects optimal actions",
+  };
 
   return (
     <div className="bg-gray-800 rounded-lg p-4">
-      <h3 className="text-sm font-bold text-white mb-3">
+      <h3 className="text-sm font-bold text-white mb-2">
         Autonomous Operations
       </h3>
+      <p className="text-[10px] text-gray-500 mb-3">
+        {modeDescriptions[currentMode] ?? ""}
+      </p>
 
       <div className="flex gap-2 mb-4">
-        {["off", "rule", "threshold", "rl_agent"].map((mode) => (
+        {(
+          [
+            { value: "off", label: "Off" },
+            { value: "rule_based", label: "Rule-Based" },
+            { value: "threshold", label: "Threshold" },
+            { value: "rl_agent", label: "RL Agent" },
+          ] as const
+        ).map(({ value, label }) => (
           <button
-            key={mode}
-            onClick={() => toggleMode(mode)}
+            key={value}
+            onClick={() => toggleMode(value)}
             disabled={loading}
             className={`text-xs px-3 py-1.5 rounded transition-colors ${
-              currentMode === mode
+              currentMode === value
                 ? "bg-blue-600 text-white"
                 : "bg-gray-700 text-gray-400 hover:bg-gray-600"
             }`}
           >
-            {mode === "off"
-              ? "Off"
-              : mode === "rl_agent"
-                ? "RL Agent"
-                : mode.charAt(0).toUpperCase() + mode.slice(1)}
+            {label}
           </button>
         ))}
       </div>
@@ -208,9 +251,19 @@ function AutonomousPanel() {
           <div className="flex justify-between">
             <span>Interval</span>
             <span className="text-white">
-              {(settings.interval_minutes as number) ?? 5} min
+              {(settings.interval_minutes as number) ??
+                (settings.check_interval_sim_minutes as number) ??
+                5}{" "}
+              min
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Contextual feedback */}
+      {feedback && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-blue-900/30 border border-blue-700/40 text-xs text-blue-300">
+          {feedback}
         </div>
       )}
 
@@ -447,6 +500,14 @@ function EnvironmentConfigPanel() {
           {!config.rl_model_exists && (
             <div className="text-[10px] text-amber-400 mt-1">
               Train an RL model to enable the RL Agent autonomous mode.
+            </div>
+          )}
+          {!config.rl_model_exists && (
+            <div className="text-[10px] text-gray-500 mt-1">
+              The RL model is considered trained when{" "}
+              <span className="font-mono text-gray-400">best_model.zip</span>{" "}
+              and <span className="font-mono text-gray-400">rl_policy.zip</span>{" "}
+              files are created in the models directory.
             </div>
           )}
           {config.rl_model_exists && !config.rl_model_loaded && (

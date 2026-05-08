@@ -71,6 +71,9 @@ async def generate_baggage(
         lam = BAGS_LAMBDA_BY_TYPE.get(ft, POISSON_LAMBDA)
 
         bag_count = int(np_rng.poisson(lam)) if lam > 0 else 0
+        # Ensure at least 1 bag per non-cargo passenger
+        if lam > 0 and bag_count == 0:
+            bag_count = 1
         bag_count = min(bag_count, 5)  # reasonable cap
 
         for _ in range(bag_count):

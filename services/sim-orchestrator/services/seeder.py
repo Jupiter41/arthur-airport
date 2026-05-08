@@ -62,10 +62,16 @@ async def seed_day(sim_day: int) -> None:
     # 1. Generate flights
     flights = await generate_schedule(sim_date, target_departures=target_departures, seed=rng_seed)
 
-    # 2. Generate passengers
-    departure_flights = [f for f in flights if f["direction"] == "departure"]
+    # 2. Generate passengers (cargo flights carry freight, not passengers)
+    departure_flights = [
+        f for f in flights
+        if f["direction"] == "departure" and f.get("flight_type") != "cargo"
+    ]
     dep_pax, passengers = await generate_passengers(departure_flights, seed=rng_seed + 1000)
-    arrival_flights_for_pax = [f for f in flights if f["direction"] == "arrival"]
+    arrival_flights_for_pax = [
+        f for f in flights
+        if f["direction"] == "arrival" and f.get("flight_type") != "cargo"
+    ]
     arr_pax, _ = await generate_passengers(
         arrival_flights_for_pax, seed=rng_seed + 1500, initial_status="airborne",
     )

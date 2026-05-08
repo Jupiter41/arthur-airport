@@ -25,6 +25,7 @@ interface PositionFeature {
     heading_deg: number;
     altitude_ft: number;
     status: string;
+    direction: string;
   };
 }
 
@@ -35,6 +36,7 @@ interface RouteFeature {
     flight_id: string;
     flight_number: string;
     destination_iata: string;
+    direction: string;
   };
 }
 
@@ -125,11 +127,33 @@ function toPositionFeature(
       heading_deg: position.heading_deg,
       altitude_ft: position.altitude_ft,
       status: flight.status,
+      direction: flight.direction,
     },
   };
 }
 
 function toRouteFeature(flight: Flight): RouteFeature | null {
+  if (flight.direction === "arrival") {
+    const origin = destinationCoordinates(flight.origin_iata);
+    if (!origin) return null;
+    return {
+      type: "Feature",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [origin.lon, origin.lat],
+          [KART_COORDINATES.lon, KART_COORDINATES.lat],
+        ],
+      },
+      properties: {
+        flight_id: flight.id,
+        flight_number: flight.flight_number,
+        destination_iata: flight.destination_iata,
+        direction: flight.direction,
+      },
+    };
+  }
+
   const destination = destinationCoordinates(flight.destination_iata);
   if (!destination) {
     return null;
@@ -148,6 +172,7 @@ function toRouteFeature(flight: Flight): RouteFeature | null {
       flight_id: flight.id,
       flight_number: flight.flight_number,
       destination_iata: flight.destination_iata,
+      direction: flight.direction,
     },
   };
 }
@@ -195,7 +220,10 @@ export default function WorldMapPage() {
 
   const activeFlights = useMemo(
     () =>
-      (flights.data ?? []).filter((flight) => flight.direction === "departure"),
+      (flights.data ?? []).filter(
+        (flight) =>
+          flight.direction === "departure" || flight.direction === "arrival",
+      ),
     [flights.data],
   );
 
@@ -203,13 +231,18 @@ export default function WorldMapPage() {
   activeFlightsRef.current = activeFlights;
 
   const filteredPlanes = useMemo(() => {
-    if (!searchPlane) return activeFlights;
+    // Only show flights that are actually airborne (have a computable position)
+    const airborne = activeFlights.filter((f) =>
+      ["departed", "airborne", "approach"].includes(f.status),
+    );
+    if (!searchPlane) return airborne;
     const query = searchPlane.toLowerCase();
-    return activeFlights.filter(
+    return airborne.filter(
       (f) =>
         f.flight_number.toLowerCase().includes(query) ||
         f.airline_code.toLowerCase().includes(query) ||
-        f.destination_iata.toLowerCase().includes(query),
+        f.destination_iata.toLowerCase().includes(query) ||
+        f.origin_iata.toLowerCase().includes(query),
     );
   }, [activeFlights, searchPlane]);
 
@@ -253,20 +286,16 @@ export default function WorldMapPage() {
       if (hasMapboxToken) {
         (mapRef.current as { flyTo?: (options: unknown) => void }).flyTo?.({
           center: [pos.lon, pos.lat],
-          zoom: 9,
+          zoom: 7,
           duration: 1800,
           pitch: 45,
         });
       } else {
         (
           mapRef.current as {
-            flyTo?: (
-              latLng: unknown,
-              zoom: number,
-              options?: unknown,
-            ) => void;
+            flyTo?: (latLng: unknown, zoom: number, options?: unknown) => void;
           }
-        ).flyTo?.([pos.lat, pos.lon], 9, { duration: 1.8 });
+        ).flyTo?.([pos.lat, pos.lon], 7, { duration: 1.8 });
       }
     }
   };
@@ -331,23 +360,28 @@ export default function WorldMapPage() {
 
     const seen = new Set<string>();
     for (const flight of activeFlights) {
-      if (seen.has(flight.destination_iata)) {
+      // For departures show destination, for arrivals show origin
+      const iata =
+        flight.direction === "arrival"
+          ? flight.origin_iata
+          : flight.destination_iata;
+      if (seen.has(iata)) {
         continue;
       }
-      const destination = destinationCoordinates(flight.destination_iata);
-      if (!destination) {
+      const coords = destinationCoordinates(iata);
+      if (!coords) {
         continue;
       }
-      seen.add(flight.destination_iata);
+      seen.add(iata);
       features.push({
         type: "Feature",
         geometry: {
           type: "Point",
-          coordinates: [destination.lon, destination.lat],
+          coordinates: [coords.lon, coords.lat],
         },
         properties: {
-          iata: flight.destination_iata,
-          name: `Airport ${flight.destination_iata}`,
+          iata,
+          name: `Airport ${iata}`,
           is_home: 0,
         },
       });
@@ -400,7 +434,10 @@ export default function WorldMapPage() {
         try {
           mapboxgl = (await import("mapbox-gl")).default;
         } catch (err) {
-          console.warn("[WorldMap] Failed to load mapbox-gl, falling back to Leaflet:", err);
+          console.warn(
+            "[WorldMap] Failed to load mapbox-gl, falling back to Leaflet:",
+            err,
+          );
           setMapboxFailed(true);
           return;
         }
@@ -418,7 +455,10 @@ export default function WorldMapPage() {
             antialias: true,
           });
         } catch (err) {
-          console.warn("[WorldMap] Mapbox constructor failed, falling back to Leaflet:", err);
+          console.warn(
+            "[WorldMap] Mapbox constructor failed, falling back to Leaflet:",
+            err,
+          );
           setMapboxFailed(true);
           return;
         }
@@ -427,7 +467,10 @@ export default function WorldMapPage() {
         map.on("error", (e) => {
           if (disposed) return;
           const msg = String(e?.error?.message ?? e?.error ?? "");
-          console.warn("[WorldMap] Mapbox error, falling back to Leaflet:", msg);
+          console.warn(
+            "[WorldMap] Mapbox error, falling back to Leaflet:",
+            msg,
+          );
           map.remove();
           mapRef.current = null;
           setMapboxFailed(true);
@@ -437,7 +480,9 @@ export default function WorldMapPage() {
         const loadTimeout = setTimeout(() => {
           if (disposed || !mapRef.current) return;
           if (!(map as unknown as { loaded: () => boolean }).loaded?.()) {
-            console.warn("[WorldMap] Mapbox load timeout, falling back to Leaflet");
+            console.warn(
+              "[WorldMap] Mapbox load timeout, falling back to Leaflet",
+            );
             map.remove();
             mapRef.current = null;
             setMapboxFailed(true);
@@ -505,7 +550,12 @@ export default function WorldMapPage() {
             type: "line",
             source: "routes",
             paint: {
-              "line-color": "#22d3ee",
+              "line-color": [
+                "case",
+                ["==", ["get", "direction"], "arrival"],
+                "#34d399",
+                "#22d3ee",
+              ],
               "line-width": ["interpolate", ["linear"], ["zoom"], 2, 1.5, 8, 3],
               "line-dasharray": [2, 2],
               "line-opacity": 0.75,
@@ -774,9 +824,14 @@ export default function WorldMapPage() {
           });
 
           // Use inline SVG data URLs for stable icon rendering.
+          // Departure: cyan (#22d3ee), Arrival: green (#34d399), Selected: yellow (#facc15)
           const planeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
             <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
                   fill="#22d3ee" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>`;
+          const arrivalPlaneSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+            <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
+                  fill="#34d399" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
           </svg>`;
           const selectedPlaneSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
             <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
@@ -784,6 +839,9 @@ export default function WorldMapPage() {
           </svg>`;
           const planeSvgUrl =
             "data:image/svg+xml;charset=utf-8," + encodeURIComponent(planeSvg);
+          const arrivalPlaneSvgUrl =
+            "data:image/svg+xml;charset=utf-8," +
+            encodeURIComponent(arrivalPlaneSvg);
           const selectedPlaneSvgUrl =
             "data:image/svg+xml;charset=utf-8," +
             encodeURIComponent(selectedPlaneSvg);
@@ -793,112 +851,48 @@ export default function WorldMapPage() {
             if (map.hasImage("plane-icon")) map.removeImage("plane-icon");
             map.addImage("plane-icon", planeImg);
 
-            const selectedPlaneImg = new Image(48, 48);
-            selectedPlaneImg.onload = () => {
-              if (map.hasImage("plane-icon-selected")) {
-                map.removeImage("plane-icon-selected");
-              }
-              map.addImage("plane-icon-selected", selectedPlaneImg);
+            const arrivalPlaneImg = new Image(48, 48);
+            arrivalPlaneImg.onload = () => {
+              if (map.hasImage("plane-icon-arrival"))
+                map.removeImage("plane-icon-arrival");
+              map.addImage("plane-icon-arrival", arrivalPlaneImg);
 
-              map.addLayer({
-                id: "aircraft-symbols",
-                type: "symbol",
-                source: "aircraft",
-                layout: {
-                  "icon-image": [
-                    "case",
-                    ["==", ["get", "flight_id"], selectedFlightId ?? ""],
-                    "plane-icon-selected",
-                    "plane-icon",
-                  ],
-                  "icon-size": [
-                    "interpolate",
-                    ["linear"],
-                    ["zoom"],
-                    2,
-                    0.45,
-                    8,
-                    0.75,
-                    14,
-                    1.1,
-                  ],
-                  "icon-rotate": ["coalesce", ["get", "heading_deg"], 0],
-                  "icon-rotation-alignment": "map",
-                  "icon-allow-overlap": true,
-                  "icon-keep-upright": false,
-                  "text-field": ["get", "flight_number"],
-                  "text-size": [
-                    "interpolate",
-                    ["linear"],
-                    ["zoom"],
-                    3,
-                    7,
-                    8,
-                    10,
-                    12,
-                    12,
-                  ],
-                  "text-offset": [0, 2],
-                  "text-allow-overlap": true,
-                },
-                paint: {
-                  "text-color": "#d5f4ff",
-                  "text-halo-color": "#0b1118",
-                  "text-halo-width": 1,
-                },
-              });
-
-              map.on("click", "aircraft-symbols", (event) => {
-                const flightId = event.features?.[0]?.properties?.flight_id as
-                  | string
-                  | undefined;
-                if (flightId) {
-                  selectPlane(flightId);
+              const selectedPlaneImg = new Image(48, 48);
+              selectedPlaneImg.onload = () => {
+                if (map.hasImage("plane-icon-selected")) {
+                  map.removeImage("plane-icon-selected");
                 }
-              });
-
-              map.on("mouseenter", "aircraft-symbols", () => {
-                map.getCanvas().style.cursor = "pointer";
-              });
-              map.on("mouseleave", "aircraft-symbols", () => {
-                map.getCanvas().style.cursor = "";
-              });
-
-              // ── ADS-B layer (real aircraft — orange icons) ──
-              const adsbSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-                <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
-                      fill="#f97316" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
-              </svg>`;
-              const adsbSvgUrl =
-                "data:image/svg+xml;charset=utf-8," +
-                encodeURIComponent(adsbSvg);
-              const adsbImg = new Image(48, 48);
-              adsbImg.onload = () => {
-                if (map.hasImage("adsb-icon")) map.removeImage("adsb-icon");
-                map.addImage("adsb-icon", adsbImg);
+                map.addImage("plane-icon-selected", selectedPlaneImg);
 
                 map.addLayer({
-                  id: "adsb-symbols",
+                  id: "aircraft-symbols",
                   type: "symbol",
-                  source: "adsb-aircraft",
+                  source: "aircraft",
                   layout: {
-                    "icon-image": "adsb-icon",
+                    "icon-image": [
+                      "case",
+                      ["==", ["get", "flight_id"], selectedFlightId ?? ""],
+                      "plane-icon-selected",
+                      ["==", ["get", "direction"], "arrival"],
+                      "plane-icon-arrival",
+                      "plane-icon",
+                    ],
                     "icon-size": [
                       "interpolate",
                       ["linear"],
                       ["zoom"],
                       2,
-                      0.35,
+                      0.45,
                       8,
-                      0.6,
+                      0.75,
                       14,
-                      0.9,
+                      1.1,
                     ],
-                    "icon-rotate": ["coalesce", ["get", "heading"], 0],
+                    "icon-rotate": ["coalesce", ["get", "heading_deg"], 0],
                     "icon-rotation-alignment": "map",
                     "icon-allow-overlap": true,
                     "icon-keep-upright": false,
-                    "text-field": ["get", "callsign"],
+                    "text-field": ["get", "flight_number"],
                     "text-size": [
                       "interpolate",
                       ["linear"],
@@ -906,55 +900,128 @@ export default function WorldMapPage() {
                       3,
                       7,
                       8,
-                      9,
+                      10,
                       12,
-                      11,
+                      12,
                     ],
                     "text-offset": [0, 2],
                     "text-allow-overlap": true,
-                    visibility: "none",
                   },
                   paint: {
-                    "text-color": "#fed7aa",
+                    "text-color": "#d5f4ff",
                     "text-halo-color": "#0b1118",
                     "text-halo-width": 1,
                   },
                 });
 
-                map.on("click", "adsb-symbols", (event) => {
-                  const props = event.features?.[0]?.properties;
-                  if (props) {
-                    const callsign = String(props.callsign ?? "").trim();
-                    const alt =
-                      props.altitude_m != null
-                        ? `${Math.round(Number(props.altitude_m))}m`
-                        : "—";
-                    const speed =
-                      props.velocity_ms != null
-                        ? `${Math.round(Number(props.velocity_ms) * 1.944)}kt`
-                        : "—";
-                    const dist = `${Number(props.distance_km).toFixed(0)}km`;
-                    setSelectedAdsbInfo({
-                      callsign,
-                      altitude: alt,
-                      speed,
-                      distance: dist,
-                      country: String(props.origin_country ?? ""),
-                      icao24: String(props.icao24 ?? ""),
-                    });
+                map.on("click", "aircraft-symbols", (event) => {
+                  const flightId = event.features?.[0]?.properties
+                    ?.flight_id as string | undefined;
+                  if (flightId) {
+                    selectPlane(flightId);
                   }
                 });
 
-                map.on("mouseenter", "adsb-symbols", () => {
+                map.on("mouseenter", "aircraft-symbols", () => {
                   map.getCanvas().style.cursor = "pointer";
                 });
-                map.on("mouseleave", "adsb-symbols", () => {
+                map.on("mouseleave", "aircraft-symbols", () => {
                   map.getCanvas().style.cursor = "";
                 });
+
+                // ── ADS-B layer (real aircraft — orange icons) ──
+                const adsbSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+                <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
+                      fill="#f97316" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
+              </svg>`;
+                const adsbSvgUrl =
+                  "data:image/svg+xml;charset=utf-8," +
+                  encodeURIComponent(adsbSvg);
+                const adsbImg = new Image(48, 48);
+                adsbImg.onload = () => {
+                  if (map.hasImage("adsb-icon")) map.removeImage("adsb-icon");
+                  map.addImage("adsb-icon", adsbImg);
+
+                  map.addLayer({
+                    id: "adsb-symbols",
+                    type: "symbol",
+                    source: "adsb-aircraft",
+                    layout: {
+                      "icon-image": "adsb-icon",
+                      "icon-size": [
+                        "interpolate",
+                        ["linear"],
+                        ["zoom"],
+                        2,
+                        0.35,
+                        8,
+                        0.6,
+                        14,
+                        0.9,
+                      ],
+                      "icon-rotate": ["coalesce", ["get", "heading"], 0],
+                      "icon-rotation-alignment": "map",
+                      "icon-allow-overlap": true,
+                      "icon-keep-upright": false,
+                      "text-field": ["get", "callsign"],
+                      "text-size": [
+                        "interpolate",
+                        ["linear"],
+                        ["zoom"],
+                        3,
+                        7,
+                        8,
+                        9,
+                        12,
+                        11,
+                      ],
+                      "text-offset": [0, 2],
+                      "text-allow-overlap": true,
+                      visibility: "none",
+                    },
+                    paint: {
+                      "text-color": "#fed7aa",
+                      "text-halo-color": "#0b1118",
+                      "text-halo-width": 1,
+                    },
+                  });
+
+                  map.on("click", "adsb-symbols", (event) => {
+                    const props = event.features?.[0]?.properties;
+                    if (props) {
+                      const callsign = String(props.callsign ?? "").trim();
+                      const alt =
+                        props.altitude_m != null
+                          ? `${Math.round(Number(props.altitude_m))}m`
+                          : "—";
+                      const speed =
+                        props.velocity_ms != null
+                          ? `${Math.round(Number(props.velocity_ms) * 1.944)}kt`
+                          : "—";
+                      const dist = `${Number(props.distance_km).toFixed(0)}km`;
+                      setSelectedAdsbInfo({
+                        callsign,
+                        altitude: alt,
+                        speed,
+                        distance: dist,
+                        country: String(props.origin_country ?? ""),
+                        icao24: String(props.icao24 ?? ""),
+                      });
+                    }
+                  });
+
+                  map.on("mouseenter", "adsb-symbols", () => {
+                    map.getCanvas().style.cursor = "pointer";
+                  });
+                  map.on("mouseleave", "adsb-symbols", () => {
+                    map.getCanvas().style.cursor = "";
+                  });
+                };
+                adsbImg.src = adsbSvgUrl;
               };
-              adsbImg.src = adsbSvgUrl;
+              selectedPlaneImg.src = selectedPlaneSvgUrl;
             };
-            selectedPlaneImg.src = selectedPlaneSvgUrl;
+            arrivalPlaneImg.src = arrivalPlaneSvgUrl;
           };
           planeImg.src = planeSvgUrl;
 
@@ -1060,6 +1127,11 @@ export default function WorldMapPage() {
           name: string,
           value: unknown,
         ) => void;
+        setPaintProperty?: (
+          layerId: string,
+          name: string,
+          value: unknown,
+        ) => void;
       };
 
       map
@@ -1091,7 +1163,27 @@ export default function WorldMapPage() {
           "case",
           ["==", ["get", "flight_id"], selectedFlightId ?? ""],
           "plane-icon-selected",
+          ["==", ["get", "direction"], "arrival"],
+          "plane-icon-arrival",
           "plane-icon",
+        ]);
+      }
+
+      // Highlight selected flight's route; arrivals are green, departures cyan
+      if (map.isStyleLoaded?.() && map.getLayer?.("routes-line")) {
+        map.setPaintProperty?.("routes-line", "line-color", [
+          "case",
+          ["==", ["get", "flight_id"], selectedFlightId ?? ""],
+          "#facc15",
+          ["==", ["get", "direction"], "arrival"],
+          "#34d399",
+          "#22d3ee",
+        ]);
+        map.setPaintProperty?.("routes-line", "line-opacity", [
+          "case",
+          ["==", ["get", "flight_id"], selectedFlightId ?? ""],
+          1,
+          0.45,
         ]);
       }
 
@@ -1142,12 +1234,10 @@ export default function WorldMapPage() {
             delay_minutes: a.current_delay_minutes,
           },
         }));
-        map
-          .getSource("network-airports")
-          ?.setData?.({
-            type: "FeatureCollection",
-            features: netAirportFeatures,
-          });
+        map.getSource("network-airports")?.setData?.({
+          type: "FeatureCollection",
+          features: netAirportFeatures,
+        });
       }
       return;
     }
@@ -1171,14 +1261,20 @@ export default function WorldMapPage() {
       aircraftMarkersRef.current = [];
 
       for (const route of routeFeatures) {
+        const isSelected = route.properties.flight_id === selectedFlightId;
         const latlngs = route.geometry.coordinates.map(
           (coord) => [coord[1], coord[0]] as [number, number],
         );
+        const routeColor = isSelected
+          ? "#facc15"
+          : route.properties.direction === "arrival"
+            ? "#34d399"
+            : "#66d3ff";
         const line = L.polyline(latlngs, {
-          color: "#66d3ff",
-          dashArray: "6, 8",
-          opacity: 0.55,
-          weight: 2,
+          color: routeColor,
+          dashArray: isSelected ? undefined : "6, 8",
+          opacity: isSelected ? 1 : 0.55,
+          weight: isSelected ? 3 : 2,
         });
         routeGroup?.addLayer?.(line);
       }
@@ -1197,7 +1293,11 @@ export default function WorldMapPage() {
 
       for (const feature of positionFeatures) {
         const isSelected = feature.properties.flight_id === selectedFlightId;
-        const fill = isSelected ? "#facc15" : "#22d3ee";
+        const fill = isSelected
+          ? "#facc15"
+          : feature.properties.direction === "arrival"
+            ? "#34d399"
+            : "#22d3ee";
         const heading = feature.properties.heading_deg ?? 0;
         const icon = L.divIcon({
           className: "",
@@ -1455,6 +1555,30 @@ export default function WorldMapPage() {
                   <span>Active Flights:</span>
                   <span className="font-semibold text-slate-200">
                     {activeFlights.length}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-2 h-2 rounded-full bg-cyan-400" />
+                    Departures:
+                  </span>
+                  <span className="font-semibold text-slate-200">
+                    {
+                      activeFlights.filter((f) => f.direction === "departure")
+                        .length
+                    }
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
+                    Arrivals:
+                  </span>
+                  <span className="font-semibold text-slate-200">
+                    {
+                      activeFlights.filter((f) => f.direction === "arrival")
+                        .length
+                    }
                   </span>
                 </div>
                 <div className="flex justify-between">

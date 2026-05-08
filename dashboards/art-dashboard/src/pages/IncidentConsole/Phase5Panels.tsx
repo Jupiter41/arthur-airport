@@ -203,10 +203,12 @@ export function AnomalyPanel() {
 
   return (
     <div className={`${STATUS_BG[status]} rounded p-4`}>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <span>🔍</span> Anomaly Detection
-          <span className="text-[10px] text-gray-500 font-normal">P5-3-1</span>
+          <span className="text-[10px] text-gray-500 font-normal">
+            Isolation Forest
+          </span>
         </h3>
         <div className="flex items-center gap-2">
           <span
@@ -223,6 +225,10 @@ export function AnomalyPanel() {
           </button>
         </div>
       </div>
+      <p className="text-[10px] text-gray-500 mb-3">
+        Unsupervised anomaly detection on 14 operational features. Retrains
+        every 60 ticks.
+      </p>
 
       {!data.trained ? (
         <div className="text-xs text-gray-400">

@@ -55,10 +55,14 @@ def get_settings() -> AutonomousSettings:
 
 def update_settings(new: AutonomousSettings) -> AutonomousSettings:
     global _settings
+    # Derive 'enabled' from mode: any mode other than "off" means enabled
+    from models.domain import AutonomousMode
+    new.enabled = new.mode != AutonomousMode.OFF
     _settings = new
     logger.info(
-        "Autonomous mode %s (threshold=%.2f, interval=%d min)",
-        "enabled" if _settings.enabled else "disabled",
+        "Autonomous mode=%s enabled=%s (threshold=%.2f, interval=%d min)",
+        _settings.mode.value,
+        _settings.enabled,
         _settings.confidence_threshold,
         _settings.check_interval_sim_minutes,
     )

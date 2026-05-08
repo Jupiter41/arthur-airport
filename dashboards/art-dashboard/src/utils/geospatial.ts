@@ -16,8 +16,8 @@ export interface AircraftPosition extends GeoPoint {
 }
 
 export const KART_COORDINATES: GeoPoint = {
-  lat: 38.75,
-  lon: -27.0833,
+  lat: 49.6233,
+  lon: 6.2044,
 };
 
 const EARTH_RADIUS_KM = 6371;
@@ -66,12 +66,16 @@ export function greatCirclePoint(
   const phi2 = toRadians(end.lat);
   const lambda2 = toRadians(end.lon);
 
-  const delta = 2 * Math.asin(
-    Math.sqrt(
-      Math.sin((phi2 - phi1) / 2) ** 2 +
-        Math.cos(phi1) * Math.cos(phi2) * Math.sin((lambda2 - lambda1) / 2) ** 2,
-    ),
-  );
+  const delta =
+    2 *
+    Math.asin(
+      Math.sqrt(
+        Math.sin((phi2 - phi1) / 2) ** 2 +
+          Math.cos(phi1) *
+            Math.cos(phi2) *
+            Math.sin((lambda2 - lambda1) / 2) ** 2,
+      ),
+    );
 
   if (delta === 0) {
     return start;
@@ -156,7 +160,10 @@ export function destinationCoordinates(iata: string): GeoPoint | null {
   return FALLBACK_DESTINATIONS[key] ?? null;
 }
 
-function estimateDurationMinutes(distanceKm: number, aircraftType: string): number {
+function estimateDurationMinutes(
+  distanceKm: number,
+  aircraftType: string,
+): number {
   const speedKmh = /B77|A33|A35|B78|B74/i.test(aircraftType) ? 900 : 820;
   return Math.max(45, Math.round((distanceKm / speedKmh) * 60));
 }
@@ -165,33 +172,68 @@ export function computeAircraftPosition(
   flight: Flight,
   simTimeIso: string,
 ): AircraftPosition | null {
-  if (flight.direction !== "departure") {
-    return null;
-  }
   if (!["departed", "airborne", "approach"].includes(flight.status)) {
     return null;
   }
 
-  const destination = destinationCoordinates(flight.destination_iata);
-  if (!destination) {
-    return null;
-  }
-
   const simTime = parseIsoDate(simTimeIso);
-  const departedAt =
-    parseIsoDate(flight.actual_time) ?? parseIsoDate(flight.estimated_time) ?? null;
-
-  if (!simTime || !departedAt) {
+  if (!simTime) {
     return null;
   }
 
-  const distanceKm = haversineDistanceKm(KART_COORDINATES, destination);
-  const durationMin = estimateDurationMinutes(distanceKm, flight.aircraft_type);
+  let start: GeoPoint;
+  let end: GeoPoint;
+  let durationMin: number;
+  let departedAt: Date | null;
+
+  if (flight.direction === "departure") {
+    // Departure: KART → destination
+    const destination = destinationCoordinates(flight.destination_iata);
+    if (!destination) return null;
+
+    start = KART_COORDINATES;
+    end = destination;
+
+    departedAt =
+      parseIsoDate(flight.actual_time) ??
+      parseIsoDate(flight.estimated_time) ??
+      null;
+    if (!departedAt) return null;
+
+    const distanceKm = haversineDistanceKm(start, end);
+    durationMin = estimateDurationMinutes(distanceKm, flight.aircraft_type);
+  } else {
+    // Arrival: origin → KART
+    const origin = destinationCoordinates(flight.origin_iata);
+    if (!origin) return null;
+
+    start = origin;
+    end = KART_COORDINATES;
+
+    // For arrivals, scheduled_time / estimated_time is the arrival time at KART.
+    // Departure from origin ≈ arrival_time - flight_duration.
+    const arrivalTime =
+      parseIsoDate(flight.estimated_time) ??
+      parseIsoDate(flight.scheduled_time) ??
+      null;
+    if (!arrivalTime) return null;
+
+    const flightDur = flight.flight_duration_minutes;
+    if (!flightDur || flightDur <= 0) {
+      const distanceKm = haversineDistanceKm(start, end);
+      durationMin = estimateDurationMinutes(distanceKm, flight.aircraft_type);
+    } else {
+      durationMin = flightDur;
+    }
+
+    departedAt = new Date(arrivalTime.getTime() - durationMin * 60000);
+  }
+
   const elapsedMin = (simTime.getTime() - departedAt.getTime()) / 60000;
   const fraction = Math.max(0, Math.min(1, elapsedMin / durationMin));
 
-  const point = greatCirclePoint(KART_COORDINATES, destination, fraction);
-  const heading = computeBearing(point, destination);
+  const point = greatCirclePoint(start, end, fraction);
+  const heading = computeBearing(point, end);
 
   return {
     flight_id: flight.id,

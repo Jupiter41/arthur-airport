@@ -64,9 +64,18 @@ async def get_adsb_states():
     """Return live ADS-B state vectors as GeoJSON FeatureCollection.
 
     Aircraft within 1000 km of KART from OpenSky Network API.
+    Falls back to synthetic positions derived from simulated flights
+    when OpenSky is unavailable.
     """
     from services.adsb import get_adsb_cache
     cache = get_adsb_cache()
+
+    # If synthetic mode is active and cache is empty, generate from active flights
+    if cache._use_synthetic and cache.count == 0:
+        from services.adsb_synthetic import generate_synthetic_adsb
+        synthetic_states = await generate_synthetic_adsb()
+        cache.set_synthetic_states(synthetic_states)
+
     return cache.to_geojson()
 
 

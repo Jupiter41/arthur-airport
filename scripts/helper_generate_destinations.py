@@ -2,7 +2,7 @@
 """Generate real-world destinations fixture from OurAirports data.
 
 Reads data/ourairports/airports.csv and produces a destinations.json fixture
-with real IATA codes, names, and distances from KART (38.75°N, 27.0833°W).
+with real IATA codes, names, and distances from KART (49.6233°N, 6.2044°E — Luxembourg).
 
 Usage:
     python scripts/helper_generate_destinations.py
@@ -18,9 +18,9 @@ import json
 import math
 from pathlib import Path
 
-# KART coordinates (fictional Azores-adjacent, open ocean)
-KART_LAT = 38.75
-KART_LON = -27.0833
+# KART coordinates (Luxembourg Findel area)
+KART_LAT = 49.6233
+KART_LON = 6.2044
 
 # Distance thresholds in km (from ROADMAP.md §6.3)
 MIN_DISTANCE_KM = 200

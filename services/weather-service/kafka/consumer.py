@@ -485,6 +485,11 @@ def get_current_state() -> dict:
     return _state.get_current_state()
 
 
+def get_weather_source() -> str:
+    """Return the current runtime weather source (simulated/historical/live)."""
+    return _state.weather_source
+
+
 def get_sim_time() -> datetime | None:
     return _state.sim_time
 

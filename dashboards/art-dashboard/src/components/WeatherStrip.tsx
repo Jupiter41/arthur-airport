@@ -1,4 +1,7 @@
+import { useEffect } from "react";
 import { useWeatherStore } from "../stores/weatherStore";
+import { weatherApi } from "../hooks/useApi";
+import type { WeatherState } from "../types";
 
 const CATEGORY_COLORS: Record<string, string> = {
   CAVOK: "bg-green-600",
@@ -9,6 +12,20 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export function WeatherStrip() {
   const weather = useWeatherStore((s) => s.current);
+
+  // Bootstrap: if no WS event has arrived yet, fetch once from REST
+  useEffect(() => {
+    if (!weather) {
+      weatherApi
+        .current()
+        .then((data) => {
+          if (data && !useWeatherStore.getState().current) {
+            useWeatherStore.getState().setCurrent(data as WeatherState);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!weather) {
     return (

@@ -16,8 +16,8 @@ network:
     - icao: "KART"
       iata: "ART"
       name: "Arthur International Airport"
-      lat: 41.9742
-      lon: -87.9073
+      lat: 49.6233
+      lon: 6.2044
       role: "home"
       turnaround_narrow_min: 30
       turnaround_wide_min: 45

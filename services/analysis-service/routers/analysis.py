@@ -148,10 +148,15 @@ async def get_autonomous_settings() -> dict[str, Any]:
 
 @router.patch("/autonomous")
 async def update_autonomous_settings(
-    body: AutonomousSettings,
+    body: dict[str, Any],
 ) -> dict[str, Any]:
-    """Update autonomous mode settings."""
-    updated = update_settings(body)
+    """Update autonomous mode settings (partial update — only provided fields are changed)."""
+    current = get_settings()
+    # Merge partial body into current settings
+    merged = current.model_dump(mode="json")
+    merged.update({k: v for k, v in body.items() if v is not None})
+    updated_model = AutonomousSettings(**merged)
+    updated = update_settings(updated_model)
     return {
         "autonomous": updated.model_dump(mode="json"),
     }

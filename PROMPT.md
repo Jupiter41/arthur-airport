@@ -22,9 +22,10 @@ Before doing any edit, do this:
 - ALWAYS mark issues as completed in the relevant file if needed.
 - ALWAYS run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
 
-The current task is "Build a pluggable adapter system: each service can consume data from either simulation or real API, selectable at runtime ". Your mission is to implement:
+The current task is "Add freenium datasets: passengers infos, adsb, incidents". Your mission is to implement:
 
-- zoom on plane when look for plane on world map
-- Data page with a summary of data sources, their status, and the ability to switch between them.
-- If you can, show differences in data when switching between sources to highlight discrepancies or changes.
-- Adding of new data sources should be easy and well-documented, with clear guidelines for integration. (for changing data source, add BTS etc. for example)
+- When adsb is activated in world ui there are flights ("ADS-B: 1993 real") but they are not displayed on the map. Find a nice way to differenciate them from the simulated flights (different color, different icon etc.)
+- Improve Worldmap UI: allows toggle of routes, arrival/departure flights, general style etc.
+- Modify all markdowns and pages to replace Opensky network ADSB with adsb.lol infos (README, MISC, data source, data source page etc.). In Misc.md compare ADSB.lol vs Aviationstack. Do you think it's useful to add paid data sources based on the objectives in Misc.md? If yes, write evaluation.md to explain why and which ones. If not, do nothing.
+- Add ourairport infos in data source page.
+- Add a new data source and use it everywhere: BTS (US Dot)

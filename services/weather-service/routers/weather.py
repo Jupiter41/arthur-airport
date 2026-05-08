@@ -162,9 +162,8 @@ async def weather_impact():
 @router.get("/weather/source")
 async def weather_source():
     """Current weather data source configuration."""
-    source = os.getenv("WEATHER_SOURCE", "simulated")
-    # Use runtime source if it was switched at runtime
-    from kafka.consumer import get_current_state
+    from kafka.consumer import get_current_state, get_weather_source
+    source = get_weather_source()
     current = get_current_state()
     info: dict = {"source": source, "current_category": current.get("category")}
 
@@ -175,6 +174,74 @@ async def weather_source():
         info["api"] = "https://aviationweather.gov/api/data/metar"
 
     return info
+
+
+@router.get("/weather/compare")
+async def compare_weather_sources():
+    """Read-only comparison of all weather sources at the current sim time.
+
+    Returns the current parameters from each available source (simulated,
+    historical, live) without changing the active source. Useful for showing
+    divergence across data providers.
+    """
+    import asyncio as _asyncio
+    from kafka.consumer import get_current_state
+    from services.parameters import sample_params
+
+    state = get_current_state()
+    sim_time = state.get("sim_time")
+    current_category = state.get("category", "VMC")
+
+    compare_fields = [
+        "category", "visibility_m", "wind_speed_kt", "wind_direction",
+        "wind_gust_kt", "ceiling_ft", "temperature_c", "dew_point_c", "qnh_hpa",
+    ]
+
+    def _params_to_dict(p) -> dict:
+        return {f: getattr(p, f, None) for f in compare_fields}
+
+    results: dict = {"sim_time": sim_time.isoformat() if sim_time else None, "sources": {}}
+
+    # 1. Simulated (FSM) — show current state (always available)
+    results["sources"]["simulated"] = {
+        "available": True,
+        **_params_to_dict(state.get("params", sample_params(current_category))),
+    }
+
+    # 2. Historical — try to read from the CSV without switching source
+    from services.historical import HistoricalMetarSource
+    hist_path = os.getenv("WEATHER_HISTORY_FILE", "/app/data/weather/EGLL_30days.csv")
+    try:
+        hist = HistoricalMetarSource(hist_path)
+        count = hist.load()
+        if count > 0 and sim_time:
+            result = hist.get_params_at(sim_time)
+            if result:
+                params, raw = result
+                results["sources"]["historical"] = {"available": True, **_params_to_dict(params)}
+            else:
+                results["sources"]["historical"] = {"available": False, "reason": "No data for current time"}
+        else:
+            results["sources"]["historical"] = {"available": False, "reason": "No observations loaded"}
+    except Exception as e:
+        results["sources"]["historical"] = {"available": False, "reason": str(e)}
+
+    # 3. Live — fetch from ADDS API without blocking too long
+    from services.live_metar import LiveMetarSource
+    live_icao = os.getenv("WEATHER_LIVE_ICAO", "EGLL")
+    try:
+        live_src = LiveMetarSource(live_icao)
+        loop = _asyncio.get_event_loop()
+        live_result = await loop.run_in_executor(None, live_src.fetch)
+        if live_result:
+            params, raw = live_result
+            results["sources"]["live"] = {"available": True, "icao": live_icao, **_params_to_dict(params)}
+        else:
+            results["sources"]["live"] = {"available": False, "reason": "ADDS API returned no data"}
+    except Exception as e:
+        results["sources"]["live"] = {"available": False, "reason": str(e)}
+
+    return results
 
 
 @router.post("/weather/source")
