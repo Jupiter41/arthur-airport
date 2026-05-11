@@ -118,7 +118,7 @@ globe.
 
 - Animated great-circle arcs show flights in progress coloured by status.
 - Destination airports are plotted from real-world OurAirports data.
-- An ADS-B overlay (toggle) shows real nearby aircraft from OpenSky Network.
+- An ADS-B overlay (toggle) shows real nearby aircraft from adsb.lol (with OpenSky Network fallback).
 - The **real flights nearby** panel lists live ADS-B traffic within the KART region.
 
 ### Simulation management

@@ -23,6 +23,7 @@ FIXTURE_FILES = [
     "nationalities",
     "dg_classes",
     "events",
+    "incident_calibrations",
     "layout",
 ]
 

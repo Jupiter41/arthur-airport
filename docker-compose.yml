@@ -185,6 +185,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       OTEL_ENABLED: "true"
       OTEL_SERVICE_NAME: passenger-service
+      PASSENGER_SOURCE: simulation
+      PASSENGER_BTS_FILE: /app/data/bts/T100_2026.csv
     depends_on:
       neo4j:
         condition: service_healthy
@@ -197,6 +199,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./services/_common:/app/_common:ro
+      - ./data/bts:/app/data/bts:ro
 
   baggage-service:
     <<: *python-service
@@ -309,6 +314,7 @@ services:
       SIM_START_TIME: "2024-06-15T06:00:00Z"
       DAILY_FLIGHT_TARGET: 420
       DAILY_LOAD_FACTOR_MEAN: 0.80
+      INCIDENT_SOURCE: simulated
     volumes:
       - ./services/_common:/app/_common:ro
       - ./config:/app/config:ro

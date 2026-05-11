@@ -198,7 +198,22 @@ curl -o data/weather/LFPG_30days.csv \
 
 ---
 
-### OpenSky Network — Historical Flight Data
+### adsb.lol — Live ADS-B Data (Primary)
+
+|             |                                   |
+| ----------- | --------------------------------- |
+| **License** | Community / Free                  |
+| **Source**  | https://www.adsb.lol/             |
+
+**Used for:**
+
+- Real-time aircraft positions on the world map overlay
+- Track comparison with simulated great-circle arcs
+- No authentication required, no rate limits
+
+---
+
+### OpenSky Network — Historical Flight Data (Fallback ADS-B)
 
 |             |                                   |
 | ----------- | --------------------------------- |
@@ -207,8 +222,85 @@ curl -o data/weather/LFPG_30days.csv \
 
 **Used for:**
 
+- Fallback ADS-B source when adsb.lol is unavailable
+- Historical tracks from Zenodo monthly dumps for calibration
 - Real schedule distributions
 - Trajectory validation
+
+---
+
+### BTS (US DOT) — On-Time Performance & Passenger Statistics
+
+|             |                                          |
+| ----------- | ---------------------------------------- |
+| **License** | Public Domain (US government)            |
+| **Source**  | https://www.transtats.bts.gov/           |
+
+**Key datasets:**
+
+- **T-100 Domestic/International Segment** — monthly passenger counts by route
+- **On-Time Performance** — departure/arrival delays, cancellation reasons
+- **Air Carrier Statistics** — load factors, seat capacity
+
+**Used for:**
+
+- Calibrating simulated passenger volumes per route
+- Validating delay distributions against real-world patterns
+- Historical on-time performance benchmarks
+
+**Local files:**
+
+| File                          | Notes                                         |
+| ----------------------------- | --------------------------------------------- |
+| `data/bts/T100_sample.csv`    | 24-row demo segment (Luxembourg ⇄ Frankfurt) |
+| `data/bts/README.md`          | Download steps for the full T-100 dataset     |
+
+Activate at runtime:
+
+```bash
+PASSENGER_SOURCE=bts_historical \
+PASSENGER_BTS_FILE=/app/data/bts/T100_sample.csv \
+docker compose up passenger-service
+```
+
+The dashboard `Data Sources → Passenger Flow` switch performs the same swap
+without restarting the service.
+
+---
+
+### FAA ASRS — Aviation Safety Reporting System
+
+|             |                                                |
+| ----------- | ---------------------------------------------- |
+| **License** | Public Domain (US government, NASA-operated)   |
+| **Source**  | https://asrs.arc.nasa.gov/search/database.html |
+
+ASRS is the canonical anonymous incident-reporting database for U.S. civil
+aviation. Public summaries provide per-category event rates that we use to
+calibrate the digital twin's probabilistic incident injector against
+real-world frequencies.
+
+**Used for:**
+
+- The `asrs_historical` calibration preset in
+  `services/sim-orchestrator/fixtures/incident_calibrations.json`
+- Adds two extra incident categories observed in ASRS data: `bird_strike`
+  and `medical_emergency`.
+
+Switch the active calibration at runtime:
+
+```bash
+# Default: simulated (heuristic, more visible incidents)
+INCIDENT_SOURCE=simulated docker compose up sim-orchestrator
+
+# Or via the API
+curl -X POST http://localhost:3000/api/v1/sim/incident-source \
+  -H 'content-type: application/json' \
+  -d '{"source":"asrs_historical"}'
+```
+
+The dashboard `Data Sources → Incident Calibration` card exposes the same
+toggle.
 
 ---
 
@@ -282,7 +374,9 @@ curl -o data/weather/EGLL_30days.csv \
 | OpenFlights      | ODbL          |         Yes          |       ✅       |
 | Aviation Weather | Public Domain |          No          |       ✅       |
 | IEM Mesonet      | Public Domain |          No          |       ✅       |
+| adsb.lol         | Community     |          No          |       ✅       |
 | OpenSky Network  | CC BY 4.0     |         Yes          |       ✅       |
+| BTS (US DOT)     | Public Domain |          No          |       ✅       |
 | TimeZoneDB       | CC BY 3.0     |         Yes          |   ⚠️ Limited   |
 
 ---

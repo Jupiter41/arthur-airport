@@ -22,10 +22,7 @@ Before doing any edit, do this:
 - ALWAYS mark issues as completed in the relevant file if needed.
 - ALWAYS run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
 
-The current task is "Add freenium datasets: passengers infos, adsb, incidents". Your mission is to implement:
-
-- When adsb is activated in world ui there are flights ("ADS-B: 1993 real") but they are not displayed on the map. Find a nice way to differenciate them from the simulated flights (different color, different icon etc.)
-- Improve Worldmap UI: allows toggle of routes, arrival/departure flights, general style etc.
-- Modify all markdowns and pages to replace Opensky network ADSB with adsb.lol infos (README, MISC, data source, data source page etc.). In Misc.md compare ADSB.lol vs Aviationstack. Do you think it's useful to add paid data sources based on the objectives in Misc.md? If yes, write evaluation.md to explain why and which ones. If not, do nothing.
-- Add ourairport infos in data source page.
-- Add a new data source and use it everywhere: BTS (US Dot)
+The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
+- Add a toggle in world map ui to allow to see grounded flights for simulated  flights and real ones.
+- Make the world map ui nicer (not too many toggles etc.). Also allow user to select map style (dark, light, satellite) + select the range to display
+-  

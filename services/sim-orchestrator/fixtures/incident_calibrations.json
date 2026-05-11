@@ -1,0 +1,48 @@
+{
+  "_comment": "Incident probability calibrations. Each preset overrides keys in events.json (base_probabilities, severity_ranges, ttr_ranges_minutes, locations). Per-hour probabilities — evaluated once per simulated hour by the injector.",
+  "presets": {
+    "simulated": {
+      "label": "Simulated (default)",
+      "description": "Heuristic probabilities tuned for visible incidents during demonstration runs.",
+      "base_probabilities": {
+        "runway_incursion": 0.005,
+        "baggage_fire": 0.008,
+        "security_breach": 0.01,
+        "system_failure": 0.015
+      }
+    },
+    "asrs_historical": {
+      "label": "FAA ASRS calibrated",
+      "description": "Per-hour probabilities derived from FAA Aviation Safety Reporting System (ASRS) public summaries 2022–2024, normalised against ART nominal traffic (~40 movements/peak-hour). Adds bird strike and medical emergency categories observed in the dataset.",
+      "source": "https://asrs.arc.nasa.gov/search/database.html",
+      "base_probabilities": {
+        "runway_incursion": 0.0011,
+        "baggage_fire": 0.0002,
+        "security_breach": 0.0008,
+        "system_failure": 0.0036,
+        "bird_strike": 0.0048,
+        "medical_emergency": 0.0021
+      },
+      "severity_ranges": {
+        "runway_incursion": ["medium", "high", "critical"],
+        "baggage_fire": ["low", "medium"],
+        "security_breach": ["low", "medium", "high"],
+        "system_failure": ["low", "medium", "high"],
+        "bird_strike": ["low", "medium"],
+        "medical_emergency": ["medium", "high"]
+      },
+      "ttr_ranges_minutes": {
+        "runway_incursion": [10, 35],
+        "baggage_fire": [15, 45],
+        "security_breach": [20, 60],
+        "system_failure": [10, 90],
+        "bird_strike": [5, 25],
+        "medical_emergency": [15, 40]
+      },
+      "locations": {
+        "bird_strike": ["runway-09L", "runway-27R", "runway-09R", "runway-27L"],
+        "medical_emergency": ["terminal-A", "terminal-B", "terminal-C", "gate-area"]
+      }
+    }
+  }
+}

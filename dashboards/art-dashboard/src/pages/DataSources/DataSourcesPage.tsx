@@ -32,9 +32,14 @@ const SOURCE_DESCRIPTIONS: Record<
     icon: "🌐",
   },
   // Flight sources
+  "adsb.lol": {
+    label: "adsb.lol",
+    description: "Live ADS-B data from adsb.lol community API (free, no auth)",
+    icon: "📡",
+  },
   opensky: {
-    label: "OpenSky Network",
-    description: "Live ADS-B data from OpenSky Network REST API",
+    label: "OpenSky Network (fallback)",
+    description: "ADS-B data from OpenSky Network REST API — used as fallback when adsb.lol is unavailable",
     icon: "📡",
   },
   simulation: {
@@ -43,12 +48,26 @@ const SOURCE_DESCRIPTIONS: Record<
     icon: "⚙️",
   },
   disabled: { label: "Disabled", description: "Source not active", icon: "⏸️" },
+  // Infrastructure sources
+  ourairports: {
+    label: "OurAirports",
+    description:
+      "Community-maintained open dataset — airport layouts, runways, frequencies, navaids",
+    icon: "🛫",
+  },
   // Passenger sources
   bts_historical: {
     label: "BTS Historical",
     description:
       "Bureau of Transportation Statistics historical passenger data",
     icon: "📊",
+  },
+  // Incident calibration sources
+  asrs_historical: {
+    label: "FAA ASRS calibrated",
+    description:
+      "Probabilities derived from FAA Aviation Safety Reporting System public summaries",
+    icon: "🚨",
   },
 };
 
@@ -673,20 +692,24 @@ function SourceCard({
             {source.available_sources.map((s) => {
               const isActive = s === source.current_source;
               const sInfo = SOURCE_DESCRIPTIONS[s] ?? { label: s, icon: "❓" };
+              const switchable =
+                source.id === "weather" ||
+                source.id === "passengers" ||
+                source.id === "incidents";
               return (
                 <button
                   key={s}
-                  disabled={isActive || isSwitching || source.id !== "weather"}
+                  disabled={isActive || isSwitching || !switchable}
                   onClick={() => onSwitch(source.id, s)}
                   className={`px-2.5 py-1 text-[11px] rounded-lg transition-all border ${
                     isActive
                       ? "bg-accent/20 text-accent border-accent/40 cursor-default"
-                      : source.id === "weather"
+                      : switchable
                         ? "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:border-slate-500"
                         : "bg-slate-800/50 text-slate-500 border-slate-700/50 cursor-not-allowed"
                   }`}
                   title={
-                    source.id !== "weather" && !isActive
+                    !switchable && !isActive
                       ? "Source switching not yet implemented for this service"
                       : ""
                   }
@@ -880,21 +903,35 @@ export default function DataSourcesPage() {
   });
 
   const switchMutation = useMutation({
-    mutationFn: ({ source }: { sourceId: string; source: string }) =>
-      dataSourcesApi.switchWeatherSource(source),
-    onSuccess: async () => {
+    mutationFn: ({ sourceId, source }: { sourceId: string; source: string }) => {
+      if (sourceId === "passengers") {
+        return dataSourcesApi.switchPassengerSource(source);
+      }
+      if (sourceId === "incidents") {
+        return dataSourcesApi.switchIncidentSource(source);
+      }
+      return dataSourcesApi.switchWeatherSource(source);
+    },
+    onSuccess: async (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["data-sources"] });
-      queryClient.invalidateQueries({ queryKey: ["weather-source"] });
-      queryClient.invalidateQueries({ queryKey: ["weather"] });
-      // Proactively fetch fresh weather and push it into the global store
-      // so the header WeatherStrip updates immediately
-      try {
-        const fresh = await weatherApi.current();
-        if (fresh) {
-          useWeatherStore.getState().setCurrent(fresh as WeatherState);
+      if (variables.sourceId === "weather") {
+        queryClient.invalidateQueries({ queryKey: ["weather-source"] });
+        queryClient.invalidateQueries({ queryKey: ["weather"] });
+        try {
+          const fresh = await weatherApi.current();
+          if (fresh) {
+            useWeatherStore.getState().setCurrent(fresh as WeatherState);
+          }
+        } catch {
+          /* weather will arrive via next WS event */
         }
-      } catch {
-        /* weather will arrive via next WS event */
+      }
+      if (variables.sourceId === "passengers") {
+        queryClient.invalidateQueries({ queryKey: ["passenger-flow"] });
+      }
+      if (variables.sourceId === "incidents") {
+        queryClient.invalidateQueries({ queryKey: ["incidents"] });
+        queryClient.invalidateQueries({ queryKey: ["alerts"] });
       }
     },
   });

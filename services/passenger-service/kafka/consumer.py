@@ -113,6 +113,9 @@ class PassengerConsumerState:
         # No-show tracking (Phase 1.2)
         self.noshow_drawn_flights: set[str] = set()  # flights that had no-show draw
         self.noshow_rate: float = 0.03  # 2-4% no-show rate (default 3%)
+        # BTS source management
+        self.passenger_source: str = os.getenv("PASSENGER_SOURCE", "simulation").lower()
+        self._bts_adapter = None
 
     def check_idempotency(self, event_id: str) -> bool:
         return self._idempotency.is_duplicate(event_id)
@@ -128,6 +131,82 @@ _state = PassengerConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
 _consumer_health = ConsumerHealthTracker()
+
+
+def _ensure_bts_adapter():
+    """Lazily initialise the BTS adapter if needed."""
+    if _state._bts_adapter is not None:
+        return _state._bts_adapter
+    from services.bts_adapter import BTSPassengerSource
+    csv_path = os.getenv("PASSENGER_BTS_FILE", "/app/data/bts/T100_2023.csv")
+    adapter = BTSPassengerSource(csv_path)
+    count = adapter.load()
+    if count == 0:
+        logger.warning("BTS adapter loaded 0 routes")
+    _state._bts_adapter = adapter
+    return adapter
+
+
+def get_passenger_source_info() -> dict:
+    """Return current source status and available options."""
+    info = {
+        "source": _state.passenger_source,
+        "available": ["simulation", "bts_historical"],
+    }
+    if _state.passenger_source == "bts_historical" and _state._bts_adapter:
+        info["bts_summary"] = _state._bts_adapter.get_summary()
+    return info
+
+
+def switch_passenger_source(new_source: str, csv_path: str | None = None) -> dict:
+    """Switch the active passenger data source at runtime."""
+    old_source = _state.passenger_source
+    _state.passenger_source = new_source
+
+    if new_source == "bts_historical":
+        from services.bts_adapter import BTSPassengerSource
+        path = csv_path or os.getenv("PASSENGER_BTS_FILE", "/app/data/bts/T100_2023.csv")
+        adapter = BTSPassengerSource(path)
+        count = adapter.load()
+        _state._bts_adapter = adapter
+        logger.info("Switched to BTS historical source: %d routes loaded", count)
+        return {
+            "source": new_source,
+            "previous": old_source,
+            "routes_loaded": count,
+            "bts_summary": adapter.get_summary(),
+        }
+
+    # Switching to simulation
+    logger.info("Switched passenger source to simulation")
+    return {"source": new_source, "previous": old_source}
+
+
+def get_bts_flow() -> dict | None:
+    """Get BTS flow data for the current sim time."""
+    if _state.passenger_source != "bts_historical":
+        return None
+    adapter = _ensure_bts_adapter()
+    sim_time = _state.sim_time
+    if sim_time is None:
+        return None
+    flow = adapter.get_flow_at(sim_time)
+    return {
+        "sim_time": sim_time.isoformat(),
+        "source": "bts_historical",
+        "total_passengers": flow.total_passengers,
+        "departing_passengers": flow.departing_passengers,
+        "arriving_passengers": flow.arriving_passengers,
+        "avg_load_factor": flow.avg_load_factor,
+        "zone_counts": flow.zone_counts,
+        "route_breakdown": flow.route_breakdown,
+    }
+
+
+def get_bts_summary() -> dict | None:
+    """Get BTS adapter summary."""
+    adapter = _ensure_bts_adapter()
+    return adapter.get_summary()
 
 
 async def rebuild_security_from_neo4j() -> None:

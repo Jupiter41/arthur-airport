@@ -184,6 +184,31 @@ async def sim_inject(req: InjectRequest):
     return {"injected": True, "type": req.type, "sim_time": sim_time.isoformat()}
 
 
+# ── Incident calibration source ──────────────────────────────
+
+
+class IncidentSourceRequest(BaseModel):
+    source: str
+
+
+@router.get("/sim/incident-source")
+async def get_incident_source_endpoint():
+    """Return the active incident calibration preset and the available list."""
+    from services.injector import list_incident_sources
+    return list_incident_sources()
+
+
+@router.post("/sim/incident-source")
+async def set_incident_source_endpoint(req: IncidentSourceRequest):
+    """Switch the active incident calibration preset at runtime."""
+    from services.injector import set_incident_source
+    try:
+        result = set_incident_source(req.source)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
 @router.get("/sim/schedule")
 async def sim_schedule(
     terminal: Optional[str] = None,

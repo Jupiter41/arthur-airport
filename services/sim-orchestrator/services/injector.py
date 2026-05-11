@@ -1,6 +1,7 @@
 """Probabilistic event injector — evaluates once per simulated hour."""
 
 import logging
+import os
 import random
 from datetime import datetime
 
@@ -14,6 +15,72 @@ logger = logging.getLogger(__name__)
 PEAK_HOURS = None  # loaded from fixture at runtime
 _rng = random.Random()
 _last_incident_time: datetime | None = None
+
+# Active calibration preset id (``simulated`` or ``asrs_historical``).
+# Initialised from the ``INCIDENT_SOURCE`` env var and runtime-switchable via
+# ``set_incident_source``.
+_active_source: str = os.getenv("INCIDENT_SOURCE", "simulated").lower()
+
+
+def get_incident_source() -> str:
+    """Return the currently active incident calibration preset id."""
+    return _active_source
+
+
+def list_incident_sources() -> dict:
+    """Return metadata for all known calibration presets."""
+    fixtures = get_fixtures()
+    presets = (fixtures.get("incident_calibrations") or {}).get("presets") or {}
+    return {
+        "active": _active_source,
+        "available": [
+            {
+                "id": pid,
+                "label": preset.get("label", pid),
+                "description": preset.get("description", ""),
+                "source": preset.get("source"),
+            }
+            for pid, preset in presets.items()
+        ],
+    }
+
+
+def set_incident_source(source: str) -> dict:
+    """Switch the active calibration preset at runtime."""
+    global _active_source
+    fixtures = get_fixtures()
+    presets = (fixtures.get("incident_calibrations") or {}).get("presets") or {}
+    if source not in presets:
+        raise ValueError(
+            f"Unknown incident source '{source}'. Available: {sorted(presets)}"
+        )
+    previous = _active_source
+    _active_source = source
+    logger.info("Incident calibration source switched: %s -> %s", previous, source)
+    return {"previous": previous, "active": source}
+
+
+def _resolve_calibration(events_config: dict) -> dict:
+    """Merge the active calibration preset on top of the base events config."""
+    fixtures = get_fixtures()
+    presets = (fixtures.get("incident_calibrations") or {}).get("presets") or {}
+    preset = presets.get(_active_source)
+    if not preset:
+        return events_config
+
+    merged = dict(events_config)
+    for key in (
+        "base_probabilities",
+        "severity_ranges",
+        "ttr_ranges_minutes",
+        "locations",
+    ):
+        override = preset.get(key)
+        if override:
+            merged_value = dict(events_config.get(key, {}))
+            merged_value.update(override)
+            merged[key] = merged_value
+    return merged
 
 
 def set_seed(seed: int | None) -> None:
@@ -38,7 +105,10 @@ def _recent_incident(sim_time: datetime, window_hours: int = 2) -> bool:
 async def evaluate_probabilistic_events(sim_time: datetime) -> None:
     """Roll the dice for each incident type at this hour boundary.
 
-    Base probabilities are loaded from fixtures and modified by:
+    Base probabilities are loaded from fixtures, optionally overridden by the
+    active calibration preset (``simulated`` or ``asrs_historical``), then
+    modified by:
+
     - Peak-hour multiplier (×1.8 during 07–09h and 17–19h)
     - Recent-incident suppression (×0.3 if an incident occurred < 2h ago)
 
@@ -47,7 +117,7 @@ async def evaluate_probabilistic_events(sim_time: datetime) -> None:
     """
     global PEAK_HOURS
     fixtures = get_fixtures()
-    events_config = fixtures["events"]
+    events_config = _resolve_calibration(fixtures["events"])
     base_probs = events_config["base_probabilities"]
     peak_multiplier = events_config["peak_multiplier"]
     suppression_factor = events_config["suppression_factor"]
@@ -90,8 +160,8 @@ async def evaluate_probabilistic_events(sim_time: datetime) -> None:
             location = _rng.choice(locs)
 
             logger.info(
-                "Injecting event: %s (severity=%s, location=%s, prob=%.4f)",
-                event_type, severity, location, effective_prob,
+                "Injecting event: %s (severity=%s, location=%s, prob=%.4f, source=%s)",
+                event_type, severity, location, effective_prob, _active_source,
             )
 
             emit_inject_incident(
@@ -99,7 +169,7 @@ async def evaluate_probabilistic_events(sim_time: datetime) -> None:
                 incident_type=event_type,
                 severity=severity,
                 location=location,
-                trigger="probabilistic",
+                trigger=f"probabilistic:{_active_source}",
             )
             m_events_injected.labels(type=event_type).inc()
             record_incident(sim_time)

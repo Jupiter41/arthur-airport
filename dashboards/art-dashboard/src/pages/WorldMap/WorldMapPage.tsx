@@ -7,6 +7,7 @@ import {
   useNetworkStatusQuery,
 } from "../../hooks/useQueries";
 import { useSimStore } from "../../stores/simStore";
+import { useWorldMapSettingsStore } from "../../stores/worldMapSettingsStore";
 import type { Flight, ADSBFeatureCollection } from "../../types";
 import type { NetworkStatus, NetworkArc } from "../../hooks/useApi";
 import {
@@ -53,6 +54,12 @@ interface AirportFeature {
 const EMPTY_FEATURE_COLLECTION = {
   type: "FeatureCollection" as const,
   features: [],
+};
+
+const MAPBOX_STYLES: Record<string, string> = {
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
+  dark: "mapbox://styles/mapbox/dark-v11",
+  streets: "mapbox://styles/mapbox/streets-v12",
 };
 
 /** Match an ADS-B aircraft to a simulated flight by heading similarity and distance. */
@@ -192,9 +199,21 @@ export default function WorldMapPage() {
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
   const [searchPlane, setSearchPlane] = useState<string>("");
   const [searchAirport, setSearchAirport] = useState<string>("");
-  const [showSearchPanel, setShowSearchPanel] = useState(false);
-  const [showAdsb, setShowAdsb] = useState(false);
-  const [showNetwork, setShowNetwork] = useState(false);
+  // Persistent UI settings (stored in localStorage so toggles survive reloads)
+  const showSearchPanel = useWorldMapSettingsStore((s) => s.showSearchPanel);
+  const setShowSearchPanel = useWorldMapSettingsStore(
+    (s) => s.setShowSearchPanel,
+  );
+  const showAdsb = useWorldMapSettingsStore((s) => s.showAdsb);
+  const setShowAdsb = useWorldMapSettingsStore((s) => s.setShowAdsb);
+  const showNetwork = useWorldMapSettingsStore((s) => s.showNetwork);
+  const setShowNetwork = useWorldMapSettingsStore((s) => s.setShowNetwork);
+  const showRoutes = useWorldMapSettingsStore((s) => s.showRoutes);
+  const setShowRoutes = useWorldMapSettingsStore((s) => s.setShowRoutes);
+  const flightFilter = useWorldMapSettingsStore((s) => s.flightFilter);
+  const setFlightFilter = useWorldMapSettingsStore((s) => s.setFlightFilter);
+  const mapStyle = useWorldMapSettingsStore((s) => s.mapStyle);
+  const setMapStyle = useWorldMapSettingsStore((s) => s.setMapStyle);
   const [timelineActive, setTimelineActive] = useState(false);
   const [timelineOffset, setTimelineOffset] = useState(0); // minutes offset from sim start
   const [selectedAdsbInfo, setSelectedAdsbInfo] = useState<{
@@ -204,10 +223,20 @@ export default function WorldMapPage() {
     distance: string;
     country: string;
     icao24: string;
+    heading: string;
   } | null>(null);
 
   const adsbQuery = useADSBQuery(showAdsb);
   const adsbData = adsbQuery.data as ADSBFeatureCollection | undefined;
+
+  // Ref so map-init closure can read current showAdsb state
+  const showAdsbRef = useRef(showAdsb);
+  showAdsbRef.current = showAdsb;
+  const adsbDataRef = useRef(adsbData);
+  adsbDataRef.current = adsbData;
+  const mapStyleRef = useRef(mapStyle);
+  mapStyleRef.current = mapStyle;
+  const [mapLoaded, setMapLoaded] = useState(false);
 
   const networkQuery = useNetworkStatusQuery(showNetwork);
   const networkData = networkQuery.data as NetworkStatus | undefined;
@@ -232,9 +261,15 @@ export default function WorldMapPage() {
 
   const filteredPlanes = useMemo(() => {
     // Only show flights that are actually airborne (have a computable position)
-    const airborne = activeFlights.filter((f) =>
+    let airborne = activeFlights.filter((f) =>
       ["departed", "airborne", "approach"].includes(f.status),
     );
+    // Apply direction filter
+    if (flightFilter === "departures") {
+      airborne = airborne.filter((f) => f.direction === "departure");
+    } else if (flightFilter === "arrivals") {
+      airborne = airborne.filter((f) => f.direction === "arrival");
+    }
     if (!searchPlane) return airborne;
     const query = searchPlane.toLowerCase();
     return airborne.filter(
@@ -244,7 +279,7 @@ export default function WorldMapPage() {
         f.destination_iata.toLowerCase().includes(query) ||
         f.origin_iata.toLowerCase().includes(query),
     );
-  }, [activeFlights, searchPlane]);
+  }, [activeFlights, searchPlane, flightFilter]);
 
   const filteredAirports = useMemo(() => {
     if (!searchAirport) return [];
@@ -265,7 +300,7 @@ export default function WorldMapPage() {
     [filteredPlanes, selectedFlightId],
   );
 
-  const selectPlane = (flightId: string) => {
+  const selectPlane = (flightId: string, clickCoords?: { lon: number; lat: number } | null) => {
     const flight = activeFlightsRef.current.find((f) => f.id === flightId);
     if (!flight) return;
 
@@ -280,13 +315,15 @@ export default function WorldMapPage() {
         })()
       : simTime;
 
-    // Fly to the plane's current position with a close zoom
-    const pos = computeAircraftPosition(flight, currentSimTime);
+    // Prefer the clicked coordinates (exact icon position on map) over
+    // recomputed position which may have drifted to the destination for
+    // flights near fraction ≈ 1.
+    const pos = clickCoords ?? computeAircraftPosition(flight, currentSimTime);
     if (pos && mapRef.current) {
       if (hasMapboxToken) {
         (mapRef.current as { flyTo?: (options: unknown) => void }).flyTo?.({
           center: [pos.lon, pos.lat],
-          zoom: 7,
+          zoom: 10,
           duration: 1800,
           pitch: 45,
         });
@@ -295,7 +332,7 @@ export default function WorldMapPage() {
           mapRef.current as {
             flyTo?: (latLng: unknown, zoom: number, options?: unknown) => void;
           }
-        ).flyTo?.([pos.lat, pos.lon], 7, { duration: 1.8 });
+        ).flyTo?.([pos.lat, pos.lon], 10, { duration: 1.8 });
       }
     }
   };
@@ -327,19 +364,28 @@ export default function WorldMapPage() {
   }, [simTime, timelineActive, timelineOffset]);
 
   const positionFeatures = useMemo(
-    () =>
-      activeFlights
+    () => {
+      let flights = activeFlights;
+      if (flightFilter === "departures") flights = flights.filter((f) => f.direction === "departure");
+      else if (flightFilter === "arrivals") flights = flights.filter((f) => f.direction === "arrival");
+      return flights
         .map((flight) => toPositionFeature(flight, effectiveSimTime))
-        .filter((feature): feature is PositionFeature => Boolean(feature)),
-    [activeFlights, effectiveSimTime],
+        .filter((feature): feature is PositionFeature => Boolean(feature));
+    },
+    [activeFlights, effectiveSimTime, flightFilter],
   );
 
   const routeFeatures = useMemo(
-    () =>
-      activeFlights
+    () => {
+      if (!showRoutes) return [];
+      let flights = activeFlights;
+      if (flightFilter === "departures") flights = flights.filter((f) => f.direction === "departure");
+      else if (flightFilter === "arrivals") flights = flights.filter((f) => f.direction === "arrival");
+      return flights
         .map((flight) => toRouteFeature(flight))
-        .filter((feature): feature is RouteFeature => Boolean(feature)),
-    [activeFlights],
+        .filter((feature): feature is RouteFeature => Boolean(feature));
+    },
+    [activeFlights, showRoutes, flightFilter],
   );
 
   const airportFeatures = useMemo(() => {
@@ -448,7 +494,7 @@ export default function WorldMapPage() {
         try {
           map = new mapboxgl.Map({
             container: mapContainerRef.current as HTMLElement,
-            style: "mapbox://styles/mapbox/satellite-streets-v12",
+            style: MAPBOX_STYLES[mapStyleRef.current] ?? MAPBOX_STYLES.satellite,
             center: [KART_COORDINATES.lon, KART_COORDINATES.lat],
             zoom: 3,
             pitch: 34,
@@ -824,206 +870,237 @@ export default function WorldMapPage() {
           });
 
           // Use inline SVG data URLs for stable icon rendering.
-          // Departure: cyan (#22d3ee), Arrival: green (#34d399), Selected: yellow (#facc15)
-          const planeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-            <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
-                  fill="#22d3ee" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
-          </svg>`;
-          const arrivalPlaneSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-            <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
-                  fill="#34d399" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
-          </svg>`;
-          const selectedPlaneSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-            <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
-                  fill="#facc15" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
-          </svg>`;
-          const planeSvgUrl =
-            "data:image/svg+xml;charset=utf-8," + encodeURIComponent(planeSvg);
-          const arrivalPlaneSvgUrl =
-            "data:image/svg+xml;charset=utf-8," +
-            encodeURIComponent(arrivalPlaneSvg);
-          const selectedPlaneSvgUrl =
-            "data:image/svg+xml;charset=utf-8," +
-            encodeURIComponent(selectedPlaneSvg);
-
-          const planeImg = new Image(48, 48);
-          planeImg.onload = () => {
-            if (map.hasImage("plane-icon")) map.removeImage("plane-icon");
-            map.addImage("plane-icon", planeImg);
-
-            const arrivalPlaneImg = new Image(48, 48);
-            arrivalPlaneImg.onload = () => {
-              if (map.hasImage("plane-icon-arrival"))
-                map.removeImage("plane-icon-arrival");
-              map.addImage("plane-icon-arrival", arrivalPlaneImg);
-
-              const selectedPlaneImg = new Image(48, 48);
-              selectedPlaneImg.onload = () => {
-                if (map.hasImage("plane-icon-selected")) {
-                  map.removeImage("plane-icon-selected");
-                }
-                map.addImage("plane-icon-selected", selectedPlaneImg);
-
-                map.addLayer({
-                  id: "aircraft-symbols",
-                  type: "symbol",
-                  source: "aircraft",
-                  layout: {
-                    "icon-image": [
-                      "case",
-                      ["==", ["get", "flight_id"], selectedFlightId ?? ""],
-                      "plane-icon-selected",
-                      ["==", ["get", "direction"], "arrival"],
-                      "plane-icon-arrival",
-                      "plane-icon",
-                    ],
-                    "icon-size": [
-                      "interpolate",
-                      ["linear"],
-                      ["zoom"],
-                      2,
-                      0.45,
-                      8,
-                      0.75,
-                      14,
-                      1.1,
-                    ],
-                    "icon-rotate": ["coalesce", ["get", "heading_deg"], 0],
-                    "icon-rotation-alignment": "map",
-                    "icon-allow-overlap": true,
-                    "icon-keep-upright": false,
-                    "text-field": ["get", "flight_number"],
-                    "text-size": [
-                      "interpolate",
-                      ["linear"],
-                      ["zoom"],
-                      3,
-                      7,
-                      8,
-                      10,
-                      12,
-                      12,
-                    ],
-                    "text-offset": [0, 2],
-                    "text-allow-overlap": true,
-                  },
-                  paint: {
-                    "text-color": "#d5f4ff",
-                    "text-halo-color": "#0b1118",
-                    "text-halo-width": 1,
-                  },
-                });
-
-                map.on("click", "aircraft-symbols", (event) => {
-                  const flightId = event.features?.[0]?.properties
-                    ?.flight_id as string | undefined;
-                  if (flightId) {
-                    selectPlane(flightId);
-                  }
-                });
-
-                map.on("mouseenter", "aircraft-symbols", () => {
-                  map.getCanvas().style.cursor = "pointer";
-                });
-                map.on("mouseleave", "aircraft-symbols", () => {
-                  map.getCanvas().style.cursor = "";
-                });
-
-                // ── ADS-B layer (real aircraft — orange icons) ──
-                const adsbSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-                <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
-                      fill="#f97316" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
-              </svg>`;
-                const adsbSvgUrl =
-                  "data:image/svg+xml;charset=utf-8," +
-                  encodeURIComponent(adsbSvg);
-                const adsbImg = new Image(48, 48);
-                adsbImg.onload = () => {
-                  if (map.hasImage("adsb-icon")) map.removeImage("adsb-icon");
-                  map.addImage("adsb-icon", adsbImg);
-
-                  map.addLayer({
-                    id: "adsb-symbols",
-                    type: "symbol",
-                    source: "adsb-aircraft",
-                    layout: {
-                      "icon-image": "adsb-icon",
-                      "icon-size": [
-                        "interpolate",
-                        ["linear"],
-                        ["zoom"],
-                        2,
-                        0.35,
-                        8,
-                        0.6,
-                        14,
-                        0.9,
-                      ],
-                      "icon-rotate": ["coalesce", ["get", "heading"], 0],
-                      "icon-rotation-alignment": "map",
-                      "icon-allow-overlap": true,
-                      "icon-keep-upright": false,
-                      "text-field": ["get", "callsign"],
-                      "text-size": [
-                        "interpolate",
-                        ["linear"],
-                        ["zoom"],
-                        3,
-                        7,
-                        8,
-                        9,
-                        12,
-                        11,
-                      ],
-                      "text-offset": [0, 2],
-                      "text-allow-overlap": true,
-                      visibility: "none",
-                    },
-                    paint: {
-                      "text-color": "#fed7aa",
-                      "text-halo-color": "#0b1118",
-                      "text-halo-width": 1,
-                    },
-                  });
-
-                  map.on("click", "adsb-symbols", (event) => {
-                    const props = event.features?.[0]?.properties;
-                    if (props) {
-                      const callsign = String(props.callsign ?? "").trim();
-                      const alt =
-                        props.altitude_m != null
-                          ? `${Math.round(Number(props.altitude_m))}m`
-                          : "—";
-                      const speed =
-                        props.velocity_ms != null
-                          ? `${Math.round(Number(props.velocity_ms) * 1.944)}kt`
-                          : "—";
-                      const dist = `${Number(props.distance_km).toFixed(0)}km`;
-                      setSelectedAdsbInfo({
-                        callsign,
-                        altitude: alt,
-                        speed,
-                        distance: dist,
-                        country: String(props.origin_country ?? ""),
-                        icao24: String(props.icao24 ?? ""),
-                      });
-                    }
-                  });
-
-                  map.on("mouseenter", "adsb-symbols", () => {
-                    map.getCanvas().style.cursor = "pointer";
-                  });
-                  map.on("mouseleave", "adsb-symbols", () => {
-                    map.getCanvas().style.cursor = "";
-                  });
-                };
-                adsbImg.src = adsbSvgUrl;
-              };
-              selectedPlaneImg.src = selectedPlaneSvgUrl;
-            };
-            arrivalPlaneImg.src = arrivalPlaneSvgUrl;
+          // Departure: cyan (#22d3ee), Arrival: green (#34d399),
+          // Selected: yellow (#facc15), ADS-B: orange (#f97316).
+          const ICON_SVGS: Record<string, string> = {
+            "plane-icon": "#22d3ee",
+            "plane-icon-arrival": "#34d399",
+            "plane-icon-selected": "#facc15",
+            "adsb-icon": "#f97316",
           };
-          planeImg.src = planeSvgUrl;
+
+          const loadImage = (
+            name: string,
+            color: string,
+          ): Promise<void> => {
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z" fill="${color}" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+            const url =
+              "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+            return new Promise((resolve, reject) => {
+              const img = new Image(48, 48);
+              img.onload = () => {
+                if (map.hasImage(name)) map.removeImage(name);
+                map.addImage(name, img);
+                resolve();
+              };
+              img.onerror = () =>
+                reject(new Error(`Failed to load icon: ${name}`));
+              img.src = url;
+            });
+          };
+
+          Promise.all(
+            Object.entries(ICON_SVGS).map(([name, color]) =>
+              loadImage(name, color),
+            ),
+          )
+            .then(() => {
+              if (disposed) return;
+
+              // Both layers are created with visibility: "visible". To hide the
+              // ADS-B layer we simply push an empty FeatureCollection to its
+              // source — this avoids the historical race where setLayoutProperty
+              // would silently no-op while the style was still settling.
+              map.addLayer({
+                id: "aircraft-symbols",
+                type: "symbol",
+                source: "aircraft",
+                layout: {
+                  "icon-image": [
+                    "case",
+                    ["==", ["get", "flight_id"], selectedFlightId ?? ""],
+                    "plane-icon-selected",
+                    ["==", ["get", "direction"], "arrival"],
+                    "plane-icon-arrival",
+                    "plane-icon",
+                  ],
+                  "icon-size": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    2,
+                    0.45,
+                    8,
+                    0.75,
+                    14,
+                    1.1,
+                  ],
+                  "icon-rotate": ["coalesce", ["get", "heading_deg"], 0],
+                  "icon-rotation-alignment": "map",
+                  "icon-allow-overlap": true,
+                  "icon-keep-upright": false,
+                  "text-field": ["get", "flight_number"],
+                  "text-size": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    3,
+                    7,
+                    8,
+                    10,
+                    12,
+                    12,
+                  ],
+                  "text-offset": [0, 2],
+                  "text-allow-overlap": true,
+                },
+                paint: {
+                  "text-color": "#d5f4ff",
+                  "text-halo-color": "#0b1118",
+                  "text-halo-width": 1,
+                },
+              });
+
+              map.on("click", "aircraft-symbols", (event) => {
+                const flightId = event.features?.[0]?.properties
+                  ?.flight_id as string | undefined;
+                if (flightId) {
+                  // Use the clicked coordinates so the camera flies to
+                  // the actual icon position, not a recomputed one that
+                  // may have drifted to the destination airport.
+                  const clickCoords = event.lngLat
+                    ? { lon: event.lngLat.lng, lat: event.lngLat.lat }
+                    : null;
+                  selectPlane(flightId, clickCoords);
+                }
+              });
+              map.on("mouseenter", "aircraft-symbols", () => {
+                map.getCanvas().style.cursor = "pointer";
+              });
+              map.on("mouseleave", "aircraft-symbols", () => {
+                map.getCanvas().style.cursor = "";
+              });
+
+              map.addLayer({
+                id: "adsb-symbols",
+                type: "symbol",
+                source: "adsb-aircraft",
+                layout: {
+                  "icon-image": "adsb-icon",
+                  "icon-size": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    2,
+                    0.35,
+                    8,
+                    0.6,
+                    14,
+                    0.9,
+                  ],
+                  "icon-rotate": ["coalesce", ["get", "heading"], 0],
+                  "icon-rotation-alignment": "map",
+                  "icon-allow-overlap": true,
+                  "icon-keep-upright": false,
+                  // Only show callsign labels when zoomed in enough to
+                  // avoid cluttering the map with thousands of labels.
+                  "text-field": [
+                    "step",
+                    ["zoom"],
+                    "",    // hidden below zoom 9
+                    9,
+                    ["get", "callsign"],
+                  ],
+                  "text-size": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    3,
+                    7,
+                    8,
+                    9,
+                    12,
+                    11,
+                  ],
+                  "text-offset": [0, 2],
+                  "text-allow-overlap": true,
+                  visibility: "visible",
+                },
+                paint: {
+                  "text-color": "#fed7aa",
+                  "text-halo-color": "#0b1118",
+                  "text-halo-width": 1,
+                },
+              });
+
+              map.on("click", "adsb-symbols", (event) => {
+                const props = event.features?.[0]?.properties;
+                if (props) {
+                  const callsign = String(props.callsign ?? "").trim();
+                  const alt =
+                    props.altitude_m != null
+                      ? `${Math.round(Number(props.altitude_m))}m (FL${Math.round(Number(props.altitude_m) * 3.28084 / 100)})`
+                      : "—";
+                  const speed =
+                    props.velocity_ms != null
+                      ? `${Math.round(Number(props.velocity_ms) * 1.944)}kt`
+                      : "—";
+                  const dist = `${Number(props.distance_km).toFixed(0)}km`;
+                  const hdg = props.heading != null
+                    ? `${Math.round(Number(props.heading))}°`
+                    : "—";
+                  setSelectedAdsbInfo({
+                    callsign,
+                    altitude: alt,
+                    speed,
+                    distance: dist,
+                    country: String(props.origin_country ?? ""),
+                    icao24: String(props.icao24 ?? ""),
+                    heading: hdg,
+                  });
+                  // Fly to the clicked ADS-B aircraft
+                  if (event.lngLat) {
+                    map.flyTo({
+                      center: [event.lngLat.lng, event.lngLat.lat],
+                      zoom: Math.max(map.getZoom(), 8),
+                      duration: 1200,
+                    });
+                  }
+                }
+              });
+              map.on("mouseenter", "adsb-symbols", () => {
+                map.getCanvas().style.cursor = "pointer";
+              });
+              map.on("mouseleave", "adsb-symbols", () => {
+                map.getCanvas().style.cursor = "";
+              });
+
+              // Seed any pending ADS-B data captured before the layer existed.
+              const currentAdsb = adsbDataRef.current;
+              if (showAdsbRef.current && currentAdsb?.features) {
+                (
+                  map.getSource("adsb-aircraft") as
+                    | { setData?: (data: unknown) => void }
+                    | undefined
+                )?.setData?.({
+                  type: "FeatureCollection",
+                  features: currentAdsb.features.filter(
+                    (f) => !f.properties.on_ground,
+                  ),
+                });
+              }
+
+              // Signal that all layers are ready so the data-update effect
+              // re-runs and pushes any state that was waiting in refs.
+              setMapLoaded(true);
+            })
+            .catch((err) => {
+              console.warn(
+                "[WorldMap] Failed to load aircraft icons; map will render without symbols:",
+                err,
+              );
+              setMapLoaded(true);
+            });
 
           map.on("zoom", () => {
             if (!map.isStyleLoaded()) {
@@ -1054,6 +1131,7 @@ export default function WorldMapPage() {
         const maybeMap = mapRef.current as { remove?: () => void } | null;
         maybeMap?.remove?.();
         mapRef.current = null;
+        setMapLoaded(false);
       };
     }
 
@@ -1108,7 +1186,7 @@ export default function WorldMapPage() {
       routeLayerGroupRef.current = null;
       airportLayerGroupRef.current = null;
     };
-  }, [hasMapboxToken, token]);
+  }, [hasMapboxToken, token, mapStyle]);
 
   useEffect(() => {
     if (!mapRef.current) {
@@ -1144,21 +1222,20 @@ export default function WorldMapPage() {
         .getSource("airports")
         ?.setData?.({ type: "FeatureCollection", features: airportFeatures });
 
-      // Update ADS-B source
-      if (adsbData?.features) {
-        map.getSource("adsb-aircraft")?.setData?.(adsbData);
-      }
+      // Update ADS-B source. Layer visibility is fixed at "visible"; we hide
+      // ADS-B by feeding an empty FeatureCollection. This avoids the historical
+      // race where setLayoutProperty silently no-op'd while the style settled.
+      // Also filter out on_ground aircraft so only airborne real flights appear.
+      const adsbFeatures =
+        showAdsb && adsbData?.features
+          ? adsbData.features.filter((f) => !f.properties.on_ground)
+          : [];
+      map.getSource("adsb-aircraft")?.setData?.({
+        type: "FeatureCollection" as const,
+        features: adsbFeatures,
+      });
 
-      // Toggle ADS-B layer visibility
-      if (map.isStyleLoaded?.() && map.getLayer?.("adsb-symbols")) {
-        map.setLayoutProperty?.(
-          "adsb-symbols",
-          "visibility",
-          showAdsb ? "visible" : "none",
-        );
-      }
-
-      if (map.isStyleLoaded?.() && map.getLayer?.("aircraft-symbols")) {
+      if (map.getLayer?.("aircraft-symbols")) {
         map.setLayoutProperty?.("aircraft-symbols", "icon-image", [
           "case",
           ["==", ["get", "flight_id"], selectedFlightId ?? ""],
@@ -1170,7 +1247,7 @@ export default function WorldMapPage() {
       }
 
       // Highlight selected flight's route; arrivals are green, departures cyan
-      if (map.isStyleLoaded?.() && map.getLayer?.("routes-line")) {
+      if (map.getLayer?.("routes-line")) {
         map.setPaintProperty?.("routes-line", "line-color", [
           "case",
           ["==", ["get", "flight_id"], selectedFlightId ?? ""],
@@ -1189,15 +1266,13 @@ export default function WorldMapPage() {
 
       // Update network overlay
       const networkVis = showNetwork ? "visible" : "none";
-      if (map.isStyleLoaded?.()) {
-        for (const layerId of [
-          "network-arcs-line",
-          "network-airports-circles",
-          "network-airports-labels",
-        ]) {
-          if (map.getLayer?.(layerId)) {
-            map.setLayoutProperty?.(layerId, "visibility", networkVis);
-          }
+      for (const layerId of [
+        "network-arcs-line",
+        "network-airports-circles",
+        "network-airports-labels",
+      ]) {
+        if (map.getLayer?.(layerId)) {
+          map.setLayoutProperty?.(layerId, "visibility", networkVis);
         }
       }
       if (showNetwork && networkData) {
@@ -1321,11 +1396,36 @@ export default function WorldMapPage() {
         marker.addTo(map as never);
         aircraftMarkersRef.current.push(marker);
       }
+
+      // Leaflet: ADS-B aircraft markers (orange, smaller)
+      if (showAdsb && adsbData?.features) {
+        for (const f of adsbData.features) {
+          if (f.properties.on_ground) continue;
+          const [lon, lat] = f.geometry.coordinates;
+          const heading = f.properties.heading ?? 0;
+          const icon = L.divIcon({
+            className: "",
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+            html: `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 48 48"
+                        style="transform:rotate(${heading}deg)">
+                     <path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z"
+                           fill="#f97316" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
+                   </svg>`,
+          });
+          const callsign = (f.properties.callsign ?? "").trim() || f.properties.icao24;
+          const marker = L.marker([lat, lon], { icon })
+            .bindTooltip(`📡 ${callsign}`);
+          marker.addTo(map as never);
+          aircraftMarkersRef.current.push(marker);
+        }
+      }
     })();
   }, [
     adsbData,
     airportFeatures,
     hasMapboxToken,
+    mapLoaded,
     positionFeatures,
     routeFeatures,
     selectedFlightId,
@@ -1344,7 +1444,7 @@ export default function WorldMapPage() {
             </h1>
             <p className="text-xs text-slate-400">
               {hasMapboxToken
-                ? "Mapbox satellite with real destination airports"
+                ? `Mapbox ${mapStyle} with real destination airports`
                 : "Leaflet OpenStreetMap fallback"}
               {" | Sim Time "}
               {new Date(effectiveSimTime).toISOString()}
@@ -1353,7 +1453,7 @@ export default function WorldMapPage() {
               )}
             </p>
           </div>
-          <div className="text-xs text-slate-300 flex items-center gap-2">
+          <div className="text-xs text-slate-300 flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => setShowSearchPanel(!showSearchPanel)}
@@ -1362,6 +1462,42 @@ export default function WorldMapPage() {
             >
               🔍 Search
             </button>
+            <button
+              type="button"
+              onClick={() => setShowRoutes(!showRoutes)}
+              className={`px-3 py-1 rounded transition-colors font-medium ${
+                showRoutes
+                  ? "bg-sky-600 hover:bg-sky-700 text-white"
+                  : "bg-slate-700 hover:bg-slate-600 text-slate-300"
+              }`}
+              title="Toggle route lines"
+            >
+              ✈ Routes
+            </button>
+            {/* Flight direction filter */}
+            <select
+              value={flightFilter}
+              onChange={(e) => setFlightFilter(e.target.value as "all" | "departures" | "arrivals")}
+              className="px-2 py-1 rounded bg-slate-700 text-slate-200 border border-slate-600 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+              title="Filter by flight direction"
+            >
+              <option value="all">All flights</option>
+              <option value="departures">Departures only</option>
+              <option value="arrivals">Arrivals only</option>
+            </select>
+            {/* Map style */}
+            {hasMapboxToken && (
+              <select
+                value={mapStyle}
+                onChange={(e) => setMapStyle(e.target.value as "satellite" | "dark" | "streets")}
+                className="px-2 py-1 rounded bg-slate-700 text-slate-200 border border-slate-600 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+                title="Map style"
+              >
+                <option value="satellite">🛰 Satellite</option>
+                <option value="dark">🌙 Dark</option>
+                <option value="streets">🗺 Streets</option>
+              </select>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -1373,7 +1509,7 @@ export default function WorldMapPage() {
                   ? "bg-orange-600 hover:bg-orange-700 text-white"
                   : "bg-slate-700 hover:bg-slate-600 text-slate-300"
               }`}
-              title="Toggle live ADS-B aircraft overlay"
+              title="Toggle live ADS-B aircraft overlay (adsb.lol)"
             >
               📡 ADS-B{" "}
               {showAdsb && adsbData
@@ -1755,12 +1891,16 @@ export default function WorldMapPage() {
                 {selectedAdsbInfo.speed}
               </p>
               <p>
+                <span className="text-slate-400">Heading:</span>{" "}
+                {selectedAdsbInfo.heading}
+              </p>
+              <p>
                 <span className="text-slate-400">Distance to KART:</span>{" "}
                 {selectedAdsbInfo.distance}
               </p>
             </div>
             <div className="mt-2 pt-2 border-t border-slate-700 text-[10px] text-slate-500">
-              Live data from OpenSky Network
+              Live data from adsb.lol
             </div>
           </aside>
         )}
@@ -1809,9 +1949,19 @@ export default function WorldMapPage() {
         {showAdsb && (
           <span className="ml-auto text-slate-500">
             <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 mr-1" />
-            Simulated
+            Departures
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 ml-2 mr-1" />
+            Arrivals
             <span className="inline-block w-2 h-2 rounded-full bg-orange-400 ml-2 mr-1" />
             Real (ADS-B)
+          </span>
+        )}
+        {!showAdsb && (
+          <span className="ml-auto text-slate-500">
+            <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 mr-1" />
+            Departures
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 ml-2 mr-1" />
+            Arrivals
           </span>
         )}
       </div>

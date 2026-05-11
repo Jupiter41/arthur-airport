@@ -1,4 +1,4 @@
-"""Synthetic ADS-B data generator — fallback when OpenSky is unavailable.
+"""Synthetic ADS-B data generator — fallback when adsb.lol and OpenSky are unavailable.
 
 Produces ADS-B-like state vectors from simulated flights currently airborne,
 so the dashboard's ADS-B overlay shows aircraft even without a live data feed.

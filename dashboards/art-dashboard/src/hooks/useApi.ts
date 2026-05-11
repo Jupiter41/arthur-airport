@@ -512,7 +512,7 @@ export interface DataSourceStatus {
   id: string;
   name: string;
   service: string;
-  type: "weather" | "flights" | "passengers" | "baggage" | "incidents";
+  type: "weather" | "flights" | "passengers" | "baggage" | "incidents" | "infrastructure";
   current_source: string;
   available_sources: string[];
   status: "active" | "degraded" | "unavailable";
@@ -529,5 +529,15 @@ export const dataSourcesApi = {
   list: () => apiFetch<DataSourcesResponse>("/data-sources"),
   switchWeatherSource: (source: string, csvPath?: string, liveIcao?: string) =>
     weatherApi.switchSource(source, csvPath, liveIcao),
+  switchPassengerSource: (source: string, csvPath?: string) =>
+    apiFetch<unknown>("/passengers/source", {
+      method: "POST",
+      body: JSON.stringify({ source, csv_path: csvPath }),
+    }),
+  switchIncidentSource: (source: string) =>
+    apiFetch<unknown>("/sim/incident-source", {
+      method: "POST",
+      body: JSON.stringify({ source }),
+    }),
   getWeatherCurrent: () => weatherApi.current(),
 };

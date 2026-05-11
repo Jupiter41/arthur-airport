@@ -5,7 +5,7 @@ interface DataSourceStatus {
   id: string;
   name: string;
   service: string;
-  type: "weather" | "flights" | "passengers" | "baggage" | "incidents";
+  type: "weather" | "flights" | "passengers" | "baggage" | "incidents" | "infrastructure";
   current_source: string;
   available_sources: string[];
   status: "active" | "degraded" | "unavailable";
@@ -89,8 +89,8 @@ export async function handleDataSources(
       name: "ADS-B Live Flights",
       service: "flight-service",
       type: "flights",
-      current_source: adsbEnabled ? "opensky" : "disabled",
-      available_sources: ["disabled", "opensky"],
+      current_source: adsbEnabled ? "adsb.lol" : "disabled",
+      available_sources: ["disabled", "adsb.lol"],
       status: adsbEnabled ? "active" : "degraded",
       last_updated: new Date().toISOString(),
       details: adsbEnabled
@@ -104,7 +104,7 @@ export async function handleDataSources(
       service: "flight-service",
       type: "flights",
       current_source: "disabled",
-      available_sources: ["disabled", "opensky"],
+      available_sources: ["disabled", "adsb.lol"],
       status: "unavailable",
       last_updated: null,
       details: {},
@@ -149,24 +149,43 @@ export async function handleDataSources(
 
   // 4. Passenger simulation source
   try {
-    const paxUrl = `${UPSTREAM.passengers}/api/v1/flow/summary`;
-    const paxData = (await fetchWithTimeout(paxUrl, 5000)) as Record<
+    const paxSourceUrl = `${UPSTREAM.passengers}/api/v1/passengers/source`;
+    const paxSourceData = (await fetchWithTimeout(paxSourceUrl, 5000)) as Record<
       string,
       unknown
     >;
+    const currentSource = String(paxSourceData?.source ?? "simulation");
+    const availableSources = (paxSourceData?.available ?? ["simulation", "bts_historical"]) as string[];
+    const details: Record<string, unknown> = {};
+
+    // Also fetch flow summary for stats
+    try {
+      const paxFlowUrl = `${UPSTREAM.passengers}/api/v1/flow/summary`;
+      const paxData = (await fetchWithTimeout(paxFlowUrl, 5000)) as Record<
+        string,
+        unknown
+      >;
+      details.total_passengers = paxData?.total_in_airport;
+      details.zone_counts = paxData?.by_status;
+      if (paxData?.bts_overlay) {
+        details.bts_overlay = paxData.bts_overlay;
+      }
+    } catch { /* flow summary optional */ }
+
+    if (paxSourceData?.bts_summary) {
+      details.bts_summary = paxSourceData.bts_summary;
+    }
+
     sources.push({
       id: "passengers",
       name: "Passenger Flow",
       service: "passenger-service",
       type: "passengers",
-      current_source: "simulation",
-      available_sources: ["simulation", "bts_historical"],
-      status: paxData ? "active" : "degraded",
+      current_source: currentSource,
+      available_sources: availableSources,
+      status: "active",
       last_updated: new Date().toISOString(),
-      details: {
-        total_passengers: paxData?.total_passengers,
-        zone_counts: paxData?.zone_counts,
-      },
+      details,
     });
   } catch {
     sources.push({
@@ -211,6 +230,61 @@ export async function handleDataSources(
       type: "baggage",
       current_source: "simulation",
       available_sources: ["simulation"],
+      status: "unavailable",
+      last_updated: null,
+      details: {},
+    });
+  }
+
+  // 6. Infrastructure data — OurAirports (offline fixture, always active)
+  sources.push({
+    id: "infrastructure",
+    name: "Airport Infrastructure",
+    service: "config",
+    type: "infrastructure",
+    current_source: "ourairports",
+    available_sources: ["ourairports"],
+    status: "active",
+    last_updated: null,
+    details: {
+      description:
+        "Offline fixture data — runways, frequencies, navaids from OurAirports open dataset",
+    },
+  });
+
+  // 7. Incident calibration source (sim-orchestrator)
+  try {
+    const incidentSourceUrl = `${UPSTREAM.sim}/api/v1/sim/incident-source`;
+    const incidentData = (await fetchWithTimeout(
+      incidentSourceUrl,
+      5000,
+    )) as Record<string, unknown>;
+    const active = String(incidentData?.active ?? "simulated");
+    const availableList = (incidentData?.available ?? []) as Array<{
+      id: string;
+    }>;
+    sources.push({
+      id: "incidents",
+      name: "Incident Calibration",
+      service: "sim-orchestrator",
+      type: "incidents",
+      current_source: active,
+      available_sources:
+        availableList.length > 0
+          ? availableList.map((p) => p.id)
+          : ["simulated", "asrs_historical"],
+      status: "active",
+      last_updated: new Date().toISOString(),
+      details: incidentData,
+    });
+  } catch {
+    sources.push({
+      id: "incidents",
+      name: "Incident Calibration",
+      service: "sim-orchestrator",
+      type: "incidents",
+      current_source: "simulated",
+      available_sources: ["simulated", "asrs_historical"],
       status: "unavailable",
       last_updated: null,
       details: {},

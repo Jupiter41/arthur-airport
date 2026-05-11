@@ -37,7 +37,7 @@ Follow project evolution in:
 - A **playground** for incident response, cascading failure visualization, and hazardous event simulation
 - A **reference implementation** for agent-assisted development workflows with SKILL.md files
 
-Default runtime behavior is synthetic/simulated. The repo also includes optional external-data adapters (for example OpenSky ADS-B overlay and weather live/historical modes) plus offline fixture generation from open datasets (OurAirports/OpenFlights/IEM).
+Default runtime behavior is synthetic/simulated. The repo also includes optional external-data adapters (for example adsb.lol ADS-B overlay and weather live/historical modes) plus offline fixture generation from open datasets (OurAirports/OpenFlights/IEM).
 
 ---
 

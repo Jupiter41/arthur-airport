@@ -70,6 +70,47 @@ async def search_passengers_endpoint(
     return {"results": results}
 
 
+# ── Source management ───────────────────────────────────────
+
+@router.get("/passengers/source")
+async def passenger_source():
+    """Current passenger data source configuration."""
+    from kafka.consumer import get_passenger_source_info
+    return get_passenger_source_info()
+
+
+@router.post("/passengers/source")
+async def switch_passenger_source_endpoint(body: dict):
+    """Switch passenger source at runtime."""
+    new_source = body.get("source")
+    if new_source not in ("simulation", "bts_historical"):
+        raise HTTPException(status_code=400, detail="source must be 'simulation' or 'bts_historical'")
+    csv_path = body.get("csv_path")
+    from kafka.consumer import switch_passenger_source
+    result = switch_passenger_source(new_source, csv_path)
+    return result
+
+
+@router.get("/passengers/bts/flow")
+async def bts_flow():
+    """Get BTS historical passenger flow data for the current sim time."""
+    from kafka.consumer import get_bts_flow
+    flow = get_bts_flow()
+    if flow is None:
+        raise HTTPException(status_code=404, detail="BTS source not active or not loaded")
+    return flow
+
+
+@router.get("/passengers/bts/summary")
+async def bts_summary():
+    """Get BTS data summary statistics."""
+    from kafka.consumer import get_bts_summary
+    summary = get_bts_summary()
+    if summary is None:
+        raise HTTPException(status_code=404, detail="BTS adapter not loaded")
+    return summary
+
+
 @router.get("/passengers/{passenger_id}")
 async def get_passenger_detail(passenger_id: str):
     pax = await get_passenger_by_id(passenger_id)
@@ -123,14 +164,27 @@ async def flow_summary():
     conn_at_risk = sum(1 for c in at_risk if c.get("risk_level") == "at_risk")
     conn_missed = sum(1 for c in at_risk if c.get("risk_level") == "missed")
 
-    return {
+    from kafka.consumer import get_passenger_source_info
+    source_info = get_passenger_source_info()
+
+    result = {
         "sim_time": sim_time.isoformat() if sim_time else None,
         "total_in_airport": total,
         "by_status": by_status,
         "security": sec_summary,
         "connections_at_risk": conn_at_risk,
         "connections_missed": conn_missed,
+        "data_source": source_info["source"],
     }
+
+    # Include BTS overlay data when BTS source is active
+    if source_info["source"] == "bts_historical":
+        from kafka.consumer import get_bts_flow
+        bts = get_bts_flow()
+        if bts:
+            result["bts_overlay"] = bts
+
+    return result
 
 
 @router.get("/flow/heatmap")
@@ -239,3 +293,4 @@ async def list_alerts(
         filtered = [a for a in filtered if a.get("flight_id") == flight_id]
 
     return {"alerts": filtered[-limit:]}
+

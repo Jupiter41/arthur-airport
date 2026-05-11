@@ -267,12 +267,17 @@ function AutonomousPanel() {
         </div>
       )}
 
-      {/* Recent actions */}
-      {log.length > 0 && (
-        <div>
-          <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
-            Recent Actions
-          </div>
+      {/* Recent actions — always visible for selected agent */}
+      <div>
+        <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+          Recent Actions
+          {currentMode !== "off" && (
+            <span className="ml-2 text-gray-500 normal-case">
+              ({currentMode.replace("_", " ")})
+            </span>
+          )}
+        </div>
+        {log.length > 0 ? (
           <div className="space-y-1 max-h-32 overflow-y-auto">
             {(log as Record<string, unknown>[]).slice(0, 5).map((action, i) => (
               <div
@@ -290,8 +295,14 @@ function AutonomousPanel() {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="text-xs text-gray-500 bg-gray-700/50 rounded px-3 py-2">
+            {currentMode === "off"
+              ? "Enable an autonomous mode to start collecting actions."
+              : "No autonomous actions taken yet. Actions will appear here when the agent detects bottlenecks and applies recommendations."}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
