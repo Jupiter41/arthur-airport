@@ -21,8 +21,10 @@ Before doing any edit, do this:
 - ALWAYS write a final summary of the changes you made, the issues you fixed, the tests you ran and the results you got in a md file in docs/lessons-learned/.
 - ALWAYS mark issues as completed in the relevant file if needed.
 - ALWAYS run the tests necessary to pass Github CI/CD at the end: ruff check, npm build etc.
+- ALWAYS use light mode for local development to speed up image building. Only use full mode if need to test the full integration.
+- ALWAYS correct all bugs found, even those unrelated to the current task, to keep the codebase clean and maintainable.
 
 The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
-- Add a toggle in world map ui to allow to see grounded flights for simulated  flights and real ones.
-- Make the world map ui nicer (not too many toggles etc.). Also allow user to select map style (dark, light, satellite) + select the range to display
--  
+
+- Because of nvidia, cuda etc. the docker compose became super long to run and images are heavy. Add an option to switch to a "light" mode for local development. Also optimize the images sizes (caching, multi-stage builds etc.) to speed up the build and run times.
+-

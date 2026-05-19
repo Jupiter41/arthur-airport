@@ -44,8 +44,8 @@ class TestConstants:
     def test_cutoff_is_45(self):
         assert CHECKIN_CUTOFF_MINUTES == 45
 
-    def test_gate_open_is_30(self):
-        assert GATE_OPEN_MINUTES == 30
+    def test_gate_open_is_50(self):
+        assert GATE_OPEN_MINUTES == 50
 
     def test_boarding_rate(self):
         assert BOARDING_RATE_PAX_PER_MIN == 10
@@ -85,8 +85,8 @@ class TestShouldMoveToAtGate:
 
     def test_stays_before_gate_open(self):
         estimated = BASE_TIME
-        sim_time = BASE_TIME - timedelta(minutes=35)
-        airside_at = BASE_TIME - timedelta(minutes=45)
+        sim_time = BASE_TIME - timedelta(minutes=55)  # before GATE_OPEN_MINUTES (50)
+        airside_at = BASE_TIME - timedelta(minutes=60)
         assert should_move_to_at_gate(sim_time, estimated, 5, airside_at) is False
 
     def test_stays_if_dwell_not_elapsed(self):

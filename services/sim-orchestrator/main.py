@@ -86,6 +86,17 @@ async def lifespan(app: FastAPI):
     # 1. Load fixtures
     load_fixtures()
 
+    # 1b. Load BTS calibration data (calibrates schedule & passenger generation)
+    from services.bts_calibration import load_bts_calibration
+    bts = load_bts_calibration()
+    if bts.loaded:
+        logger.info(
+            "BTS calibration active: %d routes, global LF=%.3f",
+            bts.total_routes, bts.global_load_factor,
+        )
+    else:
+        logger.info("BTS calibration not available — using default simulation parameters")
+
     # 2. Wait for Neo4j
     await wait_for_neo4j(max_attempts=12, delay_s=5)
 

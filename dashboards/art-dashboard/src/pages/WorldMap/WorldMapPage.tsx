@@ -15,6 +15,7 @@ import {
   computeAircraftPosition,
   destinationCoordinates,
 } from "../../utils/geospatial";
+import { MapControlPanel } from "../../components/MapControlPanel";
 
 interface PositionFeature {
   type: "Feature";
@@ -204,16 +205,16 @@ export default function WorldMapPage() {
   const setShowSearchPanel = useWorldMapSettingsStore(
     (s) => s.setShowSearchPanel,
   );
+  const showControlPanel = useWorldMapSettingsStore((s) => s.showControlPanel);
+  const setShowControlPanel = useWorldMapSettingsStore(
+    (s) => s.setShowControlPanel,
+  );
   const showAdsb = useWorldMapSettingsStore((s) => s.showAdsb);
-  const setShowAdsb = useWorldMapSettingsStore((s) => s.setShowAdsb);
   const showNetwork = useWorldMapSettingsStore((s) => s.showNetwork);
-  const setShowNetwork = useWorldMapSettingsStore((s) => s.setShowNetwork);
   const showRoutes = useWorldMapSettingsStore((s) => s.showRoutes);
-  const setShowRoutes = useWorldMapSettingsStore((s) => s.setShowRoutes);
   const flightFilter = useWorldMapSettingsStore((s) => s.flightFilter);
-  const setFlightFilter = useWorldMapSettingsStore((s) => s.setFlightFilter);
+  const statusFilter = useWorldMapSettingsStore((s) => s.statusFilter);
   const mapStyle = useWorldMapSettingsStore((s) => s.mapStyle);
-  const setMapStyle = useWorldMapSettingsStore((s) => s.setMapStyle);
   const [timelineActive, setTimelineActive] = useState(false);
   const [timelineOffset, setTimelineOffset] = useState(0); // minutes offset from sim start
   const [selectedAdsbInfo, setSelectedAdsbInfo] = useState<{
@@ -270,6 +271,18 @@ export default function WorldMapPage() {
     } else if (flightFilter === "arrivals") {
       airborne = airborne.filter((f) => f.direction === "arrival");
     }
+    // Apply status filter
+    if (statusFilter === "airborne") {
+      airborne = airborne.filter((f) =>
+        ["airborne", "departed"].includes(f.status),
+      );
+    } else if (statusFilter === "boarding") {
+      airborne = airborne.filter((f) => f.status === "boarding");
+    } else if (statusFilter === "ground") {
+      airborne = airborne.filter((f) =>
+        ["approach", "landed", "taxiing"].includes(f.status),
+      );
+    }
     if (!searchPlane) return airborne;
     const query = searchPlane.toLowerCase();
     return airborne.filter(
@@ -279,7 +292,7 @@ export default function WorldMapPage() {
         f.destination_iata.toLowerCase().includes(query) ||
         f.origin_iata.toLowerCase().includes(query),
     );
-  }, [activeFlights, searchPlane, flightFilter]);
+  }, [activeFlights, searchPlane, flightFilter, statusFilter]);
 
   const filteredAirports = useMemo(() => {
     if (!searchAirport) return [];
@@ -300,7 +313,10 @@ export default function WorldMapPage() {
     [filteredPlanes, selectedFlightId],
   );
 
-  const selectPlane = (flightId: string, clickCoords?: { lon: number; lat: number } | null) => {
+  const selectPlane = (
+    flightId: string,
+    clickCoords?: { lon: number; lat: number } | null,
+  ) => {
     const flight = activeFlightsRef.current.find((f) => f.id === flightId);
     if (!flight) return;
 
@@ -363,30 +379,28 @@ export default function WorldMapPage() {
     return base.toISOString();
   }, [simTime, timelineActive, timelineOffset]);
 
-  const positionFeatures = useMemo(
-    () => {
-      let flights = activeFlights;
-      if (flightFilter === "departures") flights = flights.filter((f) => f.direction === "departure");
-      else if (flightFilter === "arrivals") flights = flights.filter((f) => f.direction === "arrival");
-      return flights
-        .map((flight) => toPositionFeature(flight, effectiveSimTime))
-        .filter((feature): feature is PositionFeature => Boolean(feature));
-    },
-    [activeFlights, effectiveSimTime, flightFilter],
-  );
+  const positionFeatures = useMemo(() => {
+    let flights = activeFlights;
+    if (flightFilter === "departures")
+      flights = flights.filter((f) => f.direction === "departure");
+    else if (flightFilter === "arrivals")
+      flights = flights.filter((f) => f.direction === "arrival");
+    return flights
+      .map((flight) => toPositionFeature(flight, effectiveSimTime))
+      .filter((feature): feature is PositionFeature => Boolean(feature));
+  }, [activeFlights, effectiveSimTime, flightFilter]);
 
-  const routeFeatures = useMemo(
-    () => {
-      if (!showRoutes) return [];
-      let flights = activeFlights;
-      if (flightFilter === "departures") flights = flights.filter((f) => f.direction === "departure");
-      else if (flightFilter === "arrivals") flights = flights.filter((f) => f.direction === "arrival");
-      return flights
-        .map((flight) => toRouteFeature(flight))
-        .filter((feature): feature is RouteFeature => Boolean(feature));
-    },
-    [activeFlights, showRoutes, flightFilter],
-  );
+  const routeFeatures = useMemo(() => {
+    if (!showRoutes) return [];
+    let flights = activeFlights;
+    if (flightFilter === "departures")
+      flights = flights.filter((f) => f.direction === "departure");
+    else if (flightFilter === "arrivals")
+      flights = flights.filter((f) => f.direction === "arrival");
+    return flights
+      .map((flight) => toRouteFeature(flight))
+      .filter((feature): feature is RouteFeature => Boolean(feature));
+  }, [activeFlights, showRoutes, flightFilter]);
 
   const airportFeatures = useMemo(() => {
     const features: AirportFeature[] = [
@@ -494,7 +508,8 @@ export default function WorldMapPage() {
         try {
           map = new mapboxgl.Map({
             container: mapContainerRef.current as HTMLElement,
-            style: MAPBOX_STYLES[mapStyleRef.current] ?? MAPBOX_STYLES.satellite,
+            style:
+              MAPBOX_STYLES[mapStyleRef.current] ?? MAPBOX_STYLES.satellite,
             center: [KART_COORDINATES.lon, KART_COORDINATES.lat],
             zoom: 3,
             pitch: 34,
@@ -879,10 +894,7 @@ export default function WorldMapPage() {
             "adsb-icon": "#f97316",
           };
 
-          const loadImage = (
-            name: string,
-            color: string,
-          ): Promise<void> => {
+          const loadImage = (name: string, color: string): Promise<void> => {
             const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><path d="M24 4 L29 18 L44 22 L29 26 L26 44 L24 40 L22 44 L19 26 L4 22 L19 18 Z" fill="${color}" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
             const url =
               "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
@@ -962,8 +974,9 @@ export default function WorldMapPage() {
               });
 
               map.on("click", "aircraft-symbols", (event) => {
-                const flightId = event.features?.[0]?.properties
-                  ?.flight_id as string | undefined;
+                const flightId = event.features?.[0]?.properties?.flight_id as
+                  | string
+                  | undefined;
                 if (flightId) {
                   // Use the clicked coordinates so the camera flies to
                   // the actual icon position, not a recomputed one that
@@ -1007,7 +1020,7 @@ export default function WorldMapPage() {
                   "text-field": [
                     "step",
                     ["zoom"],
-                    "",    // hidden below zoom 9
+                    "", // hidden below zoom 9
                     9,
                     ["get", "callsign"],
                   ],
@@ -1039,16 +1052,17 @@ export default function WorldMapPage() {
                   const callsign = String(props.callsign ?? "").trim();
                   const alt =
                     props.altitude_m != null
-                      ? `${Math.round(Number(props.altitude_m))}m (FL${Math.round(Number(props.altitude_m) * 3.28084 / 100)})`
+                      ? `${Math.round(Number(props.altitude_m))}m (FL${Math.round((Number(props.altitude_m) * 3.28084) / 100)})`
                       : "—";
                   const speed =
                     props.velocity_ms != null
                       ? `${Math.round(Number(props.velocity_ms) * 1.944)}kt`
                       : "—";
                   const dist = `${Number(props.distance_km).toFixed(0)}km`;
-                  const hdg = props.heading != null
-                    ? `${Math.round(Number(props.heading))}°`
-                    : "—";
+                  const hdg =
+                    props.heading != null
+                      ? `${Math.round(Number(props.heading))}°`
+                      : "—";
                   setSelectedAdsbInfo({
                     callsign,
                     altitude: alt,
@@ -1413,9 +1427,11 @@ export default function WorldMapPage() {
                            fill="#f97316" stroke="#0a2a33" stroke-width="1.5" stroke-linejoin="round"/>
                    </svg>`,
           });
-          const callsign = (f.properties.callsign ?? "").trim() || f.properties.icao24;
-          const marker = L.marker([lat, lon], { icon })
-            .bindTooltip(`📡 ${callsign}`);
+          const callsign =
+            (f.properties.callsign ?? "").trim() || f.properties.icao24;
+          const marker = L.marker([lat, lon], { icon }).bindTooltip(
+            `📡 ${callsign}`,
+          );
           marker.addTo(map as never);
           aircraftMarkersRef.current.push(marker);
         }
@@ -1456,80 +1472,23 @@ export default function WorldMapPage() {
           <div className="text-xs text-slate-300 flex items-center gap-2 flex-wrap">
             <button
               type="button"
+              onClick={() => setShowControlPanel(!showControlPanel)}
+              className={`px-3 py-1 rounded transition-colors font-medium ${
+                showControlPanel
+                  ? "bg-slate-600 hover:bg-slate-500 text-white"
+                  : "bg-slate-700 hover:bg-slate-600 text-slate-300"
+              }`}
+              title="Map settings"
+            >
+              ⚙ Settings
+            </button>
+            <button
+              type="button"
               onClick={() => setShowSearchPanel(!showSearchPanel)}
               className="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-700 transition-colors text-white font-medium"
               title="Toggle search panel"
             >
               🔍 Search
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowRoutes(!showRoutes)}
-              className={`px-3 py-1 rounded transition-colors font-medium ${
-                showRoutes
-                  ? "bg-sky-600 hover:bg-sky-700 text-white"
-                  : "bg-slate-700 hover:bg-slate-600 text-slate-300"
-              }`}
-              title="Toggle route lines"
-            >
-              ✈ Routes
-            </button>
-            {/* Flight direction filter */}
-            <select
-              value={flightFilter}
-              onChange={(e) => setFlightFilter(e.target.value as "all" | "departures" | "arrivals")}
-              className="px-2 py-1 rounded bg-slate-700 text-slate-200 border border-slate-600 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
-              title="Filter by flight direction"
-            >
-              <option value="all">All flights</option>
-              <option value="departures">Departures only</option>
-              <option value="arrivals">Arrivals only</option>
-            </select>
-            {/* Map style */}
-            {hasMapboxToken && (
-              <select
-                value={mapStyle}
-                onChange={(e) => setMapStyle(e.target.value as "satellite" | "dark" | "streets")}
-                className="px-2 py-1 rounded bg-slate-700 text-slate-200 border border-slate-600 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
-                title="Map style"
-              >
-                <option value="satellite">🛰 Satellite</option>
-                <option value="dark">🌙 Dark</option>
-                <option value="streets">🗺 Streets</option>
-              </select>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setShowAdsb(!showAdsb);
-                setSelectedAdsbInfo(null);
-              }}
-              className={`px-3 py-1 rounded transition-colors font-medium ${
-                showAdsb
-                  ? "bg-orange-600 hover:bg-orange-700 text-white"
-                  : "bg-slate-700 hover:bg-slate-600 text-slate-300"
-              }`}
-              title="Toggle live ADS-B aircraft overlay (adsb.lol)"
-            >
-              📡 ADS-B{" "}
-              {showAdsb && adsbData
-                ? `(${adsbData.metadata.aircraft_count})`
-                : ""}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowNetwork(!showNetwork)}
-              className={`px-3 py-1 rounded transition-colors font-medium ${
-                showNetwork
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                  : "bg-slate-700 hover:bg-slate-600 text-slate-300"
-              }`}
-              title="Toggle multi-airport network overlay"
-            >
-              🌐 Network{" "}
-              {showNetwork && networkData
-                ? `(${networkData.airports.length})`
-                : ""}
             </button>
             <button
               type="button"
@@ -1584,6 +1543,16 @@ export default function WorldMapPage() {
         <div className="absolute inset-0">
           <div ref={mapContainerRef} className="w-full h-full" />
         </div>
+
+        {/* Unified Control Panel */}
+        {showControlPanel && !showSearchPanel && (
+          <MapControlPanel
+            hasMapboxToken={hasMapboxToken}
+            adsbCount={adsbData?.metadata.aircraft_count}
+            networkCount={networkData?.airports.length}
+            onClose={() => setShowControlPanel(false)}
+          />
+        )}
 
         {/* Search/Navigation Panel */}
         {showSearchPanel && (

@@ -78,10 +78,30 @@ def _sample_airline(rng: random.Random) -> dict:
 
 
 def _sample_destination(rng: random.Random) -> dict:
-    """Weight-select a destination."""
+    """Weight-select a destination, calibrated by BTS data when available.
+
+    If BTS T-100 data is loaded, route frequency weights from real US DOT
+    statistics override the default fixture weights. Destinations not present
+    in BTS data keep their fixture weight.
+    """
+    from services.bts_calibration import get_destination_weights
+
     fixtures = get_fixtures()
     destinations = fixtures["destinations"]
-    weights = [d["weight"] for d in destinations]
+
+    bts_weights = get_destination_weights()
+    if bts_weights:
+        # Merge BTS weights with fixture weights — BTS takes priority
+        weights = []
+        for d in destinations:
+            bts_w = bts_weights.get(d["iata"])
+            if bts_w is not None:
+                weights.append(d["weight"] * (1.0 + bts_w))  # boost by BTS frequency
+            else:
+                weights.append(d["weight"])
+    else:
+        weights = [d["weight"] for d in destinations]
+
     return rng.choices(destinations, weights=weights, k=1)[0]
 
 

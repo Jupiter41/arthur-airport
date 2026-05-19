@@ -315,9 +315,11 @@ services:
       DAILY_FLIGHT_TARGET: 420
       DAILY_LOAD_FACTOR_MEAN: 0.80
       INCIDENT_SOURCE: simulated
+      BTS_CSV_PATH: /app/data/bts/T100_2026.csv
     volumes:
       - ./services/_common:/app/_common:ro
       - ./config:/app/config:ro
+      - ./data:/app/data:ro
     depends_on:
       flight-service:
         condition: service_healthy
@@ -351,6 +353,8 @@ services:
       OTEL_ENABLED: "true"
       OTEL_SERVICE_NAME: analysis-service
       # Phase 5: LLM configuration (optional — template fallback if not set)
+      # Mistral AI is the primary LLM provider; falls back to generic OpenAI-compatible
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}

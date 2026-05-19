@@ -64,14 +64,45 @@ async def generate_passengers(
     runtime = load_airport_runtime_config()
     load_alpha, load_beta = runtime.load_factor_beta_params
 
+    # BTS calibration: per-route load factors and seasonal adjustment
+    from services.bts_calibration import get_route_load_factor, get_seasonal_load_factor
+
     # Seed scipy RNG
     beta_rng = beta_dist(load_alpha, load_beta)
     rng.getstate()  # sync
 
     for flight in flights:
         seat_cap = flight["seat_capacity"]
-        load_factor = float(beta_rng.rvs(random_state=rng.randint(0, 2**31)))
-        load_factor = max(0.5, min(1.0, load_factor))
+
+        # BTS calibration: try per-route load factor first
+        origin = flight.get("origin_iata", "")
+        destination = flight.get("destination_iata", "")
+        bts_lf = get_route_load_factor(origin, destination)
+
+        if bts_lf is not None:
+            # Use BTS-calibrated load factor with small noise (±5%)
+            noise = float(rng.gauss(0, 0.025))
+            load_factor = max(0.4, min(1.0, bts_lf + noise))
+        else:
+            # Fall back to global beta distribution
+            load_factor = float(beta_rng.rvs(random_state=rng.randint(0, 2**31)))
+            load_factor = max(0.5, min(1.0, load_factor))
+
+        # Apply seasonal adjustment from BTS if available
+        sched_time = flight.get("scheduled_time", "")
+        if sched_time and bts_lf is not None:
+            try:
+                from datetime import datetime as _dt
+                month = _dt.fromisoformat(sched_time).month
+                seasonal = get_seasonal_load_factor(month)
+                if seasonal is not None and bts_lf > 0:
+                    # Scale load factor by seasonal deviation from annual mean
+                    seasonal_ratio = seasonal / bts_lf
+                    load_factor *= max(0.7, min(1.3, seasonal_ratio))
+                    load_factor = max(0.4, min(1.0, load_factor))
+            except (ValueError, TypeError):
+                pass
+
         pax_count = round(seat_cap * load_factor)
 
         passengers = []
