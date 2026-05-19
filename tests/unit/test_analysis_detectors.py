@@ -4,8 +4,6 @@ Tests the six bottleneck detection functions against known operational state
 configurations — ensuring correct detection, severity, dedup, and resolution.
 """
 
-import sys
-import os
 from datetime import datetime, timedelta
 
 import pytest

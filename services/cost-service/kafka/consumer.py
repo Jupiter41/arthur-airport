@@ -2,12 +2,12 @@
 
 import asyncio
 import json
-import logging
 import os
 
+import structlog
 from confluent_kafka import Consumer
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 TOPICS = [
     "sim.clock",

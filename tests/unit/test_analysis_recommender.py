@@ -4,9 +4,7 @@ Tests the recommendation engine: generates ranked interventions for detected
 bottlenecks, checks correct action types, parameter passing, and ranking.
 """
 
-import sys
-import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 

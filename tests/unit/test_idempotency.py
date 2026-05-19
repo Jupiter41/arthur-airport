@@ -12,7 +12,7 @@ from datetime import datetime
 _SERVICES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "services")
 sys.path.insert(0, _SERVICES_DIR)
 
-from _common.idempotency import IdempotencyTracker
+from _common.idempotency import IdempotencyTracker  # noqa: E402
 
 
 def validate_envelope(envelope: dict) -> tuple[str, datetime, dict] | None:

@@ -1,14 +1,14 @@
 """Kafka producer for cost-service — events to cost.events."""
 
 import json
-import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
+import structlog
 from confluent_kafka import Producer
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _producer: Producer | None = None
 
@@ -71,7 +71,7 @@ def emit_cost_recorded(
         "event_id": str(uuid4()),
         "event_type": "CostRecorded",
         "schema_version": "1.0",
-        "produced_at": datetime.utcnow().isoformat(),
+        "produced_at": datetime.now(timezone.utc).isoformat(),
         "sim_time": sim_time.isoformat() if isinstance(sim_time, datetime) else sim_time,
         "producer": "cost-service",
         "payload": {

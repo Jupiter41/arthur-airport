@@ -3,11 +3,11 @@
 Generates prescriptive recommendations with cost/benefit analysis.
 """
 
-import logging
 from dataclasses import dataclass, asdict
-from datetime import datetime
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

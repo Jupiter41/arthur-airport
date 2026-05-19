@@ -43,6 +43,55 @@ selectable at runtime via REST endpoints or environment variables.
 canonical Kafka events and writes the same Neo4j entity shape. The adapter is a
 thin translation layer at the system edge.
 
+## Shared Data Source Framework
+
+All services use a shared `DataSourceRegistry` and `DataSourceAdapter` protocol
+from `services/_common/data_sources.py`. This provides:
+
+- **`DataSourceAdapter` Protocol** — Interface all adapters must implement:
+  `source_id`, `label`, `is_loaded`, `load()`
+- **`DataSourceRegistry`** — Per-theme registry for registration, switching, listing
+- **`SimulatedSourceAdapter`** — Default adapter for simulation-generated data
+
+### Quick Integration Example
+
+```python
+from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
+
+# 1. Create registry for your theme
+registry = DataSourceRegistry("weather", env_var="WEATHER_SOURCE", default="simulated")
+
+# 2. Register adapters
+registry.register(SimulatedSourceAdapter())
+registry.register(MyHistoricalAdapter())
+registry.register(MyLiveAdapter())
+
+# 3. Switch at runtime
+result = registry.switch("historical")  # → {"previous": "simulated", "active": "historical"}
+
+# 4. Get unified info for REST API
+info = registry.info()  # → {"theme": "weather", "active_source": "historical", "available": [...]}
+```
+
+### Adapter Wrapper Pattern
+
+Existing service-specific adapter classes (e.g. `HistoricalMetarSource`, `BTSPassengerSource`)
+are wrapped in thin adapter classes that implement the `DataSourceAdapter` protocol while
+delegating lifecycle management to the existing consumer state:
+
+```python
+class _HistoricalAdapter:
+    source_id = "historical"
+    label = "Iowa State Mesonet CSV"
+
+    @property
+    def is_loaded(self) -> bool:
+        return _state._historical is not None and _state._historical.is_loaded
+
+    def load(self) -> int:
+        return 0  # managed by switch_weather_source()
+```
+
 ## Currently Implemented Sources
 
 | Service           | Source ID      | Type        | Description                                                                                   |

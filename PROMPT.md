@@ -26,31 +26,5 @@ Before doing any edit, do this:
 
 The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
 
-- cost-service-1 | Traceback (most recent call last):
-  cost-service-1 | File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 694, in lifespan
-  cost-service-1 | async with self.lifespan_context(app) as maybe_state:
-  cost-service-1 | File "/usr/local/lib/python3.11/contextlib.py", line 210, in **aenter**
-  cost-service-1 | return await anext(self.gen)
-  cost-service-1 | ^^^^^^^^^^^^^^^^^^^^^
-  cost-service-1 | File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 216, in merged_lifespan
-  cost-service-1 | async with original_context(app) as maybe_original_state:
-  cost-service-1 | File "/usr/local/lib/python3.11/contextlib.py", line 210, in **aenter**
-  cost-service-1 | return await anext(self.gen)
-  cost-service-1 | ^^^^^^^^^^^^^^^^^^^^^
-  cost-service-1 | File "/app/main.py", line 56, in lifespan
-  cost-service-1 | await wait_for_neo4j(max_attempts=12, delay_s=5)
-  cost-service-1 | File "/app/db/neo4j.py", line 37, in wait_for_neo4j
-  cost-service-1 | logger.warning("neo4j not ready", attempt=attempt, error=str(exc))
-  cost-service-1 | File "/usr/local/lib/python3.11/logging/**init**.py", line 1501, in warning
-  cost-service-1 | self.\_log(WARNING, msg, args, \*\*kwargs)
-  cost-service-1 | TypeError: Logger.\_log() got an unexpected keyword argument 'attempt'
-  Container arthur-airport-cost-service-1 Error dependency cost-service failed to start
-  Container arthur-airport-sim-orchestrator-1 Error dependency sim-orchestrator failed to start
-  Container arthur-airport-kafka-1 Error dependency kafka failed to start
-
-- Improve all tests, focus on checking of they do everything we want and not only part of it. It should be a check of the behaviour, not technical details or basic edge cases. So we can always be sure that we don't break something when we do a change in the future.
-
-- Refactor flexible data sources logic to make it more maintainable and extensible, and add more test coverage on it.
-  Basically we should be able to have different themes, then different data sources for 1 theme, and then adapters, quick use in the services, common display & compare tools.
-
-- Make the code more elegant and maintainable in general, by refactoring, improving the structure, adding comments, improving naming etc. without changing the behaviour. We want to keep the codebase clean and maintainable to make it easier to work on in the future.
+- Implement ROADMAP_PLANNING.md with capacity planning scenarios.
+- Add a detailed CAPACITY_PLANNING.md with cost models, assumptions, scenario analyses and implementation in the docs/infra/ folder. Write a more user friendly version QUICKSTART_PLANNING in root README.md with a summary of the key points, how it can be used by a non-technical audience, and a link to the detailed version.

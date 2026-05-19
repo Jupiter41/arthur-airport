@@ -7,11 +7,10 @@ Produces: cost.events
 
 import asyncio
 import json
-import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import structlog
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -37,7 +36,7 @@ from routers.costs import router as costs_router  # noqa: E402
 from routers.costs import set_rates as router_set_rates  # noqa: E402
 from services.cost_engine import init_running_totals  # noqa: E402
 
-logger = logging.getLogger("cost-service")
+logger = structlog.get_logger("cost-service")
 
 FIXTURES_PATH = Path(__file__).parent / "fixtures" / "cost_rates.json"
 

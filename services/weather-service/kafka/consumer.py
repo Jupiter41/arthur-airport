@@ -18,6 +18,7 @@ from uuid import uuid4
 from confluent_kafka import Consumer
 
 from _common.consumer_health import ConsumerHealthTracker
+from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
 from db.neo4j import persist_weather_state, get_current_weather, get_airport_identity
 from kafka.producer import emit_weather_state_changed, emit_metar_issued
 from services.fsm import evaluate_transition
@@ -39,6 +40,37 @@ from metrics import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ── Lightweight adapter wrappers for the data source registry ──
+
+
+class _HistoricalAdapter:
+    """Adapter wrapper for HistoricalMetarSource (Iowa State Mesonet CSV)."""
+
+    source_id = "historical"
+    label = "Iowa State Mesonet CSV"
+
+    @property
+    def is_loaded(self) -> bool:
+        return _state is not None and _state._historical is not None and _state._historical.is_loaded
+
+    def load(self) -> int:
+        return 0  # loading is managed by switch_weather_source()
+
+
+class _LiveAdapter:
+    """Adapter wrapper for LiveMetarSource (Aviation Weather Center API)."""
+
+    source_id = "live"
+    label = "Aviation Weather Center (ADDS)"
+
+    @property
+    def is_loaded(self) -> bool:
+        return _state is not None and _state._live is not None
+
+    def load(self) -> int:
+        return 0  # loading is managed by switch_weather_source()
 
 
 # ── Class-based state holder ────────────────────────────────
@@ -68,6 +100,14 @@ class WeatherConsumerState:
         self._historical: HistoricalMetarSource | None = None
         self._live: LiveMetarSource | None = None
         self._last_historical_hour: int = -1
+
+        # Data source registry for unified listing and metadata
+        self.source_registry = DataSourceRegistry(
+            "weather", env_var="WEATHER_SOURCE", default="simulated",
+        )
+        self.source_registry.register(SimulatedSourceAdapter())
+        self.source_registry.register(_HistoricalAdapter())
+        self.source_registry.register(_LiveAdapter())
 
         if self.weather_source == "historical":
             csv_path = os.getenv("WEATHER_HISTORY_FILE", "/app/data/weather/EGLL_30days.csv")
@@ -490,6 +530,11 @@ def get_weather_source() -> str:
     return _state.weather_source
 
 
+def get_source_info() -> dict:
+    """Return unified data source info for the REST API."""
+    return _state.source_registry.info()
+
+
 def get_sim_time() -> datetime | None:
     return _state.sim_time
 
@@ -517,16 +562,19 @@ def switch_weather_source(
         if count == 0:
             raise ValueError(f"Historical METAR file empty/missing: {path}")
         _state.weather_source = "historical"
+        _state.source_registry._active = "historical"
         logger.info("Weather source switched to historical (%d observations from %s)", count, path)
         return {"source": "historical", "file": path, "observations": count}
     elif source == "live":
         icao = live_icao or os.getenv("WEATHER_LIVE_ICAO", "EGLL")
         _state._live = LiveMetarSource(icao)
         _state.weather_source = "live"
+        _state.source_registry._active = "live"
         logger.info("Weather source switched to live METAR from %s", icao)
         return {"source": "live", "icao": icao}
     else:
         _state.weather_source = "simulated"
+        _state.source_registry._active = "simulated"
         _state._historical = None
         _state._live = None
         logger.info("Weather source switched to simulated (FSM)")

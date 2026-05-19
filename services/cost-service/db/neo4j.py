@@ -1,13 +1,12 @@
 """Neo4j async driver and CostRecord persistence for cost-service."""
 
 import asyncio
-import logging
 import os
-from datetime import datetime
 
+import structlog
 from neo4j import AsyncGraphDatabase, AsyncDriver
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _driver: AsyncDriver | None = None
 

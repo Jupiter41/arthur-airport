@@ -16,6 +16,7 @@ from typing import Callable, Awaitable
 
 from _common.idempotency import IdempotencyTracker
 from _common.consumer_health import ConsumerHealthTracker
+from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
 
 from confluent_kafka import Consumer
 
@@ -74,6 +75,23 @@ from metrics import (
 logger = logging.getLogger(__name__)
 
 
+# ── Lightweight adapter wrappers for the data source registry ──
+
+
+class _BTSHistoricalAdapter:
+    """Adapter wrapper for BTSPassengerSource."""
+
+    source_id = "bts_historical"
+    label = "BTS T-100 Historical"
+
+    @property
+    def is_loaded(self) -> bool:
+        return _state is not None and _state._bts_adapter is not None
+
+    def load(self) -> int:
+        return 0  # loading is managed by switch_passenger_source()
+
+
 # ── Class-based state holder ────────────────────────────────
 
 
@@ -117,6 +135,13 @@ class PassengerConsumerState:
         self.passenger_source: str = os.getenv("PASSENGER_SOURCE", "simulation").lower()
         self._bts_adapter = None
 
+        # Data source registry for unified listing and metadata
+        self.source_registry = DataSourceRegistry(
+            "passengers", env_var="PASSENGER_SOURCE", default="simulation",
+        )
+        self.source_registry.register(SimulatedSourceAdapter())
+        self.source_registry.register(_BTSHistoricalAdapter())
+
     def check_idempotency(self, event_id: str) -> bool:
         return self._idempotency.is_duplicate(event_id)
 
@@ -152,6 +177,7 @@ def get_passenger_source_info() -> dict:
     info = {
         "source": _state.passenger_source,
         "available": ["simulation", "bts_historical"],
+        "registry": _state.source_registry.info(),
     }
     if _state.passenger_source == "bts_historical" and _state._bts_adapter:
         info["bts_summary"] = _state._bts_adapter.get_summary()
@@ -162,6 +188,7 @@ def switch_passenger_source(new_source: str, csv_path: str | None = None) -> dic
     """Switch the active passenger data source at runtime."""
     old_source = _state.passenger_source
     _state.passenger_source = new_source
+    _state.source_registry._active = new_source
 
     if new_source == "bts_historical":
         from services.bts_adapter import BTSPassengerSource

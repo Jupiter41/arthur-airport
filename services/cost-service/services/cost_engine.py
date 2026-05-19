@@ -4,10 +4,11 @@ Computes costs based on Kafka events and writes CostRecord nodes to Neo4j.
 Sources: Eurocontrol Standard Inputs, EU Regulation 261/2004, ACI Airport Charges Report.
 """
 
-import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
+
+import structlog
 
 from db.neo4j import (
     get_flight_info,
@@ -20,7 +21,7 @@ from db.neo4j import (
 )
 from kafka.producer import emit_cost_recorded
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 WIDE_BODY_TYPES = {"B77W", "A333", "A332", "A359"}
 REGIONAL_TYPES = {"DH8D", "E195", "AT75"}
@@ -70,7 +71,7 @@ def _record_cost(amount: float, category: str, is_revenue: bool = False) -> None
     _running_totals["net_eur"] = (
         _running_totals["total_revenue_eur"] - _running_totals["total_cost_eur"]
     )
-    _running_totals["last_updated"] = datetime.utcnow().isoformat()
+    _running_totals["last_updated"] = datetime.now(timezone.utc).isoformat()
 
 
 def _aircraft_family(aircraft_type: str) -> str:
@@ -447,7 +448,6 @@ async def on_clock_tick(payload: dict, sim_time: str, sim_day: int, rates: dict)
     global _last_staffing_hour
 
     tick_number = payload.get("tick_number", 0)
-    speed = payload.get("speed_multiplier", 60)
 
     # Holding fuel — check every tick but batch-write every 5 sim-min
     if tick_number % 5 == 0:

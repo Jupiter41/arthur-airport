@@ -5,6 +5,7 @@ import os
 import random
 from datetime import datetime
 
+from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
 from services.airport_config import load_airport_runtime_config
 from services.fixtures import get_fixtures
 from kafka.producer import emit_inject_incident
@@ -22,9 +23,37 @@ _last_incident_time: datetime | None = None
 _active_source: str = os.getenv("INCIDENT_SOURCE", "simulated").lower()
 
 
+class _ASRSHistoricalAdapter:
+    """Adapter wrapper for ASRS-calibrated incident presets."""
+
+    source_id = "asrs_historical"
+    label = "ASRS Historical Calibration"
+
+    @property
+    def is_loaded(self) -> bool:
+        return True
+
+    def load(self) -> int:
+        return 0
+
+
+# Data source registry for unified listing and metadata
+_source_registry = DataSourceRegistry(
+    "incidents", env_var="INCIDENT_SOURCE", default="simulated",
+)
+_source_registry.register(SimulatedSourceAdapter())
+_source_registry.register(_ASRSHistoricalAdapter())
+_active_source: str = os.getenv("INCIDENT_SOURCE", "simulated").lower()
+
+
 def get_incident_source() -> str:
     """Return the currently active incident calibration preset id."""
     return _active_source
+
+
+def get_source_info() -> dict:
+    """Return unified data source info for the REST API."""
+    return _source_registry.info()
 
 
 def list_incident_sources() -> dict:
@@ -56,6 +85,7 @@ def set_incident_source(source: str) -> dict:
         )
     previous = _active_source
     _active_source = source
+    _source_registry._active = source
     logger.info("Incident calibration source switched: %s -> %s", previous, source)
     return {"previous": previous, "active": source}
 

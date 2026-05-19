@@ -4,8 +4,6 @@ Tests the event handlers that maintain the in-memory operational state
 derived from Kafka events.
 """
 
-import sys
-import os
 from datetime import datetime
 
 import pytest

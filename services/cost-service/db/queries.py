@@ -1,10 +1,9 @@
 """Neo4j aggregation queries for cost reporting."""
 
-import logging
-
+import structlog
 from neo4j import AsyncDriver
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def daily_pnl(driver: AsyncDriver, sim_day: int) -> dict:

@@ -1,8 +1,6 @@
 """REST API router for cost-service."""
 
-import logging
-from typing import Optional
-
+import structlog
 from fastapi import APIRouter, Query
 
 from db import neo4j as db
@@ -17,7 +15,7 @@ from db.queries import (
 from services.cost_engine import get_running_totals
 from services.recommendations import generate_recommendations
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/costs", tags=["costs"])
 
