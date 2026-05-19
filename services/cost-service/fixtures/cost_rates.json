@@ -1,0 +1,93 @@
+{
+  "mtow_kg": {
+    "B738": 79016,
+    "A320": 78000,
+    "A321": 93500,
+    "B77W": 352400,
+    "A333": 230000,
+    "A332": 242000,
+    "E195": 52290,
+    "DH8D": 29257,
+    "AT75": 22800
+  },
+  "airport_fees": {
+    "landing_rate_per_tonne_eur": 12.0,
+    "gate_rate_per_hour_eur": 150.0,
+    "passenger_departure_fee_eur": 12.0,
+    "cargo_rate_per_kg_eur": 0.25
+  },
+  "eu261": [
+    {
+      "min_delay_minutes": 120,
+      "max_distance_km": 99999,
+      "assistance_only": true
+    },
+    {
+      "min_delay_minutes": 180,
+      "max_distance_km": 1500,
+      "compensation_eur": 250
+    },
+    {
+      "min_delay_minutes": 180,
+      "max_distance_km": 3500,
+      "compensation_eur": 400
+    },
+    {
+      "min_delay_minutes": 180,
+      "max_distance_km": 99999,
+      "compensation_eur": 600
+    },
+    {
+      "min_delay_minutes": 240,
+      "max_distance_km": 3500,
+      "compensation_eur": 400
+    },
+    {
+      "min_delay_minutes": 240,
+      "max_distance_km": 99999,
+      "compensation_eur": 600
+    }
+  ],
+  "delay_costs": {
+    "crew_overtime_per_member_per_hour_eur": 200.0,
+    "crew_counts": {
+      "narrow": 6,
+      "wide": 10,
+      "regional": 4
+    },
+    "fuel_price_per_kg_eur": 0.9,
+    "holding_burn_kg_per_hour": {
+      "narrow": 2400,
+      "wide": 6000,
+      "regional": 800
+    }
+  },
+  "ground_handling": {
+    "pushback_eur": 350,
+    "catering_narrow_eur": 1500,
+    "catering_wide_eur": 5000,
+    "stairs_eur": 200,
+    "jetbridge_eur": 300,
+    "cleaning_narrow_eur": 600,
+    "cleaning_wide_eur": 1200,
+    "baggage_loader_per_bag_eur": 3.5
+  },
+  "incident_costs": {
+    "runway_incursion": { "direct_eur": 25000, "response_eur": 15000 },
+    "baggage_fire": { "direct_eur": 40000, "response_eur": 20000 },
+    "security_breach": { "direct_eur": 80000, "response_eur": 30000 },
+    "system_failure": { "direct_eur": 8000, "response_eur": 2000 },
+    "severe_weather": { "direct_eur": 0, "response_eur": 5000 }
+  },
+  "staffing": {
+    "security_officer_per_hour_eur": 35.0,
+    "checkin_agent_per_hour_eur": 28.0,
+    "gate_agent_per_hour_eur": 28.0,
+    "ground_crew_per_hour_eur": 25.0
+  },
+  "revenue": {
+    "retail_spend_per_pax_per_hour_airside_eur": 12.0,
+    "parking_per_vehicle_per_day_eur": 25.0,
+    "slot_fee_eur": 2000.0
+  }
+}

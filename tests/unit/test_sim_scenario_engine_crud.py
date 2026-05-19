@@ -21,6 +21,8 @@ def _load_engine_module(base_dir: Path, user_dir: Path):
             del sys.modules[key]
         if key == "kafka" or key.startswith("kafka."):
             del sys.modules[key]
+        if key == "models" or key.startswith("models."):
+            del sys.modules[key]
 
     if str(SVC_DIR) not in sys.path:
         sys.path.insert(0, str(SVC_DIR))

@@ -1,0 +1,12 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.7.0
+neo4j>=5.20.0
+confluent-kafka>=2.4.0
+prometheus-fastapi-instrumentator>=6.1.0
+python-dotenv>=1.0.0
+opentelemetry-api>=1.24.0
+opentelemetry-sdk>=1.24.0
+opentelemetry-exporter-otlp-proto-http>=1.24.0
+opentelemetry-instrumentation-fastapi>=0.45b0
+structlog>=24.1.0

@@ -14,18 +14,25 @@ Get the Arthur International Airport digital twin running and explore its dashbo
 ### Start the stack
 
 ```bash
-docker compose up --build          # first run takes ~90 seconds
+# Light mode (default) — core services only, fast build
+docker compose up --build
+
+# Full mode — includes analysis-service + observability stack
+docker compose --profile full up --build
+
+# Observability only (Grafana, Prometheus, Jaeger, Loki)
+docker compose --profile observability up --build
 ```
 
 Once you see `sim-orchestrator` emitting clock ticks in the logs, the simulation is
 running. Open your browser:
 
-| URL                                     | What                                      |
-| --------------------------------------- | ----------------------------------------- |- Runaway queue depth in Grafanisn't dfisplayed- 
+| URL | What |
+| --------------------------------------- | ----------------------------------------- |- Runaway queue depth in Grafanisn't dfisplayed-
 | [localhost:5173](http://localhost:5173) | React dashboard (main operator interface) |
-| [localhost:3001](http://localhost:3001) | Grafana (metrics & system dashboards)     |
-| [localhost:7474](http://localhost:7474) | Neo4j Browser (graph data explorer)       |
-| [localhost:8080](http://localhost:8080) | Kafka UI (raw event stream inspector)     |
+| [localhost:3001](http://localhost:3001) | Grafana (metrics & system dashboards) |
+| [localhost:7474](http://localhost:7474) | Neo4j Browser (graph data explorer) |
+| [localhost:8080](http://localhost:8080) | Kafka UI (raw event stream inspector) |
 
 > **Tip:** The simulation starts at Day 1, 00:00 at 60× speed. One real second =
 > one simulated minute, so you'll see a full airport day in ~24 real minutes.

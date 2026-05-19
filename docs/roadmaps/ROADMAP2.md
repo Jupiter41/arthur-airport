@@ -65,13 +65,13 @@ Current implementation status (May 2026):
 
 #### Flight Data
 
-| Source                           | What it provides                                                                                                    | Pricing                                                                                                                                       | Link                                                            | Use for                                                                                      |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| **FlightAware AeroAPI**          | Real-time & historical flights, delays, routes, positions, disruption stats, weather (METAR/TAF), airline schedules | **Personal**: free (limited). **Standard**: ~$1/query. **Premium**: custom (includes Foresight™ ML predictions)                               | [flightaware.com/aeroapi](https://www.flightaware.com/aeroapi/) | Real flight schedules, actual delays/cancellations, route validation, disruption calibration |
-| **Aviationstack**                | Real-time flights, historical data, airline routes, airport info                                                    | **Free**: 100 req/month. **Basic**: $45/month (10k req). **Pro**: $132/month (50k req). **Business**: $425/month (250k req)                   | [aviationstack.com](https://aviationstack.com/product)          | Bulk flight status, schedule validation, historical delay patterns                           |
-| **adsb.lol**                     | Community ADS-B aggregator, real-time aircraft positions, no auth required, no rate limits                          | **Free** (community-run, donations welcome)                                                                                                   | [adsb.lol](https://www.adsb.lol/)                               | **Primary ADS-B source** — real aircraft positions and map overlay (**implemented now**)     |
-| **OpenSky Network**              | ADS-B surveillance data, real-time aircraft positions, historical tracks (Zenodo dumps)                             | **Free** for academic/research. API heavily rate-limited (unauthenticated: 100 req/day, authenticated: 4000 req/day)                          | [opensky-network.org](https://opensky-network.org/)             | **Fallback ADS-B source** — used when adsb.lol is unavailable. Historical tracks via Zenodo for calibration |
-| **OAG (Official Airline Guide)** | Airline schedules, future & historical, route analytics                                                             | **Enterprise pricing** (typically $5k–$50k/year depending on scope)                                                                           | [oag.com](https://www.oag.com/)                                 | Gold standard for airline schedules — expensive but definitive for serious validation        |
+| Source                           | What it provides                                                                                                    | Pricing                                                                                                                     | Link                                                            | Use for                                                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **FlightAware AeroAPI**          | Real-time & historical flights, delays, routes, positions, disruption stats, weather (METAR/TAF), airline schedules | **Personal**: free (limited). **Standard**: ~$1/query. **Premium**: custom (includes Foresight™ ML predictions)             | [flightaware.com/aeroapi](https://www.flightaware.com/aeroapi/) | Real flight schedules, actual delays/cancellations, route validation, disruption calibration                |
+| **Aviationstack**                | Real-time flights, historical data, airline routes, airport info                                                    | **Free**: 100 req/month. **Basic**: $45/month (10k req). **Pro**: $132/month (50k req). **Business**: $425/month (250k req) | [aviationstack.com](https://aviationstack.com/product)          | Bulk flight status, schedule validation, historical delay patterns                                          |
+| **adsb.lol**                     | Community ADS-B aggregator, real-time aircraft positions, no auth required, no rate limits                          | **Free** (community-run, donations welcome)                                                                                 | [adsb.lol](https://www.adsb.lol/)                               | **Primary ADS-B source** — real aircraft positions and map overlay (**implemented now**)                    |
+| **OpenSky Network**              | ADS-B surveillance data, real-time aircraft positions, historical tracks (Zenodo dumps)                             | **Free** for academic/research. API heavily rate-limited (unauthenticated: 100 req/day, authenticated: 4000 req/day)        | [opensky-network.org](https://opensky-network.org/)             | **Fallback ADS-B source** — used when adsb.lol is unavailable. Historical tracks via Zenodo for calibration |
+| **OAG (Official Airline Guide)** | Airline schedules, future & historical, route analytics                                                             | **Enterprise pricing** (typically $5k–$50k/year depending on scope)                                                         | [oag.com](https://www.oag.com/)                                 | Gold standard for airline schedules — expensive but definitive for serious validation                       |
 
 **adsb.lol vs Aviationstack**: These serve different purposes. **adsb.lol** provides real-time ADS-B positions (lat/lon/altitude/heading) — ideal for the map overlay and track comparison. It is community-run, completely free, and has no rate limits. **Aviationstack** provides flight schedule/status data (origin, destination, delays, airline info) — useful for replacing simulated schedules with real ones. They are complementary, not competing: adsb.lol for positions, Aviationstack for schedules.
 
@@ -79,11 +79,11 @@ Current implementation status (May 2026):
 
 #### Weather Data
 
-| Source                             | What it provides                                          | Pricing                                                      | Link                                                                                  | Use for                                                   |
-| ---------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Source                             | What it provides                                          | Pricing                                                      | Link                                                                                  | Use for                                                                                                  |
+| ---------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | **Aviation Weather Center (ADDS)** | METAR, TAF, SIGMET, PIREP — official aviation weather     | **Free** (US government, public domain)                      | [aviationweather.gov](https://aviationweather.gov/)                                   | **Integrated as optional live mode** (`WEATHER_SOURCE=live`). Default stack still uses simulated weather |
-| **Iowa State Mesonet**             | Historical METAR archives, hourly data going back decades | **Free** (academic)                                          | [mesonet.agron.iastate.edu](https://mesonet.agron.iastate.edu/request/download.phtml) | **Integrated as optional historical replay** (`WEATHER_SOURCE=historical`) |
-| **Open-Meteo**                     | Forecast + historical weather, no API key required        | **Free** for non-commercial. Commercial plans from $15/month | [open-meteo.com](https://open-meteo.com/)                                             | Alternative weather source, good for grid-based forecasts |
+| **Iowa State Mesonet**             | Historical METAR archives, hourly data going back decades | **Free** (academic)                                          | [mesonet.agron.iastate.edu](https://mesonet.agron.iastate.edu/request/download.phtml) | **Integrated as optional historical replay** (`WEATHER_SOURCE=historical`)                               |
+| **Open-Meteo**                     | Forecast + historical weather, no API key required        | **Free** for non-commercial. Commercial plans from $15/month | [open-meteo.com](https://open-meteo.com/)                                             | Alternative weather source, good for grid-based forecasts                                                |
 
 **Recommendation**: Current weather adapter setup is sufficient; operationally, use `WEATHER_SOURCE` explicitly in deployments to choose simulated vs historical vs live.
 
@@ -99,21 +99,21 @@ Current implementation status (May 2026):
 
 #### Incident & Safety Data
 
-| Source                                          | What it provides                                         | Pricing                                | Link                                                  | Use for                                                                    |
-| ----------------------------------------------- | -------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------- |
-| **FAA ASRS** (Aviation Safety Reporting System) | Voluntary incident reports from pilots, ATC, ground crew | **Free** (NASA-managed, public domain) | [asrs.arc.nasa.gov](https://asrs.arc.nasa.gov/)       | Not yet integrated; planned for incident probability calibration           |
-| **ICAO ADREP / ECCAIRS**                        | International accident/incident database                 | **Free** (registration required)       | [aviationreporting.eu](https://aviationreporting.eu/) | European incident data for more realistic event modelling                  |
+| Source                                          | What it provides                                         | Pricing                                | Link                                                  | Use for                                                          |
+| ----------------------------------------------- | -------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------- |
+| **FAA ASRS** (Aviation Safety Reporting System) | Voluntary incident reports from pilots, ATC, ground crew | **Free** (NASA-managed, public domain) | [asrs.arc.nasa.gov](https://asrs.arc.nasa.gov/)       | Not yet integrated; planned for incident probability calibration |
+| **ICAO ADREP / ECCAIRS**                        | International accident/incident database                 | **Free** (registration required)       | [aviationreporting.eu](https://aviationreporting.eu/) | European incident data for more realistic event modelling        |
 
 **Recommendation**: Implement an offline calibration pipeline using **FAA ASRS** before wiring incident priors into runtime.
 
 #### Budget Summary
 
-| Scenario                     | Monthly cost        | What you get                                                                               |
-| ---------------------------- | ------------------- | ------------------------------------------------------------------------------------------ |
+| Scenario                     | Monthly cost        | What you get                                                                                             |
+| ---------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------- |
 | **Minimal** (free tier only) | **$0**              | adsb.lol positions + optional ADDS/IEM weather modes; BTS/ASRS calibration integration still to be built |
-| **Recommended**              | **~$50/month**      | + Aviationstack Basic for real schedules and live flight status                            |
-| **Full**                     | **~$200–500/month** | + FlightAware AeroAPI for disruption stats, predictions, historical analysis               |
-| **Enterprise**               | **$5k+/year**       | + OAG schedules + FlightAware Premium with Foresight™ ML predictions                       |
+| **Recommended**              | **~$50/month**      | + Aviationstack Basic for real schedules and live flight status                                          |
+| **Full**                     | **~$200–500/month** | + FlightAware AeroAPI for disruption stats, predictions, historical analysis                             |
+| **Enterprise**               | **$5k+/year**       | + OAG schedules + FlightAware Premium with Foresight™ ML predictions                                     |
 
 ### 2.3 From Model-Driven to Prescriptive Digital Twin
 
@@ -146,11 +146,12 @@ The current system already has the building blocks (bottleneck detection, recomm
 
 ## 3. Summary & Next Steps
 
-| Priority        | Action                                                                  | Cost               | Timeline  |
-| --------------- | ----------------------------------------------------------------------- | ------------------ | --------- |
+| Priority        | Action                                                                   | Cost               | Timeline  |
+| --------------- | ------------------------------------------------------------------------ | ------------------ | --------- |
 | **Now**         | Integrate free data sources (BTS, ASRS, adsb.lol) to calibrate the model | $0                 | 2–3 weeks |
-| **Short-term**  | Build pluggable data layer + subscribe to Aviationstack                 | ~$50/month         | 3–4 weeks |
-| **Medium-term** | Add cost model, capacity planning scenarios                             | $0 (internal work) | 4–6 weeks |
-| **If funded**   | FlightAware AeroAPI for ML predictions + OAG for schedules              | $200–500/month     | Ongoing   |
+| **Short-term**  | Build pluggable data layer + subscribe to Aviationstack                  | ~$50/month         | 3–4 weeks |
+| **Medium-term** | Add cost model, capacity planning scenarios                              | $0 (internal work) | 4–6 weeks |
+| **If funded**   | FlightAware AeroAPI for ML predictions + OAG for schedules               | $200–500/month     | Ongoing   |
 
 The digital twin already has the right architecture. The investment needed is primarily in **real data integration** and **business context** (cost models, capacity planning scenarios).
+[text](../../ROADMAP.md)

@@ -26,6 +26,7 @@ export const UPSTREAM: Record<string, string> = {
   incidents: process.env.INCIDENT_SERVICE_URL ?? "http://incident-service:8005",
   sim: process.env.SIM_ORCHESTRATOR_URL ?? "http://sim-orchestrator:8006",
   analysis: process.env.ANALYSIS_SERVICE_URL ?? "http://analysis-service:8007",
+  costs: process.env.COST_SERVICE_URL ?? "http://cost-service:8008",
 };
 
 type ProxyRoute = {
@@ -147,6 +148,13 @@ const PROXY_ROUTES: ProxyRoute[] = [
     service: "analysis",
     mountPath: "/api/v1/analysis",
     upstreamPrefix: "/api/v1/analysis",
+  },
+
+  // Cost service
+  {
+    service: "costs",
+    mountPath: "/api/v1/costs",
+    upstreamPrefix: "/api/v1/costs",
   },
 ];
 

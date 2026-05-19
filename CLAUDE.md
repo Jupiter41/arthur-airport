@@ -1,4 +1,5 @@
 # Arthur International Airport — Digital Twin
+
 ## Claude Code context
 
 This is a **specification-first** project. All architecture, data models, API contracts, and
@@ -9,35 +10,41 @@ relevant spec before implementing anything.
 
 ## Project identity
 
-| Field | Value |
-|---|---|
-| Airport | Arthur International Airport |
-| IATA / ICAO | ART / KART |
-| Type | High-fidelity airport digital twin — fully simulated, 100% fake data |
-| Purpose | Portfolio + teaching project |
+| Field       | Value                                                                |
+| ----------- | -------------------------------------------------------------------- |
+| Airport     | Arthur International Airport                                         |
+| IATA / ICAO | ART / KART                                                           |
+| Type        | High-fidelity airport digital twin — fully simulated, 100% fake data |
+| Purpose     | Portfolio + teaching project                                         |
 
 ---
 
 ## Stack at a glance
 
-| Layer | Technology |
-|---|---|
-| Domain services (×6) | Python 3.11 · FastAPI · uvicorn |
-| API gateway | Node.js 20 · TypeScript · Express 5 · ws |
-| Frontend | React 18 · TypeScript · Vite · Tailwind · Zustand |
-| Graph database | Neo4j 5 (Bolt: 7687, HTTP: 7474) |
-| Event bus | Apache Kafka 3 (broker: 9092) |
-| Observability | Prometheus (9090) · Grafana (3001) |
-| ML forecasting | LightGBM (passenger-service only) |
-| Container runtime | Docker + docker-compose |
+| Layer                | Technology                                        |
+| -------------------- | ------------------------------------------------- |
+| Domain services (×6) | Python 3.11 · FastAPI · uvicorn                   |
+| API gateway          | Node.js 20 · TypeScript · Express 5 · ws          |
+| Frontend             | React 18 · TypeScript · Vite · Tailwind · Zustand |
+| Graph database       | Neo4j 5 (Bolt: 7687, HTTP: 7474)                  |
+| Event bus            | Apache Kafka 3 (broker: 9092)                     |
+| Observability        | Prometheus (9090) · Grafana (3001)                |
+| ML forecasting       | LightGBM (passenger-service only)                 |
+| Container runtime    | Docker + docker-compose                           |
 
 ---
 
 ## Running the project
 
 ```bash
-# Start everything (first run takes ~90s)
+# Light mode (default) — core services only, fast build (~60s)
 docker compose up --build
+
+# Full mode — includes analysis-service + observability (Grafana, Prometheus, etc.)
+docker compose --profile full up --build
+
+# Observability only (add Grafana, Prometheus, Jaeger, Loki to light mode)
+docker compose --profile observability up --build
 
 # Start only infra (Neo4j + Kafka) — useful during service development
 docker compose up neo4j zookeeper kafka kafka-ui
@@ -51,53 +58,54 @@ docker compose down -v && docker compose up --build
 
 ## Service ports
 
-| Service | URL |
-|---|---|
-| API Gateway | http://localhost:3000 — OpenAPI at /docs not available (gateway only) |
-| flight-service | http://localhost:8001/docs |
-| passenger-service | http://localhost:8002/docs |
-| baggage-service | http://localhost:8003/docs |
-| weather-service | http://localhost:8004/docs |
-| incident-service | http://localhost:8005/docs |
-| sim-orchestrator | http://localhost:8006/docs |
-| React dashboard | http://localhost:5173 |
-| Neo4j Browser | http://localhost:7474 (neo4j / art-digital-twin) |
-| Kafka UI | http://localhost:8080 |
-| Grafana | http://localhost:3001 (admin / art-grafana) |
-| Prometheus | http://localhost:9090 |
+| Service           | URL                                                                   |
+| ----------------- | --------------------------------------------------------------------- |
+| API Gateway       | http://localhost:3000 — OpenAPI at /docs not available (gateway only) |
+| flight-service    | http://localhost:8001/docs                                            |
+| passenger-service | http://localhost:8002/docs                                            |
+| baggage-service   | http://localhost:8003/docs                                            |
+| weather-service   | http://localhost:8004/docs                                            |
+| incident-service  | http://localhost:8005/docs                                            |
+| sim-orchestrator  | http://localhost:8006/docs                                            |
+| cost-service      | http://localhost:8008/docs                                            |
+| React dashboard   | http://localhost:5173                                                 |
+| Neo4j Browser     | http://localhost:7474 (neo4j / art-digital-twin)                      |
+| Kafka UI          | http://localhost:8080                                                 |
+| Grafana           | http://localhost:3001 (admin / art-grafana)                           |
+| Prometheus        | http://localhost:9090                                                 |
 
 ---
 
 ## Spec files — read these before implementing
 
-| What you're working on | Read first |
-|---|---|
-| Any service | `docs/architecture/OVERVIEW.md` |
-| Neo4j schema | `docs/architecture/DATA_MODEL.md` |
-| Kafka topics & events | `docs/architecture/EVENT_BUS.md` |
-| Simulation rules | `docs/architecture/SIMULATION.md` |
-| flight-service | `docs/services/flight-service/SPEC.md` |
-| passenger-service | `docs/services/passenger-service/SPEC.md` |
-| baggage-service | `docs/services/baggage-service/SPEC.md` |
-| weather-service | `docs/services/weather-service/SPEC.md` |
-| incident-service | `docs/services/incident-service/SPEC.md` |
-| sim-orchestrator | `docs/services/sim-orchestrator/SPEC.md` |
-| api-gateway | `docs/services/api-gateway/SPEC.md` |
-| Dashboards | `docs/dashboards/*.md` |
-| Docker / infra | `docs/infra/DOCKER.md` |
-| Monitoring | `docs/infra/MONITORING.md` |
+| What you're working on | Read first                                |
+| ---------------------- | ----------------------------------------- |
+| Any service            | `docs/architecture/OVERVIEW.md`           |
+| Neo4j schema           | `docs/architecture/DATA_MODEL.md`         |
+| Kafka topics & events  | `docs/architecture/EVENT_BUS.md`          |
+| Simulation rules       | `docs/architecture/SIMULATION.md`         |
+| flight-service         | `docs/services/flight-service/SPEC.md`    |
+| passenger-service      | `docs/services/passenger-service/SPEC.md` |
+| baggage-service        | `docs/services/baggage-service/SPEC.md`   |
+| weather-service        | `docs/services/weather-service/SPEC.md`   |
+| incident-service       | `docs/services/incident-service/SPEC.md`  |
+| sim-orchestrator       | `docs/services/sim-orchestrator/SPEC.md`  |
+| api-gateway            | `docs/services/api-gateway/SPEC.md`       |
+| Dashboards             | `docs/dashboards/*.md`                    |
+| Docker / infra         | `docs/infra/DOCKER.md`                    |
+| Monitoring             | `docs/infra/MONITORING.md`                |
 
 ## Skill files — patterns and gotchas
 
-| Topic | File |
-|---|---|
-| Project overview | `docs/skills/SKILL.md` |
+| Topic                    | File                                  |
+| ------------------------ | ------------------------------------- |
+| Project overview         | `docs/skills/SKILL.md`                |
 | FastAPI service patterns | `docs/skills/python-service.SKILL.md` |
-| Neo4j / Cypher patterns | `docs/skills/neo4j.SKILL.md` |
-| Kafka producer/consumer | `docs/skills/kafka.SKILL.md` |
-| Simulation engine rules | `docs/skills/simulation.SKILL.md` |
-| LightGBM forecasting | `docs/skills/forecasting.SKILL.md` |
-| Per-service patterns | `services/{name}/SKILL.md` |
+| Neo4j / Cypher patterns  | `docs/skills/neo4j.SKILL.md`          |
+| Kafka producer/consumer  | `docs/skills/kafka.SKILL.md`          |
+| Simulation engine rules  | `docs/skills/simulation.SKILL.md`     |
+| LightGBM forecasting     | `docs/skills/forecasting.SKILL.md`    |
+| Per-service patterns     | `services/{name}/SKILL.md`            |
 
 ---
 

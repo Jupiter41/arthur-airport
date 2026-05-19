@@ -25,7 +25,6 @@ scrape_configs:
           expression: "/var/lib/docker/containers/(?P<container_id>[a-f0-9]+)/"
       - labels:
           container_id:
-    pipeline_stages:
       # Try to parse JSON log lines (structlog output)
       - json:
           expressions:
