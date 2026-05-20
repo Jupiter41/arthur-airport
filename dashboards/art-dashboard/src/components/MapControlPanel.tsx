@@ -36,8 +36,6 @@ function MapControlPanelInner({
   const setFlightFilter = useWorldMapSettingsStore((s) => s.setFlightFilter);
   const statusFilter = useWorldMapSettingsStore((s) => s.statusFilter);
   const setStatusFilter = useWorldMapSettingsStore((s) => s.setStatusFilter);
-  const dataSource = useWorldMapSettingsStore((s) => s.dataSource);
-  const setDataSource = useWorldMapSettingsStore((s) => s.setDataSource);
   const mapStyle = useWorldMapSettingsStore((s) => s.mapStyle);
   const setMapStyle = useWorldMapSettingsStore((s) => s.setMapStyle);
 
@@ -129,17 +127,6 @@ function MapControlPanelInner({
           <option value="airborne">Airborne only</option>
           <option value="boarding">Boarding only</option>
           <option value="ground">Ground only</option>
-        </select>
-
-        <label className="block text-slate-400 mb-1">Data Source</label>
-        <select
-          value={dataSource}
-          onChange={(e) => setDataSource(e.target.value as DataSource)}
-          className="w-full px-2 py-1.5 rounded bg-slate-800 text-slate-200 border border-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
-        >
-          <option value="all">Simulated + Real</option>
-          <option value="simulated">Simulated only</option>
-          <option value="real">Real (ADS-B) only</option>
         </select>
       </Section>
 
