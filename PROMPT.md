@@ -54,6 +54,6 @@ The current task is "Stabilize architecture, review new functionnalities and cor
   npm error Run "npm help ci" for more info
   npm error A complete log of this run can be found in: /home/runner/.npm/\_logs/2026-05-19T18_07_22_730Z-debug-0.log
   Error: Process completed with exit code 1.
-- New services were implemented (cost and beginning of planning) but their architecture is not solid enough spec wise: edit/add/updated documentation files, architecture files, SPEC files to make sure the architecture is solid and well documented. Don't base yourself on what's done but on what should be done, and then identify gaps and bugs and fix them.
+- New services were implemented (cost and beginning of planning, you should write SKILL.md for cos tfor example) but their architecture is not solid enough spec wise: edit/add/updated documentation files, architecture files, SPEC files and SKILL files to make sure the architecture is solid and well documented. Don't base yourself on what's done but on what should be done, and then identify gaps and bugs and fix them.
 - Identify and solve redundant logic and code duplication in the codebase, especially between the different services. For example, if you see that there are similar functions or logic in passenger-service and flight-service, try to abstract them into a common library or service to avoid duplication and improve maintainability.
 - Review the implementation of the new functionalities (cost etc.).
