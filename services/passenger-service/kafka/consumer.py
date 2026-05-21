@@ -186,6 +186,12 @@ def get_passenger_source_info() -> dict:
 
 def switch_passenger_source(new_source: str, csv_path: str | None = None) -> dict:
     """Switch the active passenger data source at runtime."""
+    valid_sources = ("simulation", "bts_historical")
+    if new_source not in valid_sources:
+        raise ValueError(f"Invalid passenger source '{new_source}'. Must be one of {valid_sources}")
+    valid_sources = ("simulation", "bts_historical")
+    if new_source not in valid_sources:
+        raise ValueError(f"Invalid passenger source '{new_source}'. Must be one of {valid_sources}")
     old_source = _state.passenger_source
     _state.passenger_source = new_source
     _state.source_registry._active = new_source

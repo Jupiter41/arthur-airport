@@ -15,6 +15,7 @@ import {
 import { ExportMenu } from "../../components/ExportMenu";
 import { exportData } from "../../utils/exportData";
 import type { ExportFormat } from "../../utils/exportData";
+import { formatEur } from "../../utils/formatCurrency";
 import { weatherApi, incidentsApi, simApi, costsApi } from "../../hooks/useApi";
 
 interface DaySummary {
@@ -337,7 +338,12 @@ function DayDetailModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto" role="dialog" aria-modal="true" aria-label={`Day ${day.day_number} details`}>
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Day ${day.day_number} details`}
+      >
         {/* Header */}
         <div className="sticky top-0 bg-gray-900 border-b border-gray-700 px-5 py-3 flex items-center justify-between">
           <h3 className="text-base font-bold text-white">
@@ -371,9 +377,7 @@ function DayDetailModal({
             <KpiMini
               label="Avg Delay"
               value={`${day.avg_delay_minutes} min`}
-              color={
-                day.avg_delay_minutes > 30 ? "text-red-400" : "text-white"
-              }
+              color={day.avg_delay_minutes > 30 ? "text-red-400" : "text-white"}
             />
             <KpiMini
               label="Incidents"
@@ -429,7 +433,9 @@ function DayDetailModal({
             <div className="flex gap-2 text-xs">
               <div className="flex-1 bg-blue-900/30 rounded p-2 text-center">
                 <div className="text-blue-400 font-bold">
-                  {day.flights_total - day.flights_delayed - day.flights_cancelled}
+                  {day.flights_total -
+                    day.flights_delayed -
+                    day.flights_cancelled}
                 </div>
                 <div className="text-gray-400">On Time</div>
               </div>
@@ -468,12 +474,6 @@ function KpiMini({
       <div className="text-[10px] text-gray-400">{label}</div>
     </div>
   );
-}
-
-function formatEur(v: number): string {
-  if (Math.abs(v) >= 1_000_000) return `€${(v / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(v) >= 1_000) return `€${(v / 1_000).toFixed(1)}K`;
-  return `€${v.toFixed(0)}`;
 }
 
 /* ──────── Main Page ──────── */
@@ -546,13 +546,10 @@ export default function SimHistoryPage() {
     );
   };
 
-  const handleDayClick = useCallback(
-    (d: DaySummary) => {
-      setSelectedDay(d.day_number);
-      setModalDay(d);
-    },
-    [],
-  );
+  const handleDayClick = useCallback((d: DaySummary) => {
+    setSelectedDay(d.day_number);
+    setModalDay(d);
+  }, []);
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
@@ -579,8 +576,8 @@ export default function SimHistoryPage() {
           </h3>
           {days.length === 0 && !historyQuery.isLoading && (
             <div className="text-sm text-gray-400">
-              No simulation history yet. Run the simulation for at least one
-              day to see history.
+              No simulation history yet. Run the simulation for at least one day
+              to see history.
             </div>
           )}
           {pagedDays.map((d) => (
@@ -622,10 +619,7 @@ export default function SimHistoryPage() {
 
       {/* Day detail modal */}
       {modalDay && (
-        <DayDetailModal
-          day={modalDay}
-          onClose={() => setModalDay(null)}
-        />
+        <DayDetailModal day={modalDay} onClose={() => setModalDay(null)} />
       )}
     </div>
   );

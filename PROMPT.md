@@ -27,6 +27,8 @@ Before doing any edit, do this:
 
 The current task is "Stabilize architecture, review new functionnalities and correct bugs and gaps". Your mission is to implement:
 
-- The cost page never get fed with costs even after letting the simulation runs for some time. This is a critical issue to fix as it prevents the cost page from working and being useful.
-- BTS data doesn't fully fit the capacity of our airport right? so we might get absurd gate time etc. no? If yes, add a warning to the user in the data source page and allow him to set a gap. You should make it nice and not too info crowded in the data soruce card, maybe with a tooltip?
-- The Comparison for passenger and incident should be like the weather one... it should be inside the card and use common components.
+- I think a few things that were implemented recently disappeared or need to be stabilized. You can explore the recent lessons learned to identify them. For example, the user can't export a scenario in the scenario page and they are super slow to start, in data source there is no comparison thing for BTS & Incident etc.
+- The cost page display no cost in any graph. The dashboard should be live (at least some graphs, it's fine if it needs to wait for some plots): user should see revenue/expenses at it goes.
+- Allow user to export cost dashboard data as CSV, like in the other pages.
+- It's hard to use the cost rate config because it's a small section at the end of the page. Maybe it could be a tooltip openning a modal to select a cost profile or manually edit it.
+- Maybe add a tooltip opening a modal for the autonomous panel too, to allow the user to inject a bottleneck/incident and showcase the autonomous recommendations impact.

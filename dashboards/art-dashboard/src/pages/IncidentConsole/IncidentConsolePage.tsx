@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { useAnalysisStore } from "../../stores/analysisStore";
+import { AutonomousPanel } from "../../components/AutonomousPanel";
 import type {
   AnalysisBottleneck,
   AnalysisRecommendation,
@@ -314,10 +315,19 @@ function InjectModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-      <div className="bg-gray-800 rounded-lg shadow-2xl w-[500px] max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-label="Inject incident">
+      <div
+        className="bg-gray-800 rounded-lg shadow-2xl w-[500px] max-h-[90vh] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Inject incident"
+      >
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <h2 className="text-lg font-bold text-white">Inject Incident</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white" aria-label="Close">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white"
+            aria-label="Close"
+          >
             ✕
           </button>
         </div>
@@ -508,7 +518,12 @@ function CascadeModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-      <div className="bg-gray-800 rounded-lg shadow-2xl w-[600px] max-h-[80vh] overflow-y-auto" role="dialog" aria-modal="true" aria-label="Cascade tree">
+      <div
+        className="bg-gray-800 rounded-lg shadow-2xl w-[600px] max-h-[80vh] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Cascade tree"
+      >
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <h2 className="text-lg font-bold text-white">
             Cascade Tree — {incident.type.replace(/_/g, " ")}
@@ -695,6 +710,7 @@ const TABS = [
   { id: "ops", label: "Operations", icon: "🚨" },
   { id: "analysis", label: "Analysis", icon: "📊" },
   { id: "ai", label: "AI Tools", icon: "🤖" },
+  { id: "autonomous", label: "Autonomous", icon: "⚙️" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -893,6 +909,9 @@ export default function IncidentConsolePage() {
           </div>
         </>
       )}
+
+      {/* ── Tab: Autonomous ── */}
+      {activeTab === "autonomous" && <AutonomousPanel />}
 
       {/* Cascade view modal */}
       {cascadeViewIncident && (

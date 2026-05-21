@@ -572,6 +572,11 @@ export const costsApi = {
       `/costs/terminal/${encodeURIComponent(terminalId)}?day=${day}`,
     ),
   rates: () => apiFetch<Record<string, unknown>>("/costs/rates"),
+  patchRates: (overrides: Record<string, unknown>) =>
+    apiFetch<{ status: string; keys: string[] }>("/costs/rates", {
+      method: "PATCH",
+      body: JSON.stringify(overrides),
+    }),
   recommendations: () =>
     apiFetch<FinancialRecommendation[]>("/costs/recommendations"),
 };

@@ -7,26 +7,7 @@
 
 A high-fidelity airport digital twin built on a microservices architecture with simulation-first behavior and optional real-data adapters. Models real-time flight operations, passenger flows, baggage handling, weather impacts, and hazardous incident propagation — including cascading delay effects and a LightGBM forecasting model for security queue prediction.
 
-This project is **spec-first and agent-ready**: every service, data model, and API contract is fully documented before any code is written, and the repository is structured so that AI coding agents (Claude Code, Cursor, GitHub Copilot, OpenAI Codex) can navigate, implement, and extend the codebase with minimal manual explanation.
-
-## Current maturity
-
-This repository now includes major roadmap delivery work beyond the initial simulator baseline:
-
-- Gap 0 documentation hardening completed
-- Gap 0.5 dashboard upgrades completed (sorting, history/archive/export foundations)
-- Gap 1 spatial layout implementation completed in core services
-- Scenario engine and scenario lifecycle workflows delivered (create/edit/delete/fork for custom scenarios)
-- Geospatial world-map dashboard delivered (`/world`) with Mapbox and tokenless fallback path
-- Airport config system fully integrated across the stack
-
-Follow project evolution in:
-
-- [TIMELINE.md](TIMELINE.md) for phase-by-phase vision and capability layering
-- [QUICKSTART.md](QUICKSTART.md) for a quick start and dashboard overview
-- [ROADMAP.md](ROADMAP.md) for gap tracking and implementation status
-- [CHANGELOG.md](CHANGELOG.md) for sprint-level delivered work
-- [docs/lessons-learned/](docs/lessons-learned/) for implementation reports and postmortems
+This project is **spec-first and agent-ready**: every service, data model, and API contract is fully documented before any code is written, and the repository is structured so that AI coding agents can navigate, implement, and extend the codebase with minimal manual explanation.
 
 ---
 

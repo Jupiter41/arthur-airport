@@ -5,7 +5,7 @@ Sources: Eurocontrol Standard Inputs, EU Regulation 261/2004, ACI Airport Charge
 """
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import uuid4
 
 import structlog
@@ -59,7 +59,7 @@ def init_running_totals(totals: dict) -> None:
         _running_totals["by_category"][cat] = val
 
 
-def _record_cost(amount: float, category: str, is_revenue: bool = False) -> None:
+def _record_cost(amount: float, category: str, is_revenue: bool = False, *, sim_time: str | None = None) -> None:
     """Update in-memory running totals."""
     if is_revenue:
         _running_totals["total_revenue_eur"] += amount
@@ -71,7 +71,7 @@ def _record_cost(amount: float, category: str, is_revenue: bool = False) -> None
     _running_totals["net_eur"] = (
         _running_totals["total_revenue_eur"] - _running_totals["total_cost_eur"]
     )
-    _running_totals["last_updated"] = datetime.now(timezone.utc).isoformat()
+    _running_totals["last_updated"] = sim_time or _running_totals["last_updated"]
 
 
 def _aircraft_family(aircraft_type: str) -> str:
@@ -209,7 +209,7 @@ async def _write_and_emit(
 ) -> None:
     """Write CostRecord to Neo4j, link relationships, update totals, emit Kafka event."""
     await write_cost_record(record)
-    _record_cost(record["amount_eur"], record["category"], record["is_revenue"])
+    _record_cost(record["amount_eur"], record["category"], record["is_revenue"], sim_time=record.get("sim_time"))
 
     if flight_id:
         await link_cost_to_flight(record["id"], flight_id)

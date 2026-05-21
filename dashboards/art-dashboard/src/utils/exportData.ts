@@ -9,7 +9,12 @@ function toCsv(data: Record<string, unknown>[]): string {
     headers
       .map((h) => {
         const val = row[h];
-        const str = val == null ? "" : String(val);
+        const str =
+          val == null
+            ? ""
+            : typeof val === "object"
+              ? JSON.stringify(val)
+              : String(val);
         return str.includes(",") || str.includes('"') || str.includes("\n")
           ? `"${str.replace(/"/g, '""')}"`
           : str;
