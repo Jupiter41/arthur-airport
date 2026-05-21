@@ -29,5 +29,13 @@ Before doing any edit, do this:
 The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
 
 - Cost dashboard graph restart at midnight each time a day ends, allow user to go back to the previous days too.
-- Implement ROADMAP_PLANNING.md with capacity planning scenarios.
-- The task above is very complex, proceed by plans and implement one by one, don't ask for human validation every time, works with TDD and validate along the way.
+- Implement ROADMAP_PLANNING.md all phase 1 tasks
+- error in git during ci/cd for unit test
+  =================================== FAILURES ===================================
+  **\_\_\_** TestRunningTotals.test_last_updated_set **\_\_\_\_**
+  tests/unit/test_cost_engine.py:366: in test_last_updated_set
+  assert totals["last_updated"] is not None
+  E assert None is not None
+  =========================== short test summary info ============================
+  FAILED tests/unit/test_cost_engine.py::TestRunningTotals::test_last_updated_set - assert None is not None
+  ======================== 1 failed, 666 passed in 2.20s =========================

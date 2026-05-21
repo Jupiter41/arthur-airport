@@ -1,1 +1,0 @@
-This folder is for old TODO files, after the tasks are done and validated, the TODO files should be moved here for record keeping. The TODO files in the root folder should only contain tasks that are currently being worked on or are planned for the near future.
