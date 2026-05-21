@@ -39,19 +39,8 @@ def check_kafka() -> bool:
 
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: int = 5) -> None:
-    import asyncio
-    brokers = os.getenv("KAFKA_BROKERS", "kafka:9092")
-    for attempt in range(1, max_attempts + 1):
-        try:
-            p = Producer({"bootstrap.servers": brokers, "socket.timeout.ms": 5000})
-            p.list_topics(timeout=5)
-            logger.info("kafka connected", attempt=attempt)
-            return
-        except Exception as exc:
-            logger.warning("kafka not ready", attempt=attempt, error=str(exc))
-            if attempt < max_attempts:
-                await asyncio.sleep(delay_s)
-    raise RuntimeError("kafka not reachable after max attempts")
+    from _common.infra import wait_for_kafka_broker
+    await wait_for_kafka_broker(logger=logger, max_attempts=max_attempts, delay_s=delay_s)
 
 
 def emit_cost_recorded(

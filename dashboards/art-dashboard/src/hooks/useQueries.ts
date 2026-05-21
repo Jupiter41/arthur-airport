@@ -7,6 +7,7 @@ import {
   incidentsApi,
   analysisApi,
   networkApi,
+  costsApi,
 } from "./useApi";
 import type {
   Flight,
@@ -23,6 +24,11 @@ import type {
   IncidentAlert,
   ADSBFeatureCollection,
   GroundVehicleSummary,
+  CostSummary,
+  CostPnL,
+  HourlyCostPoint,
+  IncidentCostRanking,
+  FinancialRecommendation,
 } from "../types";
 
 /* ──────── Flight Board ──────── */
@@ -295,4 +301,46 @@ export function useNetworkStatusQuery(enabled = true) {
     enabled,
     retry: false,
   });
+}
+
+/* ──────── Cost Dashboard ──────── */
+
+export function useCostDashboardQueries(day = 1) {
+  const summary = useQuery({
+    queryKey: ["costs", "summary"],
+    queryFn: () => costsApi.summary(),
+    refetchInterval: 10_000,
+  });
+
+  const pnl = useQuery({
+    queryKey: ["costs", "pnl", day],
+    queryFn: () => costsApi.pnl(day),
+    refetchInterval: 15_000,
+  });
+
+  const hourly = useQuery({
+    queryKey: ["costs", "hourly", day],
+    queryFn: async () => {
+      const data = await costsApi.hourly(day);
+      return (data as { hours?: HourlyCostPoint[] }).hours ?? [];
+    },
+    refetchInterval: 15_000,
+  });
+
+  const incidentRanking = useQuery({
+    queryKey: ["costs", "incidentRanking", day],
+    queryFn: async () => {
+      const data = await costsApi.incidentRanking(day, 10);
+      return (data as { incidents?: IncidentCostRanking[] }).incidents ?? [];
+    },
+    refetchInterval: 15_000,
+  });
+
+  const recommendations = useQuery({
+    queryKey: ["costs", "recommendations"],
+    queryFn: () => costsApi.recommendations(),
+    refetchInterval: 15_000,
+  });
+
+  return { summary, pnl, hourly, incidentRanking, recommendations };
 }

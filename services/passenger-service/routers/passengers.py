@@ -79,6 +79,55 @@ async def passenger_source():
     return get_passenger_source_info()
 
 
+@router.get("/passengers/compare")
+async def passenger_compare():
+    """Side-by-side comparison of simulated vs BTS historical passenger data."""
+    from kafka.consumer import _ensure_bts_adapter
+
+    sim_time = get_sim_time()
+    by_status = await get_status_counts()
+
+    active = {"checked_in", "security_queue", "airside", "at_gate",
+              "deplaning", "baggage_claim"}
+    sim_total = sum(v for k, v in by_status.items() if k in active)
+
+    result: dict = {
+        "sim_time": sim_time.isoformat() if sim_time else None,
+        "simulated": {
+            "total_passengers": sim_total,
+            "by_status": by_status,
+        },
+        "bts_historical": None,
+        "deltas": None,
+    }
+
+    try:
+        adapter = _ensure_bts_adapter()
+        if sim_time:
+            flow = adapter.get_flow_at(sim_time)
+            bts_data = {
+                "total_passengers": flow.total_passengers,
+                "departing_passengers": flow.departing_passengers,
+                "arriving_passengers": flow.arriving_passengers,
+                "avg_load_factor": flow.avg_load_factor,
+                "zone_counts": flow.zone_counts,
+                "route_breakdown": flow.route_breakdown[:5],
+            }
+            result["bts_historical"] = bts_data
+            result["deltas"] = {
+                "total_passengers": sim_total - flow.total_passengers,
+                "pct_difference": round(
+                    ((sim_total - flow.total_passengers) / max(flow.total_passengers, 1)) * 100, 1
+                ),
+            }
+        summary = adapter.get_summary()
+        result["bts_summary"] = summary
+    except Exception:
+        logger.debug("BTS adapter not available for comparison", exc_info=True)
+
+    return result
+
+
 @router.post("/passengers/source")
 async def switch_passenger_source_endpoint(body: dict):
     """Switch passenger source at runtime."""

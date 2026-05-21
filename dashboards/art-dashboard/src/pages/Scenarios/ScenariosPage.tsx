@@ -12,6 +12,8 @@ import {
 } from "recharts";
 import { scenariosApi, simApi } from "../../hooks/useApi";
 import { StatusBadge } from "../../components/StatusBadge";
+import { ExportMenu } from "../../components/ExportMenu";
+import { exportData } from "../../utils/exportData";
 
 /* ──────── Types ──────── */
 
@@ -970,11 +972,37 @@ export default function ScenariosPage() {
           {selectedResult && detail && !editorMode && (
             <div className="space-y-6">
               <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-bold text-white">
-                    {detail.scenario_name}
-                  </h1>
-                  <StatusBadge status={detail.status} />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-xl font-bold text-white">
+                      {detail.scenario_name}
+                    </h1>
+                    <StatusBadge status={detail.status} />
+                  </div>
+                  <ExportMenu
+                    onExport={(fmt) => {
+                      const report = {
+                        run_id: detail.run_id,
+                        scenario_name: detail.scenario_name,
+                        status: detail.status,
+                        started_at: detail.started_at,
+                        completed_at: detail.completed_at,
+                        sim_start_time: detail.sim_start_time,
+                        sim_end_time: detail.sim_end_time,
+                        duration_sim_minutes: detail.duration_sim_minutes,
+                        events_injected: detail.events_injected,
+                        summary: detail.summary,
+                        pass_rate: detail.pass_rate,
+                        metric_snapshots: detail.metric_snapshots,
+                        outcome_results: detail.outcome_results,
+                      };
+                      exportData(
+                        [report],
+                        `scenario-${detail.scenario_name}-${detail.run_id}`,
+                        fmt,
+                      );
+                    }}
+                  />
                 </div>
                 <p className="text-sm text-gray-400 mt-1">
                   Run ID: {detail.run_id} · Duration:{" "}

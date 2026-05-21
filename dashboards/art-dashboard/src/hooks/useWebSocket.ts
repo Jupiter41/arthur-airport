@@ -8,6 +8,7 @@ import { useIncidentStore } from "../stores/incidentStore";
 import { usePassengerStore } from "../stores/passengerStore";
 import { useGroundVehicleStore } from "../stores/groundVehicleStore";
 import { useAnalysisStore } from "../stores/analysisStore";
+import { useCostStore } from "../stores/costStore";
 import { getAuthToken } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
 import { queryClient } from "../queryClient";
@@ -223,6 +224,11 @@ export const eventHandlers: Record<string, EventHandler> = {
       message: `Autonomous: ${payload.description as string}`,
       incident_id: "",
     });
+  },
+
+  CostRecorded: (payload) => {
+    useCostStore.getState().handleCostEvent(payload);
+    queryClient.invalidateQueries({ queryKey: ["costs"] });
   },
 };
 

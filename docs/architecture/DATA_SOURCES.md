@@ -103,7 +103,7 @@ class _HistoricalAdapter:
 | flight-service    | adsb.lol       | ADS-B REST  | Live aircraft from adsb.lol community API (primary)                                           |
 | flight-service    | opensky        | ADS-B REST  | Live aircraft from OpenSky Network (fallback)                                                 |
 | passenger-service | simulation     | Sim engine  | Probabilistic passenger generation                                                            |
-| passenger-service | bts_historical | CSV offline | Bureau of Transportation Statistics T-100 segment data (adapter specced, not yet implemented) |
+| passenger-service | bts_historical | CSV offline | Bureau of Transportation Statistics T-100 segment data — overlay + sim-orchestrator calibration |
 | baggage-service   | simulation     | Sim engine  | Bag creation linked to passengers                                                             |
 | config            | ourairports    | CSV offline | Airport layouts, runways, frequencies, navaids from OurAirports                               |
 
@@ -111,52 +111,16 @@ class _HistoricalAdapter:
 
 ### Step 1: Create Provider Adapter
 
-Create a new Python file in `services/<name>/services/`:
+Create a new Python file in `services/<name>/services/`.
 
-```python
-# services/passenger-service/services/bts_adapter.py
-
-from datetime import datetime
-from pathlib import Path
-from dataclasses import dataclass
-
-@dataclass
-class PassengerFlow:
-    """Canonical passenger flow data point."""
-    total_passengers: int
-    zone_counts: dict[str, int]
-    avg_dwell_minutes: float
-
-class BTSPassengerSource:
-    """Bureau of Transportation Statistics historical passenger data adapter.
-
-    Loads T-100 segment data and maps it to per-hour passenger flow counts.
-    Simulation days are mapped to historical days cyclically.
-    """
-
-    def __init__(self, csv_path: str | Path):
-        self._csv_path = Path(csv_path)
-        self._data: list[tuple[datetime, PassengerFlow]] = []
-        self._loaded = False
-
-    def load(self) -> int:
-        """Load CSV data. Returns number of records loaded."""
-        # Parse BTS T-100 format into PassengerFlow records
-        # ...
-        self._loaded = True
-        return len(self._data)
-
-    @property
-    def is_loaded(self) -> bool:
-        return self._loaded
-
-    def get_flow_at(self, sim_time: datetime) -> PassengerFlow | None:
-        """Get passenger flow data for the given simulation time."""
-        # Map sim_time to historical time (cyclic)
-        # Binary search for closest observation
-        # ...
-        return None
-```
+> **Reference implementation:** See `services/passenger-service/services/bts_adapter.py`
+> (`BTSPassengerSource`) for a complete example. This adapter loads BTS T-100 CSV data,
+> disaggregates monthly totals into hourly profiles using a diurnal pattern curve, and
+> exposes flow snapshots via `get_flow_at(sim_time)`.
+>
+> A second BTS integration exists at the sim-orchestrator level
+> (`services/sim-orchestrator/services/bts_calibration.py`) which calibrates the schedule
+> generator's destination weights and per-route load factors from the same T-100 data.
 
 ### Step 2: Register in Kafka Consumer
 

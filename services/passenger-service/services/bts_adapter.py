@@ -12,14 +12,15 @@ the simulation's per-tick passenger flow model.
 """
 
 import csv
-import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

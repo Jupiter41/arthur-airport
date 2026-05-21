@@ -168,7 +168,7 @@ async def query_active_flights_summary() -> dict:
     async with driver.session() as session:
         result = await session.run("""
             MATCH (f:Flight)
-            WHERE f.status NOT IN ['completed', 'cancelled']
+            WHERE NOT f.status IN ['completed', 'cancelled']
             RETURN f.status AS status, count(f) AS cnt
         """)
         records = await result.data()

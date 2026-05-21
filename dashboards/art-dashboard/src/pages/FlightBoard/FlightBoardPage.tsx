@@ -164,12 +164,13 @@ function FlightDetailDrawer({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed right-0 top-0 h-full w-[400px] bg-gray-800 border-l border-gray-700 shadow-2xl z-50 overflow-y-auto">
+    <div className="fixed right-0 top-0 h-full w-[400px] bg-gray-800 border-l border-gray-700 shadow-2xl z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Flight details">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <h2 className="text-lg font-bold text-white">{flight.flight_number}</h2>
         <button
           onClick={onClose}
           className="text-gray-400 hover:text-white text-xl"
+          aria-label="Close"
         >
           ✕
         </button>
@@ -862,6 +863,13 @@ function FIDSPanel({
             </tr>
           </thead>
           <tbody>
+            {pageFlights.length === 0 && (
+              <tr>
+                <td colSpan={7} className="text-center text-gray-500 py-8 text-sm">
+                  {hasAnyFilter ? "No flights match current filters" : "No flights scheduled"}
+                </td>
+              </tr>
+            )}
             {pageFlights.map((f) => (
               <FlightRow
                 key={f.id}
@@ -1019,6 +1027,9 @@ export default function FlightBoardPage() {
     if (queries.weather.data) setCurrent(queries.weather.data as WeatherState);
   }, [queries.weather.data, setCurrent]);
 
+  const isLoading = queries.flights.isLoading && Object.keys(flights).length === 0;
+  const hasError = queries.flights.isError && Object.keys(flights).length === 0;
+
   const flightList = Object.values(flights);
   const departures = useMemo(
     () => flightList.filter((f) => f.direction === "departure"),
@@ -1059,6 +1070,34 @@ export default function FlightBoardPage() {
     <div className="flex flex-col h-full">
       <CriticalBanner />
 
+      {isLoading && (
+        <div className="flex items-center justify-center flex-1 text-gray-400">
+          <div className="flex flex-col items-center gap-2">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+            <span>Loading flight data…</span>
+          </div>
+        </div>
+      )}
+
+      {hasError && (
+        <div className="flex items-center justify-center flex-1 text-gray-400">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <span className="text-red-400 text-lg">⚠️ Failed to load flight data</span>
+            <span className="text-sm text-gray-500">
+              The flight-service may not be running. Check that the simulation is active.
+            </span>
+            <button
+              onClick={() => queries.flights.refetch()}
+              className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm text-white"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && !hasError && (
+      <>
       {/* FIDS panels */}
       <div className="flex-1 grid grid-cols-2 gap-px bg-gray-700 min-h-0">
         <div className="bg-gray-900 overflow-hidden">
@@ -1136,6 +1175,8 @@ export default function FlightBoardPage() {
             onClose={() => setSelectedFlight(null)}
           />
         </>
+      )}
+      </>
       )}
     </div>
   );

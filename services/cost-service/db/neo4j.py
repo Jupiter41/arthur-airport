@@ -1,10 +1,11 @@
 """Neo4j async driver and CostRecord persistence for cost-service."""
 
-import asyncio
 import os
 
 import structlog
 from neo4j import AsyncGraphDatabase, AsyncDriver
+
+from _common.infra import wait_for_neo4j_ready
 
 logger = structlog.get_logger(__name__)
 
@@ -20,23 +21,30 @@ INDEXES = [
 ]
 
 
-async def wait_for_neo4j(max_attempts: int = 12, delay_s: int = 5) -> None:
+async def _init_driver() -> None:
     global _driver
     uri = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
     user = os.getenv("NEO4J_USER", "neo4j")
     password = os.getenv("NEO4J_PASSWORD", "art-digital-twin")
     _driver = AsyncGraphDatabase.driver(uri, auth=(user, password))
+    await _driver.verify_connectivity()
 
-    for attempt in range(1, max_attempts + 1):
-        try:
-            await _driver.verify_connectivity()
-            logger.info("neo4j connected", attempt=attempt)
-            return
-        except Exception as exc:
-            logger.warning("neo4j not ready", attempt=attempt, error=str(exc))
-            if attempt < max_attempts:
-                await asyncio.sleep(delay_s)
-    raise RuntimeError("neo4j not reachable after max attempts")
+
+async def _close_driver() -> None:
+    global _driver
+    if _driver:
+        await _driver.close()
+        _driver = None
+
+
+async def wait_for_neo4j(max_attempts: int = 12, delay_s: int = 5) -> None:
+    await wait_for_neo4j_ready(
+        init_fn=_init_driver,
+        close_driver_fn=_close_driver,
+        logger=logger,
+        max_attempts=max_attempts,
+        delay_s=delay_s,
+    )
 
 
 async def check_neo4j() -> bool:

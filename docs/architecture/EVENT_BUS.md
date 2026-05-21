@@ -21,14 +21,15 @@
 | Topic               | Producer                     | Consumers                                                         | Retention |
 | ------------------- | ---------------------------- | ----------------------------------------------------------------- | --------- |
 | `sim.clock`         | sim-orchestrator             | all services                                                      | 1h        |
-| `flights.events`    | flight-service               | passenger-service, baggage-service, incident-service, api-gateway | 7 days    |
+| `flights.events`    | flight-service               | passenger-service, baggage-service, incident-service, cost-service, api-gateway | 7 days    |
 | `flights.schedule`  | sim-orchestrator             | flight-service                                                    | 7 days    |
-| `passengers.events` | passenger-service            | `incident-svc`, `gateway`                                         | 7 days    |
-| `baggage.events`    | baggage-service              | api-gateway                                                       | 7 days    |
+| `passengers.events` | passenger-service            | incident-service, cost-service, api-gateway                       | 7 days    |
+| `baggage.events`    | baggage-service              | cost-service, api-gateway                                         | 7 days    |
 | `weather.events`    | weather-service              | flight-service, incident-service, api-gateway                     | 7 days    |
-| `incidents.events`  | incident-service             | flight-service, passenger-service, baggage-service, api-gateway   | 30 days   |
+| `incidents.events`  | incident-service             | flight-service, passenger-service, baggage-service, cost-service, api-gateway   | 30 days   |
 | `incidents.alerts`  | incident-service             | api-gateway                                                       | 30 days   |
 | `incidents.inject`  | api-gateway (manual trigger) | incident-service                                                  | 1h        |
+| `cost.events`       | cost-service                 | api-gateway                                                       | 7 days    |
 
 ---
 
@@ -37,13 +38,14 @@
 | Topic               | Partitions | Key            | Consumer groups                               |
 | ------------------- | ---------- | -------------- | --------------------------------------------- |
 | `sim.clock`         | 1          | —              | all services (broadcast)                      |
-| `flights.events`    | 6          | `flight_id`    | `pax-svc`, `bag-svc`, `inc-svc`, `gateway`    |
-| `passengers.events` | 6          | `passenger_id` | `gateway`                                     |
-| `baggage.events`    | 6          | `baggage_tag`  | `gateway`                                     |
+| `flights.events`    | 6          | `flight_id`    | `pax-svc`, `bag-svc`, `inc-svc`, `cost-svc`, `gateway` |
+| `passengers.events` | 6          | `passenger_id` | `cost-svc`, `gateway`                         |
+| `baggage.events`    | 6          | `baggage_tag`  | `cost-svc`, `gateway`                         |
 | `weather.events`    | 1          | —              | `flight-svc`, `inc-svc`, `gateway`            |
-| `incidents.events`  | 3          | `incident_id`  | `flight-svc`, `pax-svc`, `bag-svc`, `gateway` |
+| `incidents.events`  | 3          | `incident_id`  | `flight-svc`, `pax-svc`, `bag-svc`, `cost-svc`, `gateway` |
 | `incidents.alerts`  | 3          | `incident_id`  | `gateway`                                     |
 | `incidents.inject`  | 1          | —              | `inc-svc`                                     |
+| `cost.events`       | 3          | `cost_record_id`| `gateway`                                     |
 
 ---
 
@@ -432,6 +434,34 @@ The `summary` structure varies per service:
 - **flight-service**: `by_status`, `active_turnarounds`, `held_flights`, `affected_runways`, `affected_gates`
 - **passenger-service**: `by_status` (status → count map)
 - **baggage-service**: `by_stage` (pipeline stage → count map)
+
+### CostRecorded
+
+Topic: `cost.events`  
+Producer: cost-service  
+Triggered: whenever a CostRecord is written to Neo4j
+
+```json
+{
+  "event_id": "uuid",
+  "event_type": "CostRecorded",
+  "schema_version": "1.0",
+  "produced_at": "2024-06-15T14:32:00Z",
+  "sim_time": "2024-06-15T14:32:00Z",
+  "producer": "cost-service",
+  "payload": {
+    "cost_record_id": "uuid",
+    "category": "eu261_compensation",
+    "amount_eur": 18600.0,
+    "is_revenue": false,
+    "flight_id": "uuid | null",
+    "incident_id": "uuid | null",
+    "description": "EU261 — 31 pax × €600 (long-haul, delay 240min)",
+    "sim_time": "2024-06-15T14:32:00Z",
+    "sim_day": 1
+  }
+}
+```
 
 ---
 

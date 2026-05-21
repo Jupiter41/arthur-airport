@@ -46,4 +46,8 @@ def import_service_module(service: str, module_path: str) -> ModuleType:
                 break
     
     sys.path.insert(0, svc_dir)
+    # Ensure _common package is reachable (shared library at services/_common/)
+    common_dir = os.path.join(ROOT, "services")
+    if common_dir not in sys.path:
+        sys.path.insert(0, common_dir)
     return importlib.import_module(module_path)

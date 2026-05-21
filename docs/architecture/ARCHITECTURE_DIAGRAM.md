@@ -14,6 +14,7 @@ graph TB
         BT[Baggage Tracker]
         GO[Ground Ops]
         IC[Incident Console]
+        CD[Cost Dashboard]
     end
 
     subgraph Gateway["API Gateway · Node.js :3000"]
@@ -33,6 +34,7 @@ graph TB
         WS["weather-service :8004<br/>4-state FSM · METAR/TAF<br/>runway capacity"]
         IS["incident-service :8005<br/>cascade engine · protocols<br/>TTR · reports"]
         SO["sim-orchestrator :8006<br/>virtual clock · schedule seed<br/>probabilistic injection"]
+        CS["cost-service :8008<br/>financial layer · P&L<br/>EU261 · recommendations"]
     end
 
     Gateway -->|HTTP proxy| FS
@@ -41,6 +43,7 @@ graph TB
     Gateway -->|HTTP proxy| WS
     Gateway -->|HTTP proxy| IS
     Gateway -->|HTTP proxy| SO
+    Gateway -->|HTTP proxy| CS
 
     subgraph Kafka["Apache Kafka :9092"]
         SC[sim.clock]
@@ -52,6 +55,7 @@ graph TB
         IE[incidents.events]
         IA[incidents.alerts]
         II[incidents.inject]
+        CE[cost.events]
     end
 
     SO -->|SimClockTick| SC
@@ -65,11 +69,14 @@ graph TB
     IS -->|IncidentCreated<br/>IncidentStatusChanged| IE
     IS -->|IncidentAlert| IA
 
+    CS -->|CostRecorded| CE
+
     SC -->|consumes| FS
     SC -->|consumes| PS
     SC -->|consumes| BS
     SC -->|consumes| WS
     SC -->|consumes| IS
+    SC -->|consumes| CS
 
     WE -->|consumes| FS
     IE -->|consumes| FS
@@ -86,6 +93,11 @@ graph TB
     BE -->|consumes| IS
     PE -->|consumes| IS
 
+    FE -->|consumes| CS
+    IE -->|consumes| CS
+    BE -->|consumes| CS
+    PE -->|consumes| CS
+
     SC -.->|Kafka consumer| Gateway
     FE -.->|Kafka consumer| Gateway
     PE -.->|Kafka consumer| Gateway
@@ -93,6 +105,7 @@ graph TB
     WE -.->|Kafka consumer| Gateway
     IE -.->|Kafka consumer| Gateway
     IA -.->|Kafka consumer| Gateway
+    CE -.->|Kafka consumer| Gateway
 
     subgraph Storage["Neo4j :7687"]
         N4J[(Graph DB<br/>Flights · Passengers<br/>Baggage · Gates<br/>Runways · Incidents)]
@@ -104,6 +117,7 @@ graph TB
     WS --> N4J
     IS --> N4J
     SO --> N4J
+    CS --> N4J
 
     subgraph Observability["Observability"]
         PROM[Prometheus :9090]
@@ -116,6 +130,7 @@ graph TB
     WS -.->|/metrics| PROM
     IS -.->|/metrics| PROM
     SO -.->|/metrics| PROM
+    CS -.->|/metrics| PROM
     PROM --> GRAF
 ```
 
@@ -132,6 +147,7 @@ flowchart LR
     CLOCK --> BS((baggage))
     CLOCK --> WS((weather))
     CLOCK --> IS((incident))
+    CLOCK --> CS((cost))
 
     WS -->|WeatherStateChanged| WE[weather.events]
     WE --> FS
@@ -151,6 +167,13 @@ flowchart LR
 
     BS -->|BaggageStatusChanged<br/>BaggageFlagged| BE[baggage.events]
     BE --> IS
+
+    FE --> CS
+    IE --> CS
+    PE --> CS
+    BE --> CS
+
+    CS -->|CostRecorded| CE[cost.events]
 
     SO -->|InjectIncident| II[incidents.inject]
     II --> IS

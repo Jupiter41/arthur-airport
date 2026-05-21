@@ -209,6 +209,51 @@ async def set_incident_source_endpoint(req: IncidentSourceRequest):
     return result
 
 
+@router.get("/sim/incident-compare")
+async def incident_compare():
+    """Side-by-side comparison of simulated vs ASRS-calibrated incident probabilities."""
+    from services.injector import get_incident_source
+    from services.fixtures import get_fixtures
+
+    fixtures = get_fixtures()
+    events_config = fixtures["events"]
+    base_probs = events_config.get("base_probabilities", {})
+    presets = (fixtures.get("incident_calibrations") or {}).get("presets") or {}
+
+    sources = {}
+    for preset_id, preset in presets.items():
+        override_probs = preset.get("base_probabilities", {})
+        merged = dict(base_probs)
+        merged.update(override_probs)
+        sources[preset_id] = {
+            "label": preset.get("label", preset_id),
+            "description": preset.get("description", ""),
+            "probabilities": merged,
+        }
+
+    # Compute deltas between presets
+    deltas = {}
+    if "simulated" in sources and "asrs_historical" in sources:
+        sim_probs = sources["simulated"]["probabilities"]
+        asrs_probs = sources["asrs_historical"]["probabilities"]
+        all_types = set(sim_probs) | set(asrs_probs)
+        for t in sorted(all_types):
+            sp = sim_probs.get(t, 0)
+            ap = asrs_probs.get(t, 0)
+            deltas[t] = {
+                "simulated": sp,
+                "asrs_historical": ap,
+                "delta": round(ap - sp, 6),
+                "ratio": round(ap / sp, 2) if sp > 0 else None,
+            }
+
+    return {
+        "active_source": get_incident_source(),
+        "sources": sources,
+        "deltas": deltas,
+    }
+
+
 @router.get("/sim/schedule")
 async def sim_schedule(
     terminal: Optional[str] = None,

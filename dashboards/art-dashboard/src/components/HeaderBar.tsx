@@ -40,6 +40,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: "🎛️",
     children: [
       { path: "/ground-ops", label: "Ground Ops", icon: "🛬" },
+      { path: "/costs", label: "Costs", icon: "💰" },
       { path: "/world", label: "World", icon: "🗺️" },
     ],
   },

@@ -134,6 +134,10 @@ function AutonomousPanel() {
     null,
   );
   const [log, setLog] = useState<unknown[]>([]);
+  const [diagnostics, setDiagnostics] = useState<{
+    bottlenecks: number;
+    recommendations: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -147,6 +151,21 @@ function AutonomousPanel() {
       const resp = s as Record<string, unknown>;
       setSettings((resp.autonomous as Record<string, unknown>) ?? resp);
       setLog((l as { actions: unknown[] }).actions ?? []);
+    } catch {
+      /* ignore */
+    }
+    // Fetch diagnostics — bottleneck and recommendation counts
+    try {
+      const [bn, recs] = await Promise.all([
+        analysisApi.bottlenecks(),
+        analysisApi.recommendations(),
+      ]);
+      const bnArr = (bn as { bottlenecks?: unknown[] })?.bottlenecks ?? [];
+      const recsArr = (recs as { recommendations?: unknown[] })?.recommendations ?? [];
+      setDiagnostics({
+        bottlenecks: bnArr.length,
+        recommendations: recsArr.length,
+      });
     } catch {
       /* ignore */
     }
@@ -285,11 +304,11 @@ function AutonomousPanel() {
                 className="text-xs bg-gray-700 rounded px-2 py-1 flex justify-between"
               >
                 <span className="text-gray-300 truncate">
-                  {action.description as string}
+                  {(action.description as string) || (action.action_type as string) || "Action"}
                 </span>
                 <span className="text-gray-400 ml-2 whitespace-nowrap">
-                  {action.sim_time
-                    ? new Date(action.sim_time as string).toLocaleTimeString()
+                  {(action.applied_at || action.sim_time)
+                    ? new Date((action.applied_at ?? action.sim_time) as string).toLocaleTimeString()
                     : ""}
                 </span>
               </div>
@@ -300,6 +319,25 @@ function AutonomousPanel() {
             {currentMode === "off"
               ? "Enable an autonomous mode to start collecting actions."
               : "No autonomous actions taken yet. Actions will appear here when the agent detects bottlenecks and applies recommendations."}
+            {currentMode !== "off" && diagnostics && (
+              <div className="mt-2 text-[10px] text-gray-400 space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className={diagnostics.bottlenecks > 0 ? "text-amber-400" : "text-gray-500"}>●</span>
+                  Active bottlenecks: {diagnostics.bottlenecks}
+                  {diagnostics.bottlenecks === 0 && " — airport operating smoothly"}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={diagnostics.recommendations > 0 ? "text-blue-400" : "text-gray-500"}>●</span>
+                  Active recommendations: {diagnostics.recommendations}
+                  {diagnostics.recommendations === 0 && " — no actions to apply"}
+                </div>
+                {diagnostics.bottlenecks === 0 && (
+                  <div className="text-gray-500 mt-1 italic">
+                    Inject an incident or increase traffic to trigger bottlenecks.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

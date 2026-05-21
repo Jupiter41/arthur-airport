@@ -100,6 +100,7 @@ class Violation:
 def extract_queries(filepath: Path) -> list[tuple[int, str]]:
     """Extract (line_number, query_text) pairs from a Python file."""
     text = filepath.read_text(encoding="utf-8")
+    lines = text.splitlines()
     results = []
 
     for match in QUERY_RE.finditer(text):
@@ -112,6 +113,12 @@ def extract_queries(filepath: Path) -> list[tuple[int, str]]:
             continue
         # Calculate line number
         line = text[:match.start()].count("\n") + 1
+        # Skip lines with noqa: cypher comment
+        if line <= len(lines) and "noqa: cypher" in lines[line - 1]:
+            continue
+        # Skip strings that look like regex patterns (contain regex metacharacters)
+        if re.search(r"[\\()|?+*^$].*[\\()|?+*^$]", query):
+            continue
         results.append((line, query))
 
     return results

@@ -458,7 +458,7 @@ function ComparisonModal({
         if (e.target === backdropRef.current) onClose();
       }}
     >
-      <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-slate-900 border border-slate-700 shadow-2xl p-6">
+      <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-slate-900 border border-slate-700 shadow-2xl p-6" role="dialog" aria-modal="true" aria-label="Weather source comparison">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-slate-100">
             📊 Weather Source Comparison
@@ -746,6 +746,234 @@ function SourceCard({
       {/* Weather comparison panel */}
       {source.id === "weather" && source.status === "active" && (
         <WeatherComparisonPanel currentSource={source.current_source} />
+      )}
+    </div>
+  );
+}
+
+/* ──────── Passenger Comparison Panel ──────── */
+
+function PassengerComparisonPanel() {
+  const [expanded, setExpanded] = useState(false);
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["passenger-compare"],
+    queryFn: () => dataSourcesApi.passengerCompare() as Promise<Record<string, unknown>>,
+    refetchInterval: expanded ? 15_000 : false,
+    enabled: expanded,
+  });
+
+  const simulated = data?.simulated as Record<string, unknown> | undefined;
+  const bts = data?.bts_historical as Record<string, unknown> | undefined;
+  const deltas = data?.deltas as Record<string, unknown> | undefined;
+
+  return (
+    <div className="rounded-xl border border-slate-700/50 bg-slate-800/40 p-4">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between"
+      >
+        <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+          <span>👥</span> Passenger Source Comparison
+        </h3>
+        <span className="text-slate-400 text-xs">
+          {expanded ? "▾ Collapse" : "▸ Expand"}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="mt-4 space-y-3">
+          {isLoading && (
+            <div className="text-center text-slate-400 text-sm py-4">
+              <div className="animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-blue-500 mr-2" />
+              Loading comparison data…
+            </div>
+          )}
+          {isError && (
+            <div className="text-center text-red-400 text-sm py-4">
+              Failed to load comparison data.{" "}
+              <button onClick={() => refetch()} className="underline hover:text-red-300">Retry</button>
+            </div>
+          )}
+          {data && !isLoading && (
+            <div className="grid grid-cols-2 gap-4">
+              {/* Simulated */}
+              <div className="rounded-lg bg-blue-900/20 border border-blue-700/30 p-3">
+                <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wide mb-2">
+                  Simulated
+                </h4>
+                <div className="text-2xl font-bold text-slate-100">
+                  {(simulated?.total_passengers as number ?? 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">passengers in airport</div>
+                {simulated?.by_status != null && (() => {
+                  const byStatus = simulated.by_status as Record<string, number>;
+                  const entries = Object.entries(byStatus).filter(([, v]) => v > 0);
+                  if (entries.length === 0) return null;
+                  return (
+                  <div className="mt-2 space-y-0.5">
+                    {entries
+                      .map(([status, count]) => (
+                        <div key={status} className="flex justify-between text-[10px]">
+                          <span className="text-slate-400">{status.replace(/_/g, " ")}</span>
+                          <span className="text-slate-300 font-mono">{count}</span>
+                        </div>
+                      ))}
+                  </div>
+                  );
+                })()}
+              </div>
+
+              {/* BTS Historical */}
+              <div className="rounded-lg bg-amber-900/20 border border-amber-700/30 p-3">
+                <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wide mb-2">
+                  BTS Historical
+                </h4>
+                {bts ? (
+                  <>
+                    <div className="text-2xl font-bold text-slate-100">
+                      {(bts.total_passengers as number ?? 0).toLocaleString()}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      estimated hourly ({(bts.avg_load_factor as number * 100).toFixed(0)}% load factor)
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
+                      <div>
+                        <span className="text-slate-400">Departing: </span>
+                        <span className="text-slate-300 font-mono">
+                          {(bts.departing_passengers as number).toLocaleString()}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Arriving: </span>
+                        <span className="text-slate-300 font-mono">
+                          {(bts.arriving_passengers as number).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-slate-500 py-2">
+                    BTS adapter not loaded. Switch to BTS source or wait for initialization.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Delta bar */}
+          {deltas && (
+            <div className={`rounded-lg p-2 text-center text-sm font-medium ${
+              (deltas.pct_difference as number) > 10
+                ? "bg-red-900/20 text-red-400 border border-red-700/30"
+                : (deltas.pct_difference as number) < -10
+                  ? "bg-amber-900/20 text-amber-400 border border-amber-700/30"
+                  : "bg-emerald-900/20 text-emerald-400 border border-emerald-700/30"
+            }`}>
+              Δ {(deltas.total_passengers as number) > 0 ? "+" : ""}{(deltas.total_passengers as number).toLocaleString()} passengers
+              ({(deltas.pct_difference as number) > 0 ? "+" : ""}{String(deltas.pct_difference)}%)
+              {" "}
+              <span className="text-[10px] opacity-70">sim vs BTS</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ──────── Incident Comparison Panel ──────── */
+
+function IncidentComparisonPanel() {
+  const [expanded, setExpanded] = useState(false);
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["incident-compare"],
+    queryFn: () => dataSourcesApi.incidentCompare() as Promise<Record<string, unknown>>,
+    enabled: expanded,
+  });
+
+  const activeSource = data?.active_source as string | undefined;
+  const sources = data?.sources as Record<string, { label: string; probabilities: Record<string, number> }> | undefined;
+  const deltas = data?.deltas as Record<string, { simulated: number; asrs_historical: number; delta: number; ratio: number | null }> | undefined;
+
+  return (
+    <div className="rounded-xl border border-slate-700/50 bg-slate-800/40 p-4">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between"
+      >
+        <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+          <span>🛡️</span> Incident Calibration Comparison
+        </h3>
+        <span className="text-slate-400 text-xs">
+          {expanded ? "▾ Collapse" : "▸ Expand"}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="mt-4 space-y-3">
+          {isLoading && (
+            <div className="text-center text-slate-400 text-sm py-4">
+              <div className="animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-blue-500 mr-2" />
+              Loading comparison data…
+            </div>
+          )}
+          {isError && (
+            <div className="text-center text-red-400 text-sm py-4">
+              Failed to load comparison data.{" "}
+              <button onClick={() => refetch()} className="underline hover:text-red-300">Retry</button>
+            </div>
+          )}
+          {data && !isLoading && (
+            <>
+              <div className="text-xs text-slate-400 mb-2">
+                Active preset: <span className="text-slate-200 font-medium">{activeSource}</span>
+              </div>
+
+              {deltas && Object.keys(deltas).length > 0 && (
+                <div className="rounded-lg bg-slate-900/50 border border-slate-700/30 overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-700/50 text-slate-400 uppercase tracking-wide">
+                        <th className="text-left px-3 py-2">Event Type</th>
+                        <th className="text-right px-3 py-2">Simulated</th>
+                        <th className="text-right px-3 py-2">ASRS</th>
+                        <th className="text-right px-3 py-2">Ratio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(deltas).map(([eventType, d]) => (
+                        <tr key={eventType} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                          <td className="px-3 py-1.5 text-slate-300">{eventType.replace(/_/g, " ")}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-slate-400">
+                            {(d.simulated * 100).toFixed(2)}%
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono text-slate-400">
+                            {(d.asrs_historical * 100).toFixed(2)}%
+                          </td>
+                          <td className={`px-3 py-1.5 text-right font-mono ${
+                            d.ratio !== null && d.ratio > 1.5
+                              ? "text-red-400"
+                              : d.ratio !== null && d.ratio < 0.5
+                                ? "text-amber-400"
+                                : "text-emerald-400"
+                          }`}>
+                            {d.ratio !== null ? `×${d.ratio}` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {sources && !deltas && (
+                <div className="text-sm text-slate-500 text-center py-2">
+                  Only one calibration preset available — no comparison possible.
+                </div>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1066,6 +1294,8 @@ export default function DataSourcesPage() {
       )}
 
       {/* Integration Guide */}
+      <PassengerComparisonPanel />
+      <IncidentComparisonPanel />
       <IntegrationGuide />
     </div>
   );

@@ -540,4 +540,38 @@ export const dataSourcesApi = {
       body: JSON.stringify({ source }),
     }),
   getWeatherCurrent: () => weatherApi.current(),
+  passengerCompare: () => apiFetch<unknown>("/passengers/compare"),
+  incidentCompare: () => apiFetch<unknown>("/sim/incident-compare"),
+};
+
+// ── Costs ──
+import type {
+  CostSummary,
+  CostPnL,
+  FlightCostBreakdown,
+  HourlyCostPoint,
+  IncidentCostRanking,
+  FinancialRecommendation,
+} from "../types";
+
+export const costsApi = {
+  summary: () => apiFetch<CostSummary>("/costs/summary"),
+  pnl: (day = 1) => apiFetch<CostPnL>(`/costs/pnl?day=${day}`),
+  flight: (flightId: string) =>
+    apiFetch<FlightCostBreakdown>(
+      `/costs/flight/${encodeURIComponent(flightId)}`,
+    ),
+  hourly: (day = 1) =>
+    apiFetch<{ hours: HourlyCostPoint[] }>(`/costs/hourly?day=${day}`),
+  incidentRanking: (day = 1, limit = 5) =>
+    apiFetch<{ incidents: IncidentCostRanking[] }>(
+      `/costs/incidents/ranking?day=${day}&limit=${limit}`,
+    ),
+  terminal: (terminalId: string, day = 1) =>
+    apiFetch<CostPnL>(
+      `/costs/terminal/${encodeURIComponent(terminalId)}?day=${day}`,
+    ),
+  rates: () => apiFetch<Record<string, unknown>>("/costs/rates"),
+  recommendations: () =>
+    apiFetch<FinancialRecommendation[]>("/costs/recommendations"),
 };

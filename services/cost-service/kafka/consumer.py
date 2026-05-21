@@ -7,6 +7,8 @@ import os
 import structlog
 from confluent_kafka import Consumer
 
+from _common.consumer_health import ConsumerHealthTracker
+
 logger = structlog.get_logger(__name__)
 
 TOPICS = [
@@ -20,6 +22,7 @@ TOPICS = [
 _consumer: Consumer | None = None
 _running: bool = False
 _rates: dict = {}
+_consumer_health = ConsumerHealthTracker()
 
 
 def set_rates(rates: dict) -> None:
@@ -52,6 +55,7 @@ async def run_consumer() -> None:
     _consumer = make_consumer()
     _consumer.subscribe(TOPICS)
     _running = True
+    _consumer_health.mark_started()
     logger.info("kafka consumer started", topics=TOPICS)
 
     loop = asyncio.get_event_loop()
@@ -74,6 +78,8 @@ async def run_consumer() -> None:
         sim_time = envelope.get("sim_time", "")
         payload = envelope.get("payload", {})
         sim_day = payload.get("day_of_sim", 1)
+
+        _consumer_health.record_message(event_type)
 
         try:
             match event_type:
@@ -104,3 +110,7 @@ def stop_consumer() -> None:
 
 def is_consumer_running() -> bool:
     return _running
+
+
+def get_consumer_health() -> dict:
+    return _consumer_health.summary()

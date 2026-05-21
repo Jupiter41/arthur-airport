@@ -474,6 +474,39 @@ export default function BaggageTrackerPage() {
     if (queries.flights.data) setFlights(queries.flights.data);
   }, [queries.flights.data]);
 
+  const isLoading = queries.map.isLoading && zones.length === 0;
+  const hasError = queries.map.isError && zones.length === 0;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-400">
+        <div className="flex flex-col items-center gap-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+          <span>Loading baggage data…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-400">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <span className="text-red-400 text-lg">⚠️ Failed to load baggage data</span>
+          <span className="text-sm text-gray-500">
+            The baggage-service may not be running. Check that the simulation is active.
+          </span>
+          <button
+            onClick={() => queries.map.refetch()}
+            className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm text-white"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
       <div className="flex items-center justify-between">

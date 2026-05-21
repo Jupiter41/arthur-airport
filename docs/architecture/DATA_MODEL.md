@@ -174,6 +174,22 @@ A snapshot of current weather conditions at KART. One active node at any time; h
 
 ---
 
+### `CostRecord`
+One record per cost or revenue event. Written by cost-service.
+
+| Property | Type | Description |
+|---|---|---|
+| `id` | String (UUID) | unique |
+| `category` | Enum | `landing_fee`, `gate_fee`, `passenger_fee`, `eu261_compensation`, `crew_overtime`, `holding_fuel`, `ground_handling`, `incident_direct`, `incident_response`, `staffing`, `retail_revenue`, `slot_revenue` |
+| `amount_eur` | Float | cost or revenue amount (always positive) |
+| `currency` | String | `"EUR"` |
+| `sim_time` | String (ISO) | when the cost was incurred |
+| `sim_day` | Integer | day number in simulation |
+| `description` | String | human-readable label |
+| `is_revenue` | Boolean | true for revenue records |
+
+---
+
 ## 3. Relationship catalogue
 
 | Relationship | From → To | Properties | Description |
@@ -192,6 +208,10 @@ A snapshot of current weather conditions at KART. One active node at any time; h
 | `SPAWNED` | Incident → Incident | `reason: String`, `at: DateTime` | cascade: parent spawned child |
 | `CURRENT_WEATHER` | Airport → WeatherState | — | active weather snapshot |
 | `PREVIOUS_WEATHER` | WeatherState → WeatherState | — | weather history chain |
+| `FOR_FLIGHT` | CostRecord → Flight | — | cost linked to a specific flight |
+| `FOR_TERMINAL` | CostRecord → Terminal | — | cost linked to a terminal |
+| `CAUSED_BY` | CostRecord → Incident | — | cost caused by an incident |
+| `FOR_DAY` | CostRecord → Airport | `day: Integer` | daily cost rollup |
 
 ---
 
@@ -252,6 +272,7 @@ CREATE CONSTRAINT baggage_tag IF NOT EXISTS FOR (b:Baggage) REQUIRE b.tag IS UNI
 CREATE CONSTRAINT gate_id IF NOT EXISTS FOR (g:Gate) REQUIRE g.id IS UNIQUE;
 CREATE CONSTRAINT runway_id IF NOT EXISTS FOR (r:Runway) REQUIRE r.id IS UNIQUE;
 CREATE CONSTRAINT incident_id IF NOT EXISTS FOR (i:Incident) REQUIRE i.id IS UNIQUE;
+CREATE CONSTRAINT cost_record_id IF NOT EXISTS FOR (c:CostRecord) REQUIRE c.id IS UNIQUE;
 
 // Lookup indexes
 CREATE INDEX flight_number IF NOT EXISTS FOR (f:Flight) ON (f.flight_number);
@@ -265,6 +286,8 @@ CREATE INDEX passenger_flight IF NOT EXISTS FOR (p:Passenger) ON (p.flight_id);
 CREATE INDEX baggage_status IF NOT EXISTS FOR (b:Baggage) ON (b.status);
 CREATE INDEX incident_type IF NOT EXISTS FOR (i:Incident) ON (i.type);
 CREATE INDEX incident_status IF NOT EXISTS FOR (i:Incident) ON (i.status);
+CREATE INDEX cost_record_category IF NOT EXISTS FOR (c:CostRecord) ON (c.category);
+CREATE INDEX cost_record_sim_day IF NOT EXISTS FOR (c:CostRecord) ON (c.sim_day);
 ```
 
 ---

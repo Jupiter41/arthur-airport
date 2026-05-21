@@ -18,13 +18,14 @@ This module is consumed by:
 from __future__ import annotations
 
 import csv
-import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 # Default path inside container (mounted via docker-compose volume)
 _DEFAULT_BTS_PATH = "/app/data/bts/T100_2026.csv"

@@ -26,6 +26,7 @@ External world (simulated)
 
 Airport Digital Twin
   ├── 7 domain microservices  (Python / FastAPI)
+  ├── 1 cost-service           (Python / FastAPI, read-only financial layer)
   ├── 1 API gateway            (Node.js / Express)
   ├── 1 simulation orchestrator
   ├── Kafka event bus          (async inter-service communication)
@@ -47,6 +48,7 @@ Airport Digital Twin
 | `incident-service`  | Python / FastAPI  | 8005 | Hazard lifecycle, alert generation, cascade triggering                     |
 | `sim-orchestrator`  | Python / FastAPI  | 8006 | Simulation clock, schedule seeding, event injection                        |
 | `analysis-service`  | Python / FastAPI  | 8007 | Bottleneck detection, recommendations, what-if analysis, anomaly detection |
+| `cost-service`      | Python / FastAPI  | 8008 | Financial layer: cost accumulation, P&L, EU261 tracking, recommendations  |
 | `api-gateway`       | Node.js / Express | 3000 | REST aggregation, WebSocket fan-out, auth (JWT stub)                       |
 
 > **See also:** [ROUTES.md](ROUTES.md) for the full endpoint inventory,

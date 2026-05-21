@@ -313,3 +313,76 @@ export interface GroundVehicleSummary {
   utilisation_pct: Record<string, number>;
   pending_requests: number;
 }
+
+// ---------- Costs ----------
+export type CostCategory =
+  | "landing_fee"
+  | "gate_fee"
+  | "passenger_fee"
+  | "eu261_compensation"
+  | "crew_overtime"
+  | "holding_fuel"
+  | "ground_handling"
+  | "incident_direct"
+  | "incident_response"
+  | "staffing"
+  | "retail_revenue"
+  | "slot_revenue";
+
+export interface CostSummary {
+  sim_time: string | null;
+  total_cost_eur: number;
+  total_revenue_eur: number;
+  net_eur: number;
+  margin_pct: number;
+  by_category: Record<string, number>;
+  eu261_exposure_eur: number;
+}
+
+export interface CostPnL {
+  day: number;
+  total_cost_eur: number;
+  total_revenue_eur: number;
+  net_eur: number;
+  by_category: Record<string, number>;
+  cost_records: number;
+}
+
+export interface FlightCostBreakdown {
+  flight_id: string;
+  flight_number: string;
+  total_cost_eur: number;
+  total_revenue_eur: number;
+  items: Array<{
+    category: string;
+    amount_eur: number;
+    is_revenue: boolean;
+    description: string;
+  }>;
+}
+
+export interface HourlyCostPoint {
+  hour: number;
+  cost_eur: number;
+  revenue_eur: number;
+  net_eur: number;
+}
+
+export interface IncidentCostRanking {
+  incident_id: string;
+  type: string;
+  total_eur: number;
+  direct_eur: number;
+  response_eur: number;
+}
+
+export interface FinancialRecommendation {
+  action: string;
+  description: string;
+  cost_eur: number;
+  saving_eur: number;
+  net_benefit_eur: number;
+  confidence: number;
+  payback_sim_minutes: number;
+  expiry_sim_time: string;
+}

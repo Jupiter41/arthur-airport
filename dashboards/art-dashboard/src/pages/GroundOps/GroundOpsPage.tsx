@@ -1090,6 +1090,39 @@ export default function GroundOpsPage() {
     return m;
   }, [gates]);
 
+  const isLoading = queries.flights.isLoading && Object.keys(flights).length === 0;
+  const hasError = queries.flights.isError && Object.keys(flights).length === 0;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-400">
+        <div className="flex flex-col items-center gap-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+          <span>Loading ground operations…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-400">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <span className="text-red-400 text-lg">⚠️ Failed to load ground ops data</span>
+          <span className="text-sm text-gray-500">
+            The flight-service may not be running. Check that the simulation is active.
+          </span>
+          <button
+            onClick={() => queries.flights.refetch()}
+            className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm text-white"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
       <h2 className="text-lg font-bold text-white">Ground Operations — KART</h2>
