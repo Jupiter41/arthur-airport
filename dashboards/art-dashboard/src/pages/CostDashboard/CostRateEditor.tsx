@@ -3,9 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { costsApi } from "../../hooks/useApi";
 import { COST_PRESETS, EDITABLE_CATEGORIES } from "./constants";
 
-export function CostRateEditor() {
+export function CostRateModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<"preset" | "custom">("preset");
   const [customEdits, setCustomEdits] = useState<
     Record<string, Record<string, number>>
@@ -15,7 +14,6 @@ export function CostRateEditor() {
   const { data: currentRates, isLoading } = useQuery({
     queryKey: ["costs", "rates"],
     queryFn: () => costsApi.rates(),
-    enabled: expanded,
   });
 
   const mutation = useMutation({
@@ -58,21 +56,30 @@ export function CostRateEditor() {
   );
 
   return (
-    <div className="bg-surface-card border border-panel-border rounded-xl p-4">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between"
-      >
-        <h2 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-          <span>⚙️</span> Cost Rate Configuration
-        </h2>
-        <span className="text-gray-400 text-xs">
-          {expanded ? "▾ Collapse" : "▸ Expand"}
-        </span>
-      </button>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Cost Rate Configuration"
+    >
+      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            ⚙️ Cost Rate Configuration
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white text-xl leading-none px-2 py-1 rounded hover:bg-gray-700 transition-colors"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
 
-      {expanded && (
-        <div className="mt-4 space-y-4">
+        <div className="space-y-4">
           {/* Mode toggle */}
           <div className="flex gap-2">
             <button
@@ -226,7 +233,7 @@ export function CostRateEditor() {
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

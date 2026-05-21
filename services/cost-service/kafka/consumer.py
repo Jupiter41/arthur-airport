@@ -55,10 +55,10 @@ async def run_consumer() -> None:
     _consumer = make_consumer()
     _consumer.subscribe(TOPICS)
     _running = True
-    _consumer_health.mark_started()
-    logger.info("kafka consumer started", topics=TOPICS)
+    logger.info("kafka consumer started", topics=TOPICS, group="cost-service")
 
     loop = asyncio.get_event_loop()
+    msg_count = 0
 
     while _running:
         msg = await loop.run_in_executor(None, lambda: _consumer.poll(1.0))
@@ -67,6 +67,10 @@ async def run_consumer() -> None:
         if msg.error():
             logger.warning("kafka consumer error", error=str(msg.error()))
             continue
+
+        msg_count += 1
+        if msg_count <= 3 or msg_count % 100 == 0:
+            logger.info("kafka message received", count=msg_count, topic=msg.topic())
 
         try:
             envelope = json.loads(msg.value().decode("utf-8"))
@@ -79,7 +83,7 @@ async def run_consumer() -> None:
         payload = envelope.get("payload", {})
         sim_day = payload.get("day_of_sim", 1)
 
-        _consumer_health.record_message(event_type)
+        _consumer_health.mark_message()
 
         try:
             match event_type:
@@ -113,4 +117,4 @@ def is_consumer_running() -> bool:
 
 
 def get_consumer_health() -> dict:
-    return _consumer_health.summary()
+    return _consumer_health.status()

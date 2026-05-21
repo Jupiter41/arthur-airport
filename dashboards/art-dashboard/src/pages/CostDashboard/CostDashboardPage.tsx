@@ -3,6 +3,8 @@ import { useCostDashboardQueries } from "../../hooks/useQueries";
 import { useSimStore } from "../../stores/simStore";
 import { formatEur } from "../../utils/formatCurrency";
 import { KpiCard } from "../../components/KpiCard";
+import { ExportMenu } from "../../components/ExportMenu";
+import { exportData } from "../../utils/exportData";
 import {
   LoadingState,
   ErrorState,
@@ -13,7 +15,8 @@ import { HourlyCurveChart } from "./HourlyCurveChart";
 import { IncidentRankingTable } from "./IncidentRankingTable";
 import { RecommendationsPanel } from "./RecommendationsPanel";
 import { CategoryBarChart } from "./CategoryBarChart";
-import { CostRateEditor } from "./CostRateEditor";
+import { CostRateModal } from "./CostRateEditor";
+import { AutonomousModal } from "./AutonomousModal";
 import type {
   CostSummary,
   HourlyCostPoint,
@@ -26,6 +29,8 @@ import type {
 export default function CostDashboardPage() {
   const dayNumber = useSimStore((s) => s.status.day_number);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [showRateModal, setShowRateModal] = useState(false);
+  const [showAutonomousModal, setShowAutonomousModal] = useState(false);
   const day = selectedDay ?? dayNumber ?? 1;
 
   const { summary, pnl, hourly, incidentRanking, recommendations } =
@@ -79,6 +84,40 @@ export default function CostDashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAutonomousModal(true)}
+            className="text-xs bg-purple-700/80 hover:bg-purple-600 text-white px-2.5 py-1.5 rounded transition-colors"
+            title="Autonomous Operations & Incident Injection"
+          >
+            🤖 Autonomous
+          </button>
+          <button
+            onClick={() => setShowRateModal(true)}
+            className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-2.5 py-1.5 rounded transition-colors"
+            title="Configure cost rates and profiles"
+          >
+            ⚙️ Rates
+          </button>
+          <ExportMenu
+            onExport={(fmt) => {
+              const rows = hourlyData.map((h) => ({
+                day,
+                hour: h.hour,
+                cost_eur: h.cost_eur,
+                revenue_eur: h.revenue_eur,
+                net_eur: h.net_eur,
+              }));
+              // Add a summary row
+              rows.push({
+                day,
+                hour: -1,
+                cost_eur: totalCost,
+                revenue_eur: totalRevenue,
+                net_eur: net,
+              });
+              exportData(rows, `cost-dashboard-day-${day}`, fmt);
+            }}
+          />
           <label className="text-xs text-gray-400">Day:</label>
           <input
             type="number"
@@ -195,8 +234,15 @@ export default function CostDashboardPage() {
         <RecommendationsPanel recs={recsData} />
       </div>
 
-      {/* Cost Rate Editor */}
-      <CostRateEditor />
+      {/* Cost Rate Modal */}
+      {showRateModal && (
+        <CostRateModal onClose={() => setShowRateModal(false)} />
+      )}
+
+      {/* Autonomous Operations Modal */}
+      {showAutonomousModal && (
+        <AutonomousModal onClose={() => setShowAutonomousModal(false)} />
+      )}
     </div>
   );
 }

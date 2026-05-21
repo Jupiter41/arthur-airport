@@ -353,6 +353,26 @@ export default function ScenariosPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
+                  <ExportMenu
+                    onExport={(fmt) => {
+                      const payload = {
+                        name: definition.name,
+                        description: definition.description,
+                        sim_speed: definition.sim_speed,
+                        start_time: definition.start_time,
+                        duration_sim_minutes: definition.duration_sim_minutes,
+                        seed_overrides: definition.seed_overrides,
+                        events: definition.events,
+                        expected_outcomes: definition.expected_outcomes,
+                        is_base: definition.is_base,
+                      };
+                      exportData(
+                        [payload],
+                        `scenario-def-${definition.name}`,
+                        fmt,
+                      );
+                    }}
+                  />
                   <button
                     className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded font-medium transition-colors"
                     onClick={() => openEditor("fork", definition)}
