@@ -97,15 +97,15 @@ export function PassengerComparisonInline() {
               {deltas && (
                 <div
                   className={`text-[10px] font-medium ${
-                    Math.abs(deltas.pct_difference as number) > 10
+                    Math.abs(Number(deltas.pct_difference) || 0) > 10
                       ? "text-amber-400"
                       : "text-emerald-400"
                   }`}
                 >
-                  Δ {(deltas.total_passengers as number) > 0 ? "+" : ""}
-                  {(deltas.total_passengers as number).toLocaleString()} (
-                  {(deltas.pct_difference as number) > 0 ? "+" : ""}
-                  {String(deltas.pct_difference)}%)
+                  Δ {(Number(deltas.total_passengers) || 0) > 0 ? "+" : ""}
+                  {(Number(deltas.total_passengers) || 0).toLocaleString()} (
+                  {(Number(deltas.pct_difference) || 0) > 0 ? "+" : ""}
+                  {Number(deltas.pct_difference) || 0}%)
                 </div>
               )}
             </>

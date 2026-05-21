@@ -79,7 +79,16 @@ async def lifespan(app: FastAPI):
     await consumer_state.rebuild_from_neo4j()
 
     # 7. Start Kafka consumer as background task
-    asyncio.create_task(run_consumer())
+    consumer_task = asyncio.create_task(run_consumer())
+
+    def _consumer_done(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("kafka consumer crashed", exc_info=exc)
+
+    consumer_task.add_done_callback(_consumer_done)
 
     logger.info("baggage-service startup complete")
     yield

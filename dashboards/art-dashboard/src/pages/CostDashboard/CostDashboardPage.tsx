@@ -16,13 +16,13 @@ import { IncidentRankingTable } from "./IncidentRankingTable";
 import { RecommendationsPanel } from "./RecommendationsPanel";
 import { CategoryBarChart } from "./CategoryBarChart";
 import { CostRateModal } from "./CostRateEditor";
-import { AutonomousModal } from "./AutonomousModal";
 import type {
   CostSummary,
   HourlyCostPoint,
   IncidentCostRanking,
   FinancialRecommendation,
 } from "../../types";
+import { AutonomousModal } from "./AutonomousModal";
 
 /* ──────── Main Page ──────── */
 

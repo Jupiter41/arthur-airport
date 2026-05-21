@@ -86,6 +86,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     useConnectionStore.getState().setApiConnected(true, null);
+    if (res.status === 204 || res.headers.get("content-length") === "0") {
+      return undefined as unknown as T;
+    }
     return res.json() as Promise<T>;
   } catch (err) {
     const message = err instanceof Error ? err.message : "API request failed";
@@ -512,7 +515,13 @@ export interface DataSourceStatus {
   id: string;
   name: string;
   service: string;
-  type: "weather" | "flights" | "passengers" | "baggage" | "incidents" | "infrastructure";
+  type:
+    | "weather"
+    | "flights"
+    | "passengers"
+    | "baggage"
+    | "incidents"
+    | "infrastructure";
   current_source: string;
   available_sources: string[];
   status: "active" | "degraded" | "unavailable";

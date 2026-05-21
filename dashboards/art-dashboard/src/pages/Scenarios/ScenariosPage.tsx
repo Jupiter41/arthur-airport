@@ -511,7 +511,9 @@ export default function ScenariosPage() {
                       </div>
                       <div className="bg-gray-800 rounded p-3 text-center">
                         <div className="text-2xl font-bold text-blue-400">
-                          {active.latest_metrics.avg_delay_minutes.toFixed(1)}
+                          {(
+                            active.latest_metrics.avg_delay_minutes ?? 0
+                          ).toFixed(1)}
                         </div>
                         <div className="text-xs text-gray-400">
                           Avg delay (min)

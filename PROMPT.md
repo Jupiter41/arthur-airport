@@ -24,11 +24,10 @@ Before doing any edit, do this:
 - ALWAYS use light mode for local development to speed up image building. Only use full mode if need to test the full integration.
 - ALWAYS correct all bugs found, even those unrelated to the current task, to keep the codebase clean and maintainable.
 - ALWAYS update data schemas in necessary files when adding new functionnalities (.md, mermaid files etc.).
+- ALWAYS address all issues and then write lessons-learned file at the end.
 
-The current task is "Stabilize architecture, review new functionnalities and correct bugs and gaps". Your mission is to implement:
+The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
 
-- I think a few things that were implemented recently disappeared or need to be stabilized. You can explore the recent lessons learned to identify them. For example, the user can't export a scenario in the scenario page and they are super slow to start, in data source there is no comparison thing for BTS & Incident etc.
-- The cost page display no cost in any graph. The dashboard should be live (at least some graphs, it's fine if it needs to wait for some plots): user should see revenue/expenses at it goes.
-- Allow user to export cost dashboard data as CSV, like in the other pages.
-- It's hard to use the cost rate config because it's a small section at the end of the page. Maybe it could be a tooltip openning a modal to select a cost profile or manually edit it.
-- Maybe add a tooltip opening a modal for the autonomous panel too, to allow the user to inject a bottleneck/incident and showcase the autonomous recommendations impact.
+- Cost dashboard graph restart at midnight each time a day ends, allow user to go back to the previous days too.
+- Implement ROADMAP_PLANNING.md with capacity planning scenarios.
+- The task above is very complex, proceed by plans and implement one by one, don't ask for human validation every time, works with TDD and validate along the way.

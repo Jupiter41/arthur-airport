@@ -139,7 +139,16 @@ async def lifespan(app: FastAPI):
         init_kafka_consumer()
         start_consumer()
 
-    asyncio.create_task(clock.run_clock_loop())
+    clock_task = asyncio.create_task(clock.run_clock_loop())
+
+    def _clock_done(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("clock loop crashed", exc_info=exc)
+
+    clock_task.add_done_callback(_clock_done)
 
     logger.info("sim-orchestrator startup complete — clock running")
     yield

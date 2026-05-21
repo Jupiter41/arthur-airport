@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { costsApi } from "../../hooks/useApi";
 import { COST_PRESETS, EDITABLE_CATEGORIES } from "./constants";
@@ -10,6 +10,13 @@ export function CostRateModal({ onClose }: { onClose: () => void }) {
     Record<string, Record<string, number>>
   >({});
   const [feedback, setFeedback] = useState<string | null>(null);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    };
+  }, []);
 
   const { data: currentRates, isLoading } = useQuery({
     queryKey: ["costs", "rates"],
@@ -22,7 +29,8 @@ export function CostRateModal({ onClose }: { onClose: () => void }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["costs"] });
       setFeedback("✓ Rates updated — new costs will use the updated rates.");
-      setTimeout(() => setFeedback(null), 5000);
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+      feedbackTimer.current = setTimeout(() => setFeedback(null), 5000);
     },
     onError: (e) => {
       setFeedback(

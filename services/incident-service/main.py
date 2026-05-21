@@ -68,7 +68,16 @@ async def lifespan(app: FastAPI):
     set_ws_broadcast(ws_broadcast)
 
     # 6. Start Kafka consumer as background task
-    asyncio.create_task(run_consumer())
+    consumer_task = asyncio.create_task(run_consumer())
+
+    def _consumer_done(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("kafka consumer crashed", exc_info=exc)
+
+    consumer_task.add_done_callback(_consumer_done)
 
     logger.info("incident-service startup complete")
     yield

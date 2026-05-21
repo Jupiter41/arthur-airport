@@ -201,6 +201,9 @@ def compute_retail_revenue_per_tick(
 # ─── Event handlers ─────────────────────────────────────────────
 
 
+MAX_SINGLE_COST_EUR = 1_000_000  # sanity guard — no single record should exceed €1M
+
+
 async def _write_and_emit(
     record: dict,
     flight_id: str | None = None,
@@ -208,6 +211,16 @@ async def _write_and_emit(
     terminal_id: str | None = None,
 ) -> None:
     """Write CostRecord to Neo4j, link relationships, update totals, emit Kafka event."""
+    amount = record["amount_eur"]
+    if abs(amount) > MAX_SINGLE_COST_EUR:
+        logger.warning(
+            "cost record exceeds sanity limit — skipped",
+            category=record["category"],
+            amount_eur=amount,
+            limit=MAX_SINGLE_COST_EUR,
+        )
+        return
+
     await write_cost_record(record)
     _record_cost(record["amount_eur"], record["category"], record["is_revenue"], sim_time=record.get("sim_time"))
 

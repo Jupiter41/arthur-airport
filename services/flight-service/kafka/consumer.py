@@ -464,7 +464,9 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         m_vehicle_util.labels(vehicle_type=vtype).set(pct)
 
     # 5. BULK mode: emit periodic BulkStateSnapshot
-    if is_bulk:
+    #    Also emit on BULK→non-BULK transition (forced flush)
+    leaving_bulk = _state.last_mode == "BULK" and _state.current_mode != "BULK"
+    if is_bulk or leaving_bulk:
         await _maybe_emit_flight_bulk_snapshot(sim_time, status_counts)
 
 

@@ -100,7 +100,7 @@ async def sim_status():
         "mode": state.get("mode", "REALTIME"),
         "day_number": state["day_number"],
         "tick_number": state["tick_number"],
-        "real_elapsed_seconds": state["tick_number"],
+        "real_elapsed_seconds": int(state["tick_number"] * 60 / max(state["speed_multiplier"], 1)),
         "sim_elapsed_minutes": state["tick_number"],
         "active_incidents": 0,
         "weather_category": "CAVOK",

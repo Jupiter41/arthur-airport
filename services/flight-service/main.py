@@ -85,12 +85,30 @@ async def lifespan(app: FastAPI):
     await consumer_state.rebuild_from_neo4j()
 
     # 7. Start Kafka consumer as background task
-    asyncio.create_task(run_consumer())
+    consumer_task = asyncio.create_task(run_consumer())
+
+    def _consumer_done(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("kafka consumer crashed", exc_info=exc)
+
+    consumer_task.add_done_callback(_consumer_done)
 
     # 8. Start ADS-B polling if enabled (Phase 1.1)
     if os.getenv("ADSB_ENABLED", "false").lower() == "true":
         from services.adsb import get_adsb_cache
-        asyncio.create_task(get_adsb_cache().start_polling())
+        adsb_task = asyncio.create_task(get_adsb_cache().start_polling())
+
+        def _adsb_done(task: asyncio.Task) -> None:
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if exc:
+                logger.error("adsb polling crashed", exc_info=exc)
+
+        adsb_task.add_done_callback(_adsb_done)
 
     logger.info("flight-service startup complete")
     yield
