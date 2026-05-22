@@ -20,6 +20,7 @@ SERVICE_PATHS = {
     "sim": os.path.join(ROOT, "services", "sim-orchestrator"),
     "analysis": os.path.join(ROOT, "services", "analysis-service"),
     "cost": os.path.join(ROOT, "services", "cost-service"),
+    "planning": os.path.join(ROOT, "services", "planning-service"),
 }
 
 
@@ -38,7 +39,7 @@ def import_service_module(service: str, module_path: str) -> ModuleType:
     
     # Clear cached services package and other per-service modules
     # that can collide between services sharing the same module names
-    _CLEAR_PREFIXES = ("services", "db", "kafka", "routers", "metrics")
+    _CLEAR_PREFIXES = ("services", "db", "kafka", "routers", "metrics", "adapters")
     for k in list(sys.modules):
         for prefix in _CLEAR_PREFIXES:
             if k == prefix or k.startswith(f"{prefix}."):

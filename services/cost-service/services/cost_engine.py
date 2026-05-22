@@ -34,6 +34,7 @@ _running_totals: dict = {
     "by_category": defaultdict(float),
     "eu261_exposure": 0.0,
     "last_updated": None,
+    "sim_day": 1,
 }
 
 # Track holding costs per flight to batch writes (every 5 sim-min)
@@ -55,12 +56,30 @@ def init_running_totals(totals: dict) -> None:
     _running_totals["total_cost_eur"] = totals.get("total_cost_eur", 0.0)
     _running_totals["total_revenue_eur"] = totals.get("total_revenue_eur", 0.0)
     _running_totals["net_eur"] = totals.get("net_eur", 0.0)
+    _running_totals["sim_day"] = totals.get("sim_day", 1)
     for cat, val in totals.get("by_category", {}).items():
         _running_totals["by_category"][cat] = val
 
 
-def _record_cost(amount: float, category: str, is_revenue: bool = False, *, sim_time: str | None = None) -> None:
-    """Update in-memory running totals."""
+def reset_for_new_day(new_day: int) -> None:
+    """Reset running totals when a new sim day starts (midnight boundary)."""
+    global _last_staffing_hour
+    logger.info("day transition — resetting running totals", old_day=_running_totals["sim_day"], new_day=new_day)
+    _running_totals["total_cost_eur"] = 0.0
+    _running_totals["total_revenue_eur"] = 0.0
+    _running_totals["net_eur"] = 0.0
+    _running_totals["by_category"] = defaultdict(float)
+    _running_totals["eu261_exposure"] = 0.0
+    _running_totals["sim_day"] = new_day
+    _last_staffing_hour = -1
+
+
+def _record_cost(amount: float, category: str, is_revenue: bool = False, *, sim_time: str | None = None, sim_day: int | None = None) -> None:
+    """Update in-memory running totals. Resets when sim_day changes."""
+    # Day transition: reset running totals for the new day
+    if sim_day is not None and sim_day != _running_totals["sim_day"]:
+        reset_for_new_day(sim_day)
+
     if is_revenue:
         _running_totals["total_revenue_eur"] += amount
     else:
@@ -222,7 +241,7 @@ async def _write_and_emit(
         return
 
     await write_cost_record(record)
-    _record_cost(record["amount_eur"], record["category"], record["is_revenue"], sim_time=record.get("sim_time"))
+    _record_cost(record["amount_eur"], record["category"], record["is_revenue"], sim_time=record.get("sim_time"), sim_day=record.get("sim_day"))
 
     if flight_id:
         await link_cost_to_flight(record["id"], flight_id)

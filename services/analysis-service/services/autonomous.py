@@ -48,6 +48,11 @@ MAX_ACTION_LOG = 200
 # Last check time to enforce interval
 _last_check_sim_time: datetime | None = None
 
+# Cooldown tracking: bottleneck_id → sim_time when action was last applied
+# Prevents the same recommendation from being re-applied every cycle
+_bottleneck_cooldowns: dict[str, datetime] = {}
+COOLDOWN_MINUTES = 30  # Don't re-apply for the same bottleneck within this window
+
 
 def get_settings() -> AutonomousSettings:
     return _settings
@@ -98,14 +103,32 @@ def evaluate_and_apply(
     """P2-4-1 + P2-4-2: Evaluate and potentially auto-apply top recommendations.
 
     Returns a list of actions taken (empty if none met threshold).
+    Includes cooldown logic to prevent the same bottleneck from being
+    actioned repeatedly.
     """
     if not _settings.enabled:
         return []
+
+    # Expire old cooldowns
+    expired = [
+        bid for bid, t in _bottleneck_cooldowns.items()
+        if (sim_time - t).total_seconds() > COOLDOWN_MINUTES * 60
+    ]
+    for bid in expired:
+        del _bottleneck_cooldowns[bid]
 
     actions_taken = []
 
     for rec in recommendations:
         if rec.applied:
+            continue
+
+        # Skip if this bottleneck is still in cooldown from a recent action
+        if rec.bottleneck_id in _bottleneck_cooldowns:
+            logger.debug(
+                "Autonomous: skipping %s — bottleneck %s in cooldown",
+                rec.action_type, rec.bottleneck_id,
+            )
             continue
 
         # P2-4-4: Safety guard check
@@ -136,6 +159,9 @@ def evaluate_and_apply(
         # Auto-apply this recommendation
         rec.applied = True
         rec.applied_at = sim_time
+
+        # Record cooldown so we don't re-apply for this bottleneck
+        _bottleneck_cooldowns[rec.bottleneck_id] = sim_time
 
         log_entry = {
             "id": f"auto-{uuid4().hex[:12]}",

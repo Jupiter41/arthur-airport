@@ -9,6 +9,7 @@ import {
   type CompareResult,
   type HistoryEntry,
 } from "./constants";
+import { SourceComparison, SourceComparisonColumn, SourceComparisonRow } from "../../components/SourceComparison";
 
 /* ──────── Mini SVG Chart for source comparison ──────── */
 
@@ -93,11 +94,23 @@ function MiniChart({
   );
 }
 
+/* ──────── Weather field metadata ──────── */
+
+const WEATHER_FIELD_META: Record<
+  string,
+  { label: string; unit: string }
+> = {
+  visibility_m: { label: "Visibility", unit: "m" },
+  wind_speed_kt: { label: "Wind Speed", unit: "kt" },
+  wind_direction: { label: "Wind Direction", unit: "°" },
+  temperature_c: { label: "Temperature", unit: "°C" },
+  qnh_hpa: { label: "QNH (Pressure)", unit: "hPa" },
+};
+
 /* ──────── Comparison Modal ──────── */
 
 function ComparisonModal({
   history,
-  comparison,
   chartField,
   setChartField,
   sourceNames,
@@ -105,7 +118,6 @@ function ComparisonModal({
   onClose,
 }: {
   history: HistoryEntry[];
-  comparison: CompareResult | null;
   chartField: string;
   setChartField: (f: string) => void;
   sourceNames: string[];
@@ -113,6 +125,47 @@ function ComparisonModal({
   onClose: () => void;
 }) {
   const backdropRef = useRef<HTMLDivElement>(null);
+  const fieldMeta = WEATHER_FIELD_META[chartField] ?? {
+    label: chartField,
+    unit: "",
+  };
+
+  const sources = sourceNames;
+  const width = 600;
+  const height = 220;
+  const pad = { top: 20, right: 20, bottom: 35, left: 60 };
+
+  // Compute scales
+  let allValues: number[] = [];
+  for (const entry of history) {
+    for (const src of sources) {
+      const val = entry.sources[src]?.[chartField];
+      if (typeof val === "number") allValues.push(val);
+    }
+  }
+  if (allValues.length === 0) allValues = [0, 1];
+  const yMin = Math.min(...allValues);
+  const yMax = Math.max(...allValues);
+  const yRange = yMax - yMin || 1;
+
+  const xScale = (i: number) =>
+    pad.left +
+    (i / Math.max(1, history.length - 1)) * (width - pad.left - pad.right);
+  const yScale = (v: number) =>
+    pad.top + (1 - (v - yMin) / yRange) * (height - pad.top - pad.bottom);
+
+  // Y-axis ticks
+  const yTicks = Array.from({ length: 5 }, (_, i) =>
+    yMin + (yRange * i) / 4,
+  );
+
+  // X-axis tick labels
+  const xTicks =
+    history.length >= 2
+      ? [0, Math.floor(history.length / 2), history.length - 1]
+      : history.length === 1
+        ? [0]
+        : [];
 
   return (
     <div
@@ -123,10 +176,10 @@ function ComparisonModal({
       }}
     >
       <div
-        className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-slate-900 border border-slate-700 shadow-2xl p-6"
+        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl bg-slate-900 border border-slate-700 shadow-2xl p-6"
         role="dialog"
         aria-modal="true"
-        aria-label="Weather source comparison"
+        aria-label="Weather source comparison chart"
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-slate-100">
@@ -135,6 +188,7 @@ function ComparisonModal({
           <button
             onClick={onClose}
             className="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm"
+            aria-label="Close"
           >
             ✕ Close
           </button>
@@ -142,38 +196,136 @@ function ComparisonModal({
 
         {/* Field selector */}
         <div className="flex items-center gap-3 mb-4">
-          <span className="text-xs text-slate-400">Chart field:</span>
+          <span className="text-xs text-slate-400">Metric:</span>
           <select
             value={chartField}
             onChange={(e) => setChartField(e.target.value)}
             className="text-xs bg-slate-800 text-slate-200 rounded px-3 py-1.5 border border-slate-600"
           >
-            {COMPARE_FIELDS.filter((f) => f !== "category").map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
+            {COMPARE_FIELDS.filter((f) => f !== "category").map((f) => {
+              const meta = WEATHER_FIELD_META[f];
+              return (
+                <option key={f} value={f}>
+                  {meta ? `${meta.label} (${meta.unit})` : f}
+                </option>
+              );
+            })}
           </select>
         </div>
 
-        {/* Large chart */}
+        {/* Chart */}
         {history.length < 2 ? (
           <div className="text-sm text-slate-500 py-8 text-center bg-slate-800/50 rounded-lg">
             Collecting data points… Chart will appear after 2+ comparisons
             (auto-refreshes every 15s).
           </div>
         ) : (
-          <div className="relative h-64 bg-slate-800/50 rounded-lg p-3 mb-4">
-            <MiniChart
-              history={history}
-              field={chartField}
-              sourceColors={SOURCE_CHART_COLORS}
-            />
+          <div className="relative bg-slate-800/50 rounded-lg p-3 mb-4">
+            <svg
+              viewBox={`0 0 ${width} ${height}`}
+              className="w-full"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              {/* Y-axis label */}
+              <text
+                x={12}
+                y={height / 2}
+                textAnchor="middle"
+                className="fill-slate-400"
+                fontSize="10"
+                transform={`rotate(-90, 12, ${height / 2})`}
+              >
+                {fieldMeta.label} ({fieldMeta.unit})
+              </text>
+              {/* Y-axis ticks + grid lines */}
+              {yTicks.map((tick, i) => (
+                <g key={i}>
+                  <line
+                    x1={pad.left}
+                    x2={width - pad.right}
+                    y1={yScale(tick)}
+                    y2={yScale(tick)}
+                    stroke="#334155"
+                    strokeDasharray="3,3"
+                  />
+                  <text
+                    x={pad.left - 5}
+                    y={yScale(tick) + 3}
+                    textAnchor="end"
+                    className="fill-slate-500"
+                    fontSize="9"
+                  >
+                    {typeof tick === "number" ? tick.toFixed(1) : ""}
+                  </text>
+                </g>
+              ))}
+              {/* X-axis ticks */}
+              {xTicks.map((idx) => (
+                <text
+                  key={idx}
+                  x={xScale(idx)}
+                  y={height - 5}
+                  textAnchor="middle"
+                  className="fill-slate-500"
+                  fontSize="9"
+                >
+                  {new Date(history[idx].timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </text>
+              ))}
+              <text
+                x={width / 2}
+                y={height}
+                textAnchor="middle"
+                className="fill-slate-400"
+                fontSize="10"
+              >
+                Time
+              </text>
+              {/* Lines + data point markers */}
+              {sources.map((src) => {
+                const points = history
+                  .map((entry, i) => {
+                    const val = entry.sources[src]?.[chartField];
+                    if (typeof val !== "number") return null;
+                    return { x: xScale(i), y: yScale(val), val };
+                  })
+                  .filter(Boolean) as { x: number; y: number; val: number }[];
+                if (points.length < 2) return null;
+                return (
+                  <g key={src}>
+                    <polyline
+                      points={points.map((p) => `${p.x},${p.y}`).join(" ")}
+                      fill="none"
+                      stroke={SOURCE_CHART_COLORS[src] ?? "#888"}
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                    />
+                    {points.map((p, i) => (
+                      <circle
+                        key={i}
+                        cx={p.x}
+                        cy={p.y}
+                        r="3"
+                        fill={SOURCE_CHART_COLORS[src] ?? "#888"}
+                      >
+                        <title>
+                          {fieldMeta.label}: {p.val}
+                          {fieldMeta.unit ? ` ${fieldMeta.unit}` : ""}
+                        </title>
+                      </circle>
+                    ))}
+                  </g>
+                );
+              })}
+            </svg>
           </div>
         )}
 
         {/* Legend */}
-        <div className="flex items-center gap-6 mb-6 justify-center">
+        <div className="flex items-center gap-6 justify-center">
           {sourceNames.map((src) => (
             <div
               key={src}
@@ -194,102 +346,18 @@ function ComparisonModal({
             </div>
           ))}
         </div>
-
-        {/* Full comparison table */}
-        {comparison && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-700">
-                  <th className="text-left py-2 px-3 text-slate-400 font-medium">
-                    Field
-                  </th>
-                  {sourceNames.map((src) => (
-                    <th
-                      key={src}
-                      className="text-left py-2 px-3 font-medium"
-                      style={{ color: SOURCE_CHART_COLORS[src] ?? "#94a3b8" }}
-                    >
-                      {SOURCE_DESCRIPTIONS[src]?.icon ?? "❓"}{" "}
-                      {SOURCE_DESCRIPTIONS[src]?.label ?? src}
-                    </th>
-                  ))}
-                  <th className="text-left py-2 px-3 text-slate-400 font-medium">
-                    Δ max
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARE_FIELDS.map((field) => {
-                  const values = sourceNames.map(
-                    (src) =>
-                      (
-                        comparison.sources[src] as unknown as Record<
-                          string,
-                          unknown
-                        >
-                      )?.[field],
-                  );
-                  const allSame =
-                    values.every((v) => v === values[0]) &&
-                    values.every((v) => v != null);
-                  const numValues = values.filter(
-                    (v) => typeof v === "number",
-                  ) as number[];
-                  const maxDiff =
-                    numValues.length >= 2
-                      ? Math.round(
-                          (Math.max(...numValues) - Math.min(...numValues)) *
-                            10,
-                        ) / 10
-                      : null;
-
-                  return (
-                    <tr
-                      key={field}
-                      className={`border-b border-slate-800 ${!allSame ? "bg-amber-900/10" : ""}`}
-                    >
-                      <td className="py-2 px-3 font-mono text-slate-300">
-                        {field}
-                      </td>
-                      {sourceNames.map((src) => {
-                        const srcData = comparison.sources[src];
-                        if (!srcData?.available) {
-                          return (
-                            <td
-                              key={src}
-                              className="py-2 px-3 text-slate-600 italic"
-                            >
-                              N/A
-                            </td>
-                          );
-                        }
-                        return (
-                          <td key={src} className="py-2 px-3 text-slate-200">
-                            {String(
-                              (srcData as unknown as Record<string, unknown>)?.[
-                                field
-                              ] ?? "—",
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="py-2 px-3 text-amber-400 text-xs">
-                        {maxDiff !== null && !allSame ? `Δ${maxDiff}` : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
 /* ──────── Weather Comparison Panel ──────── */
+
+const SOURCE_COLORS: Record<string, string> = {
+  simulated: "text-cyan-400",
+  historical: "text-amber-400",
+  live: "text-emerald-400",
+};
 
 export function WeatherComparisonPanel({
   currentSource,
@@ -342,137 +410,54 @@ export function WeatherComparisonPanel({
     ? Object.keys(comparison.sources)
     : ["simulated", "historical", "live"];
 
-  const SOURCE_COLORS: Record<string, string> = {
-    simulated: "text-cyan-400",
-    historical: "text-amber-400",
-    live: "text-emerald-400",
-  };
+  // Build columns and rows for the shared component
+  const columns: SourceComparisonColumn[] = sourceNames.map((src) => ({
+    key: src,
+    label: SOURCE_DESCRIPTIONS[src]?.label ?? src,
+    headerClass: SOURCE_COLORS[src] ?? "text-slate-400",
+    icon: SOURCE_DESCRIPTIONS[src]?.icon ?? "❓",
+    isActive: src === currentSource,
+  }));
 
+  const rows: SourceComparisonRow[] = comparison
+    ? COMPARE_FIELDS.map((field) => ({
+        field,
+        values: Object.fromEntries(
+          sourceNames.map((src) => {
+            const srcData = comparison.sources[src];
+            if (!srcData?.available) return [src, null];
+            const raw = (srcData as unknown as Record<string, unknown>)?.[
+              field
+            ];
+            const val =
+              typeof raw === "number" || typeof raw === "string"
+                ? raw
+                : raw != null
+                  ? String(raw)
+                  : null;
+            return [src, val];
+          }),
+        ),
+      }))
+    : [];
+
+  // Chart modal rendered via portal
   return (
-    <div className="mt-4 p-4 rounded-xl bg-slate-800/60 border border-slate-700/50">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-slate-200">
-          📊 Source Comparison
-        </h3>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowModal(true)}
-            className="text-[10px] px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-          >
-            📈 Chart
-          </button>
-          <button
-            onClick={fetchComparison}
-            disabled={loading}
-            className="text-[10px] px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors disabled:opacity-40"
-          >
-            {loading ? "..." : "↻ Refresh"}
-          </button>
-        </div>
-      </div>
-
-      <p className="text-[10px] text-slate-500 mb-3">
-        Non-destructive comparison — reads from all sources without switching
-        the active one. Active:{" "}
-        <span className="text-slate-300">{currentSource}</span>
-      </p>
-
-      {comparison && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <th className="text-left py-2 px-2 text-slate-400 font-medium">
-                  Field
-                </th>
-                {sourceNames.map((src) => (
-                  <th
-                    key={src}
-                    className={`text-left py-2 px-2 font-medium ${SOURCE_COLORS[src] ?? "text-slate-400"}`}
-                  >
-                    {SOURCE_DESCRIPTIONS[src]?.icon ?? "❓"}{" "}
-                    {SOURCE_DESCRIPTIONS[src]?.label ?? src}
-                    {src === currentSource && (
-                      <span className="ml-1 text-[8px] bg-accent/20 text-accent px-1 rounded">
-                        active
-                      </span>
-                    )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARE_FIELDS.map((field) => {
-                const values = sourceNames.map(
-                  (src) =>
-                    (
-                      comparison.sources[src] as unknown as Record<
-                        string,
-                        unknown
-                      >
-                    )?.[field],
-                );
-                const allSame =
-                  values.every((v) => v === values[0]) &&
-                  values.every((v) => v != null);
-                const numValues = values.filter(
-                  (v) => typeof v === "number",
-                ) as number[];
-                const maxDiff =
-                  numValues.length >= 2
-                    ? Math.round(
-                        (Math.max(...numValues) - Math.min(...numValues)) * 10,
-                      ) / 10
-                    : null;
-
-                return (
-                  <tr
-                    key={field}
-                    className={`border-b border-slate-800 ${!allSame ? "bg-amber-900/10" : ""}`}
-                  >
-                    <td className="py-1.5 px-2 font-mono text-slate-300">
-                      {field}
-                    </td>
-                    {sourceNames.map((src) => {
-                      const srcData = comparison.sources[src];
-                      if (!srcData?.available) {
-                        return (
-                          <td
-                            key={src}
-                            className="py-1.5 px-2 text-slate-600 italic"
-                          >
-                            N/A
-                          </td>
-                        );
-                      }
-                      return (
-                        <td key={src} className="py-1.5 px-2 text-slate-200">
-                          {String(
-                            (srcData as unknown as Record<string, unknown>)?.[
-                              field
-                            ] ?? "—",
-                          )}
-                        </td>
-                      );
-                    })}
-                    {maxDiff !== null && !allSame && (
-                      <td className="py-1.5 px-2 text-amber-400 text-[10px]">
-                        Δ{maxDiff}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
+    <>
+      <SourceComparison
+        source="Weather"
+        columns={columns}
+        rows={rows}
+        graphEnabled={true}
+        onGraphClick={() => setShowModal(true)}
+        loading={loading}
+        onRefresh={fetchComparison}
+        description={`Non-destructive comparison — reads from all sources without switching the active one. Active: ${currentSource}`}
+      />
       {showModal &&
         createPortal(
           <ComparisonModal
             history={history}
-            comparison={comparison}
             chartField={chartField}
             setChartField={setChartField}
             sourceNames={sourceNames}
@@ -481,12 +466,6 @@ export function WeatherComparisonPanel({
           />,
           document.body,
         )}
-
-      {!comparison && !loading && (
-        <div className="text-xs text-slate-500 py-3 text-center">
-          Click Refresh to compare weather across all sources.
-        </div>
-      )}
-    </div>
+    </>
   );
 }

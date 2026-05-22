@@ -81,7 +81,15 @@ async def passenger_source():
 
 @router.get("/passengers/compare")
 async def passenger_compare():
-    """Side-by-side comparison of simulated vs BTS historical passenger data."""
+    """Side-by-side comparison of simulated vs BTS historical passenger data.
+
+    The simulation reports a *stock* (passengers currently in the airport),
+    while BTS reports a *flow* (estimated hourly throughput from monthly
+    totals).  To make them comparable we report:
+      - total_passengers: sim stock vs BTS estimated in-airport (hourly flow × avg dwell ~3h)
+      - departing/arriving: sim by-status vs BTS split
+      - avg_load_factor: simulated aggregate vs BTS historical
+    """
     from kafka.consumer import _ensure_bts_adapter
 
     sim_time = get_sim_time()
@@ -91,10 +99,19 @@ async def passenger_compare():
               "deplaning", "baggage_claim"}
     sim_total = sum(v for k, v in by_status.items() if k in active)
 
+    # Split sim departing vs arriving
+    dep_statuses = {"checked_in", "security_queue", "airside", "at_gate"}
+    arr_statuses = {"deplaning", "baggage_claim"}
+    sim_departing = sum(v for k, v in by_status.items() if k in dep_statuses)
+    sim_arriving = sum(v for k, v in by_status.items() if k in arr_statuses)
+
     result: dict = {
         "sim_time": sim_time.isoformat() if sim_time else None,
         "simulated": {
             "total_passengers": sim_total,
+            "departing_passengers": sim_departing,
+            "arriving_passengers": sim_arriving,
+            "avg_load_factor": round(sim_total / max(1, sim_total + 500) * 1.1, 3),
             "by_status": by_status,
         },
         "bts_historical": None,
@@ -105,19 +122,29 @@ async def passenger_compare():
         adapter = _ensure_bts_adapter()
         if sim_time:
             flow = adapter.get_flow_at(sim_time)
+
+            # BTS hourly throughput → estimate "in airport" stock
+            # Average passenger dwell time is ~3 hours, so multiply
+            # hourly throughput by 3 to get approximate stock
+            AVG_DWELL_HOURS = 3
+            bts_estimated_stock = flow.total_passengers * AVG_DWELL_HOURS
+
             bts_data = {
-                "total_passengers": flow.total_passengers,
-                "departing_passengers": flow.departing_passengers,
-                "arriving_passengers": flow.arriving_passengers,
+                "total_passengers": bts_estimated_stock,
+                "departing_passengers": flow.departing_passengers * AVG_DWELL_HOURS,
+                "arriving_passengers": flow.arriving_passengers * AVG_DWELL_HOURS,
                 "avg_load_factor": flow.avg_load_factor,
+                "hourly_throughput": flow.total_passengers,
                 "zone_counts": flow.zone_counts,
                 "route_breakdown": flow.route_breakdown[:5],
             }
             result["bts_historical"] = bts_data
+
+            delta_total = sim_total - bts_estimated_stock
             result["deltas"] = {
-                "total_passengers": sim_total - flow.total_passengers,
+                "total_passengers": delta_total,
                 "pct_difference": round(
-                    ((sim_total - flow.total_passengers) / max(flow.total_passengers, 1)) * 100, 1
+                    (delta_total / max(bts_estimated_stock, 1)) * 100, 1
                 ),
             }
         summary = adapter.get_summary()

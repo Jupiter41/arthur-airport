@@ -93,8 +93,8 @@ class BTSPassengerSource:
         self._avg_load_factor: float = 0.8
         self._loaded = False
         self._profile = HourlyPassengerProfile()
-        self._home_icao: str = os.getenv("AIRPORT_ICAO", "ELLX")
-        self._home_iata: str = os.getenv("AIRPORT_IATA", "LUX")
+        self._home_icao: str = os.getenv("AIRPORT_ICAO", "KART")
+        self._home_iata: str = os.getenv("AIRPORT_IATA", "ART")
 
     def load(self) -> int:
         """Load CSV data. Returns number of records loaded."""
@@ -104,7 +104,17 @@ class BTSPassengerSource:
             return len(self._routes)
 
         try:
-            return self._load_csv()
+            count = self._load_csv()
+            # If no routes match the home airport, supplement with sample data
+            home = self._home_iata
+            home_routes = [r for r in self._routes if r.origin == home or r.destination == home]
+            if not home_routes:
+                logger.warning(
+                    "BTS CSV loaded %d routes but none match home airport %s — adding sample data",
+                    count, home,
+                )
+                self._generate_sample_data()
+            return len(self._routes)
         except Exception as e:
             logger.error("Failed to load BTS CSV: %s — generating sample data", e)
             self._generate_sample_data()
@@ -143,32 +153,41 @@ class BTSPassengerSource:
         return count
 
     def _generate_sample_data(self) -> None:
-        """Generate realistic sample BTS data for demonstration."""
-        # Sample routes representative of a European hub
+        """Generate realistic sample BTS data for demonstration.
+
+        Modelled on a medium-sized US airport (~8M annual pax, ~420 daily
+        flights).  Monthly passenger counts are calibrated so that the
+        hourly diurnal profile produces peak-hour totals comparable to the
+        simulation engine (~5000 pax in airport at any given moment).
+        """
+        home = self._home_iata  # Use configured home airport
+        # Sample routes — monthly pax calibrated for a medium hub
+        # (monthly pax ≈ daily_flights * seats * load_factor * 30)
         sample_routes = [
-            ("LUX", "FRA", "LH", 90, 180, 145),
-            ("LUX", "CDG", "LG", 60, 150, 120),
-            ("LUX", "LHR", "BA", 60, 180, 155),
-            ("LUX", "AMS", "KL", 60, 150, 130),
-            ("LUX", "MUC", "LH", 60, 140, 110),
-            ("LUX", "FCO", "LG", 30, 160, 135),
-            ("LUX", "BCN", "VY", 30, 180, 155),
-            ("LUX", "LIS", "TP", 30, 170, 140),
-            ("LUX", "CPH", "SK", 30, 150, 125),
-            ("LUX", "VIE", "OS", 30, 140, 115),
-            ("LUX", "ZRH", "LX", 30, 140, 120),
-            ("LUX", "MAD", "IB", 30, 180, 150),
-            ("LUX", "DUB", "EI", 30, 160, 130),
-            ("LUX", "OSL", "DY", 15, 180, 150),
-            ("LUX", "PMI", "LG", 15, 180, 165),
-            ("FRA", "LUX", "LH", 90, 180, 148),
-            ("CDG", "LUX", "LG", 60, 150, 118),
-            ("LHR", "LUX", "BA", 60, 180, 152),
-            ("AMS", "LUX", "KL", 60, 150, 128),
-            ("MUC", "LUX", "LH", 60, 140, 108),
-            ("FCO", "LUX", "LG", 30, 160, 132),
-            ("BCN", "LUX", "VY", 30, 180, 152),
-            ("LIS", "LUX", "TP", 30, 170, 138),
+            # (origin, dest, carrier, monthly_departures, seats, monthly_pax)
+            (home, "JFK", "AX", 90, 189, 14200),
+            (home, "LAX", "AX", 60, 189, 9500),
+            (home, "LHR", "BA", 60, 220, 11800),
+            (home, "CDG", "AF", 60, 180, 9100),
+            (home, "FRA", "LH", 60, 180, 8900),
+            (home, "ORD", "UA", 60, 189, 9600),
+            (home, "DXB", "EK", 30, 396, 9900),
+            (home, "AMS", "KL", 60, 180, 8700),
+            (home, "NRT", "AX", 30, 300, 7500),
+            (home, "SIN", "AX", 30, 300, 7200),
+            (home, "YYZ", "AX", 60, 189, 9300),
+            (home, "MUC", "LH", 60, 180, 8600),
+            (home, "BCN", "AX", 30, 180, 4500),
+            (home, "FCO", "AX", 30, 180, 4400),
+            (home, "SYD", "AX", 15, 300, 3600),
+            ("JFK", home, "AX", 90, 189, 13800),
+            ("LAX", home, "AX", 60, 189, 9200),
+            ("LHR", home, "BA", 60, 220, 11500),
+            ("CDG", home, "AF", 60, 180, 8800),
+            ("FRA", home, "LH", 60, 180, 8600),
+            ("ORD", home, "UA", 60, 189, 9400),
+            ("DXB", home, "EK", 30, 396, 9700),
+            ("AMS", home, "KL", 60, 180, 8400),
         ]
 
         for origin, dest, carrier, deps, seats, pax in sample_routes:

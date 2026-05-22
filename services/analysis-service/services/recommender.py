@@ -27,25 +27,38 @@ def generate_recommendations(
     state: OperationalState,
     bottlenecks: list[Bottleneck],
     max_total: int = 3,
+    applied_bottleneck_ids: set[str] | None = None,
 ) -> list[Recommendation]:
     """Generate ranked recommendations for active bottlenecks.
 
     Returns the top ``max_total`` recommendations ranked by
     expected impact / cost ratio.
+
+    ``applied_bottleneck_ids`` is a set of bottleneck IDs that already had
+    a recommendation applied within the cooldown window.  We still generate
+    recommendations for them (so they show up in the UI), but we mark them
+    as lower priority.
     """
     now = state.sim_time
     if now is None:
         return []
 
+    applied = applied_bottleneck_ids or set()
     all_recs: list[Recommendation] = []
     for bn in bottlenecks:
         if bn.resolved_at is not None:
             continue
         recs = _generate_for_bottleneck(state, bn, now)
+        # Mark recs for already-actioned bottlenecks so UI can distinguish
+        if bn.id in applied:
+            for r in recs:
+                r.applied = True
+                r.applied_at = now
         all_recs.extend(recs)
 
     # Sort by confidence * (1 / priority_rank) — higher is better
-    all_recs.sort(key=lambda r: r.confidence_score, reverse=True)
+    # Un-applied recommendations first
+    all_recs.sort(key=lambda r: (not r.applied, r.confidence_score), reverse=True)
 
     # Assign priority ranks
     for i, rec in enumerate(all_recs):
@@ -67,6 +80,7 @@ def _generate_for_bottleneck(
         BottleneckType.RUNWAY_CAPACITY: _recs_ground_delay_program,
         BottleneckType.BAGGAGE_THROUGHPUT: _recs_baggage_throughput,
         BottleneckType.GROUND_VEHICLE: _recs_ground_vehicle,
+        BottleneckType.ACTIVE_INCIDENT: _recs_active_incident,
     }
     handler = handlers.get(bn.type)
     if handler is None:
@@ -481,5 +495,93 @@ def _recs_ground_vehicle(
         priority_rank=2,
         parameters={"vehicle_type": vtype},
     ))
+
+    return recs
+
+
+# ── Active incident recommendations ─────────────────────────
+
+
+def _recs_active_incident(
+    state: OperationalState,
+    bn: Bottleneck,
+    now: datetime,
+) -> list[Recommendation]:
+    """Generate mitigation recommendations for active incidents."""
+    recs = []
+    expiry = now + timedelta(minutes=60)
+    inc_type = bn.metrics.get("incident_type", "unknown")
+    inc_severity = bn.metrics.get("incident_severity", "medium")
+    location = bn.metrics.get("location", "unknown")
+
+    if inc_type == "runway_incursion":
+        recs.append(Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.GROUND_DELAY_PROGRAM,
+            description=(
+                f"Initiate GDP for runway incursion at {location} — "
+                f"hold departures at gate, divert inbounds to alternate runway"
+            ),
+            expected_impact=(
+                "Eliminate runway conflict; reduce holding fuel burn; "
+                "estimated 15-45 min disruption"
+            ),
+            cost="Gate-hold delays for departing flights",
+            confidence_score=0.92,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"incident_type": inc_type, "location": location},
+        ))
+    elif inc_type == "security_breach":
+        recs.append(Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.OPEN_SECURITY_LANE,
+            description=(
+                f"Security breach at {location} — open all available "
+                f"security lanes for re-screening"
+            ),
+            expected_impact=(
+                "Accelerate re-screening; reduce pax impact by ~40%"
+            ),
+            cost="Full staffing for 30-90 min",
+            confidence_score=0.88,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"incident_type": inc_type, "location": location},
+        ))
+    elif inc_type == "system_failure":
+        recs.append(Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.REDIRECT_BAGGAGE,
+            description=(
+                f"System failure at {location} — reroute affected "
+                f"operations to backup systems"
+            ),
+            expected_impact="Maintain throughput at 60-70% via manual fallback",
+            cost="Additional manual handling staff",
+            confidence_score=0.75,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"incident_type": inc_type, "location": location},
+        ))
+    else:
+        recs.append(Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.DEFER_TASK,
+            description=(
+                f"Active {inc_type} incident ({inc_severity}) at {location} — "
+                f"defer non-critical operations and allocate resources to resolution"
+            ),
+            expected_impact="Contain incident impact; prevent cascading failures",
+            cost="Deferred non-critical tasks",
+            confidence_score=0.70,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"incident_type": inc_type, "location": location},
+        ))
 
     return recs

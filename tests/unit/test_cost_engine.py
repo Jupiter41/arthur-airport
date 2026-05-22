@@ -46,6 +46,7 @@ def reset_running_totals():
     _running_totals["by_category"].clear()
     _running_totals["eu261_exposure"] = 0.0
     _running_totals["last_updated"] = None
+    _running_totals["sim_day"] = 1
     yield
 
 
@@ -361,7 +362,7 @@ class TestRunningTotals:
         assert totals["eu261_exposure"] == 0.0
 
     def test_last_updated_set(self):
-        _record_cost(100.0, "landing_fee", is_revenue=False)
+        _record_cost(100.0, "landing_fee", is_revenue=False, sim_time="2024-06-15T14:32:00Z")
         totals = get_running_totals()
         assert totals["last_updated"] is not None
 
@@ -388,3 +389,26 @@ class TestRunningTotals:
         init_running_totals({})
         totals = get_running_totals()
         assert totals["total_cost_eur"] == 0.0
+
+    def test_day_transition_resets_totals(self):
+        """Running totals reset when sim_day changes."""
+        _record_cost(5000.0, "landing_fee", is_revenue=False, sim_day=1)
+        _record_cost(3000.0, "ground_handling", is_revenue=False, sim_day=1)
+        totals = get_running_totals()
+        assert totals["total_cost_eur"] == 8000.0
+
+        # New day — totals should reset
+        _record_cost(100.0, "landing_fee", is_revenue=False, sim_day=2)
+        totals = get_running_totals()
+        assert totals["total_cost_eur"] == 100.0
+        assert totals["sim_day"] == 2
+        assert totals["by_category"]["landing_fee"] == 100.0
+        assert totals["by_category"].get("ground_handling", 0.0) == 0.0
+
+    def test_none_sim_day_does_not_reset(self):
+        """_record_cost with sim_day=None does not trigger day transition."""
+        _record_cost(500.0, "landing_fee", is_revenue=False, sim_day=1)
+        _record_cost(300.0, "landing_fee", is_revenue=False)
+        totals = get_running_totals()
+        assert totals["total_cost_eur"] == 800.0
+        assert totals["sim_day"] == 1

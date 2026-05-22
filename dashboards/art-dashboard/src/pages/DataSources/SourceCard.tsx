@@ -149,7 +149,7 @@ export function SourceCard({
 
       {/* Incident comparison (inside card) */}
       {source.id === "incidents" && source.status === "active" && (
-        <IncidentComparisonInline />
+        <IncidentComparisonInline currentSource={source.current_source} />
       )}
     </div>
   );

@@ -38,6 +38,7 @@ async def cost_summary():
     margin = round(net / total_rev * 100, 1) if total_rev > 0 else 0.0
     return {
         "sim_time": totals.get("last_updated"),
+        "sim_day": totals.get("sim_day", 1),
         "total_cost_eur": round(total_cost, 2),
         "total_revenue_eur": round(total_rev, 2),
         "net_eur": round(net, 2),

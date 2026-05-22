@@ -25,17 +25,14 @@ Before doing any edit, do this:
 - ALWAYS correct all bugs found, even those unrelated to the current task, to keep the codebase clean and maintainable.
 - ALWAYS update data schemas in necessary files when adding new functionnalities (.md, mermaid files etc.).
 - ALWAYS address all issues and then write lessons-learned file at the end.
+- This airport is fictionnal, so when using real data select the data concerning a medium sized airport.
 
 The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
 
-- Cost dashboard graph restart at midnight each time a day ends, allow user to go back to the previous days too.
-- Implement ROADMAP_PLANNING.md all phase 1 tasks
-- error in git during ci/cd for unit test
-  =================================== FAILURES ===================================
-  **\_\_\_** TestRunningTotals.test_last_updated_set **\_\_\_\_**
-  tests/unit/test_cost_engine.py:366: in test_last_updated_set
-  assert totals["last_updated"] is not None
-  E assert None is not None
-  =========================== short test summary info ============================
-  FAILED tests/unit/test_cost_engine.py::TestRunningTotals::test_last_updated_set - assert None is not None
-  ======================== 1 failed, 666 passed in 2.20s =========================
+- BTS data handling and integration into the system became not robust in data source at all: it uses sample instead of real ones, big gap between simulated & BTS etc. and nothing is clear in the documentation, UI etc. Fix this.
+
+- Now the recommandations are executed and the incident ends (but not sure if it's because of time or recommandations thesemselves). Basically the impact of the recommandations is not clear at all.
+
+- Refactor the dashboard pages, keep the same style etc. but extract components in subfiles, create folders to organize them etc. to make the code more maintainable and easier to understand.
+
+- Implement ROADMAP_PLANNING.md all phase 4 & 5 tasks

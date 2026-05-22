@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCostDashboardQueries } from "../../hooks/useQueries";
 import { useSimStore } from "../../stores/simStore";
 import { formatEur } from "../../utils/formatCurrency";
@@ -32,11 +32,28 @@ export default function CostDashboardPage() {
   const [showRateModal, setShowRateModal] = useState(false);
   const [showAutonomousModal, setShowAutonomousModal] = useState(false);
   const day = selectedDay ?? dayNumber ?? 1;
+  const isLive = selectedDay === null || selectedDay === dayNumber;
+
+  // Auto-follow live day when in live mode
+  useEffect(() => {
+    if (selectedDay === null) return;
+    if (dayNumber && selectedDay === dayNumber) {
+      setSelectedDay(null);
+    }
+  }, [dayNumber, selectedDay]);
 
   const { summary, pnl, hourly, incidentRanking, recommendations } =
     useCostDashboardQueries(day);
 
   const costSummary = summary.data as CostSummary | undefined;
+  const pnlData = pnl.data as {
+    day?: number;
+    total_cost_eur?: number;
+    total_revenue_eur?: number;
+    net_eur?: number;
+    by_category?: Record<string, number>;
+    cost_records?: number;
+  } | undefined;
   const hourlyData = (hourly.data ?? []) as HourlyCostPoint[];
   const incidentData = (incidentRanking.data ?? []) as IncidentCostRanking[];
   const recsData = (recommendations.data ?? []) as FinancialRecommendation[];
@@ -62,12 +79,21 @@ export default function CostDashboardPage() {
     );
   }
 
-  const totalCost = costSummary?.total_cost_eur ?? 0;
-  const totalRevenue = costSummary?.total_revenue_eur ?? 0;
-  const net = costSummary?.net_eur ?? 0;
-  const margin = costSummary?.margin_pct ?? 0;
+  // Use running totals for current live day, PNL endpoint for historical days
+  const totalCost = isLive
+    ? (costSummary?.total_cost_eur ?? 0)
+    : (pnlData?.total_cost_eur ?? 0);
+  const totalRevenue = isLive
+    ? (costSummary?.total_revenue_eur ?? 0)
+    : (pnlData?.total_revenue_eur ?? 0);
+  const net = isLive
+    ? (costSummary?.net_eur ?? 0)
+    : (pnlData?.net_eur ?? 0);
+  const margin = totalRevenue > 0 ? (net / totalRevenue) * 100 : 0;
   const eu261 = costSummary?.eu261_exposure_eur ?? 0;
-  const byCategory = costSummary?.by_category ?? {};
+  const byCategory = isLive
+    ? (costSummary?.by_category ?? {})
+    : (pnlData?.by_category ?? {});
   const noData = totalCost === 0 && totalRevenue === 0;
 
   return (
@@ -118,26 +144,44 @@ export default function CostDashboardPage() {
               exportData(rows, `cost-dashboard-day-${day}`, fmt);
             }}
           />
-          <label className="text-xs text-gray-400">Day:</label>
-          <input
-            type="number"
-            min={1}
-            value={selectedDay ?? dayNumber ?? 1}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (v === dayNumber) setSelectedDay(null);
-              else setSelectedDay(Math.max(1, v));
-            }}
-            className="w-16 bg-surface border border-panel-border rounded px-2 py-1 text-sm text-white"
-          />
-          {selectedDay !== null && selectedDay !== dayNumber && (
+          {/* Day navigation */}
+          <div className="flex items-center gap-1 bg-surface border border-panel-border rounded px-1.5 py-0.5">
+            <button
+              onClick={() => setSelectedDay(Math.max(1, day - 1))}
+              disabled={day <= 1}
+              className="text-sm text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed px-1"
+              title="Previous day"
+            >
+              ◀
+            </button>
+            <span className="text-sm text-white font-mono min-w-[4rem] text-center">
+              Day {day}
+            </span>
+            <button
+              onClick={() => {
+                const maxDay = dayNumber ?? 1;
+                if (day < maxDay) setSelectedDay(day + 1);
+              }}
+              disabled={day >= (dayNumber ?? 1)}
+              className="text-sm text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed px-1"
+              title="Next day"
+            >
+              ▶
+            </button>
+          </div>
+          {!isLive && (
             <button
               onClick={() => setSelectedDay(null)}
-              className="text-[10px] text-gray-400 hover:text-white px-1.5 py-0.5 rounded bg-surface border border-panel-border"
-              title="Sync with current sim day"
+              className="text-[10px] text-amber-400 hover:text-white px-2 py-1 rounded bg-amber-900/30 border border-amber-700/50 font-medium"
+              title="Return to live (current day)"
             >
               ↻ Live
             </button>
+          )}
+          {isLive && (
+            <span className="text-[10px] text-green-400 px-2 py-1 rounded bg-green-900/30 border border-green-700/50 font-medium">
+              ● Live
+            </span>
           )}
         </div>
       </div>

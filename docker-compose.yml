@@ -190,6 +190,8 @@ services:
       OTEL_SERVICE_NAME: passenger-service
       PASSENGER_SOURCE: simulation
       PASSENGER_BTS_FILE: /app/data/bts/T100_2026.csv
+      AIRPORT_IATA: ART
+      AIRPORT_ICAO: KART
     depends_on:
       neo4j:
         condition: service_healthy
@@ -343,7 +345,6 @@ services:
 
   analysis-service:
     <<: *python-service
-    profiles: [full]
     build: ./services/analysis-service
     ports:
       - "8007:8007"
@@ -404,6 +405,21 @@ services:
       timeout: 5s
       retries: 5
 
+  planning-service:
+    <<: *python-service
+    build: ./services/planning-service
+    ports:
+      - "8009:8009"
+    volumes:
+      - ./data:/app/data:ro
+    environment:
+      LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8009/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api-gateway:
     build: ./services/api-gateway
     restart: unless-stopped
@@ -423,6 +439,7 @@ services:
       SIM_ORCHESTRATOR_URL: http://sim-orchestrator:8006
       ANALYSIS_SERVICE_URL: http://analysis-service:8007
       COST_SERVICE_URL: http://cost-service:8008
+      PLANNING_SERVICE_URL: http://planning-service:8009
       NODE_ENV: development
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       OTEL_SERVICE_NAME: api-gateway

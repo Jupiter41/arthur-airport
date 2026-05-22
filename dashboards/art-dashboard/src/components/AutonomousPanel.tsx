@@ -1,5 +1,38 @@
 import { useState, useEffect, useCallback } from "react";
-import { analysisApi } from "../hooks/useApi";
+import { analysisApi, costsApi, incidentsApi } from "../hooks/useApi";
+
+interface RecommendationItem {
+  id: string;
+  action_type: string;
+  description: string;
+  confidence_score: number;
+  applied: boolean;
+  expected_impact?: string;
+}
+
+const DEMO_PRESETS = [
+  {
+    label: "Runway Incursion",
+    type: "runway_incursion",
+    severity: "critical",
+    location: "runway-09L",
+    toast: "Runway incursion injected — monitoring autonomous response…",
+  },
+  {
+    label: "Security Breach",
+    type: "security_breach",
+    severity: "high",
+    location: "terminal-B",
+    toast: "Security breach injected — monitoring autonomous response…",
+  },
+  {
+    label: "System Failure",
+    type: "system_failure",
+    severity: "medium",
+    location: "conveyor-C2",
+    toast: "System failure injected — monitoring autonomous response…",
+  },
+] as const;
 
 export function AutonomousPanel() {
   const [settings, setSettings] = useState<Record<string, unknown> | null>(
@@ -9,9 +42,13 @@ export function AutonomousPanel() {
   const [diagnostics, setDiagnostics] = useState<{
     bottlenecks: number;
     recommendations: number;
+    analysisAvailable: boolean;
   } | null>(null);
+  const [recsList, setRecsList] = useState<RecommendationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [showInject, setShowInject] = useState(false);
+  const [injecting, setInjecting] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -27,6 +64,10 @@ export function AutonomousPanel() {
       /* ignore */
     }
     // Fetch diagnostics — bottleneck and recommendation counts
+    // Query both analysis-service and cost-service for maximum coverage
+    let bnCount = 0;
+    let recsCount = 0;
+    let analysisAvailable = false;
     try {
       const [bn, recs] = await Promise.all([
         analysisApi.bottlenecks(),
@@ -35,13 +76,40 @@ export function AutonomousPanel() {
       const bnArr = (bn as { bottlenecks?: unknown[] })?.bottlenecks ?? [];
       const recsArr =
         (recs as { recommendations?: unknown[] })?.recommendations ?? [];
-      setDiagnostics({
-        bottlenecks: bnArr.length,
-        recommendations: recsArr.length,
-      });
+      bnCount = bnArr.length;
+      recsCount = recsArr.length;
+      analysisAvailable = true;
+      // Store recommendations for display
+      setRecsList(
+        (recsArr as RecommendationItem[]).map((r) => ({
+          id: r.id ?? "",
+          action_type: r.action_type ?? "",
+          description: r.description ?? "",
+          confidence_score: r.confidence_score ?? 0,
+          applied: r.applied ?? false,
+          expected_impact: r.expected_impact,
+        })),
+      );
     } catch {
-      /* ignore */
+      /* analysis-service may be unavailable */
     }
+    // Also query cost-service recommendations (always available)
+    try {
+      const costRecs = await costsApi.recommendations();
+      const costRecsArr = Array.isArray(costRecs)
+        ? costRecs
+        : ((costRecs as Record<string, unknown>)?.recommendations as unknown[]) ?? [];
+      if (costRecsArr.length > recsCount) {
+        recsCount = costRecsArr.length;
+      }
+    } catch {
+      /* cost-service may be unavailable */
+    }
+    setDiagnostics({
+      bottlenecks: bnCount,
+      recommendations: recsCount,
+      analysisAvailable,
+    });
   }, []);
 
   useEffect(() => {
@@ -90,6 +158,30 @@ export function AutonomousPanel() {
     return () => clearTimeout(timer);
   }, [feedback]);
 
+  const injectDemoIncident = useCallback(
+    async (preset: (typeof DEMO_PRESETS)[number]) => {
+      setInjecting(true);
+      try {
+        await incidentsApi.inject({
+          type: preset.type,
+          severity: preset.severity,
+          location: preset.location,
+        });
+        setFeedback(preset.toast);
+        setShowInject(false);
+        // Auto-refresh after 3 seconds to allow detection pipeline to react
+        setTimeout(() => {
+          refresh();
+        }, 3000);
+      } catch {
+        setFeedback("Failed to inject incident — is the incident service running?");
+      } finally {
+        setInjecting(false);
+      }
+    },
+    [refresh],
+  );
+
   const currentMode = (settings?.mode as string) ?? "off";
 
   const modeDescriptions: Record<string, string> = {
@@ -130,6 +222,41 @@ export function AutonomousPanel() {
             {label}
           </button>
         ))}
+      </div>
+
+      {/* Demo incident injection */}
+      <div className="mb-3">
+        <button
+          onClick={() => setShowInject(!showInject)}
+          className="text-xs px-3 py-1.5 rounded bg-red-900/40 text-red-300 hover:bg-red-900/60 border border-red-700/30 transition-colors"
+        >
+          {showInject ? "Cancel" : "⚡ Inject demo incident"}
+        </button>
+        {showInject && (
+          <div className="mt-2 space-y-1">
+            {DEMO_PRESETS.map((preset) => (
+              <button
+                key={preset.type}
+                onClick={() => injectDemoIncident(preset)}
+                disabled={injecting}
+                className="w-full text-left text-xs px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors flex items-center justify-between disabled:opacity-50"
+              >
+                <span>{preset.label}</span>
+                <span
+                  className={`text-[10px] ${
+                    preset.severity === "critical"
+                      ? "text-red-400"
+                      : preset.severity === "high"
+                        ? "text-orange-400"
+                        : "text-yellow-400"
+                  }`}
+                >
+                  {preset.severity}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {settings && (
@@ -196,47 +323,106 @@ export function AutonomousPanel() {
             {currentMode === "off"
               ? "Enable an autonomous mode to start collecting actions."
               : "No autonomous actions taken yet. Actions will appear here when the agent detects bottlenecks and applies recommendations."}
-            {currentMode !== "off" && diagnostics && (
-              <div className="mt-2 text-[10px] text-gray-400 space-y-0.5">
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={
-                      diagnostics.bottlenecks > 0
-                        ? "text-amber-400"
-                        : "text-gray-500"
-                    }
-                  >
-                    ●
-                  </span>
-                  Active bottlenecks: {diagnostics.bottlenecks}
-                  {diagnostics.bottlenecks === 0 &&
-                    " — airport operating smoothly"}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={
-                      diagnostics.recommendations > 0
-                        ? "text-blue-400"
-                        : "text-gray-500"
-                    }
-                  >
-                    ●
-                  </span>
-                  Active recommendations: {diagnostics.recommendations}
-                  {diagnostics.recommendations === 0 &&
-                    " — no actions to apply"}
-                </div>
-                {diagnostics.bottlenecks === 0 && (
-                  <div className="text-gray-500 mt-1 italic">
-                    Inject an incident or increase traffic to trigger
-                    bottlenecks.
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>
-    </div>
-  );
+
+      {/* Active bottlenecks & recommendations — always visible when not off */}
+      {currentMode !== "off" && diagnostics && (
+        <div className="mt-3">
+          <div className="text-[10px] text-gray-400 space-y-0.5 mb-2">
+            <div className="flex items-center gap-1.5">
+              <span
+                className={
+                  diagnostics.bottlenecks > 0
+                    ? "text-amber-400"
+                    : "text-gray-500"
+                }
+              >
+                ●
+              </span>
+              Active bottlenecks: {diagnostics.bottlenecks}
+              {diagnostics.bottlenecks === 0 &&
+                " — airport operating smoothly"}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={
+                  diagnostics.recommendations > 0
+                    ? "text-blue-400"
+                    : "text-gray-500"
+                }
+              >
+                ●
+              </span>
+              Active recommendations: {diagnostics.recommendations}
+              {diagnostics.recommendations === 0 &&
+                " — no actions to apply"}
+            </div>
+            {!diagnostics.analysisAvailable && (
+              <div className="text-amber-500/70 mt-1 text-[10px]">
+                ⚠ Analysis service not reachable — showing cost-based
+                recommendations only.
+              </div>
+            )}
+          </div>
+          {/* Show pending (un-applied) recommendations */}
+          {recsList.filter((r) => !r.applied).length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] text-blue-400 uppercase tracking-wide">
+                Pending Recommendations
+              </div>
+              {recsList
+                .filter((r) => !r.applied)
+                .slice(0, 3)
+                .map((rec) => (
+                  <div
+                    key={rec.id}
+                    className="text-[11px] bg-blue-900/20 border border-blue-700/30 rounded px-2 py-1.5"
+                  >
+                    <div className="text-blue-200 truncate">
+                      {rec.description}
+                    </div>
+                    <div className="text-[10px] text-blue-400/60 mt-0.5 flex justify-between">
+                      <span>
+                        Confidence: {Math.round(rec.confidence_score * 100)}%
+                      </span>
+                      {rec.expected_impact && (
+                        <span className="text-gray-500 truncate ml-2">
+                          {rec.expected_impact}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+          {/* Applied recommendations (cooldown) */}
+          {recsList.filter((r) => r.applied).length > 0 && (
+            <div className="space-y-1 mt-2">
+              <div className="text-[10px] text-green-400/70 uppercase tracking-wide">
+                Applied (in cooldown)
+              </div>
+              {recsList
+                .filter((r) => r.applied)
+                .slice(0, 2)
+                .map((rec) => (
+                  <div
+                    key={rec.id}
+                    className="text-[11px] bg-green-900/10 border border-green-700/20 rounded px-2 py-1 text-green-300/60 truncate"
+                  >
+                    ✓ {rec.description}
+                  </div>
+                ))}
+            </div>
+          )}
+          {diagnostics.bottlenecks === 0 && recsList.length === 0 && (
+            <div className="text-gray-500 text-[10px] italic">
+              Inject an incident or increase traffic to trigger bottlenecks.
+            </div>
+          )}
+        </div>
+      )}
+      </div>
+    );
 }

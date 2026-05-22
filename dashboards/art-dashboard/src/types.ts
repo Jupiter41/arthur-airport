@@ -331,6 +331,7 @@ export type CostCategory =
 
 export interface CostSummary {
   sim_time: string | null;
+  sim_day: number;
   total_cost_eur: number;
   total_revenue_eur: number;
   net_eur: number;

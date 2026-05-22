@@ -27,6 +27,7 @@ class BottleneckType(str, Enum):
     CONNECTION_CLUSTER = "connection_cluster"
     GROUND_VEHICLE = "ground_vehicle"
     RUNWAY_CAPACITY = "runway_capacity"
+    ACTIVE_INCIDENT = "active_incident"
 
 
 class Bottleneck(BaseModel):

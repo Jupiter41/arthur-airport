@@ -341,7 +341,7 @@ class MesonetAdapter(AbstractAdapter):
 
 ## Phase 2 — In-memory planning simulation engine
 
-### Task P2.1 — Fast planning simulation core
+### Task P2.1 — Fast planning simulation core ✅
 
 **File:** `services/planning-service/engine/simulation.py`
 
@@ -395,7 +395,7 @@ This is what makes Monte Carlo reliable.
 
 ---
 
-### Task P2.2 — Infrastructure configuration model
+### Task P2.2 — Infrastructure configuration model ✅
 
 **File:** `services/planning-service/engine/infrastructure.py`
 
@@ -449,7 +449,7 @@ class InfrastructureConfig:
 
 ---
 
-### Task P2.3 — Day result model and KPI extraction
+### Task P2.3 — Day result model and KPI extraction ✅
 
 **File:** `services/planning-service/engine/results.py`
 
@@ -496,7 +496,7 @@ class DayResult:
 
 ## Phase 3 — Scenario management
 
-### Task P3.1 — Scenario definition model
+### Task P3.1 — Scenario definition model ✅
 
 **File:** `services/planning-service/scenarios/model.py`
 
@@ -566,7 +566,7 @@ discount_rate: 0.07
 
 ---
 
-### Task P3.2 — Scenario runner
+### Task P3.2 — Scenario runner ✅
 
 **File:** `services/planning-service/scenarios/runner.py`
 
@@ -619,7 +619,7 @@ class ScenarioRunner:
 
 ---
 
-### Task P3.3 — Monte Carlo aggregation
+### Task P3.3 — Monte Carlo aggregation ✅
 
 **File:** `services/planning-service/scenarios/statistics.py`
 

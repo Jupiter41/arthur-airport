@@ -25,7 +25,7 @@ from models.domain import Bottleneck
 from services.state import OperationalState
 from services.detectors import check_resolved, detect_all
 from services.recommender import generate_recommendations
-from services.autonomous import evaluate_and_apply, evaluate_rl_agent, should_evaluate, get_settings as get_autonomous_settings
+from services.autonomous import evaluate_and_apply, evaluate_rl_agent, should_evaluate, get_settings as get_autonomous_settings, _bottleneck_cooldowns
 from services.anomaly import detector as anomaly_detector
 from services.nlp.narration import narration as narration_engine
 from kafka.producer import (
@@ -322,7 +322,9 @@ async def _on_tick(payload: dict) -> None:
     # Generate recommendations for all active bottlenecks
     active_list = [bn for bn in active_bottlenecks.values() if bn.resolved_at is None]
     if active_list:
-        recs = generate_recommendations(state, active_list)
+        # Pass cooldown info so recommender can mark already-actioned bottlenecks
+        cooled_bn_ids = set(_bottleneck_cooldowns.keys())
+        recs = generate_recommendations(state, active_list, applied_bottleneck_ids=cooled_bn_ids)
         active_recommendations = recs
         for rec in recs:
             emit_recommendation_generated(rec.model_dump(mode="json"), now)

@@ -62,6 +62,7 @@ def detect_all(
     results.extend(_detect_connection_clusters(state, now, active_keys))
     results.extend(_detect_ground_vehicle(state, now, active_keys))
     results.extend(_detect_runway_capacity(state, now, active_keys))
+    results.extend(_detect_active_incidents(state, now, active_keys))
 
     return results
 
@@ -109,6 +110,13 @@ def check_resolved(
         if flight_id and flight_id in state.flights:
             f = state.flights[flight_id]
             if f.status in ("arrived", "turnaround", "completed"):
+                return True
+
+    elif bottleneck.type == BottleneckType.ACTIVE_INCIDENT:
+        incident_id = bottleneck.metrics.get("incident_id")
+        if incident_id:
+            incident = state.active_incidents.get(incident_id)
+            if incident is None or incident.get("status") == "resolved":
                 return True
 
     return False
@@ -390,3 +398,75 @@ def _detect_runway_capacity(
             "wind_speed_kt": state.weather.wind_speed_kt,
         },
     )]
+
+
+# ── Incident severity thresholds ────────────────────────────
+
+INCIDENT_SEVERITY_TO_BOTTLENECK = {
+    "critical": BottleneckSeverity.CRITICAL,
+    "high": BottleneckSeverity.CRITICAL,
+    "medium": BottleneckSeverity.WARNING,
+}
+
+INCIDENT_TYPE_DESCRIPTIONS = {
+    "runway_incursion": "Runway incursion — runway closed, arrivals/departures affected",
+    "security_breach": "Security breach — terminal evacuation or re-screening required",
+    "system_failure": "System failure — automated subsystem degraded",
+    "baggage_fire": "Baggage fire — baggage system disrupted",
+    "severe_weather": "Severe weather event — capacity reduced",
+}
+
+
+def _detect_active_incidents(
+    state: OperationalState,
+    now: datetime,
+    active_keys: set,
+) -> list[Bottleneck]:
+    """Detect bottlenecks from active critical/high incidents.
+
+    Creates an immediate bottleneck entry for each unresolved incident with
+    severity >= medium, allowing the recommendation engine to propose
+    mitigations without waiting for operational metrics to degrade.
+    """
+    results = []
+    for incident in state.active_incidents.values():
+        inc_id = incident.get("id", "")
+        inc_type = incident.get("type", "unknown")
+        inc_severity = incident.get("severity", "low")
+        inc_status = incident.get("status", "active")
+
+        if inc_status == "resolved":
+            continue
+
+        bn_severity = INCIDENT_SEVERITY_TO_BOTTLENECK.get(inc_severity)
+        if bn_severity is None:
+            continue
+
+        zone = incident.get("location", inc_type)
+        key = (BottleneckType.ACTIVE_INCIDENT, zone)
+        if key in active_keys:
+            continue
+
+        description = INCIDENT_TYPE_DESCRIPTIONS.get(
+            inc_type, f"Active {inc_type} incident"
+        )
+        affected = incident.get("affected_count", 0)
+        ttr = incident.get("ttr_remaining_minutes", 30)
+
+        results.append(Bottleneck(
+            id=f"bn-{uuid4().hex[:12]}",
+            type=BottleneckType.ACTIVE_INCIDENT,
+            severity=bn_severity,
+            zone=zone,
+            root_cause=description,
+            estimated_duration_minutes=ttr if ttr > 0 else 30,
+            affected_entity_count=affected,
+            detected_at=now,
+            metrics={
+                "incident_id": inc_id,
+                "incident_type": inc_type,
+                "incident_severity": inc_severity,
+                "location": zone,
+            },
+        ))
+    return results
