@@ -271,12 +271,12 @@ def _build_cascade_tree(nodes: list[dict], incident: dict) -> CascadeTreeNode:
     # The nodes list is ordered by depth — we need to rebuild the tree
     # Use a BFS-like approach: for each node, look up children from the DB
     # But that's async — let's build from the flat list instead
-    
+
     # Since the tree is returned from Neo4j with the path, and each child
     # at depth N is reached via parent at depth N-1, we have a natural order.
     # Build parent tracking using the database
     # For simplicity in the sync context, build a tree from depth levels
-    
+
     depth_groups: dict[int, list[dict]] = {}
     for n in nodes:
         d = n.get("depth", 0)

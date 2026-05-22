@@ -71,7 +71,7 @@ async def build_report(incident_id: str, sim_time: datetime) -> dict | None:
         if proto and proto not in protocols:
             protocols.append(proto)
 
-    # Get incident type for recommendations  
+    # Get incident type for recommendations
     base_type = incident.get("type", "")
     recs = RECOMMENDATIONS.get(base_type, [])
 
@@ -165,7 +165,7 @@ def _build_timeline_summary(
     if protocol:
         parts.append(f"{protocol} protocol activated.")
 
-    # Count cascade children  
+    # Count cascade children
     cascade_count = max(0, len(cascade_nodes) - 1)
     if cascade_count > 0:
         parts.append(f"{cascade_count} cascade event(s) triggered.")

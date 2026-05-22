@@ -298,19 +298,27 @@ async def update_incident_status(
 ) -> dict | None:
     """Update incident status (contain or resolve)."""
     time_field = "resolved_at" if new_status == "resolved" else "contained_at"
+
+    # Extract resolution reason from note prefix [reason] if present
+    resolution_reason = "manual"
+    if note.startswith("[") and "]" in note:
+        resolution_reason = note[1:note.index("]")]
+
     async with get_driver().session() as session:
         result = await session.run(
             f"""
             MATCH (i:Incident {{id: $id}})
             SET i.status = $status,
                 i.{time_field} = $at,
-                i.resolution_note = $note
+                i.resolution_note = $note,
+                i.resolution_reason = $reason
             RETURN i
             """,
             id=incident_id,
             status=new_status,
             at=sim_time.isoformat(),
             note=note,
+            reason=resolution_reason,
         )
         record = await result.single()
         return dict(record["i"]) if record else None

@@ -28,6 +28,7 @@ from kafka.producer import (
     emit_incident_status_changed,
 )
 from services.lifecycle import (
+    apply_recommendation_ttr_reduction,
     create_incident,
     resolve_incident,
     set_lifecycle_callbacks,
@@ -248,9 +249,10 @@ async def run_consumer() -> None:
         "weather.events",
         "baggage.events",
         "passengers.events",
+        "analysis.events",
     ])
     _consumer_running = True
-    logger.info("Kafka consumer started — subscribed to 5 topics")
+    logger.info("Kafka consumer started — subscribed to 6 topics")
 
     loop = asyncio.get_event_loop()
     try:
@@ -360,6 +362,8 @@ async def _dispatch(envelope: dict) -> None:
             await _on_baggage_flagged(payload, sim_time)
         case "SecurityCongestionDetected":
             await _on_security_congestion(payload, sim_time)
+        case "AutonomousActionApplied":
+            await _on_recommendation_applied(payload, sim_time)
         case _:
             pass
 
@@ -505,6 +509,55 @@ async def _on_security_congestion(payload: dict, sim_time: datetime) -> None:
         description=f"Security queue wait time {wait_minutes} min exceeds threshold.",
         subtype="security_congestion",
     )
+
+
+# ── Action type → related incident types mapping ────────────
+
+ACTION_INCIDENT_MAP: dict[str, list[str]] = {
+    "open_security_lane": ["security_congestion", "security_breach", "security_queue_frozen"],
+    "early_gate_call": ["gate_congestion", "boarding_delayed"],
+    "redirect_checkin": ["security_congestion"],
+    "gate_reassignment": ["gate_congestion"],
+    "ground_delay_program": ["runway_incursion", "runway_closure_holding_stack",
+                              "departure_ground_stop", "severe_weather"],
+    "open_makeup_carousel": ["baggage_fire", "make_up_zone_offline",
+                              "flight_baggage_not_loaded"],
+    "deploy_additional_vehicle": ["runway_incursion"],
+    "hold_connecting_flight": ["flight_delayed"],
+}
+
+
+async def _on_recommendation_applied(payload: dict, sim_time: datetime) -> None:
+    """AutonomousActionApplied → reduce TTR of related active incidents.
+
+    This closes the feedback loop: when the analysis-service applies a
+    recommendation, the incident-service reduces TTR of matching active
+    incidents, making recommendations have a tangible effect on incident
+    resolution.
+    """
+    action_type = payload.get("action_type", "")
+    incident_types = ACTION_INCIDENT_MAP.get(action_type)
+
+    reduced = await apply_recommendation_ttr_reduction(
+        action_type, sim_time, incident_types,
+    )
+
+    if reduced:
+        logger.info(
+            "Recommendation %s reduced TTR for %d incident(s)",
+            action_type, len(reduced),
+        )
+        # Broadcast TTR reduction to WebSocket clients
+        if _state.ws_broadcast:
+            await _state.ws_broadcast({
+                "type": "RecommendationImpact",
+                "sim_time": sim_time.isoformat(),
+                "payload": {
+                    "action_type": action_type,
+                    "incidents_affected": len(reduced),
+                    "details": reduced,
+                },
+            })
 
 
 # ── Probabilistic event evaluation ──────────────────────────

@@ -163,7 +163,7 @@ def _ensure_bts_adapter():
     if _state._bts_adapter is not None:
         return _state._bts_adapter
     from services.bts_adapter import BTSPassengerSource
-    csv_path = os.getenv("PASSENGER_BTS_FILE", "/app/data/bts/T100_2026.csv")
+    csv_path = os.getenv("PASSENGER_BTS_FILE", "/app/data/bts/T100_reference.csv")
     adapter = BTSPassengerSource(csv_path)
     count = adapter.load()
     if count == 0:
@@ -198,7 +198,7 @@ def switch_passenger_source(new_source: str, csv_path: str | None = None) -> dic
 
     if new_source == "bts_historical":
         from services.bts_adapter import BTSPassengerSource
-        path = csv_path or os.getenv("PASSENGER_BTS_FILE", "/app/data/bts/T100_2026.csv")
+        path = csv_path or os.getenv("PASSENGER_BTS_FILE", "/app/data/bts/T100_reference.csv")
         adapter = BTSPassengerSource(path)
         count = adapter.load()
         _state._bts_adapter = adapter

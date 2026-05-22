@@ -50,21 +50,21 @@ def sample_departure_slots_standalone(n: int, sim_date: date, np_rng: np.random.
 def main():
     sim_date = date(2024, 6, 15)
     np_rng = np.random.default_rng(42)
-    
+
     slots = sample_departure_slots_standalone(210, sim_date, np_rng)
-    
+
     # Count departures per hour
     hour_counts: Counter[int] = Counter()
     for slot in slots:
         hour_counts[slot.hour] += 1
-    
+
     print("=" * 60)
     print("Flight Schedule Distribution — 210 Departures")
     print("=" * 60)
     print()
     print(f"{'Hour':>6}  {'Count':>5}  {'Bar'}")
     print("-" * 60)
-    
+
     total = 0
     for hour in range(0, 24):
         count = hour_counts.get(hour, 0)
@@ -76,19 +76,19 @@ def main():
         elif hour in (17, 18):
             indicator = " ← evening peak"
         print(f"{hour:02d}:00  {count:>5}  {bar}{indicator}")
-    
+
     print("-" * 60)
     print(f"{'Total':>6}  {total:>5}")
     print()
-    
+
     # Verify constraints
     first_flight_hour = min(s.hour for s in slots)
     last_flight_hour = max(s.hour for s in slots)
-    
+
     morning_peak = sum(hour_counts.get(h, 0) for h in [7, 8])
     evening_peak = sum(hour_counts.get(h, 0) for h in [17, 18])
     midday = sum(hour_counts.get(h, 0) for h in range(9, 17))
-    
+
     print("Validation checks:")
     print(f"  First flight hour: {first_flight_hour:02d}:00 (expect 05:00) {'✓' if first_flight_hour >= 5 else '✗'}")
     print(f"  Last flight hour:  {last_flight_hour:02d}:00 (expect 22:00) {'✓' if last_flight_hour <= 22 else '✗'}")
@@ -97,7 +97,7 @@ def main():
     print(f"  Mid-day (09-16): {midday} flights (expect steady flow) {'✓' if midday >= 60 else '✗'}")
     print(f"  Total: {total} {'✓' if total == 210 else '✗'}")
     print()
-    
+
     # Arrivals distribution (paired 90 min before departure)
     arr_hours: Counter[int] = Counter()
     for slot in slots:
@@ -105,7 +105,7 @@ def main():
         if arr.hour < 4:
             arr = arr.replace(hour=4, minute=0)
         arr_hours[arr.hour] += 1
-    
+
     print("Paired Arrivals Distribution:")
     print(f"{'Hour':>6}  {'Count':>5}  {'Bar'}")
     print("-" * 60)

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 # Default data file paths (relative to project root)
-_DEFAULT_BTS_PATH = Path("data/bts/T100_2026.csv")
+_DEFAULT_BTS_PATH = Path("data/bts/T100_reference.csv")
 _DEFAULT_WEATHER_PATH = Path("data/weather/EGLL_30days.csv")
 
 

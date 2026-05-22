@@ -44,9 +44,29 @@ in the simulation traces back to these fixtures.
 
 | Field  | Value                                                                 |
 | ------ | --------------------------------------------------------------------- |
-| File   | `data/bts/T100_2026.csv`                                              |
+| Raw    | `data/bts/T100_2026.csv` (18K+ rows, all US carriers)                |
+| Filtered | `data/bts/T100_reference.csv` (555 rows, BOS → ART remapped)       |
 | Source | [Bureau of Transportation Statistics](https://www.transtats.bts.gov/) |
-| Format | CSV with ~40 columns per record                                       |
+| Format | CSV                                                                   |
+
+### Reference airport mapping
+
+Since KART (ART) is fictional, the simulation calibrates against a real
+medium-sized US airport: **Boston Logan (BOS)**. The raw T-100 CSV is
+filtered to BOS routes only, then the IATA code is remapped ART ↔ BOS.
+
+This gives KART a realistic traffic profile: ~488 daily flights, 65
+destinations, 78% average load factor — close to the simulated 420
+daily flights.
+
+To regenerate the reference data or switch to a different airport:
+
+```bash
+python scripts/helper_filter_bts_data.py \
+    --input data/bts/T100_2026.csv \
+    --reference-airport BOS \
+    --output data/bts/T100_reference.csv
+```
 
 ### What it represents
 

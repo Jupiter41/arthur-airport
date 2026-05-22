@@ -321,6 +321,9 @@ class BTSPassengerSource:
 
     def get_summary(self) -> dict:
         """Return summary statistics for the loaded BTS data."""
+        data_source = "sample"
+        if self._csv_path and self._csv_path.exists():
+            data_source = "reference_csv" if "reference" in str(self._csv_path) else "raw_csv"
         return {
             "loaded": self._loaded,
             "csv_path": str(self._csv_path) if self._csv_path else None,
@@ -329,5 +332,12 @@ class BTSPassengerSource:
             "estimated_daily_passengers": self._daily_total,
             "avg_load_factor": round(self._avg_load_factor, 3),
             "home_airport": self._home_iata,
-            "data_source": "csv" if self._csv_path and self._csv_path.exists() else "sample",
+            "reference_airport": "BOS" if data_source == "reference_csv" else None,
+            "data_source": data_source,
+            "description": (
+                "Filtered BTS T-100 data for BOS (Boston Logan) remapped to ART. "
+                "~488 daily flights, 65 destinations, 78% avg load factor."
+                if data_source == "reference_csv"
+                else "Generated sample data calibrated for a medium-sized airport (~420 daily flights)."
+            ),
         }

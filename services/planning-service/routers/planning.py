@@ -328,3 +328,86 @@ async def get_scenario_investment(scenario_id: str):
         "financials": results.get("financials", {}),
         "annual_benefit_breakdown": results.get("annual_benefit_breakdown", {}),
     }
+
+
+# ── Phase 5: Scenario templates ─────────────────────────────
+
+
+@router.get("/templates")
+async def list_templates():
+    """List available pre-built scenario templates."""
+    from scenarios.templates import TEMPLATE_CATALOGUE
+
+    return {
+        "templates": {
+            key: {"name": t["name"], "description": t["description"], "params": t["params"]}
+            for key, t in TEMPLATE_CATALOGUE.items()
+        }
+    }
+
+
+class GateTemplateRequest(BaseModel):
+    terminal: str = Field(..., pattern=r"^[A-C]$", description="Terminal letter (A, B, or C)")
+    additional_gates: int = Field(..., ge=1, le=20, description="Number of gates to add")
+
+
+class RunwayTemplateRequest(BaseModel):
+    runway_id: str = Field(..., description="Runway designator, e.g. '27L'")
+    ils_capable: bool = Field(True, description="Whether the runway has ILS")
+    length_m: int = Field(3000, ge=1500, le=5000, description="Runway length in metres")
+
+
+class RouteTemplateRequest(BaseModel):
+    destination_iata: str = Field(..., min_length=3, max_length=4, description="Destination IATA code")
+    daily_flights: int = Field(..., ge=1, le=50, description="Daily flight rotations")
+    aircraft_type: str = Field("A320", description="Aircraft type (e.g. A320, B738)")
+
+
+class SecurityTemplateRequest(BaseModel):
+    lanes_delta: dict[str, int] = Field(
+        ..., description="Terminal → lane count change, e.g. {'A': 1, 'B': -1}"
+    )
+
+
+@router.post("/templates/add_gate", status_code=201)
+async def create_gate_template(body: GateTemplateRequest, background_tasks: BackgroundTasks):
+    """Create a gate addition scenario from template."""
+    from scenarios.templates import create_gate_scenario
+    from scenarios.model import store_scenario
+
+    scenario = create_gate_scenario(body.terminal, body.additional_gates)
+    store_scenario(scenario)
+    return scenario.to_dict()
+
+
+@router.post("/templates/add_runway", status_code=201)
+async def create_runway_template(body: RunwayTemplateRequest, background_tasks: BackgroundTasks):
+    """Create a runway addition scenario from template."""
+    from scenarios.templates import create_runway_scenario
+    from scenarios.model import store_scenario
+
+    scenario = create_runway_scenario(body.runway_id, body.ils_capable, body.length_m)
+    store_scenario(scenario)
+    return scenario.to_dict()
+
+
+@router.post("/templates/new_route", status_code=201)
+async def create_route_template(body: RouteTemplateRequest, background_tasks: BackgroundTasks):
+    """Create a new route scenario from template."""
+    from scenarios.templates import create_route_scenario
+    from scenarios.model import store_scenario
+
+    scenario = create_route_scenario(body.destination_iata, body.daily_flights, body.aircraft_type)
+    store_scenario(scenario)
+    return scenario.to_dict()
+
+
+@router.post("/templates/security_lanes", status_code=201)
+async def create_security_template(body: SecurityTemplateRequest, background_tasks: BackgroundTasks):
+    """Create a security lane adjustment scenario from template."""
+    from scenarios.templates import create_security_scenario
+    from scenarios.model import store_scenario
+
+    scenario = create_security_scenario(body.lanes_delta)
+    store_scenario(scenario)
+    return scenario.to_dict()

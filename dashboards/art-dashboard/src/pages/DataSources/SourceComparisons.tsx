@@ -194,8 +194,10 @@ function PassengerChartModal({
         <p className="text-[10px] text-slate-500 mb-3">
           {fieldMeta.description}.{" "}
           <span className="text-amber-500/80">
-            Note: Simulation shows passengers currently in airport;
-            BTS shows estimated hourly throughput based on historical monthly averages.
+            Note: Simulation shows passengers currently in airport (stock);
+            BTS shows estimated hourly throughput from monthly averages ×
+            3h avg dwell time. BTS data calibrated from BOS (Boston Logan)
+            remapped to ART.
           </span>
         </p>
 
@@ -328,7 +330,7 @@ function PassengerChartModal({
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: PAX_CHART_COLORS.bts }}
             />
-            BTS Historical (hourly estimate)
+            BTS Historical (BOS → ART, hourly est.)
           </div>
         </div>
       </div>
@@ -386,7 +388,7 @@ export function PassengerComparisonInline() {
     },
     {
       key: "bts",
-      label: "BTS T-100 Historical",
+      label: "BTS T-100 (BOS → ART)",
       headerClass: "text-amber-400",
       icon: "📊",
     },
@@ -429,7 +431,7 @@ export function PassengerComparisonInline() {
         onGraphClick={() => setShowModal(true)}
         loading={isLoading}
         onRefresh={() => { refetch(); }}
-        description="Compares simulated passenger flow with BTS historical data. Sim = passengers currently in airport; BTS = estimated hourly throughput from monthly averages."
+        description="Compares simulated passenger flow with BTS T-100 historical data calibrated from BOS (Boston Logan) → ART. Sim = passengers currently in airport (stock); BTS = estimated hourly throughput from monthly averages × 3h dwell time."
       />
       {showModal &&
         createPortal(

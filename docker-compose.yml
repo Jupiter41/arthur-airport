@@ -189,7 +189,7 @@ services:
       OTEL_ENABLED: "${OTEL_ENABLED:-false}"
       OTEL_SERVICE_NAME: passenger-service
       PASSENGER_SOURCE: simulation
-      PASSENGER_BTS_FILE: /app/data/bts/T100_2026.csv
+      PASSENGER_BTS_FILE: /app/data/bts/T100_reference.csv
       AIRPORT_IATA: ART
       AIRPORT_ICAO: KART
     depends_on:
@@ -320,7 +320,7 @@ services:
       DAILY_FLIGHT_TARGET: 420
       DAILY_LOAD_FACTOR_MEAN: 0.80
       INCIDENT_SOURCE: simulated
-      BTS_CSV_PATH: /app/data/bts/T100_2026.csv
+      BTS_CSV_PATH: /app/data/bts/T100_reference.csv
     volumes:
       - ./services/_common:/app/_common:ro
       - ./config:/app/config:ro

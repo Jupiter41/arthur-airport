@@ -111,7 +111,7 @@ async def passenger_compare():
             "total_passengers": sim_total,
             "departing_passengers": sim_departing,
             "arriving_passengers": sim_arriving,
-            "avg_load_factor": round(sim_total / max(1, sim_total + 500) * 1.1, 3),
+            "avg_load_factor": round(sim_total / max(1, sim_total + 500), 3),
             "by_status": by_status,
         },
         "bts_historical": None,

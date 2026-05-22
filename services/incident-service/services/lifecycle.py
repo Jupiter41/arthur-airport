@@ -226,8 +226,17 @@ async def contain_incident(incident_id: str, sim_time: datetime, note: str = "")
     return updated
 
 
-async def resolve_incident(incident_id: str, sim_time: datetime, note: str = "") -> dict | None:
+async def resolve_incident(
+    incident_id: str, sim_time: datetime, note: str = "",
+    resolution_reason: str = "manual",
+) -> dict | None:
     """Mark an incident as resolved, deactivate its protocol, and resolve all children.
+
+    Args:
+        resolution_reason: Why the incident was resolved.
+            - ``"ttr_elapsed"``: TTR countdown reached 0
+            - ``"recommendation_applied"``: A recommendation accelerated resolution
+            - ``"manual"``: Operator manually resolved
 
     Returns the updated incident dict, or None if the incident doesn't exist.
     """
@@ -237,7 +246,13 @@ async def resolve_incident(incident_id: str, sim_time: datetime, note: str = "")
     if incident["status"] == "resolved":
         return incident
 
-    updated = await update_incident_status(incident_id, "resolved", sim_time, note)
+    resolution_note = note
+    if resolution_reason != "manual":
+        resolution_note = f"[{resolution_reason}] {note}" if note else resolution_reason
+
+    updated = await update_incident_status(
+        incident_id, "resolved", sim_time, resolution_note,
+    )
 
     # Deactivate protocol in the protocol lifecycle manager
     protocol = incident.get("protocol")
@@ -277,8 +292,80 @@ async def tick_ttr(sim_time: datetime, delta_minutes: int = 1) -> None:
         await update_ttr_remaining(incident["id"], ttr)
         if ttr <= 0:
             await resolve_incident(
-                incident["id"], sim_time, note="Auto-resolved: TTR elapsed"
+                incident["id"], sim_time, note="Auto-resolved: TTR elapsed",
+                resolution_reason="ttr_elapsed",
             )
+
+
+# ── TTR reduction from recommendations ──────────────────────
+
+# Action type → percentage of TTR reduced when recommendation is applied
+RECOMMENDATION_TTR_REDUCTION: dict[str, float] = {
+    "open_security_lane": 0.30,      # Opens lane → reduces security queue 30%
+    "early_gate_call": 0.10,         # Minor impact on incident TTR
+    "redirect_checkin": 0.15,        # Redistributes load
+    "gate_reassignment": 0.25,       # Resolves gate conflicts faster
+    "hold_connecting_flight": 0.05,  # Doesn't affect incident TTR much
+    "ground_delay_program": 0.40,    # Major impact on runway incidents
+    "open_makeup_carousel": 0.20,    # Helps baggage incidents
+    "deploy_additional_vehicle": 0.15,
+}
+
+
+async def apply_recommendation_ttr_reduction(
+    action_type: str,
+    sim_time: datetime,
+    incident_types: list[str] | None = None,
+) -> list[dict]:
+    """Reduce TTR of active incidents when a recommendation is applied.
+
+    Returns list of incidents whose TTR was reduced.
+    """
+    reduction_pct = RECOMMENDATION_TTR_REDUCTION.get(action_type, 0.10)
+    if reduction_pct <= 0:
+        return []
+
+    active = await get_active_incidents_with_ttr()
+    reduced = []
+
+    for incident in active:
+        ttr = incident.get("ttr_remaining")
+        if ttr is None or ttr <= 0:
+            continue
+
+        # If incident_types filter is specified, only affect matching types
+        if incident_types and incident["type"] not in incident_types:
+            continue
+
+        # Apply reduction
+        reduction_minutes = max(1, int(ttr * reduction_pct))
+        new_ttr = max(0, ttr - reduction_minutes)
+        await update_ttr_remaining(incident["id"], new_ttr)
+
+        reduced.append({
+            "incident_id": incident["id"],
+            "incident_type": incident["type"],
+            "old_ttr": ttr,
+            "new_ttr": new_ttr,
+            "reduction_minutes": reduction_minutes,
+            "action_type": action_type,
+        })
+
+        logger.info(
+            "Recommendation %s reduced TTR for incident %s: %d → %d min (-%d%%)",
+            action_type, incident["id"][:8], ttr, new_ttr,
+            int(reduction_pct * 100),
+        )
+
+        # If TTR hit 0, auto-resolve with recommendation reason
+        if new_ttr <= 0:
+            await resolve_incident(
+                incident["id"], sim_time,
+                note=f"Resolved early: recommendation '{action_type}' applied",
+                resolution_reason="recommendation_applied",
+            )
+
+    return reduced
 
 
 async def _link_affects(incident_id: str, location: str, incident_type: str) -> None:

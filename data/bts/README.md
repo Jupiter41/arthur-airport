@@ -82,11 +82,35 @@ curl http://localhost:3000/api/v1/passengers/bts/summary
 
 | Path | Description |
 |------|-------------|
-| `data/bts/T100_sample.csv` | 24-row sample (12 months × 2 directions × 1 hub) |
-| `data/bts/T100_2026.csv` | Full year dataset (if downloaded) |
-| `data/bts/README.md` | Dataset documentation and download instructions |
+| `data/bts/T100_sample.csv` | 24-row minimal sample (LUX↔FRA, 12 months × 2 directions) |
+| `data/bts/T100_2026.csv` | Raw BTS T-100 International Segment download (18K+ rows, all US carriers) |
+| `data/bts/T100_reference.csv` | **Primary file** — Filtered for BOS (Boston Logan), remapped to ART. ~555 routes, 65 destinations |
+| `data/bts/README.md` | This file |
+| `scripts/helper_filter_bts_data.py` | Filter/remap tool to create reference CSV from raw data |
 | `services/passenger-service/services/bts_adapter.py` | BTS passenger source adapter |
 | `services/sim-orchestrator/services/bts_calibration.py` | Schedule calibration from BTS |
+
+### Reference airport mapping
+
+Since KART (ART) is a fictional airport, BTS data is calibrated against a
+real reference airport. The default is **BOS (Boston Logan)**, chosen for
+its similar profile to KART:
+
+| Metric | BOS (real) | KART (simulated) |
+|--------|-----------|-------------------|
+| Daily flights | ~488 | ~420 |
+| Destinations | 65 | ~60 |
+| Avg load factor | 78% | 80% |
+| Terminal count | 4 | 3 |
+
+To switch reference airport:
+
+```bash
+python scripts/helper_filter_bts_data.py \
+    --input data/bts/T100_2026.csv \
+    --reference-airport IAD \
+    --output data/bts/T100_reference.csv
+```
 
 ---
 

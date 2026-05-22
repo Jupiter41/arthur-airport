@@ -181,6 +181,8 @@ export interface Incident {
   protocols: string[];
   cascade_depth: number;
   cascade_tree: CascadeNode | null;
+  resolution_reason?: string;
+  resolution_note?: string;
 }
 
 export interface CascadeNode {

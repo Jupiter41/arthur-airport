@@ -195,21 +195,31 @@ async def get_holding_flights() -> list[dict]:
 
 
 async def rebuild_running_totals() -> dict:
-    """Rebuild running totals from Neo4j on restart."""
+    """Rebuild running totals from Neo4j on restart — only for the latest sim day."""
     if _driver is None:
         return {}
     async with _driver.session() as session:
+        # First, determine the latest sim_day in the database
+        day_result = await session.run(
+            "MATCH (c:CostRecord) RETURN max(c.sim_day) AS latest_day"
+        )
+        day_record = await day_result.single()
+        latest_day = day_record["latest_day"] if day_record and day_record["latest_day"] is not None else 1
+
+        # Now sum only that day's records
         result = await session.run(
             """
-            MATCH (c:CostRecord)
+            MATCH (c:CostRecord {sim_day: $day})
             RETURN c.is_revenue AS is_revenue, c.category AS category,
                    sum(c.amount_eur) AS total
-            """
+            """,
+            day=latest_day,
         )
         totals: dict = {
             "total_cost_eur": 0.0,
             "total_revenue_eur": 0.0,
             "by_category": {},
+            "sim_day": latest_day,
         }
         async for r in result:
             if r["is_revenue"]:

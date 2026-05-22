@@ -29,10 +29,19 @@ Before doing any edit, do this:
 
 The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
 
-- BTS data handling and integration into the system became not robust in data source at all: it uses sample instead of real ones, big gap between simulated & BTS etc. and nothing is clear in the documentation, UI etc. Fix this.
+- For live cost, each time I actualize the page the costs change... for historical cost it works.
+- BTS data still super different with simulated one:
 
-- Now the recommandations are executed and the incident ends (but not sure if it's because of time or recommandations thesemselves). Basically the impact of the recommandations is not clear at all.
+Field	⚙️ Simulation Engineactive	📊 BTS T-100 (BOS → ART)
+total passengers	12893	492	Δ12401
+departing passengers	12261	303	Δ11958
+arriving passengers	632	189	Δ443
+avg load factor	1.059	52.284	Δ51.2
 
-- Refactor the dashboard pages, keep the same style etc. but extract components in subfiles, create folders to organize them etc. to make the code more maintainable and easier to understand.
+- Chart measurement points are weird: there are timestamps at 3pm30 and 3pm31 only for example whereas it should be hourly and whereas the sim is around 10pm (so missing points and weird intervals)
 
-- Implement ROADMAP_PLANNING.md all phase 4 & 5 tasks
+- Incidents stack up and recommendations do nothing. (6 active accidents and don't decrease before a long time, recommandations do nothing or are hard to interpret, even more when there are several)
+
+- Implement ROADMAP_PLANNING.md all phase 6, 7 and 8 tasks
+
+- At the end of this task: the data source page, cost page, autonomous logic and capacity planning should be fully functional and integrated.
