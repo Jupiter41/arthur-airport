@@ -28,7 +28,7 @@ TTR_RANGES: dict[str, tuple[int, int] | None] = {
     "security_breach": (30, 90),
     "system_failure": (10, 120),
     "severe_weather": None,
-    "security_congestion": None,
+    "security_congestion": (15, 60),
     # Cascade child types — inherit short TTR from parent context
     "runway_closure_holding_stack": (10, 35),
     "departure_ground_stop": (8, 30),
@@ -39,10 +39,10 @@ TTR_RANGES: dict[str, tuple[int, int] | None] = {
     "flight_delayed": (10, 40),
     "make_up_zone_offline": (15, 45),
     "flight_baggage_not_loaded": (10, 35),
-    "runway_capacity_reduction": None,
-    "holding_stack": None,
-    "departure_ground_delay": None,
-    "flight_delays_cascade": None,
+    "runway_capacity_reduction": (10, 40),
+    "holding_stack": (10, 30),
+    "departure_ground_delay": (10, 30),
+    "flight_delays_cascade": (10, 30),
     "baggage_throughput_reduction": (10, 60),
     "make_up_delay": (10, 40),
     "flight_departure_delay": (10, 40),
@@ -319,6 +319,9 @@ async def apply_recommendation_ttr_reduction(
 ) -> list[dict]:
     """Reduce TTR of active incidents when a recommendation is applied.
 
+    For incidents with no TTR (e.g. severe_weather), a recommendation
+    assigns an initial TTR so the incident can begin resolving.
+
     Returns list of incidents whose TTR was reduced.
     """
     reduction_pct = RECOMMENDATION_TTR_REDUCTION.get(action_type, 0.10)
@@ -329,12 +332,45 @@ async def apply_recommendation_ttr_reduction(
     reduced = []
 
     for incident in active:
-        ttr = incident.get("ttr_remaining")
-        if ttr is None or ttr <= 0:
-            continue
-
         # If incident_types filter is specified, only affect matching types
         if incident_types and incident["type"] not in incident_types:
+            continue
+
+        ttr = incident.get("ttr_remaining")
+
+        # For incidents with no TTR, assign one so the recommendation
+        # can begin the resolution countdown
+        if ttr is None:
+            ttr_range = TTR_RANGES.get(incident["type"])
+            if ttr_range:
+                assigned_ttr = random.randint(*ttr_range)
+            else:
+                # Default fallback for truly weather-bound incidents
+                assigned_ttr = 30
+            new_ttr = max(0, assigned_ttr - int(assigned_ttr * reduction_pct))
+            await update_ttr_remaining(incident["id"], new_ttr)
+            reduced.append({
+                "incident_id": incident["id"],
+                "incident_type": incident["type"],
+                "old_ttr": None,
+                "new_ttr": new_ttr,
+                "reduction_minutes": int(assigned_ttr * reduction_pct),
+                "action_type": action_type,
+                "note": f"Assigned TTR {assigned_ttr} min, reduced by {int(reduction_pct * 100)}%",
+            })
+            logger.info(
+                "Recommendation %s assigned TTR for incident %s: None → %d min",
+                action_type, incident["id"][:8], new_ttr,
+            )
+            if new_ttr <= 0:
+                await resolve_incident(
+                    incident["id"], sim_time,
+                    note=f"Resolved: recommendation '{action_type}' applied",
+                    resolution_reason="recommendation_applied",
+                )
+            continue
+
+        if ttr <= 0:
             continue
 
         # Apply reduction

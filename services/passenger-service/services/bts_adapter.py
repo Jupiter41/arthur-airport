@@ -131,12 +131,12 @@ class BTSPassengerSource:
                         origin=row.get("ORIGIN", row.get("origin", "")).strip(),
                         destination=row.get("DEST", row.get("dest", "")).strip(),
                         carrier=row.get("UNIQUE_CARRIER", row.get("carrier", "")).strip(),
-                        departures_performed=int(row.get("DEPARTURES_PERFORMED",
-                                                         row.get("departures", 0))),
-                        seats=int(row.get("SEATS", row.get("seats", 0))),
-                        passengers=int(row.get("PASSENGERS", row.get("passengers", 0))),
-                        month=int(row.get("MONTH", row.get("month", 1))),
-                        year=int(row.get("YEAR", row.get("year", 2023))),
+                        departures_performed=int(float(row.get("DEPARTURES_PERFORMED",
+                                                         row.get("departures", 0)))),
+                        seats=int(float(row.get("SEATS", row.get("seats", 0)))),
+                        passengers=int(float(row.get("PASSENGERS", row.get("passengers", 0)))),
+                        month=int(float(row.get("MONTH", row.get("month", 1)))),
+                        year=int(float(row.get("YEAR", row.get("year", 2023)))),
                     )
                     if route.passengers > 0:
                         self._routes.append(route)

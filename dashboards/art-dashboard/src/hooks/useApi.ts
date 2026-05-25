@@ -589,3 +589,76 @@ export const costsApi = {
   recommendations: () =>
     apiFetch<FinancialRecommendation[]>("/costs/recommendations"),
 };
+
+// ── Planning ──
+
+export const planningApi = {
+  // Scenarios
+  listScenarios: (params?: { status?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const q = qs.toString();
+    return apiFetch<{ total: number; scenarios: unknown[] }>(`/planning/scenarios${q ? `?${q}` : ""}`);
+  },
+  getScenario: (id: string) =>
+    apiFetch<unknown>(`/planning/scenarios/${encodeURIComponent(id)}`),
+  getScenarioStatus: (id: string) =>
+    apiFetch<unknown>(`/planning/scenarios/${encodeURIComponent(id)}/status`),
+  getScenarioResults: (id: string) =>
+    apiFetch<unknown>(`/planning/scenarios/${encodeURIComponent(id)}/results`),
+  deleteScenario: (id: string) =>
+    apiFetch<{ deleted: string }>(`/planning/scenarios/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  createScenario: (body: Record<string, unknown>) =>
+    apiFetch<{ scenario_id: string; status: string; estimated_duration_seconds?: number; estimated_duration_human?: string }>("/planning/scenarios", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Templates
+  listTemplates: () =>
+    apiFetch<{ templates: Record<string, unknown> }>("/planning/templates"),
+  createFromTemplate: (template: string, body: Record<string, unknown>) =>
+    apiFetch<{ scenario_id: string; status: string; estimated_duration_seconds?: number; estimated_duration_human?: string }>(`/planning/templates/${template}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Time estimation
+  estimateDuration: (horizon: string, monteCarloRuns: number) =>
+    apiFetch<{ estimated_seconds: number; human_readable: string; confidence: string }>(`/planning/estimate?horizon=${horizon}&monte_carlo_runs=${monteCarloRuns}`),
+
+  // Service status
+  serviceStatus: () =>
+    apiFetch<unknown>("/planning/service-status"),
+
+  // Investment
+  analyzeInvestment: (body: Record<string, unknown>) =>
+    apiFetch<unknown>("/planning/investment/analyze", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Demand forecasting
+  demandForecast: (origin: string, dest: string, dateStr: string) =>
+    apiFetch<unknown>(`/planning/demand/forecast?origin=${origin}&destination=${dest}&date_str=${dateStr}`),
+  demandGrowth: (baseYearPax = 8_000_000, yearsAhead = 10) =>
+    apiFetch<unknown>(`/planning/demand/growth?base_year_pax=${baseYearPax}&years_ahead=${yearsAhead}`),
+
+  // ML models
+  trainModels: () =>
+    apiFetch<unknown>("/planning/ml/train", { method: "POST" }),
+  mlStatus: () =>
+    apiFetch<unknown>("/planning/ml/status"),
+
+  // Audit trail
+  auditLog: (params?: { type?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.type) qs.set("type", params.type);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    return apiFetch<{ total: number; entries: unknown[] }>(`/planning/audit/recommendations?${qs.toString()}`);
+  },
+  auditSummary: () =>
+    apiFetch<unknown>("/planning/audit/summary"),
+};

@@ -29,6 +29,9 @@ const DataSourcesPage = lazy(
 const CostDashboardPage = lazy(
   () => import("./pages/CostDashboard/CostDashboardPage"),
 );
+const PlanningPage = lazy(
+  () => import("./pages/Planning/PlanningPage"),
+);
 
 const PageFallback = () => (
   <div className="flex items-center justify-center h-full text-gray-400">
@@ -57,6 +60,7 @@ function AppShell() {
             <Route path="/ml" element={<MLTrainingPage />} />
             <Route path="/data-sources" element={<DataSourcesPage />} />
             <Route path="/costs" element={<CostDashboardPage />} />
+            <Route path="/planning" element={<PlanningPage />} />
           </Routes>
         </Suspense>
       </main>

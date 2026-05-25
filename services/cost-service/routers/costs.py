@@ -112,21 +112,29 @@ async def get_incident_ranking(day: int = Query(1, ge=1), limit: int = Query(5, 
 
 @router.get("/hourly")
 async def get_hourly_curve(day: int = Query(1, ge=1)):
-    """Cost curve per simulated hour."""
+    """Cost curve per simulated hour — always returns 24 data points (0-23)."""
     if db._driver is None:
         return {"hours": []}
     raw = await hourly_cost_curve(db._driver, day)
-    # Transform field names to match frontend HourlyCostPoint interface
-    hours = []
+    # Build a lookup from actual data
+    by_hour: dict[int, dict] = {}
     for r in raw:
+        h = r.get("hour", 0)
         cost = r.get("cost", 0.0)
         revenue = r.get("revenue", 0.0)
-        hours.append({
-            "hour": r.get("hour", 0),
+        by_hour[h] = {
+            "hour": h,
             "cost_eur": round(cost, 2),
             "revenue_eur": round(revenue, 2),
             "net_eur": round(revenue - cost, 2),
-        })
+        }
+    # Pad to full 24 hours so the chart always shows a complete day
+    hours = []
+    for h in range(24):
+        if h in by_hour:
+            hours.append(by_hour[h])
+        else:
+            hours.append({"hour": h, "cost_eur": 0.0, "revenue_eur": 0.0, "net_eur": 0.0})
     return {"hours": hours}
 
 

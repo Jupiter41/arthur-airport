@@ -194,8 +194,11 @@ def evaluate_and_apply(
             rec.action_type, rec.confidence_score, rec.description,
         )
 
-        # Only apply one action per evaluation cycle
-        break
+        # In rule_based mode, apply all qualifying actions;
+        # in threshold mode, apply only the top one per cycle
+        from models.domain import AutonomousMode
+        if _settings.mode != AutonomousMode.RULE_BASED:
+            break
 
     return actions_taken
 

@@ -1,0 +1,225 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "title": "Active Scenarios",
+      "type": "stat",
+      "targets": [
+        { "expr": "planning_active_scenarios", "legendFormat": "Active", "refId": "A" }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "title": "Scenarios Created",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(planning_scenarios_created_total)", "legendFormat": "Total", "refId": "A" }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "title": "Scenarios Completed",
+      "type": "stat",
+      "targets": [
+        { "expr": "planning_scenarios_completed_total{status=\"success\"}", "legendFormat": "OK", "refId": "A" }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "title": "Failed Scenarios",
+      "type": "stat",
+      "targets": [
+        { "expr": "planning_scenarios_completed_total{status=\"failure\"}", "legendFormat": "Failed", "refId": "A" }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "scheme",
+            "pointSize": 5
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 5,
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "title": "Scenario Duration (p50 / p90 / p99)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(planning_scenario_duration_seconds_bucket[5m]))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.90, rate(planning_scenario_duration_seconds_bucket[5m]))", "legendFormat": "p90", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(planning_scenario_duration_seconds_bucket[5m]))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "stacking": { "mode": "normal" }
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 6,
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "title": "Scenarios Created by Template",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(planning_scenarios_created_total{template=\"add_gate\"}[5m])", "legendFormat": "Gate", "refId": "A" },
+        { "expr": "rate(planning_scenarios_created_total{template=\"add_runway\"}[5m])", "legendFormat": "Runway", "refId": "B" },
+        { "expr": "rate(planning_scenarios_created_total{template=\"new_route\"}[5m])", "legendFormat": "Route", "refId": "C" },
+        { "expr": "rate(planning_scenarios_created_total{template=\"security_lanes\"}[5m])", "legendFormat": "Security", "refId": "D" },
+        { "expr": "rate(planning_scenarios_created_total{template=\"custom\"}[5m])", "legendFormat": "Custom", "refId": "E" }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "id": 7,
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "title": "Monte Carlo Runs Processed",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(planning_mc_runs_total[5m])", "legendFormat": "MC runs/s", "refId": "A" }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "scheme"
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 8,
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "title": "Completion Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(planning_scenarios_completed_total{status=\"success\"}[5m])", "legendFormat": "Success", "refId": "A" },
+        { "expr": "rate(planning_scenarios_completed_total{status=\"failure\"}[5m])", "legendFormat": "Failure", "refId": "B" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["planning", "capacity"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Planning & Capacity",
+  "uid": "planning-capacity",
+  "version": 1
+}

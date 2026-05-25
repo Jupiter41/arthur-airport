@@ -17,6 +17,7 @@ setup_logging("planning-service")
 
 from adapters.registry import list_available_adapters  # noqa: E402
 from routers.planning import router as planning_router  # noqa: E402
+from scenarios.metrics import planning_metrics  # noqa: E402
 
 logger = structlog.get_logger("planning-service")
 
@@ -54,3 +55,38 @@ async def ready():
 async def get_adapters():
     """List all available data source adapters."""
     return list_available_adapters()
+
+
+@app.get("/api/v1/planning/service-status")
+async def service_status():
+    """Overall planning service status including active runs and metrics."""
+    from scenarios.model import list_scenarios as _list
+
+    running, _ = _list(status="running")
+    completed, _ = _list(status="completed")
+    failed, _ = _list(status="failed")
+    pending, _ = _list(status="pending")
+    all_scenarios, total = _list()
+
+    return {
+        "service": "planning-service",
+        "status": "ok",
+        "scenarios": {
+            "total": total,
+            "pending": len(pending),
+            "running": len(running),
+            "completed": len(completed),
+            "failed": len(failed),
+        },
+        "active_runs": [
+            {
+                "id": s.id,
+                "name": s.name,
+                "progress_pct": s.progress_pct,
+                "runs_completed": s.runs_completed,
+                "monte_carlo_runs": s.monte_carlo_runs,
+            }
+            for s in running
+        ],
+        "timing": planning_metrics.get_timing_stats(),
+    }

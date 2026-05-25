@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import date, datetime
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
@@ -15,6 +15,7 @@ from adapters.registry import (
     get_weather_adapter,
     list_available_adapters,
 )
+from scenarios.metrics import planning_metrics
 
 logger = structlog.get_logger(__name__)
 
@@ -153,10 +154,9 @@ async def create_scenario(
     )
     store_scenario(scenario)
 
-    # Estimate duration: ~0.5s per day per run
-    from scenarios.runner import _horizon_to_days
-    n_days = min(_horizon_to_days(body.horizon), 30)  # capped at 30 sample days
-    est_seconds = n_days * body.monte_carlo_runs * 0.5
+    # Estimate duration using historical timing data
+    estimate = planning_metrics.estimate_duration(body.horizon, body.monte_carlo_runs)
+    planning_metrics.scenarios_created.labels(template="custom").inc()
 
     # Run in background
     background_tasks.add_task(
@@ -166,7 +166,9 @@ async def create_scenario(
     return {
         "scenario_id": scenario.id,
         "status": "pending",
-        "estimated_duration_seconds": est_seconds,
+        "estimated_duration_seconds": estimate["estimated_seconds"],
+        "estimated_duration_human": estimate["human_readable"],
+        "estimation_confidence": estimate["confidence"],
     }
 
 
@@ -208,6 +210,7 @@ async def get_scenario_status(scenario_id: str):
         raise HTTPException(status_code=404, detail="Scenario not found")
 
     elapsed = 0.0
+    estimated_remaining = None
     if scenario.started_at:
         from datetime import datetime
         try:
@@ -216,15 +219,30 @@ async def get_scenario_status(scenario_id: str):
         except (ValueError, TypeError):
             pass
 
+    # Estimate remaining time based on progress
+    if scenario.status == "running" and scenario.progress_pct > 0:
+        rate = elapsed / scenario.progress_pct
+        estimated_remaining = round(rate * (100 - scenario.progress_pct), 1)
+
     return {
         "scenario_id": scenario.id,
         "status": scenario.status,
         "progress_pct": scenario.progress_pct,
         "runs_completed": scenario.runs_completed,
-        "runs_total": scenario.monte_carlo_runs,
+        "runs_total": scenario.monte_carlo_runs * 2,  # baseline + scenario
         "elapsed_seconds": round(elapsed, 1),
+        "estimated_remaining_seconds": estimated_remaining,
         "error": scenario.error,
     }
+
+
+@router.get("/estimate")
+async def estimate_duration(
+    horizon: str = Query("day", pattern=r"^(day|week|month|year|10year)$"),
+    monte_carlo_runs: int = Query(200, ge=1, le=500),
+):
+    """Estimate how long a scenario would take to run."""
+    return planning_metrics.estimate_duration(horizon, monte_carlo_runs)
 
 
 @router.get("/scenarios/{scenario_id}/results")
@@ -371,43 +389,289 @@ class SecurityTemplateRequest(BaseModel):
 
 @router.post("/templates/add_gate", status_code=201)
 async def create_gate_template(body: GateTemplateRequest, background_tasks: BackgroundTasks):
-    """Create a gate addition scenario from template."""
+    """Create a gate addition scenario from template and auto-run it."""
     from scenarios.templates import create_gate_scenario
     from scenarios.model import store_scenario
+    from scenarios.runner import run_scenario
 
     scenario = create_gate_scenario(body.terminal, body.additional_gates)
     store_scenario(scenario)
-    return scenario.to_dict()
+    estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
+    planning_metrics.scenarios_created.labels(template="add_gate").inc()
+    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
+    return {
+        "scenario_id": scenario.id,
+        "status": "pending",
+        "estimated_duration_seconds": estimate["estimated_seconds"],
+        "estimated_duration_human": estimate["human_readable"],
+        "estimation_confidence": estimate["confidence"],
+        **scenario.to_dict(),
+    }
 
 
 @router.post("/templates/add_runway", status_code=201)
 async def create_runway_template(body: RunwayTemplateRequest, background_tasks: BackgroundTasks):
-    """Create a runway addition scenario from template."""
+    """Create a runway addition scenario from template and auto-run it."""
     from scenarios.templates import create_runway_scenario
     from scenarios.model import store_scenario
+    from scenarios.runner import run_scenario
 
     scenario = create_runway_scenario(body.runway_id, body.ils_capable, body.length_m)
     store_scenario(scenario)
-    return scenario.to_dict()
+    estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
+    planning_metrics.scenarios_created.labels(template="add_runway").inc()
+    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
+    return {
+        "scenario_id": scenario.id,
+        "status": "pending",
+        "estimated_duration_seconds": estimate["estimated_seconds"],
+        "estimated_duration_human": estimate["human_readable"],
+        "estimation_confidence": estimate["confidence"],
+        **scenario.to_dict(),
+    }
 
 
 @router.post("/templates/new_route", status_code=201)
 async def create_route_template(body: RouteTemplateRequest, background_tasks: BackgroundTasks):
-    """Create a new route scenario from template."""
+    """Create a new route scenario from template and auto-run it."""
     from scenarios.templates import create_route_scenario
     from scenarios.model import store_scenario
+    from scenarios.runner import run_scenario
 
     scenario = create_route_scenario(body.destination_iata, body.daily_flights, body.aircraft_type)
     store_scenario(scenario)
-    return scenario.to_dict()
+    estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
+    planning_metrics.scenarios_created.labels(template="new_route").inc()
+    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
+    return {
+        "scenario_id": scenario.id,
+        "status": "pending",
+        "estimated_duration_seconds": estimate["estimated_seconds"],
+        "estimated_duration_human": estimate["human_readable"],
+        "estimation_confidence": estimate["confidence"],
+        **scenario.to_dict(),
+    }
 
 
 @router.post("/templates/security_lanes", status_code=201)
 async def create_security_template(body: SecurityTemplateRequest, background_tasks: BackgroundTasks):
-    """Create a security lane adjustment scenario from template."""
+    """Create a security lane adjustment scenario from template and auto-run it."""
     from scenarios.templates import create_security_scenario
     from scenarios.model import store_scenario
+    from scenarios.runner import run_scenario
 
     scenario = create_security_scenario(body.lanes_delta)
     store_scenario(scenario)
-    return scenario.to_dict()
+    estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
+    planning_metrics.scenarios_created.labels(template="security_lanes").inc()
+    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
+    return {
+        "scenario_id": scenario.id,
+        "status": "pending",
+        "estimated_duration_seconds": estimate["estimated_seconds"],
+        "estimated_duration_human": estimate["human_readable"],
+        "estimation_confidence": estimate["confidence"],
+        **scenario.to_dict(),
+    }
+
+
+# ── Phase 6: ML demand forecasting ──────────────────────────
+
+
+@router.get("/demand/forecast")
+async def demand_forecast(
+    origin: str = Query("ART", description="Origin IATA"),
+    destination: str = Query("JFK", description="Destination IATA"),
+    date_str: str = Query("2026-07-15", description="Forecast date YYYY-MM-DD"),
+    distance_km: float = Query(1000.0, ge=0),
+    is_hub: bool = Query(False),
+):
+    """Predict daily passenger demand for a route on a given date."""
+    from ml.demand_model import get_demand_model
+
+    forecast_date = date.fromisoformat(date_str)
+    model = get_demand_model()
+    forecast = model.predict(origin, destination, forecast_date, distance_km, is_hub)
+    return {
+        "origin": origin,
+        "destination": destination,
+        "date": date_str,
+        "predicted_daily_pax": forecast.predicted_daily_pax,
+        "confidence_low": forecast.confidence_low,
+        "confidence_high": forecast.confidence_high,
+        "model_source": forecast.model_source,
+    }
+
+
+@router.get("/demand/forecast/range")
+async def demand_forecast_range(
+    origin: str = Query("ART"),
+    destination: str = Query("JFK"),
+    start_date: str = Query("2026-07-01"),
+    days: int = Query(30, ge=1, le=365),
+    distance_km: float = Query(1000.0, ge=0),
+    is_hub: bool = Query(False),
+):
+    """Forecast demand for a route over a date range."""
+    from ml.demand_model import get_demand_model
+
+    start = date.fromisoformat(start_date)
+    model = get_demand_model()
+    forecasts = model.forecast_route_range(origin, destination, start, days, distance_km, is_hub)
+    return {
+        "origin": origin,
+        "destination": destination,
+        "start_date": start_date,
+        "days": days,
+        "model_source": forecasts[0].model_source if forecasts else "heuristic",
+        "forecasts": [
+            {
+                "date": f.forecast_date.isoformat(),
+                "predicted_daily_pax": f.predicted_daily_pax,
+                "confidence_low": f.confidence_low,
+                "confidence_high": f.confidence_high,
+            }
+            for f in forecasts
+        ],
+    }
+
+
+@router.get("/demand/growth")
+async def demand_growth(
+    base_year_pax: int = Query(8_000_000, ge=0),
+    years_ahead: int = Query(10, ge=1, le=30),
+):
+    """Project annual passenger growth using Eurocontrol CAGR scenarios."""
+    from adapters.eurocontrol import EurocontrolDemandAdapter
+
+    adapter = EurocontrolDemandAdapter()
+    projections = {}
+    for scenario in ("low", "base", "high"):
+        projected = adapter.project_annual_pax(base_year_pax, years_ahead, scenario)
+        rate = adapter.get_demand_growth_rate(scenario)
+        projections[scenario] = {
+            "growth_rate_pct": round(rate * 100, 1),
+            "projected_annual_pax": projected,
+            "growth_factor": round((1 + rate) ** years_ahead, 3),
+        }
+    return {
+        "base_year_pax": base_year_pax,
+        "years_ahead": years_ahead,
+        "projections": projections,
+    }
+
+
+@router.get("/delay/predict")
+async def predict_delay(
+    hour: int = Query(14, ge=0, le=23),
+    day_of_week: int = Query(2, ge=0, le=6),
+    month: int = Query(7, ge=1, le=12),
+    weather_category: int = Query(0, ge=0, le=3, description="0=CAVOK, 1=VMC, 2=IMC, 3=LIFR"),
+    flights_prev_2h: int = Query(20, ge=0),
+):
+    """Predict P(delay > 15 min) for a flight given conditions."""
+    from ml.delay_model import get_delay_model
+
+    model = get_delay_model()
+    pred = model.predict(
+        hour=hour, day_of_week=day_of_week, month=month,
+        weather_category=weather_category, flights_prev_2h=flights_prev_2h,
+    )
+    return {
+        "p_delay_15min": pred.p_delay_15min,
+        "expected_delay_minutes": pred.expected_delay_minutes,
+        "model_source": pred.model_source,
+        "context": pred.flight_context,
+    }
+
+
+@router.post("/ml/train")
+async def train_models(background_tasks: BackgroundTasks):
+    """Train demand and delay ML models from BTS data."""
+    import os
+    from ml.training_pipeline import run_training_pipeline
+
+    bts_path = os.getenv("BTS_CSV_PATH", "/app/data/bts/T100_reference.csv")
+
+    # Run training in background (can take a few seconds)
+    import asyncio
+
+    result = await asyncio.to_thread(run_training_pipeline, bts_path)
+    return {"status": "completed", "results": result}
+
+
+@router.get("/ml/status")
+async def ml_model_status():
+    """Get current ML model status."""
+    from ml.demand_model import get_demand_model
+    from ml.delay_model import get_delay_model
+
+    return {
+        "demand_model": get_demand_model().to_dict(),
+        "delay_model": get_delay_model().to_dict(),
+    }
+
+
+# ── Phase 7: Decision audit trail ───────────────────────────
+
+
+@router.get("/audit/recommendations")
+async def list_audit_recommendations(
+    type: str | None = Query(None, description="Filter: operational | planning"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """List recommendation audit trail entries."""
+    from audit.audit_trail import get_audit_log
+
+    entries, total = get_audit_log(rec_type=type, limit=limit, offset=offset)
+    return {"total": total, "entries": entries}
+
+
+@router.get("/audit/summary")
+async def audit_summary():
+    """Get recommendation accuracy summary metrics."""
+    from audit.audit_trail import get_audit_summary
+
+    return get_audit_summary()
+
+
+@router.post("/audit/log")
+async def log_audit_recommendation(body: dict):
+    """Log a recommendation to the audit trail."""
+    from audit.audit_trail import log_recommendation
+
+    entry = log_recommendation(
+        recommendation_text=body.get("recommendation_text", ""),
+        action_type=body.get("action_type", ""),
+        predicted_saving_eur=body.get("predicted_saving_eur", 0.0),
+        confidence=body.get("confidence", 0.0),
+        rec_type=body.get("type", "operational"),
+        sim_day=body.get("sim_day", 1),
+        sim_time=body.get("sim_time", ""),
+        target_type=body.get("target_type", ""),
+        target_id=body.get("target_id", ""),
+    )
+    return entry.to_dict()
+
+
+@router.post("/audit/apply/{rec_id}")
+async def apply_audit_recommendation(rec_id: str, body: dict):
+    """Mark a recommendation as applied."""
+    from audit.audit_trail import mark_applied
+
+    applied_at = body.get("applied_at", datetime.utcnow().isoformat())
+    if mark_applied(rec_id, applied_at):
+        return {"status": "applied", "rec_id": rec_id}
+    raise HTTPException(status_code=404, detail="Recommendation not found")
+
+
+@router.post("/audit/outcome/{rec_id}")
+async def record_audit_outcome(rec_id: str, body: dict):
+    """Record measured outcome for an applied recommendation."""
+    from audit.audit_trail import record_outcome
+
+    actual = body.get("actual_saving_eur", 0.0)
+    if record_outcome(rec_id, actual):
+        return {"status": "recorded", "rec_id": rec_id}
+    raise HTTPException(status_code=404, detail="Recommendation not found")

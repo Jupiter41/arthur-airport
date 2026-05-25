@@ -914,7 +914,7 @@ def create_security_scenario(lanes_delta: dict[str, int]) -> PlanningScenario:
 
 ---
 
-## Phase 6 — ML demand forecasting
+## Phase 6 — ML demand forecasting ✅
 
 ### Task P6.1 — Demand surface model
 
@@ -999,7 +999,7 @@ python -m planning_service.ml.training_pipeline \
 
 ---
 
-## Phase 7 — Decision audit trail
+## Phase 7 — Decision audit trail ✅
 
 ### Task P7.1 — Recommendation audit log schema
 
@@ -1084,7 +1084,7 @@ makes the system trustworthy for business use.
 
 ---
 
-## Phase 8 — Planning dashboard
+## Phase 8 — Planning dashboard ✅
 
 ### Task P8.1 — Planning page (`/planning`)
 

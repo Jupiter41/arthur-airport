@@ -1,6 +1,10 @@
 """Scenario runner — executes planning scenarios with Monte Carlo support.
 
-P3.2 of ROADMAP_PLANNING.md (simplified for Phase 2 delivery).
+Every scenario automatically runs a baseline (do-nothing) comparison using
+the same dates, seeds, and adapter configuration. This produces proper
+delta_vs_baseline metrics and accurate investment analysis.
+
+P3.2 of ROADMAP_PLANNING.md.
 """
 
 from __future__ import annotations
@@ -11,10 +15,12 @@ import time
 from datetime import date, datetime, timedelta
 
 from adapters.registry import get_schedule_adapter
-from engine.results import DayResult, ScenarioResults, aggregate_kpi
+from engine.infrastructure import InfrastructureConfig
+from engine.results import DayResult, KPIDistribution, ScenarioResults, aggregate_kpi
 from engine.simulation import PlanningSimEngine
 from finance.benefit_extractor import extract_annual_benefit
 from finance.investment import compute_investment
+from scenarios.metrics import planning_metrics
 
 from .model import PlanningScenario, store_results
 
@@ -39,82 +45,41 @@ def _generate_dates(horizon: str, start: date | None = None) -> list[date]:
     n_days = _horizon_to_days(horizon)
     # For year+ horizons, sample representative days to keep runtime manageable
     if n_days > 30:
-        # Sample 30 representative days across the horizon
         step = n_days // 30
         return [start + timedelta(days=i * step) for i in range(30)]
     return [start + timedelta(days=i) for i in range(n_days)]
 
 
-def run_scenario(scenario: PlanningScenario) -> None:
-    """Run a planning scenario (blocking). Updates scenario status in-place."""
-    scenario.status = "running"
-    scenario.started_at = datetime.utcnow().isoformat()
-    scenario.progress_pct = 0
-    scenario.runs_completed = 0
+def _run_monte_carlo(
+    engine: PlanningSimEngine,
+    dates: list[date],
+    infra: InfrastructureConfig,
+    n_runs: int,
+    base_seed: int | None,
+    label: str,
+    progress_cb=None,
+) -> list[list[DayResult]]:
+    """Run N Monte Carlo iterations for a given infrastructure config.
 
-    try:
-        # Get adapter based on scenario config
-        schedule_adapter = get_schedule_adapter(scenario.demand_source)
-
-        # Use schedule adapter for the engine (it provides get_daily_schedule)
-        engine = PlanningSimEngine(adapter=schedule_adapter, seed=scenario.random_seed)
-
-        dates = _generate_dates(scenario.horizon)
-        n_runs = max(1, scenario.monte_carlo_runs)
-        total_work = n_runs * len(dates)
-
-        # Collect results per run
-        all_day_results: list[list[DayResult]] = []
-        work_done = 0
-
-        for run_idx in range(n_runs):
-            # Each Monte Carlo run gets a different seed
-            base_seed = scenario.random_seed if scenario.random_seed is not None else random.randint(0, 999_999)
-            run_seed = base_seed + run_idx
-
-            run_results: list[DayResult] = []
-            for sim_date in dates:
-                day_seed = run_seed + sim_date.toordinal()
-                result = engine.run_day(
-                    sim_date=sim_date,
-                    infrastructure=scenario.infrastructure,
-                    seed=day_seed,
-                )
-                result.infrastructure_label = scenario.name or "scenario"
-                run_results.append(result)
-                work_done += 1
-
-            all_day_results.append(run_results)
-            scenario.runs_completed = run_idx + 1
-            scenario.progress_pct = int(work_done / total_work * 100)
-
-        # Aggregate results across runs
-        results = _aggregate_results(scenario, all_day_results)
-        store_results(scenario.id, results.to_dict())
-
-        scenario.status = "completed"
-        scenario.completed_at = datetime.utcnow().isoformat()
-        scenario.progress_pct = 100
-        logger.info(
-            "Scenario %s completed: %d runs × %d days in %.1fs",
-            scenario.id, n_runs, len(dates), results.run_duration_seconds,
-        )
-
-    except Exception as e:
-        logger.error("Scenario %s failed: %s", scenario.id, e, exc_info=True)
-        scenario.status = "failed"
-        scenario.error = str(e)
-        scenario.completed_at = datetime.utcnow().isoformat()
+    Returns a list of run results, each run being a list of DayResult.
+    """
+    all_runs: list[list[DayResult]] = []
+    for run_idx in range(n_runs):
+        seed = (base_seed if base_seed is not None else random.randint(0, 999_999)) + run_idx
+        run_results: list[DayResult] = []
+        for sim_date in dates:
+            day_seed = seed + sim_date.toordinal()
+            result = engine.run_day(sim_date=sim_date, infrastructure=infra, seed=day_seed)
+            result.infrastructure_label = label
+            run_results.append(result)
+        all_runs.append(run_results)
+        if progress_cb:
+            progress_cb(run_idx + 1)
+    return all_runs
 
 
-def _aggregate_results(
-    scenario: PlanningScenario,
-    all_runs: list[list[DayResult]],
-) -> ScenarioResults:
-    """Aggregate day results across Monte Carlo runs into KPI distributions."""
-    t0 = time.monotonic()
-
-    # Flatten: collect per-run aggregate KPIs
+def _collect_kpis(all_runs: list[list[DayResult]]) -> dict[str, KPIDistribution]:
+    """Aggregate per-run KPIs across Monte Carlo runs into distributions."""
     run_avg_delay: list[float] = []
     run_on_time_rate: list[float] = []
     run_missed_connections: list[float] = []
@@ -129,8 +94,6 @@ def _aggregate_results(
     for run_days in all_runs:
         if not run_days:
             continue
-
-        # Average across days within each run
         n = len(run_days)
         run_avg_delay.append(sum(d.avg_delay_minutes for d in run_days) / n)
         run_on_time_rate.append(sum(d.on_time_rate() for d in run_days) / n)
@@ -143,7 +106,7 @@ def _aggregate_results(
         run_gate_conflicts.append(sum(d.gate_conflicts for d in run_days) / n)
         run_security_wait.append(max(d.security_wait_max_minutes for d in run_days))
 
-    kpis = {
+    return {
         "avg_delay_minutes": aggregate_kpi(run_avg_delay),
         "on_time_rate": aggregate_kpi(run_on_time_rate),
         "missed_connections": aggregate_kpi(run_missed_connections),
@@ -156,56 +119,174 @@ def _aggregate_results(
         "security_wait_max_minutes": aggregate_kpi(run_security_wait),
     }
 
-    elapsed = time.monotonic() - t0
 
-    return ScenarioResults(
-        scenario_id=scenario.id,
-        scenario_name=scenario.name,
-        status="completed",
-        kpis=kpis,
-        financials=_compute_financials(scenario, kpis),
-        annual_benefit_breakdown=_compute_benefit_breakdown(scenario, kpis),
-        run_duration_seconds=elapsed,
-        computed_at=datetime.utcnow().isoformat(),
-    )
+def _compute_delta(
+    baseline_kpis: dict[str, KPIDistribution],
+    scenario_kpis: dict[str, KPIDistribution],
+) -> dict[str, dict]:
+    """Compute delta between scenario and baseline KPIs.
 
-
-def _compute_financials(
-    scenario: PlanningScenario,
-    kpis: dict,
-) -> dict:
-    """Run NPV/IRR investment analysis if capex is set."""
-    if scenario.capex_eur <= 0:
-        return {}
-
-    # Estimate annual benefit from KPI improvements vs a rough baseline
-    # (full baseline comparison requires running baseline separately)
-    # Use daily net revenue × 365 as a proxy for annual benefit
-    net_rev = kpis.get("total_revenue_eur")
-    net_cost = kpis.get("total_cost_eur")
-    daily_net = (net_rev.mean if net_rev else 0) - (net_cost.mean if net_cost else 0)
-    annual_benefit = daily_net * 365
-
-    result = compute_investment(
-        capex=scenario.capex_eur,
-        annual_benefit=annual_benefit,
-        annual_opex=scenario.opex_delta_eur,
-        years=scenario.years_horizon,
-        discount_rate=scenario.discount_rate,
-    )
-    return result.to_dict()
+    For cost/delay KPIs: negative delta = improvement (lower is better).
+    Returns mean delta and percentage change for each KPI.
+    """
+    delta: dict[str, dict] = {}
+    for key in scenario_kpis:
+        b = baseline_kpis.get(key)
+        s = scenario_kpis[key]
+        if b is None:
+            continue
+        abs_change = s.mean - b.mean
+        pct_change = (abs_change / b.mean * 100) if b.mean != 0 else 0.0
+        delta[key] = {
+            "baseline_mean": round(b.mean, 4),
+            "scenario_mean": round(s.mean, 4),
+            "absolute_change": round(abs_change, 4),
+            "pct_change": round(pct_change, 2),
+        }
+    return delta
 
 
-def _compute_benefit_breakdown(
-    scenario: PlanningScenario,
-    kpis: dict,
-) -> dict[str, float]:
-    """Extract benefit breakdown if capex is set."""
-    if scenario.capex_eur <= 0:
-        return {}
+def _infra_diff(baseline: InfrastructureConfig, scenario: InfrastructureConfig) -> list[dict]:
+    """Produce a human-readable list of infrastructure differences."""
+    diffs: list[dict] = []
+    # Gates
+    for t in sorted(set(baseline.gates_per_terminal) | set(scenario.gates_per_terminal)):
+        b = baseline.gates_per_terminal.get(t, 0)
+        s = scenario.gates_per_terminal.get(t, 0)
+        if b != s:
+            diffs.append({"parameter": f"Gates (Terminal {t})", "baseline": b, "scenario": s, "change": s - b})
+    # Runways
+    if baseline.runway_count != scenario.runway_count:
+        diffs.append({"parameter": "Runways", "baseline": baseline.runway_count, "scenario": scenario.runway_count, "change": scenario.runway_count - baseline.runway_count})
+    # Security lanes
+    for t in sorted(set(baseline.security_lanes_per_terminal) | set(scenario.security_lanes_per_terminal)):
+        b = baseline.security_lanes_per_terminal.get(t, 0)
+        s = scenario.security_lanes_per_terminal.get(t, 0)
+        if b != s:
+            diffs.append({"parameter": f"Security lanes (Terminal {t})", "baseline": b, "scenario": s, "change": s - b})
+    # Baggage
+    if baseline.screening_units != scenario.screening_units:
+        diffs.append({"parameter": "Screening units", "baseline": baseline.screening_units, "scenario": scenario.screening_units, "change": scenario.screening_units - baseline.screening_units})
+    if baseline.sorting_capacity_per_hour != scenario.sorting_capacity_per_hour:
+        diffs.append({"parameter": "Sorting capacity/hr", "baseline": baseline.sorting_capacity_per_hour, "scenario": scenario.sorting_capacity_per_hour, "change": scenario.sorting_capacity_per_hour - baseline.sorting_capacity_per_hour})
+    # Demand
+    if baseline.daily_flight_target != scenario.daily_flight_target:
+        diffs.append({"parameter": "Daily flights", "baseline": baseline.daily_flight_target, "scenario": scenario.daily_flight_target, "change": scenario.daily_flight_target - baseline.daily_flight_target})
+    return diffs
 
-    # Without a separate baseline run, use zero-baseline for benefit estimation
-    from engine.results import KPIDistribution
-    empty_baseline: dict[str, KPIDistribution] = {}
-    breakdown = extract_annual_benefit(empty_baseline, kpis)
-    return breakdown.to_dict()
+
+def run_scenario(scenario: PlanningScenario) -> None:
+    """Run a planning scenario with automatic baseline comparison.
+
+    1. Run baseline (do-nothing) with the same dates, seeds, adapter
+    2. Run scenario with modified infrastructure
+    3. Compute delta (scenario - baseline) for all KPIs
+    4. Run investment analysis using the actual delta
+    """
+    scenario.status = "running"
+    scenario.started_at = datetime.utcnow().isoformat()
+    scenario.progress_pct = 0
+    scenario.runs_completed = 0
+    t_start = time.monotonic()
+    planning_metrics.active_scenarios.inc()
+
+    try:
+        schedule_adapter = get_schedule_adapter(scenario.demand_source)
+        engine = PlanningSimEngine(adapter=schedule_adapter, seed=scenario.random_seed)
+
+        dates = _generate_dates(scenario.horizon)
+        n_runs = max(1, scenario.monte_carlo_runs)
+        base_seed = scenario.random_seed if scenario.random_seed is not None else random.randint(0, 999_999)
+
+        # Total work: baseline runs + scenario runs
+        total_runs = n_runs * 2
+
+        # ── Phase 1: Run baseline ───────────────────────────
+        baseline_infra = InfrastructureConfig.baseline()
+        baseline_runs = _run_monte_carlo(
+            engine, dates, baseline_infra, n_runs, base_seed, "baseline",
+            progress_cb=lambda done: _update_progress(scenario, done, total_runs),
+        )
+        baseline_kpis = _collect_kpis(baseline_runs)
+
+        # ── Phase 2: Run scenario ───────────────────────────
+        scenario_runs = _run_monte_carlo(
+            engine, dates, scenario.infrastructure, n_runs, base_seed,
+            scenario.name or "scenario",
+            progress_cb=lambda done: _update_progress(scenario, n_runs + done, total_runs),
+        )
+        scenario_kpis = _collect_kpis(scenario_runs)
+
+        # ── Phase 3: Compare ────────────────────────────────
+        delta = _compute_delta(baseline_kpis, scenario_kpis)
+        infra_changes = _infra_diff(baseline_infra, scenario.infrastructure)
+
+        # ── Phase 4: Financial analysis ─────────────────────
+        benefit_breakdown = extract_annual_benefit(baseline_kpis, scenario_kpis)
+        annual_benefit = benefit_breakdown.total_annual_benefit
+
+        financials: dict = {}
+        if scenario.capex_eur > 0 or scenario.opex_delta_eur > 0:
+            inv = compute_investment(
+                capex=scenario.capex_eur,
+                annual_benefit=max(0, annual_benefit),
+                annual_opex=scenario.opex_delta_eur,
+                years=scenario.years_horizon,
+                discount_rate=scenario.discount_rate,
+            )
+            financials = inv.to_dict()
+            # Add cumulative cash flow series for chart
+            net_annual = inv.net_annual_eur
+            financials["cumulative_cash_flows"] = []
+            cumulative = -scenario.capex_eur
+            financials["cumulative_cash_flows"].append(round(cumulative, 2))
+            for yr in range(1, scenario.years_horizon + 1):
+                cumulative += net_annual
+                financials["cumulative_cash_flows"].append(round(cumulative, 2))
+
+        elapsed = time.monotonic() - t_start
+
+        results = ScenarioResults(
+            scenario_id=scenario.id,
+            scenario_name=scenario.name,
+            status="completed",
+            kpis={k: v for k, v in scenario_kpis.items()},
+            baseline_kpis={k: v for k, v in baseline_kpis.items()},
+            delta_vs_baseline=delta,
+            financials=financials,
+            annual_benefit_breakdown=benefit_breakdown.to_dict(),
+            infrastructure_changes=infra_changes,
+            run_duration_seconds=elapsed,
+            computed_at=datetime.utcnow().isoformat(),
+        )
+        store_results(scenario.id, results.to_dict())
+
+        scenario.status = "completed"
+        scenario.completed_at = datetime.utcnow().isoformat()
+        scenario.progress_pct = 100
+        scenario.runs_completed = n_runs
+        planning_metrics.active_scenarios.dec()
+        planning_metrics.record_completion(
+            horizon=scenario.horizon,
+            monte_carlo_runs=n_runs,
+            sim_days=len(dates),
+            duration_seconds=elapsed,
+        )
+        logger.info(
+            "Scenario %s completed: %d MC runs × %d days (×2 baseline) in %.1fs",
+            scenario.id, n_runs, len(dates), elapsed,
+        )
+
+    except Exception as e:
+        logger.error("Scenario %s failed: %s", scenario.id, e, exc_info=True)
+        scenario.status = "failed"
+        scenario.error = str(e)
+        scenario.completed_at = datetime.utcnow().isoformat()
+        planning_metrics.active_scenarios.dec()
+        planning_metrics.record_failure()
+
+
+def _update_progress(scenario: PlanningScenario, done: int, total: int) -> None:
+    """Update scenario progress percentage."""
+    scenario.progress_pct = min(99, int(done / total * 100))
+    scenario.runs_completed = done

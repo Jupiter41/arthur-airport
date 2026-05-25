@@ -144,9 +144,11 @@ class ScenarioResults:
     baseline_id: str = ""
     status: str = "completed"
     kpis: dict[str, KPIDistribution] = field(default_factory=dict)
+    baseline_kpis: dict[str, KPIDistribution] = field(default_factory=dict)
     delta_vs_baseline: dict[str, dict] = field(default_factory=dict)
     financials: dict = field(default_factory=dict)
     annual_benefit_breakdown: dict[str, float] = field(default_factory=dict)
+    infrastructure_changes: list[dict] = field(default_factory=list)
     run_duration_seconds: float = 0.0
     computed_at: str = ""
 
@@ -157,9 +159,11 @@ class ScenarioResults:
             "baseline_id": self.baseline_id,
             "status": self.status,
             "kpis": {k: v.to_dict() for k, v in self.kpis.items()},
+            "baseline_kpis": {k: v.to_dict() for k, v in self.baseline_kpis.items()},
             "delta_vs_baseline": self.delta_vs_baseline,
             "financials": self.financials,
             "annual_benefit_breakdown": self.annual_benefit_breakdown,
+            "infrastructure_changes": self.infrastructure_changes,
             "run_duration_seconds": round(self.run_duration_seconds, 2),
             "computed_at": self.computed_at,
         }

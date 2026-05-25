@@ -29,19 +29,4 @@ Before doing any edit, do this:
 
 The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
 
-- For live cost, each time I actualize the page the costs change... for historical cost it works.
-- BTS data still super different with simulated one:
-
-Field	⚙️ Simulation Engineactive	📊 BTS T-100 (BOS → ART)
-total passengers	12893	492	Δ12401
-departing passengers	12261	303	Δ11958
-arriving passengers	632	189	Δ443
-avg load factor	1.059	52.284	Δ51.2
-
-- Chart measurement points are weird: there are timestamps at 3pm30 and 3pm31 only for example whereas it should be hourly and whereas the sim is around 10pm (so missing points and weird intervals)
-
-- Incidents stack up and recommendations do nothing. (6 active accidents and don't decrease before a long time, recommandations do nothing or are hard to interpret, even more when there are several)
-
-- Implement ROADMAP_PLANNING.md all phase 6, 7 and 8 tasks
-
-- At the end of this task: the data source page, cost page, autonomous logic and capacity planning should be fully functional and integrated.
+- Improve the style of the existing scenarios in results & investement pages. The little box looks weird.
