@@ -475,6 +475,75 @@ async def create_security_template(body: SecurityTemplateRequest, background_tas
     }
 
 
+class TerminalTemplateRequest(BaseModel):
+    terminal_letter: str = Field(..., pattern=r"^[D-Z]$", description="Terminal letter (D–Z)")
+    gates: int = Field(14, ge=4, le=30, description="Number of gates")
+    security_lanes: int = Field(4, ge=1, le=10, description="Number of security lanes")
+    wide_body_gates: int = Field(3, ge=0, le=15, description="Wide-body capable gates")
+    international_gates: int = Field(7, ge=0, le=20, description="International capable gates")
+
+
+@router.post("/templates/add_terminal", status_code=201)
+async def create_terminal_template(body: TerminalTemplateRequest, background_tasks: BackgroundTasks):
+    """Create a new terminal scenario from template and auto-run it."""
+    from scenarios.templates import create_terminal_scenario
+    from scenarios.model import store_scenario
+    from scenarios.runner import run_scenario
+
+    scenario = create_terminal_scenario(
+        body.terminal_letter, body.gates, body.security_lanes,
+        body.wide_body_gates, body.international_gates,
+    )
+    store_scenario(scenario)
+    estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
+    planning_metrics.scenarios_created.labels(template="add_terminal").inc()
+    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
+    return {
+        "scenario_id": scenario.id,
+        "status": "pending",
+        "estimated_duration_seconds": estimate["estimated_seconds"],
+        "estimated_duration_human": estimate["human_readable"],
+        "estimation_confidence": estimate["confidence"],
+        **scenario.to_dict(),
+    }
+
+
+# ── Baseline and cost estimation ────────────────────────────
+
+
+@router.get("/baseline")
+async def get_baseline():
+    """Return the current KART baseline infrastructure and derived pax estimate."""
+    from engine.infrastructure import InfrastructureConfig
+
+    baseline = InfrastructureConfig.baseline()
+    # Estimate annual pax: daily_flights × load_factor × avg_pax_per_flight × 365
+    avg_pax_per_flight = 150  # weighted average across narrow/wide/regional
+    annual_pax = int(
+        baseline.daily_flight_target * baseline.load_factor_mean * avg_pax_per_flight * 365
+    )
+    return {
+        "infrastructure": baseline.to_dict(),
+        "annual_pax_estimate": annual_pax,
+        "daily_flight_target": baseline.daily_flight_target,
+        "load_factor_mean": baseline.load_factor_mean,
+    }
+
+
+class CostEstimateRequest(BaseModel):
+    infrastructure: dict = Field(..., description="Modified infrastructure config")
+
+
+@router.post("/cost-estimate")
+async def estimate_infrastructure_cost(body: CostEstimateRequest):
+    """Estimate CAPEX and annual OPEX from infrastructure changes vs baseline."""
+    from engine.infrastructure import InfrastructureConfig, estimate_costs
+
+    baseline = InfrastructureConfig.baseline()
+    scenario = InfrastructureConfig.from_dict(body.infrastructure)
+    return estimate_costs(baseline, scenario)
+
+
 # ── Phase 6: ML demand forecasting ──────────────────────────
 
 
@@ -559,6 +628,93 @@ async def demand_growth(
         "years_ahead": years_ahead,
         "projections": projections,
     }
+
+
+class ForecastRequest(BaseModel):
+    base_year_pax: int = Field(8_000_000, ge=0, description="Current annual passengers")
+    years_ahead: int = Field(10, ge=1, le=30, description="Projection horizon")
+    growth_rate_pct: float = Field(3.4, ge=-10, le=15, description="Custom annual growth %")
+    shock_year: int | None = Field(None, ge=1, le=30, description="Year of demand shock")
+    shock_pct: float = Field(-20.0, ge=-80, le=50, description="Shock magnitude %")
+
+
+@router.post("/demand/forecast/custom")
+async def custom_forecast(body: ForecastRequest):
+    """Project annual traffic with user-adjustable growth rate and optional shock year."""
+    rate = body.growth_rate_pct / 100.0
+    yearly: list[dict] = []
+    pax = float(body.base_year_pax)
+    for yr in range(1, body.years_ahead + 1):
+        pax *= 1 + rate
+        if body.shock_year and yr == body.shock_year:
+            pax *= 1 + (body.shock_pct / 100.0)
+        yearly.append({"year": yr, "annual_pax": round(pax)})
+    return {
+        "base_year_pax": body.base_year_pax,
+        "growth_rate_pct": body.growth_rate_pct,
+        "shock_year": body.shock_year,
+        "shock_pct": body.shock_pct if body.shock_year else None,
+        "years": yearly,
+    }
+
+
+class MultiYearCompareRequest(BaseModel):
+    scenario_ids: list[str] = Field(..., min_length=1, max_length=10)
+    years_ahead: int = Field(10, ge=1, le=30)
+    growth_rate_pct: float = Field(3.4, ge=-10, le=15)
+
+
+@router.post("/scenarios/compare/multiyear")
+async def compare_multiyear(body: MultiYearCompareRequest):
+    """Project scenario KPIs over N years accounting for demand growth.
+
+    Scales demand-sensitive KPIs (delay, utilisation, costs) based on
+    annual growth compounding and the measured per-scenario deltas.
+    """
+    from scenarios.model import get_results, get_scenario as _get
+
+    rate = body.growth_rate_pct / 100.0
+    # KPIs that scale linearly with demand
+    DEMAND_SCALED = {"avg_delay_minutes", "missed_connections", "eu261_liability_eur", "total_cost_eur"}
+    # KPIs that grow sub-linearly with demand (utilisation caps at 100)
+    UTIL_SCALED = {"gate_utilisation_pct", "runway_utilisation_pct"}
+
+    result_set: list[dict] = []
+    for sid in body.scenario_ids:
+        scenario = _get(sid)
+        if not scenario or scenario.status != "completed":
+            continue
+        results = get_results(sid)
+        if not results:
+            continue
+
+        kpis = results.get("kpis", {})
+        yearly_kpis: list[dict] = []
+
+        for yr in range(body.years_ahead + 1):
+            demand_factor = (1 + rate) ** yr
+            year_kpis: dict[str, float] = {}
+            for kpi_name, dist in kpis.items():
+                mean = dist.get("mean", 0) if isinstance(dist, dict) else 0
+                if kpi_name in DEMAND_SCALED:
+                    year_kpis[kpi_name] = round(mean * demand_factor, 2)
+                elif kpi_name in UTIL_SCALED:
+                    year_kpis[kpi_name] = round(min(100.0, mean * (demand_factor ** 0.5)), 2)
+                else:
+                    # Rates degrade slightly under higher demand
+                    if kpi_name == "on_time_rate":
+                        year_kpis[kpi_name] = round(max(0, mean * (1 - 0.005 * yr)), 4)
+                    else:
+                        year_kpis[kpi_name] = round(mean * (demand_factor ** 0.3), 2)
+            yearly_kpis.append({"year": yr, "kpis": year_kpis})
+
+        result_set.append({
+            "scenario_id": sid,
+            "scenario_name": scenario.name,
+            "yearly_kpis": yearly_kpis,
+        })
+
+    return {"scenarios": result_set, "years_ahead": body.years_ahead, "growth_rate_pct": body.growth_rate_pct}
 
 
 @router.get("/delay/predict")

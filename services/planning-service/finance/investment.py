@@ -11,6 +11,7 @@ recommendation rating.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -32,14 +33,18 @@ class InvestmentResult:
     recommendation: str  # "invest" | "marginal" | "do not invest"
 
     def to_dict(self) -> dict:
+        def _safe(v: float) -> float:
+            """Replace inf/nan with 0 to ensure JSON-serializable output."""
+            return 0.0 if (math.isinf(v) or math.isnan(v)) else v
+
         return {
             "capex_eur": round(self.capex_eur, 2),
             "annual_benefit_eur": round(self.annual_benefit_eur, 2),
             "annual_opex_eur": round(self.annual_opex_eur, 2),
             "net_annual_eur": round(self.net_annual_eur, 2),
-            "npv_eur": round(self.npv_eur, 2),
-            "irr_pct": round(self.irr_pct, 2),
-            "payback_years": round(self.payback_years, 2),
+            "npv_eur": round(_safe(self.npv_eur), 2),
+            "irr_pct": round(_safe(self.irr_pct), 2),
+            "payback_years": round(_safe(self.payback_years), 2),
             "years_horizon": self.years_horizon,
             "discount_rate": self.discount_rate,
             "recommendation": self.recommendation,
@@ -70,20 +75,14 @@ def compute_investment(
     irr = _compute_irr(cash_flows)
 
     # Payback period: year when cumulative cash flow turns positive
+    # Use years+1 as sentinel ("never pays back") instead of inf, which is not JSON-serializable.
     cumulative = -capex
-    payback = float("inf")
+    payback = float(years + 1)
     for year in range(1, years + 1):
+        prev_cumulative = cumulative
         cumulative += net_annual
-        if cumulative >= 0:
-            # Fractional payback year
-            payback = year - 1 + (cumulative - net_annual + capex
-                                   if year == 1 else net_annual - (cumulative - net_annual)) / max(net_annual, 1)
-            # Simpler: linear interpolation
-            prev_cumulative = cumulative - net_annual
-            if net_annual > 0:
-                payback = year - 1 + (-prev_cumulative) / net_annual
-            else:
-                payback = float("inf")
+        if cumulative >= 0 and net_annual > 0:
+            payback = year - 1 + (-prev_cumulative) / net_annual
             break
 
     # Recommendation based on NPV and IRR

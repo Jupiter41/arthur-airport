@@ -133,3 +133,80 @@ class InfrastructureConfig:
             load_factor_mean=d.get("load_factor_mean", 0.80),
             demand_growth_rate=d.get("demand_growth_rate", 0.034),
         )
+
+
+# ── Cost estimation constants (Eurocontrol Standard Inputs + ICAO) ──
+
+COST_ESTIMATES: dict[str, dict[str, float]] = {
+    "gate": {"capex": 8_000_000, "annual_opex": 120_000},
+    "runway": {"capex": 800_000_000, "annual_opex": 12_000_000},
+    "security_lane": {"capex": 250_000, "annual_opex": 204_400},  # 16h×€35/h×365d
+    "screening_unit": {"capex": 2_000_000, "annual_opex": 300_000},
+    "terminal": {"capex_per_gate": 12_000_000, "annual_opex_per_gate": 200_000},
+}
+
+
+def estimate_costs(baseline: InfrastructureConfig, scenario: InfrastructureConfig) -> dict:
+    """Estimate CAPEX and annual OPEX delta from infrastructure differences.
+
+    Returns a breakdown of costs by change type plus totals.
+    """
+    breakdown: list[dict] = []
+    total_capex = 0.0
+    total_opex = 0.0
+
+    # Gate changes
+    for t in sorted(set(baseline.gates_per_terminal) | set(scenario.gates_per_terminal)):
+        delta = scenario.gates_per_terminal.get(t, 0) - baseline.gates_per_terminal.get(t, 0)
+        if delta > 0:
+            capex = delta * COST_ESTIMATES["gate"]["capex"]
+            opex = delta * COST_ESTIMATES["gate"]["annual_opex"]
+            breakdown.append({
+                "item": f"+{delta} gate(s) in Terminal {t}",
+                "capex_eur": capex, "annual_opex_eur": opex,
+            })
+            total_capex += capex
+            total_opex += opex
+
+    # Runway changes
+    delta_runways = scenario.runway_count - baseline.runway_count
+    if delta_runways > 0:
+        capex = delta_runways * COST_ESTIMATES["runway"]["capex"]
+        opex = delta_runways * COST_ESTIMATES["runway"]["annual_opex"]
+        breakdown.append({
+            "item": f"+{delta_runways} runway(s)",
+            "capex_eur": capex, "annual_opex_eur": opex,
+        })
+        total_capex += capex
+        total_opex += opex
+
+    # Security lane changes
+    for t in sorted(set(baseline.security_lanes_per_terminal) | set(scenario.security_lanes_per_terminal)):
+        delta = scenario.security_lanes_per_terminal.get(t, 0) - baseline.security_lanes_per_terminal.get(t, 0)
+        if delta > 0:
+            capex = delta * COST_ESTIMATES["security_lane"]["capex"]
+            opex = delta * COST_ESTIMATES["security_lane"]["annual_opex"]
+            breakdown.append({
+                "item": f"+{delta} security lane(s) in Terminal {t}",
+                "capex_eur": capex, "annual_opex_eur": opex,
+            })
+            total_capex += capex
+            total_opex += opex
+
+    # Screening unit changes
+    delta_screening = scenario.screening_units - baseline.screening_units
+    if delta_screening > 0:
+        capex = delta_screening * COST_ESTIMATES["screening_unit"]["capex"]
+        opex = delta_screening * COST_ESTIMATES["screening_unit"]["annual_opex"]
+        breakdown.append({
+            "item": f"+{delta_screening} screening unit(s)",
+            "capex_eur": capex, "annual_opex_eur": opex,
+        })
+        total_capex += capex
+        total_opex += opex
+
+    return {
+        "breakdown": breakdown,
+        "total_capex_eur": round(total_capex, 2),
+        "total_annual_opex_eur": round(total_opex, 2),
+    }

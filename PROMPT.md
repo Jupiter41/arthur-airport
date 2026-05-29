@@ -29,4 +29,4 @@ Before doing any edit, do this:
 
 The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
 
-- Improve the style of the existing scenarios in results & investement pages. The little box looks weird.
+- Allow vertical overflow to planning page because some sections are cut.
