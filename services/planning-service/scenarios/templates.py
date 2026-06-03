@@ -156,6 +156,64 @@ def create_security_scenario(lanes_delta: dict[str, int]) -> PlanningScenario:
     )
 
 
+# ── P5.5 — New terminal ──────────────────────────────────────
+
+def create_terminal_scenario(
+    terminal_letter: str,
+    gates: int = 14,
+    security_lanes: int = 4,
+    wide_body_gates: int = 3,
+    international_gates: int = 7,
+) -> PlanningScenario:
+    """Add a new terminal to KART.
+
+    Cost basis: €12 M capex per gate (terminal construction is more expensive
+    than adding gates to an existing terminal due to landside, security,
+    baggage system, and retail/F&B fit-out). Annual opex ~€200 K/gate
+    (facilities management, cleaning, utilities, retail revenue share offset).
+    Security lane staffing: 16 h/day × €35/h × 365 days/lane.
+    """
+    baseline = InfrastructureConfig.baseline()
+
+    new_gates = {**baseline.gates_per_terminal, terminal_letter: gates}
+    new_security = {**baseline.security_lanes_per_terminal, terminal_letter: security_lanes}
+
+    wb_gates = [f"{terminal_letter}{i:02d}" for i in range(gates - wide_body_gates + 1, gates + 1)]
+    intl_gates = [f"{terminal_letter}{i:02d}" for i in range(gates - international_gates + 1, gates + 1)]
+    new_wb = {**baseline.gate_wide_body_capable, terminal_letter: wb_gates}
+    new_intl = {**baseline.gate_international_capable, terminal_letter: intl_gates}
+
+    new_config = replace(
+        baseline,
+        gates_per_terminal=new_gates,
+        security_lanes_per_terminal=new_security,
+        gate_wide_body_capable=new_wb,
+        gate_international_capable=new_intl,
+    )
+
+    gate_capex = gates * 12_000_000
+    gate_opex = gates * 200_000
+    lane_opex = security_lanes * 365 * 16 * 35
+    total_capex = gate_capex
+    total_opex = gate_opex + lane_opex
+
+    return PlanningScenario(
+        name=f"Add Terminal {terminal_letter} ({gates} gates)",
+        description=(
+            f"Build new Terminal {terminal_letter} with {gates} gates, "
+            f"{security_lanes} security lanes, {wide_body_gates} wide-body capable, "
+            f"{international_gates} international capable."
+        ),
+        infrastructure=new_config,
+        capex_eur=total_capex,
+        opex_delta_eur=total_opex,
+        monte_carlo_runs=100,
+        horizon="year",
+        years_horizon=30,
+        discount_rate=0.06,
+    )
+
+
 # ── Template catalogue ──────────────────────────────────────
 
 TEMPLATE_CATALOGUE = {
@@ -182,5 +240,17 @@ TEMPLATE_CATALOGUE = {
         "description": "Add or remove security screening lanes",
         "params": {"lanes_delta": "dict[str, int] — terminal → lane count change"},
         "factory": create_security_scenario,
+    },
+    "add_terminal": {
+        "name": "Add Terminal",
+        "description": "Build a new terminal with gates, security lanes, and baggage handling",
+        "params": {
+            "terminal_letter": "str (D, E, ...)",
+            "gates": "int (default 14)",
+            "security_lanes": "int (default 4)",
+            "wide_body_gates": "int (default 3)",
+            "international_gates": "int (default 7)",
+        },
+        "factory": create_terminal_scenario,
     },
 }

@@ -1,4 +1,4 @@
-# ROADMAP — Cost model
+﻿# ROADMAP â€” Cost model
 
 ## Arthur International Airport Digital Twin
 
@@ -18,22 +18,22 @@ Before starting any task, the agent must read:
 ## Overview
 
 ```
-Phase 1  Cost data model & constants          → Neo4j schema + reference tables
-Phase 2  Cost service                         → new microservice, Kafka consumer
-Phase 3  Per-category cost engines            → 6 cost calculators
-Phase 4  Revenue model                        → 5 revenue streams
-Phase 5  Neo4j cost graph & queries           → cost records linked to entities
-Phase 6  REST API & WebSocket                 → expose cost data to the gateway
-Phase 7  Cost dashboard                       → new React page /cost
-Phase 8  Prescriptive financial layer         → cost-aware recommendations
-Phase 9  Real data calibration                → replace synthetic rates with real sources
+Phase 1  Cost data model & constants          â†’ Neo4j schema + reference tables
+Phase 2  Cost service                         â†’ new microservice, Kafka consumer
+Phase 3  Per-category cost engines            â†’ 6 cost calculators
+Phase 4  Revenue model                        â†’ 5 revenue streams
+Phase 5  Neo4j cost graph & queries           â†’ cost records linked to entities
+Phase 6  REST API & WebSocket                 â†’ expose cost data to the gateway
+Phase 7  Cost dashboard                       â†’ new React page /cost
+Phase 8  Prescriptive financial layer         â†’ cost-aware recommendations
+Phase 9  Real data calibration                â†’ replace synthetic rates with real sources
 ```
 
 ---
 
-## Phase 1 — Cost data model & constants
+## Phase 1 â€” Cost data model & constants
 
-### Task 1.1 — Cost reference tables (fixtures)
+### Task 1.1 â€” Cost reference tables (fixtures)
 
 **File to create:** `services/sim-orchestrator/fixtures/cost_rates.json`
 
@@ -192,7 +192,7 @@ settings UI without restarting the service. Include:
 
 ---
 
-### Task 1.2 — Cost Neo4j schema
+### Task 1.2 â€” Cost Neo4j schema
 
 **Files to create/edit:**
 
@@ -201,7 +201,7 @@ settings UI without restarting the service. Include:
 
 Add the following Neo4j node and relationship definitions.
 
-**`CostRecord` node** — one record per cost event:
+**`CostRecord` node** â€” one record per cost event:
 
 | Property      | Type          | Description                                                                                                                                                                        |
 | ------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -239,32 +239,32 @@ Expected: > 0.
 
 ---
 
-## Phase 2 — Cost service scaffold
+## Phase 2 â€” Cost service scaffold
 
-### Task 2.1 — Create the cost-service microservice
+### Task 2.1 â€” Create the cost-service microservice
 
 **Files to create:**
 
 ```
 services/cost-service/
-├── main.py
-├── requirements.txt
-├── Dockerfile
-├── db/
-│   └── neo4j.py        (from Task 1.2)
-├── kafka/
-│   ├── consumer.py
-│   └── producer.py
-├── services/
-│   ├── cost_engine.py  (Phase 3)
-│   └── revenue_engine.py (Phase 4)
-└── routers/
-    └── costs.py        (Phase 6)
+â”œâ”€â”€ main.py
+â”œâ”€â”€ requirements.txt
+â”œâ”€â”€ Dockerfile
+â”œâ”€â”€ db/
+â”‚   â””â”€â”€ neo4j.py        (from Task 1.2)
+â”œâ”€â”€ kafka/
+â”‚   â”œâ”€â”€ consumer.py
+â”‚   â””â”€â”€ producer.py
+â”œâ”€â”€ services/
+â”‚   â”œâ”€â”€ cost_engine.py  (Phase 3)
+â”‚   â””â”€â”€ revenue_engine.py (Phase 4)
+â””â”€â”€ routers/
+    â””â”€â”€ costs.py        (Phase 6)
 ```
 
 **`main.py`:** standard FastAPI app with lifespan pattern (see `docs/skills/python-service.SKILL.md`).
 
-- Port: `8007`
+- Port: `8008`
 - Exposes: `GET /health`, `GET /ready`, `GET /metrics`
 - On startup: connect to Neo4j, connect to Kafka, create constraints/indexes, load `cost_rates.json`
 
@@ -280,8 +280,8 @@ prometheus-fastapi-instrumentator>=6.1.0
 python-dotenv>=1.0.0
 ```
 
-**`Dockerfile`:** use the standard template from `docs/infra/DOCKER.md §4`.
-Expose port 8007.
+**`Dockerfile`:** use the standard template from `docs/infra/DOCKER.md Â§4`.
+Expose port 8008.
 
 **`docker-compose.yml` additions:**
 
@@ -290,7 +290,7 @@ cost-service:
   <<: *python-service
   build: ./services/cost-service
   ports:
-    - "8007:8007"
+    - "8008:8008"
   depends_on:
     neo4j:
       condition: service_healthy
@@ -299,21 +299,21 @@ cost-service:
     flight-service:
       condition: service_healthy
   healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+    test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
     interval: 10s
     timeout: 5s
     retries: 5
 ```
 
-**Verification:** `docker compose up cost-service` → `curl http://localhost:8007/health` returns `{"status":"ok"}`.
+**Verification:** `docker compose up cost-service` â†’ `curl http://localhost:8008/health` returns `{"status":"ok"}`.
 
 ---
 
-### Task 2.2 — Kafka consumer setup
+### Task 2.2 â€” Kafka consumer setup
 
 **File:** `services/cost-service/kafka/consumer.py`
 
-The cost service consumes five topics. It must **never produce state changes** —
+The cost service consumes five topics. It must **never produce state changes** â€”
 it is read-only from a domain perspective. It only writes `CostRecord` nodes to Neo4j
 and produces to `cost.events`.
 
@@ -321,11 +321,11 @@ Topics to subscribe:
 
 ```python
 TOPICS = [
-    "sim.clock",         # SimClockTick — for staffing/energy accumulation per tick
-    "flights.events",    # FlightStatusChanged, FlightCancelled — trigger cost calculations
-    "incidents.events",  # IncidentCreated, IncidentStatusChanged — incident costs
-    "baggage.events",    # BaggageStatusChanged — per-bag handling costs
-    "passengers.events", # PassengerStatusChanged — for dwell time revenue tracking
+    "sim.clock",         # SimClockTick â€” for staffing/energy accumulation per tick
+    "flights.events",    # FlightStatusChanged, FlightCancelled â€” trigger cost calculations
+    "incidents.events",  # IncidentCreated, IncidentStatusChanged â€” incident costs
+    "baggage.events",    # BaggageStatusChanged â€” per-bag handling costs
+    "passengers.events", # PassengerStatusChanged â€” for dwell time revenue tracking
 ]
 ```
 
@@ -358,13 +358,13 @@ async def dispatch(envelope: dict):
 
 ---
 
-### Task 2.3 — cost.events Kafka topic and producer
+### Task 2.3 â€” cost.events Kafka topic and producer
 
 **File:** `services/cost-service/kafka/producer.py`
 
 Add `cost.events` to the topic catalogue in `docs/architecture/EVENT_BUS.md`.
 
-Event schema — `CostRecorded`:
+Event schema â€” `CostRecorded`:
 
 ```json
 {
@@ -376,7 +376,7 @@ Event schema — `CostRecorded`:
     "is_revenue": false,
     "flight_id": "uuid",
     "incident_id": "uuid",
-    "description": "EU261 compensation — 847 pax × €600 (long-haul, delay 4h12m)",
+    "description": "EU261 compensation â€” 847 pax Ã— â‚¬600 (long-haul, delay 4h12m)",
     "sim_time": "2024-06-15T14:32:00Z",
     "sim_day": 1
   }
@@ -388,9 +388,9 @@ to WebSocket clients that subscribe to `"costs"`.
 
 ---
 
-## Phase 3 — Per-category cost engines
+## Phase 3 â€” Per-category cost engines
 
-### Task 3.1 — Landing and airport fees engine
+### Task 3.1 â€” Landing and airport fees engine
 
 **File:** `services/cost-service/services/cost_engine.py`
 
@@ -401,7 +401,7 @@ Implement these three functions:
 ```python
 def compute_landing_fee(aircraft_type: str, rates: dict) -> float:
     """
-    landing_fee = rate_per_tonne × (MTOW_kg / 1000)
+    landing_fee = rate_per_tonne Ã— (MTOW_kg / 1000)
     Source: Eurocontrol CRCO methodology, ACI Airport Charges Report
     """
     mtow = rates["mtow_kg"].get(aircraft_type, 78_000)
@@ -410,14 +410,14 @@ def compute_landing_fee(aircraft_type: str, rates: dict) -> float:
 
 def compute_passenger_fee(pax_count: int, rates: dict) -> float:
     """
-    passenger_fee = pax_count × per_pax_fee
+    passenger_fee = pax_count Ã— per_pax_fee
     Only for departing flights (arrivals do not pay departure fee)
     """
     return round(pax_count * rates["airport_fees"]["passenger_departure_fee_eur"], 2)
 
 def compute_gate_fee(gate_occupancy_minutes: int, rates: dict) -> float:
     """
-    gate_fee = (occupancy_minutes / 60) × hourly_rate
+    gate_fee = (occupancy_minutes / 60) Ã— hourly_rate
     Triggered when ASSIGNED_TO relationship is removed (flight departs gate)
     """
     hours = gate_occupancy_minutes / 60
@@ -426,7 +426,7 @@ def compute_gate_fee(gate_occupancy_minutes: int, rates: dict) -> float:
 
 Write one `CostRecord` per fee type, all linked to the flight via `FOR_FLIGHT`.
 
-**Verification:** after a 30-minute sim run at 60×, query:
+**Verification:** after a 30-minute sim run at 60Ã—, query:
 
 ```cypher
 MATCH (c:CostRecord)
@@ -438,7 +438,7 @@ Expected: all three categories present with realistic average amounts.
 
 ---
 
-### Task 3.2 — EU261 delay compensation engine
+### Task 3.2 â€” EU261 delay compensation engine
 
 **File:** `services/cost-service/services/cost_engine.py` (add to existing file)
 
@@ -447,7 +447,7 @@ OR `FlightCancelled`.
 
 The cost service must fetch the flight's route distance from Neo4j to apply the correct
 compensation tier. Distance is stored on the `Flight` node as `distance_km` (add this
-field to the flight-service seeding if not already present — compute it from origin/destination
+field to the flight-service seeding if not already present â€” compute it from origin/destination
 lat/lon using the haversine formula).
 
 ```python
@@ -455,7 +455,7 @@ def compute_eu261(delay_minutes: int, distance_km: float,
                    pax_count: int, rates: dict) -> tuple[float, str]:
     """
     Returns (compensation_eur, description)
-    Source: EU Regulation 261/2004 — public law, no license required
+    Source: EU Regulation 261/2004 â€” public law, no license required
     https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32004R0261
     """
     if delay_minutes < 180:
@@ -467,7 +467,7 @@ def compute_eu261(delay_minutes: int, distance_km: float,
                 distance_km <= tier["max_distance_km"] and
                 not tier.get("assistance_only", False)):
             amount = tier["compensation_eur"] * pax_count
-            desc = (f"EU261 — {pax_count} pax × €{tier['compensation_eur']} "
+            desc = (f"EU261 â€” {pax_count} pax Ã— â‚¬{tier['compensation_eur']} "
                     f"({distance_km:.0f} km, delay {delay_minutes}min)")
             return round(amount, 2), desc
 
@@ -484,15 +484,15 @@ MATCH (c:CostRecord {category: 'eu261_compensation'})
 RETURN count(c) AS count, sum(c.amount_eur) AS total, avg(c.amount_eur) AS avg
 ```
 
-Expected after 1 sim-day at 60×: at least 5–15 EU261 records (delays are common).
+Expected after 1 sim-day at 60Ã—: at least 5â€“15 EU261 records (delays are common).
 
 ---
 
-### Task 3.3 — Holding fuel cost engine
+### Task 3.3 â€” Holding fuel cost engine
 
 **File:** `services/cost-service/services/cost_engine.py`
 
-Triggered by: `SimClockTick` — check all flights currently in `approach` status with
+Triggered by: `SimClockTick` â€” check all flights currently in `approach` status with
 `holding_stack = true` (add this flag to flight-service if not present, or derive
 from `runway_queue_depth > 0` AND `status == "approach"`).
 
@@ -501,7 +501,7 @@ def compute_holding_cost_per_tick(aircraft_type: str,
                                    delta_minutes: int,
                                    rates: dict) -> float:
     """
-    holding_cost = burn_rate_kg_per_min × delta_minutes × fuel_price_per_kg
+    holding_cost = burn_rate_kg_per_min Ã— delta_minutes Ã— fuel_price_per_kg
     Source: Eurocontrol Standard Inputs for Cost-Benefit Analyses
     https://www.eurocontrol.int/publication/standard-inputs-eurocontrol-cost-benefit-analyses
     """
@@ -519,7 +519,7 @@ Batch holding cost records: write one `CostRecord` per flight per 5 sim-minutes
 of holding (not per tick).
 
 Also emit a `MinimumFuelWarning` passenger alert when `holding_minutes > 30`
-(the flight service should already handle this — cost-service just tracks the cost).
+(the flight service should already handle this â€” cost-service just tracks the cost).
 
 **Verification:** inject a runway incursion incident, run for 30 sim-minutes.
 
@@ -528,11 +528,11 @@ MATCH (c:CostRecord {category: 'holding_fuel'})
 RETURN count(c), sum(c.amount_eur)
 ```
 
-Expected: holding cost records present, amounts in €500–5,000 range per affected flight.
+Expected: holding cost records present, amounts in â‚¬500â€“5,000 range per affected flight.
 
 ---
 
-### Task 3.4 — Ground handling cost engine
+### Task 3.4 â€” Ground handling cost engine
 
 **File:** `services/cost-service/services/cost_engine.py`
 
@@ -574,7 +574,7 @@ ORDER BY avg(c.amount_eur) DESC
 
 ---
 
-### Task 3.5 — Incident cost engine
+### Task 3.5 â€” Incident cost engine
 
 **File:** `services/cost-service/services/cost_engine.py`
 
@@ -608,11 +608,11 @@ RETURN c.category, c.amount_eur, c.description
 
 ---
 
-### Task 3.6 — Staffing cost engine
+### Task 3.6 â€” Staffing cost engine
 
 **File:** `services/cost-service/services/cost_engine.py`
 
-Triggered by: `SimClockTick` — accumulate staffing costs every simulated hour.
+Triggered by: `SimClockTick` â€” accumulate staffing costs every simulated hour.
 
 ```python
 def compute_staffing_cost_per_hour(security_lanes_open: dict,
@@ -620,7 +620,7 @@ def compute_staffing_cost_per_hour(security_lanes_open: dict,
                                     checkin_desks_open: int,
                                     rates: dict) -> dict[str, float]:
     """
-    Staffing cost = headcount × hourly_rate × delta_hours
+    Staffing cost = headcount Ã— hourly_rate Ã— delta_hours
     security_lanes_open: {"A": 4, "B": 3, "C": 4}
     """
     r = rates["staffing"]
@@ -638,13 +638,13 @@ Write one `CostRecord` per category per hour, linked to the terminal.
 
 ---
 
-## Phase 4 — Revenue model
+## Phase 4 â€” Revenue model
 
-### Task 4.1 — Retail and F&B revenue engine
+### Task 4.1 â€” Retail and F&B revenue engine
 
 **File:** `services/cost-service/services/revenue_engine.py`
 
-Triggered by: `SimClockTick` — accumulate retail revenue based on passengers
+Triggered by: `SimClockTick` â€” accumulate retail revenue based on passengers
 currently in `airside` status and their dwell time.
 
 ```python
@@ -652,9 +652,9 @@ def compute_retail_revenue_per_tick(airside_pax_count: int,
                                      delta_minutes: int,
                                      rates: dict) -> float:
     """
-    retail_revenue = pax_airside × spend_per_pax_per_hour × (delta_min / 60)
+    retail_revenue = pax_airside Ã— spend_per_pax_per_hour Ã— (delta_min / 60)
     Insight: security delays INCREASE retail revenue (longer dwell time airside).
-    Source: ACI World Airport Report — avg airside retail spend per pax.
+    Source: ACI World Airport Report â€” avg airside retail spend per pax.
     """
     hourly_rate = rates["revenue"]["retail_spend_per_pax_per_hour_airside_eur"]
     return round(airside_pax_count * hourly_rate * (delta_minutes / 60), 2)
@@ -666,7 +666,7 @@ The prescriptive engine should surface this tradeoff.
 
 ---
 
-### Task 4.2 — Landing fee and passenger fee revenue
+### Task 4.2 â€” Landing fee and passenger fee revenue
 
 Landing fees and passenger fees (from Task 3.1) are costs _to the airline_ but
 _revenue to the airport_. In the P&L view, they must appear on both sides.
@@ -680,20 +680,20 @@ for costs, all where `is_revenue = True` for revenue.
 
 ---
 
-### Task 4.3 — Slot and cargo revenue
+### Task 4.3 â€” Slot and cargo revenue
 
 **File:** `services/cost-service/services/revenue_engine.py`
 
-- **Slot revenue:** emit one revenue record per departure (`FlightStatusChanged → departed`)
+- **Slot revenue:** emit one revenue record per departure (`FlightStatusChanged â†’ departed`)
   where the flight was a Level 3 coordinated slot: `amount = rates["revenue"]["slot_fee_eur"]`
-- **Cargo revenue:** for `FlightType == "cargo"`, compute `cargo_weight_kg × rate_per_kg`.
-  Cargo weight = `seat_capacity × 0.7 × 100` kg (rough estimate if not explicitly modelled).
+- **Cargo revenue:** for `FlightType == "cargo"`, compute `cargo_weight_kg Ã— rate_per_kg`.
+  Cargo weight = `seat_capacity Ã— 0.7 Ã— 100` kg (rough estimate if not explicitly modelled).
 
 ---
 
-## Phase 5 — Neo4j cost graph & queries
+## Phase 5 â€” Neo4j cost graph & queries
 
-### Task 5.1 — Cost aggregation queries
+### Task 5.1 â€” Cost aggregation queries
 
 **File:** `services/cost-service/db/queries.py`
 
@@ -723,7 +723,7 @@ async def most_expensive_incidents(sim_day: int, limit: int = 5) -> list:
     """Rank incidents by total financial impact."""
 
 async def hourly_cost_curve(sim_day: int) -> list:
-    """Cost and revenue per simulated hour — feeds the dashboard chart."""
+    """Cost and revenue per simulated hour â€” feeds the dashboard chart."""
 
 async def terminal_pnl(terminal_id: str, sim_day: int) -> dict:
     """P&L breakdown for a specific terminal."""
@@ -733,7 +733,7 @@ async def terminal_pnl(terminal_id: str, sim_day: int) -> dict:
 
 ---
 
-### Task 5.2 — Running cost totals (in-memory cache)
+### Task 5.2 â€” Running cost totals (in-memory cache)
 
 **File:** `services/cost-service/services/cost_engine.py`
 
@@ -766,9 +766,9 @@ Rebuilt from Neo4j on service restart.
 
 ---
 
-## Phase 6 — REST API & WebSocket
+## Phase 6 â€” REST API & WebSocket
 
-### Task 6.1 — Cost REST endpoints
+### Task 6.1 â€” Cost REST endpoints
 
 **File:** `services/cost-service/routers/costs.py`
 
@@ -814,7 +814,7 @@ Add to `docs/services/cost-service/SPEC.md` (create this file) then implement:
 
 ---
 
-### Task 6.2 — API gateway proxy
+### Task 6.2 â€” API gateway proxy
 
 **File:** `services/api-gateway/src/proxy.ts`
 
@@ -824,7 +824,7 @@ Add cost-service to the gateway proxy routes:
 app.use(
   "/api/v1/costs",
   createProxyMiddleware({
-    target: process.env.COST_SERVICE_URL ?? "http://cost-service:8007",
+    target: process.env.COST_SERVICE_URL ?? "http://cost-service:8008",
     changeOrigin: true,
     on: {
       error: (err, req, res: any) =>
@@ -840,36 +840,36 @@ Add cost summary to `GET /api/v1/airport` aggregate endpoint.
 
 ---
 
-## Phase 7 — Cost dashboard
+## Phase 7 â€” Cost dashboard
 
-### Task 7.1 — Cost overview page (`/cost`)
+### Task 7.1 â€” Cost overview page (`/cost`)
 
 **File:** `dashboards/art-dashboard/src/pages/CostDashboard.tsx`
 
 Add a new route `/cost` to the dashboard router. The page has five sections:
 
-**Section 1 — Live P&L ticker (top bar)**
+**Section 1 â€” Live P&L ticker (top bar)**
 
 ```
-TOTAL COST: €847,320    REVENUE: €1,124,800    NET: +€277,480 (▲24.7%)
-EU261 EXPOSURE: €187,600    LARGEST INCIDENT: €65,000
+TOTAL COST: â‚¬847,320    REVENUE: â‚¬1,124,800    NET: +â‚¬277,480 (â–²24.7%)
+EU261 EXPOSURE: â‚¬187,600    LARGEST INCIDENT: â‚¬65,000
 ```
 
 Updates every sim-minute from WebSocket (`costs` topic).
 
-**Section 2 — Cost breakdown donut chart**
+**Section 2 â€” Cost breakdown donut chart**
 Recharts `PieChart` showing cost by category. Click a slice to filter the
 records table below.
 
-**Section 3 — Hourly cost/revenue bar chart**
+**Section 3 â€” Hourly cost/revenue bar chart**
 Recharts `BarChart` with two series (cost / revenue) per simulated hour.
 Shows the morning and evening peaks clearly.
 
-**Section 4 — Flight cost table**
+**Section 4 â€” Flight cost table**
 Sortable table: flight number, airline, aircraft type, total cost, EU261 liability,
 handling cost, gate fee. Click a row to open the flight detail drawer with cost breakdown.
 
-**Section 5 — Incident financial impact table**
+**Section 5 â€” Incident financial impact table**
 One row per incident: type, severity, duration, direct cost, EU261 caused, total impact.
 Sorted by total impact descending.
 
@@ -880,20 +880,20 @@ Follow the format of existing dashboard specs.
 
 ---
 
-### Task 7.2 — Cost indicators in existing dashboards
+### Task 7.2 â€” Cost indicators in existing dashboards
 
 Add cost context to existing dashboards without requiring navigation to `/cost`:
 
-- **Flight board:** add a `€` column to the flight table showing total cost per flight (EU261 + handling). Red if EU261 is triggered.
-- **Incident console:** add total financial impact to each incident card: `💸 €65,000 estimated impact`
-- **Ground ops:** add a live cost ticker to the status bar: `Today: -€847K costs / +€1.1M revenue`
-- **Passenger flow:** add a note to the connection risk list showing EU261 exposure per at-risk passenger group: `7 pax at risk — potential EU261 liability: €4,200`
+- **Flight board:** add a `â‚¬` column to the flight table showing total cost per flight (EU261 + handling). Red if EU261 is triggered.
+- **Incident console:** add total financial impact to each incident card: `ðŸ’¸ â‚¬65,000 estimated impact`
+- **Ground ops:** add a live cost ticker to the status bar: `Today: -â‚¬847K costs / +â‚¬1.1M revenue`
+- **Passenger flow:** add a note to the connection risk list showing EU261 exposure per at-risk passenger group: `7 pax at risk â€” potential EU261 liability: â‚¬4,200`
 
 ---
 
-## Phase 8 — Prescriptive financial layer
+## Phase 8 â€” Prescriptive financial layer
 
-### Task 8.1 — Cost-aware recommendation engine
+### Task 8.1 â€” Cost-aware recommendation engine
 
 **File:** `services/cost-service/services/recommendations.py`
 
@@ -908,7 +908,7 @@ class FinancialRecommendation:
     cost_eur: float           # cost of implementing the action
     saving_eur: float         # projected saving if action is taken
     net_benefit_eur: float    # saving - cost
-    confidence: float         # 0.0 – 1.0
+    confidence: float         # 0.0 â€“ 1.0
     payback_sim_minutes: int  # how quickly the saving materialises
     expiry_sim_time: str      # after which the action is no longer actionable
 ```
@@ -916,35 +916,35 @@ class FinancialRecommendation:
 **Implement these five financially-aware recommendations:**
 
 1. **Open security lane:**
-   - Cost: `staffing_rate × expected_duration_hours`
-   - Saving: EU261 exposure avoided (from LightGBM forecast × affected flights × pax count × compensation tier)
+   - Cost: `staffing_rate Ã— expected_duration_hours`
+   - Saving: EU261 exposure avoided (from LightGBM forecast Ã— affected flights Ã— pax count Ã— compensation tier)
    - Trigger: forecast wait > 20 min AND at least one flight boarding within 60 sim-min
 
 2. **Hold connecting flight:**
-   - Cost: `delay_minutes × pax_count_on_held_flight × delay_cost_per_min`
-   - Saving: EU261 avoided for the connection cluster × compensation tier
-   - Trigger: connection cluster > 5 pax AND inbound delay > MCT−15 min
+   - Cost: `delay_minutes Ã— pax_count_on_held_flight Ã— delay_cost_per_min`
+   - Saving: EU261 avoided for the connection cluster Ã— compensation tier
+   - Trigger: connection cluster > 5 pax AND inbound delay > MCTâˆ’15 min
 
 3. **Gate reassignment:**
-   - Cost: passenger walk time delta × discomfort factor (€2/min/pax)
-   - Saving: avoided boarding delay × crew overtime saved
+   - Cost: passenger walk time delta Ã— discomfort factor (â‚¬2/min/pax)
+   - Saving: avoided boarding delay Ã— crew overtime saved
    - Trigger: gate conflict detected with > 15 sim-min exposure
 
 4. **Ground delay program:**
-   - Cost: delay cost per held flight × number of flights held
-   - Saving: holding fuel avoided × aircraft in holding stack
+   - Cost: delay cost per held flight Ã— number of flights held
+   - Saving: holding fuel avoided Ã— aircraft in holding stack
    - Trigger: weather reduces capacity below 60% AND holding stack > 4
 
 5. **Open additional make-up carousel:**
-   - Cost: €0 (resource reallocation, no direct cost)
-   - Saving: per-flight delay avoided × aircraft type delay cost
+   - Cost: â‚¬0 (resource reallocation, no direct cost)
+   - Saving: per-flight delay avoided Ã— aircraft type delay cost
    - Trigger: make-up utilisation > 85% with departure within 45 sim-min
 
 **Expose at:** `GET /api/v1/costs/recommendations`
 
 ---
 
-### Task 8.2 — What-if financial projections
+### Task 8.2 â€” What-if financial projections
 
 **File:** `services/cost-service/services/what_if.py`
 
@@ -972,7 +972,7 @@ Add this output to the what-if UI panel in the incident dashboard.
 
 ---
 
-### Task 8.3 — Scenario financial report
+### Task 8.3 â€” Scenario financial report
 
 **File:** `services/cost-service/services/report.py`
 
@@ -983,24 +983,24 @@ Add a financial section to the auto-generated incident/scenario report:
 
 | Category           | Amount       |
 | ------------------ | ------------ |
-| Direct costs       | €40,000      |
-| EU261 compensation | €187,600     |
-| Holding fuel       | €28,100      |
-| Crew overtime      | €12,600      |
-| **Total cost**     | **€268,300** |
-| Revenue lost       | €14,200      |
-| **Net impact**     | **€282,500** |
+| Direct costs       | â‚¬40,000      |
+| EU261 compensation | â‚¬187,600     |
+| Holding fuel       | â‚¬28,100      |
+| Crew overtime      | â‚¬12,600      |
+| **Total cost**     | **â‚¬268,300** |
+| Revenue lost       | â‚¬14,200      |
+| **Net impact**     | **â‚¬282,500** |
 
 Equivalent to: 2.1 days of average airport revenue.
-Could have been reduced to €89,000 (−67%) by applying the recommended
+Could have been reduced to â‚¬89,000 (âˆ’67%) by applying the recommended
 ground delay program 8 minutes earlier.
 ```
 
 ---
 
-## Phase 9 — Real data calibration
+## Phase 9 â€” Real data calibration
 
-### Task 9.1 — Calibrate incident probabilities from BTS data
+### Task 9.1 â€” Calibrate incident probabilities from BTS data
 
 **File:** `services/sim-orchestrator/services/calibration.py`
 
@@ -1012,15 +1012,15 @@ https://www.transtats.bts.gov/DL_SelectFields.aspx?gnoyr_VQ=FGJ
 
 Parse the CSV to extract:
 
-- Cancellation rate by airline and route type → calibrates `PROB_X_PER_HR` in incident-service
-- Delay cause breakdown (carrier, weather, NAS, security, aircraft) → calibrates delay reason weights
-- Average delay duration by cause → calibrates TTR ranges
+- Cancellation rate by airline and route type â†’ calibrates `PROB_X_PER_HR` in incident-service
+- Delay cause breakdown (carrier, weather, NAS, security, aircraft) â†’ calibrates delay reason weights
+- Average delay duration by cause â†’ calibrates TTR ranges
 
 Write the calibrated values back to `cost_rates.json` as a `calibrated_from_bts` section.
 
 ---
 
-### Task 9.2 — Calibrate weather FSM from Mesonet data
+### Task 9.2 â€” Calibrate weather FSM from Mesonet data
 
 **File:** `services/weather-service/services/calibration.py`
 
@@ -1043,7 +1043,7 @@ in one hour). Write the fitted matrix back to `cost_rates.json` as `calibrated_w
 
 ---
 
-### Task 9.3 — Live fuel price feed
+### Task 9.3 â€” Live fuel price feed
 
 **File:** `services/cost-service/services/fuel_price.py`
 
@@ -1062,21 +1062,21 @@ a missing price feed.
 
 ---
 
-## Verification checklist — full cost model
+## Verification checklist â€” full cost model
 
 Run the following after completing all phases. All checks must pass before the cost model
 is considered production-ready.
 
 ```bash
 # 1. Cost service healthy
-curl http://localhost:8007/health | jq .status
+curl http://localhost:8008/health | jq .status
 # expected: "ok"
 
 # 2. Cost events flowing on Kafka
 docker compose exec kafka kafka-console-consumer \
   --bootstrap-server localhost:9092 \
   --topic cost.events --max-messages 5 | jq .event_type
-# expected: "CostRecorded" × 5
+# expected: "CostRecorded" Ã— 5
 
 # 3. Cost records in Neo4j after 30 sim-min
 docker compose exec neo4j cypher-shell -u neo4j -p art-digital-twin \
@@ -1117,3 +1117,4 @@ curl http://localhost:3000/api/v1/costs/recommendations | jq '.[0]'
 | IATA Fuel Monitor           | [iata.org/fuel-monitor](https://www.iata.org/en/publications/economics/fuel-monitor/)                        | Free (weekly)    | Task 9.3       |
 | ACI Airport Charges Report  | [aci.aero](https://aci.aero/data-centre)                                                                     | Free summary     | Tasks 3.1, 3.4 |
 | ICAO Doc 9562               | [icao.int](https://store.icao.int/en/airport-economics-manual-doc-9562)                                      | Paid (reference) | Background     |
+

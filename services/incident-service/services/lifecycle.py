@@ -28,7 +28,7 @@ TTR_RANGES: dict[str, tuple[int, int] | None] = {
     "security_breach": (30, 90),
     "system_failure": (10, 120),
     "severe_weather": None,
-    "security_congestion": (15, 60),
+    "security_congestion": None,  # auto-resolves via passenger-service signal (queue back below threshold)
     # Cascade child types — inherit short TTR from parent context
     "runway_closure_holding_stack": (10, 35),
     "departure_ground_stop": (8, 30),

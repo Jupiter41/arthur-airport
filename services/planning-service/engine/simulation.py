@@ -63,6 +63,44 @@ PAX_DEPARTURE_FEE_EUR = 12.0
 TERMINAL_NAMES = ["A", "B", "C"]
 
 
+def _apply_demand_multiplier(
+    schedule: list[dict], multiplier: float, rng: random.Random,
+) -> list[dict]:
+    """Scale a daily schedule by ``multiplier`` (e.g. 1.2 → +20% demand).
+
+    Strategy: scale per-flight pax linearly, then duplicate or sample flights
+    to hit the target flight count. Duplicates are deep-copied with a unique
+    ``flight_number`` suffix so downstream gate assignment treats them as
+    separate operations.
+    """
+    if not schedule or multiplier <= 0:
+        return schedule
+
+    # Scale pax per flight (rounded to int for downstream consumers).
+    scaled: list[dict] = []
+    for f in schedule:
+        copy = dict(f)
+        if "pax_count" in copy:
+            copy["pax_count"] = max(1, int(round(copy["pax_count"] * multiplier)))
+        scaled.append(copy)
+
+    target = int(round(len(scaled) * multiplier))
+    if target == len(scaled):
+        return scaled
+    if target > len(scaled):
+        # Duplicate flights up to target, with unique flight_numbers.
+        extras_needed = target - len(scaled)
+        for i in range(extras_needed):
+            src = rng.choice(scaled[:len(schedule)])  # sample from originals
+            dup = dict(src)
+            dup["flight_number"] = f"{src.get('flight_number', 'XX')}D{i:03d}"
+            scaled.append(dup)
+        return scaled
+    # Shrinking: sample without replacement.
+    rng.shuffle(scaled)
+    return scaled[:target]
+
+
 @dataclass
 class SimFlight:
     """In-memory flight state during planning simulation."""
@@ -128,10 +166,21 @@ class PlanningSimEngine:
     """Fast in-memory airport simulation engine for capacity planning.
 
     Pure function of inputs: same config + adapter + seed → same output.
+
+    The engine takes one mandatory schedule adapter and an optional weather
+    adapter. When no weather adapter is provided, the schedule adapter is
+    asked for weather as well (the legacy behaviour).
     """
 
-    def __init__(self, adapter: AbstractAdapter, seed: int | None = None):
+    def __init__(
+        self,
+        adapter: AbstractAdapter,
+        seed: int | None = None,
+        *,
+        weather_adapter: AbstractAdapter | None = None,
+    ):
         self.adapter = adapter
+        self.weather_adapter = weather_adapter or adapter
         self._base_seed = seed
 
     def run_day(
@@ -139,13 +188,23 @@ class PlanningSimEngine:
         sim_date: date,
         infrastructure: InfrastructureConfig,
         seed: int | None = None,
+        *,
+        demand_multiplier: float = 1.0,
     ) -> DayResult:
-        """Simulate a single day end-to-end. No I/O, no Kafka, no Neo4j."""
+        """Simulate a single day end-to-end. No I/O, no Kafka, no Neo4j.
+
+        ``demand_multiplier`` scales both the flight count and the per-flight
+        passenger count linearly. A value of 1.2 simulates a 20% demand growth
+        scenario without changing the underlying schedule data.
+        """
         t0 = time.monotonic()
         rng = random.Random(seed if seed is not None else self._base_seed)
 
         schedule = self.adapter.get_daily_schedule(sim_date)
-        weather_seq = self.adapter.get_weather_sequence(sim_date)
+        weather_seq = self.weather_adapter.get_weather_sequence(sim_date)
+
+        if demand_multiplier != 1.0 and demand_multiplier > 0:
+            schedule = _apply_demand_multiplier(schedule, demand_multiplier, rng)
 
         state = self._initialise_state(schedule, infrastructure, sim_date, rng)
 

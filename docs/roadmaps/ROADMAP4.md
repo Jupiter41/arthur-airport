@@ -1,9 +1,9 @@
-# ROADMAP — Capacity planning
+﻿# ROADMAP â€” Capacity planning
 ## Arthur International Airport Digital Twin
 
 Capacity planning transforms the twin from an operational tool into a strategic
 decision-support system. The key architectural shift: the operational simulation
-runs at 60×–3600× to model the next few hours. Capacity planning runs at 10,000×–100,000×
+runs at 60Ã—â€“3600Ã— to model the next few hours. Capacity planning runs at 10,000Ã—â€“100,000Ã—
 to model months or years, with Monte Carlo uncertainty quantification and financial
 return calculations attached to every infrastructure decision.
 
@@ -19,10 +19,10 @@ Before starting any task, read:
 
 | | Operational twin | Capacity planning twin |
 |---|---|---|
-| Time horizon | Next 2–48 hours | Next 1 month – 10 years |
-| Simulation speed | 60×–3600× | 10,000×–100,000× |
+| Time horizon | Next 2â€“48 hours | Next 1 month â€“ 10 years |
+| Simulation speed | 60Ã—â€“3600Ã— | 10,000Ã—â€“100,000Ã— |
 | Time resolution | 1 sim-minute | 1 sim-day |
-| Uncertainty | Single deterministic run | Monte Carlo (50–500 runs) |
+| Uncertainty | Single deterministic run | Monte Carlo (50â€“500 runs) |
 | Data source | Live/recent operational data | Historical + demand forecasts |
 | Output | "What is happening / what to do now" | "What to build / what it will cost" |
 | Neo4j writes | Per state change | Per scenario summary |
@@ -31,17 +31,17 @@ Before starting any task, read:
 This means capacity planning **does not run in the operational simulation loop**.
 It runs as a separate, isolated process in a dedicated `planning-service` that
 spins up its own in-memory simulation engine, runs N scenarios, and writes
-summary results — never touching the live Neo4j or Kafka state.
+summary results â€” never touching the live Neo4j or Kafka state.
 
 ---
 
 ## The six planning questions and what each requires
 
-### Q1 — "What happens if we add one more gate to Terminal B?"
+### Q1 â€” "What happens if we add one more gate to Terminal B?"
 **Type:** Infrastructure capex justification
 **Method:** Compare baseline vs +1 gate over a full peak season
 **Key metrics:** Gate conflict frequency, average turnaround delay, missed connections avoided
-**Financial output:** Delay cost reduction (€/year) vs construction cost → IRR
+**Financial output:** Delay cost reduction (â‚¬/year) vs construction cost â†’ IRR
 
 Requires:
 - Capacity model with gate constraints
@@ -51,7 +51,7 @@ Requires:
 
 ---
 
-### Q2 — "Should we add a direct route to [new destination]?"
+### Q2 â€” "Should we add a direct route to [new destination]?"
 **Type:** Revenue and network decision
 **Method:** Model the new route as an additive demand stream
 **Key metrics:** Incremental pax, gate utilisation delta, connection network effect, revenue
@@ -64,11 +64,11 @@ Requires:
 
 ---
 
-### Q3 — "What if we had one more security lane?"
+### Q3 â€” "What if we had one more security lane?"
 **Type:** Staffing ROI
 **Method:** Run peak-day scenarios with N vs N+1 lanes open
 **Key metrics:** Average wait time, EU261 exposure, connections saved
-**Financial output:** Staffing cost (€/day × operating days) vs EU261 saved
+**Financial output:** Staffing cost (â‚¬/day Ã— operating days) vs EU261 saved
 
 Requires:
 - Real passenger throughput benchmarks (BTS or ACI)
@@ -77,7 +77,7 @@ Requires:
 
 ---
 
-### Q4 — "Where do connecting passengers go — should we redesign the terminal?"
+### Q4 â€” "Where do connecting passengers go â€” should we redesign the terminal?"
 **Type:** Terminal planning
 **Method:** Trace actual connection flows, identify high-traffic corridors
 **Key metrics:** Walking time per connection pair, retail exposure per path, missed connections by corridor
@@ -90,22 +90,22 @@ Requires:
 
 ---
 
-### Q5 — "If weather closes a runway for 2 hours, what's the best recovery plan?"
+### Q5 â€” "If weather closes a runway for 2 hours, what's the best recovery plan?"
 **Type:** Operational resilience
 **Method:** Monte Carlo over weather scenarios, compare recovery strategies
 **Key metrics:** Total delay minutes, diversions, holding fuel cost, recovery time
-**Financial output:** Cost of each recovery strategy → optimal plan per weather scenario
+**Financial output:** Cost of each recovery strategy â†’ optimal plan per weather scenario
 
 Requires:
-- Real weather history (Iowa State Mesonet — already in data/)
+- Real weather history (Iowa State Mesonet â€” already in data/)
 - Calibrated weather FSM (Task 9.2 of ROADMAP_COST.md)
 - Cost model already built
 
 ---
 
-### Q6 — "Should we invest in a 3rd runway?"
+### Q6 â€” "Should we invest in a 3rd runway?"
 **Type:** Strategic capex (10-year horizon)
-**Method:** Traffic growth projection × capacity constraint model × NPV
+**Method:** Traffic growth projection Ã— capacity constraint model Ã— NPV
 **Key metrics:** Year of saturation, peak hour congestion, delay cost trajectory
 **Financial output:** 10-year NPV of runway investment vs do-nothing scenario
 
@@ -117,18 +117,18 @@ Requires:
 
 ---
 
-## Architecture — planning-service
+## Architecture â€” planning-service
 
 ```
-planning-service (port 8008)
-├── In-memory simulation engine     (runs isolated, no Kafka, no live Neo4j writes)
-├── Scenario manager                (define, queue, run, compare scenarios)
-├── Demand model                    (calibrated demand surface, seasonal curves)
-├── Capacity constraints engine     (gates, runways, security lanes, carousels)
-├── Monte Carlo runner              (N independent runs, uncertainty quantification)
-├── Investment model                (capex/opex + NPV/IRR calculator)
-├── Results store                   (separate Neo4j database or labelled subgraph)
-└── REST API                        (scenario CRUD, run, results, comparisons)
+planning-service (port 8009)
+â”œâ”€â”€ In-memory simulation engine     (runs isolated, no Kafka, no live Neo4j writes)
+â”œâ”€â”€ Scenario manager                (define, queue, run, compare scenarios)
+â”œâ”€â”€ Demand model                    (calibrated demand surface, seasonal curves)
+â”œâ”€â”€ Capacity constraints engine     (gates, runways, security lanes, carousels)
+â”œâ”€â”€ Monte Carlo runner              (N independent runs, uncertainty quantification)
+â”œâ”€â”€ Investment model                (capex/opex + NPV/IRR calculator)
+â”œâ”€â”€ Results store                   (separate Neo4j database or labelled subgraph)
+â””â”€â”€ REST API                        (scenario CRUD, run, results, comparisons)
 ```
 
 The planning-service **shares the same Neo4j instance** but writes to a separate
@@ -140,19 +140,19 @@ Neo4j when a scenario starts (as the baseline), then runs entirely in memory.
 
 ---
 
-## Phase 1 — Data ingestion layer
+## Phase 1 â€” Data ingestion layer
 
-### Task P1.1 — Pluggable adapter architecture
+### Task P1.1 â€” Pluggable adapter architecture
 
 **Files to create:**
 ```
 services/planning-service/adapters/
-├── base.py              # AbstractAdapter interface
-├── simulation.py        # wraps existing sim-orchestrator seed logic
-├── bts.py               # reads BTS T-100 CSV files
-├── opensky.py           # reads OpenSky historical CSVs
-├── mesonet.py           # reads Iowa State Mesonet weather CSVs
-└── registry.py          # selects adapter at runtime from config
+â”œâ”€â”€ base.py              # AbstractAdapter interface
+â”œâ”€â”€ simulation.py        # wraps existing sim-orchestrator seed logic
+â”œâ”€â”€ bts.py               # reads BTS T-100 CSV files
+â”œâ”€â”€ opensky.py           # reads OpenSky historical CSVs
+â”œâ”€â”€ mesonet.py           # reads Iowa State Mesonet weather CSVs
+â””â”€â”€ registry.py          # selects adapter at runtime from config
 ```
 
 Define the `AbstractAdapter` interface. Every adapter must implement:
@@ -196,7 +196,7 @@ class AbstractAdapter(ABC):
         """True if this adapter uses real-world data."""
 ```
 
-**Registry pattern — selectable at runtime:**
+**Registry pattern â€” selectable at runtime:**
 
 ```python
 # config/planning.yaml
@@ -211,7 +211,7 @@ assert a non-empty list of valid flight dicts is returned.
 
 ---
 
-### Task P1.2 — BTS T-100 adapter
+### Task P1.2 â€” BTS T-100 adapter
 
 **File:** `services/planning-service/adapters/bts.py`
 
@@ -255,7 +255,7 @@ assert result > 0.
 
 ---
 
-### Task P1.3 — Eurocontrol STATFOR demand adapter
+### Task P1.3 â€” Eurocontrol STATFOR demand adapter
 
 **File:** `services/planning-service/adapters/eurocontrol.py`
 
@@ -288,7 +288,7 @@ class EurocontrolDemandAdapter(AbstractAdapter):
 
 ---
 
-### Task P1.4 — Iowa State Mesonet weather adapter
+### Task P1.4 â€” Iowa State Mesonet weather adapter
 
 **File:** `services/planning-service/adapters/mesonet.py`
 
@@ -339,9 +339,9 @@ class MesonetAdapter(AbstractAdapter):
 
 ---
 
-## Phase 2 — In-memory planning simulation engine
+## Phase 2 â€” In-memory planning simulation engine
 
-### Task P2.1 — Fast planning simulation core ✅
+### Task P2.1 â€” Fast planning simulation core âœ…
 
 **File:** `services/planning-service/engine/simulation.py`
 
@@ -355,13 +355,13 @@ Target: simulate 1 full day in < 500ms (allows 500 Monte Carlo runs in < 4 minut
 class PlanningSimState:
     """Full airport state at one sim-minute. Immutable snapshot."""
     sim_time:           datetime
-    flights:            dict[str, dict]     # flight_id → flight state
-    gate_occupancy:     dict[str, str]      # gate_id → flight_id | None
-    runway_queues:      dict[str, list]     # runway_id → [flight_ids]
-    security_queues:    dict[str, int]      # terminal → queue_depth
-    baggage_zones:      dict[str, int]      # zone_id → item_count
+    flights:            dict[str, dict]     # flight_id â†’ flight state
+    gate_occupancy:     dict[str, str]      # gate_id â†’ flight_id | None
+    runway_queues:      dict[str, list]     # runway_id â†’ [flight_ids]
+    security_queues:    dict[str, int]      # terminal â†’ queue_depth
+    baggage_zones:      dict[str, int]      # zone_id â†’ item_count
     active_incidents:   list[dict]
-    costs:              dict[str, float]    # category → cumulative EUR
+    costs:              dict[str, float]    # category â†’ cumulative EUR
     revenues:           dict[str, float]
     metrics:            dict[str, float]    # KPIs: delays, missed connections, etc.
 
@@ -395,7 +395,7 @@ This is what makes Monte Carlo reliable.
 
 ---
 
-### Task P2.2 — Infrastructure configuration model ✅
+### Task P2.2 â€” Infrastructure configuration model âœ…
 
 **File:** `services/planning-service/engine/infrastructure.py`
 
@@ -428,7 +428,7 @@ class InfrastructureConfig:
 
     @classmethod
     def baseline(cls) -> "InfrastructureConfig":
-        """Current KART configuration — the do-nothing baseline."""
+        """Current KART configuration â€” the do-nothing baseline."""
         return cls(
             gates_per_terminal={"A": 14, "B": 14, "C": 14},
             gate_wide_body_capable={"A": ["A07","A08","A09"],
@@ -449,7 +449,7 @@ class InfrastructureConfig:
 
 ---
 
-### Task P2.3 — Day result model and KPI extraction ✅
+### Task P2.3 â€” Day result model and KPI extraction âœ…
 
 **File:** `services/planning-service/engine/results.py`
 
@@ -475,7 +475,7 @@ class DayResult:
     # Capacity KPIs
     runway_utilisation_pct:    float    # peak hour actual / theoretical max
     gate_utilisation_pct:      float    # hours occupied / total gate-hours
-    security_utilisation_pct:  float    # peak queue / (lanes × capacity)
+    security_utilisation_pct:  float    # peak queue / (lanes Ã— capacity)
     baggage_utilisation_pct:   float    # peak throughput / sorting capacity
 
     # Financial KPIs (from cost model)
@@ -494,9 +494,9 @@ class DayResult:
 
 ---
 
-## Phase 3 — Scenario management
+## Phase 3 â€” Scenario management
 
-### Task P3.1 — Scenario definition model ✅
+### Task P3.1 â€” Scenario definition model âœ…
 
 **File:** `services/planning-service/scenarios/model.py`
 
@@ -510,7 +510,7 @@ class PlanningScenario:
 
     # Simulation parameters
     horizon:             str         # "day" | "week" | "month" | "year" | "10year"
-    monte_carlo_runs:    int         # 1 = deterministic, 50–500 = stochastic
+    monte_carlo_runs:    int         # 1 = deterministic, 50â€“500 = stochastic
     random_seed:         int | None  # None = random, int = reproducible
 
     # Infrastructure override (vs baseline)
@@ -566,7 +566,7 @@ discount_rate: 0.07
 
 ---
 
-### Task P3.2 — Scenario runner ✅
+### Task P3.2 â€” Scenario runner âœ…
 
 **File:** `services/planning-service/scenarios/runner.py`
 
@@ -619,7 +619,7 @@ class ScenarioRunner:
 
 ---
 
-### Task P3.3 — Monte Carlo aggregation ✅
+### Task P3.3 â€” Monte Carlo aggregation âœ…
 
 **File:** `services/planning-service/scenarios/statistics.py`
 
@@ -652,15 +652,15 @@ def aggregate_kpi(values: list[float]) -> KPIDistribution:
     )
 ```
 
-The p5–p95 range is the "confidence band" shown in the planning dashboard.
+The p5â€“p95 range is the "confidence band" shown in the planning dashboard.
 A decision is considered robust only if the p5 outcome (pessimistic case) still
 shows a positive NPV.
 
 ---
 
-## Phase 4 — Investment model
+## Phase 4 â€” Investment model
 
-### Task P4.1 — NPV and IRR calculator
+### Task P4.1 â€” NPV and IRR calculator
 
 **File:** `services/planning-service/finance/investment.py`
 
@@ -731,7 +731,7 @@ def compute_investment(capex: float,
 
 ---
 
-### Task P4.2 — Annual benefit extraction from scenario results
+### Task P4.2 â€” Annual benefit extraction from scenario results
 
 **File:** `services/planning-service/finance/benefit_extractor.py`
 
@@ -773,9 +773,9 @@ REBOOKING_COST_PER_PAX_EUR = 285.0  # average rebooking + accommodation cost
 
 ---
 
-## Phase 5 — Capacity planning specific scenarios
+## Phase 5 â€” Capacity planning specific scenarios
 
-### Task P5.1 — Gate addition scenario
+### Task P5.1 â€” Gate addition scenario
 
 **File:** `scenarios/planning/templates/add_gate.yaml.template`
 
@@ -788,8 +788,8 @@ monte_carlo_runs: 200
 infrastructure:
   gates_per_terminal:
     {TERMINAL}: {CURRENT_COUNT + N}
-capex_eur: {N * 8_000_000}       # €8M per gate (industry average)
-opex_delta_eur: {N * 120_000}    # €120K/year maintenance per gate
+capex_eur: {N * 8_000_000}       # â‚¬8M per gate (industry average)
+opex_delta_eur: {N * 120_000}    # â‚¬120K/year maintenance per gate
 years_horizon: 25
 discount_rate: 0.07
 ```
@@ -819,7 +819,7 @@ def create_gate_scenario(terminal: str, additional_gates: int) -> PlanningScenar
 
 ---
 
-### Task P5.2 — Runway addition scenario
+### Task P5.2 â€” Runway addition scenario
 
 ```python
 def create_runway_scenario(runway_id: str,
@@ -827,7 +827,7 @@ def create_runway_scenario(runway_id: str,
                              length_m: int = 3000) -> PlanningScenario:
     """
     Add a third runway.
-    Cost basis: Heathrow T5 runway estimate ~£14B. Scaled to KART size: ~€800M.
+    Cost basis: Heathrow T5 runway estimate ~Â£14B. Scaled to KART size: ~â‚¬800M.
     """
     baseline = InfrastructureConfig.baseline()
     new_runways = baseline.runways + [RunwayConfig(runway_id, ils=ils_capable)]
@@ -846,7 +846,7 @@ def create_runway_scenario(runway_id: str,
 
 ---
 
-### Task P5.3 — New route scenario
+### Task P5.3 â€” New route scenario
 
 ```python
 def create_route_scenario(destination_iata: str,
@@ -858,7 +858,7 @@ def create_route_scenario(destination_iata: str,
     """
     baseline = InfrastructureConfig.baseline()
     return PlanningScenario(
-        name=f"New route KART → {destination_iata} ({daily_flights} daily)",
+        name=f"New route KART â†’ {destination_iata} ({daily_flights} daily)",
         infrastructure=baseline,    # no infrastructure change
         new_routes=[{
             "origin": "ART",
@@ -878,7 +878,7 @@ def create_route_scenario(destination_iata: str,
 
 ---
 
-### Task P5.4 — Security lane optimisation scenario
+### Task P5.4 â€” Security lane optimisation scenario
 
 ```python
 def create_security_scenario(lanes_delta: dict[str, int]) -> PlanningScenario:
@@ -895,7 +895,7 @@ def create_security_scenario(lanes_delta: dict[str, int]) -> PlanningScenario:
         }.items()
     }
     annual_staffing_cost = sum(
-        delta * 365 * 16 * 35  # 16 hours/day × €35/hour × 365 days
+        delta * 365 * 16 * 35  # 16 hours/day Ã— â‚¬35/hour Ã— 365 days
         for delta in lanes_delta.values()
         if delta > 0
     )
@@ -914,9 +914,9 @@ def create_security_scenario(lanes_delta: dict[str, int]) -> PlanningScenario:
 
 ---
 
-## Phase 6 — ML demand forecasting ✅
+## Phase 6 â€” ML demand forecasting âœ…
 
-### Task P6.1 — Demand surface model
+### Task P6.1 â€” Demand surface model
 
 **File:** `services/planning-service/ml/demand_model.py`
 
@@ -927,8 +927,8 @@ The model predicts `expected_daily_flights(route, month, day_of_week)`.
 import lightgbm as lgb
 
 DEMAND_FEATURES = [
-    "month",              # 1–12 (seasonality)
-    "day_of_week",        # 0–6
+    "month",              # 1â€“12 (seasonality)
+    "day_of_week",        # 0â€“6
     "is_holiday",         # 0/1 (from a public holiday calendar)
     "distance_km",        # O&D pair distance
     "population_origin",  # city population proxy
@@ -962,7 +962,7 @@ def train_demand_model(training_data: pd.DataFrame) -> lgb.LGBMRegressor:
 
 ---
 
-### Task P6.2 — Delay prediction model
+### Task P6.2 â€” Delay prediction model
 
 **File:** `services/planning-service/ml/delay_model.py`
 
@@ -979,7 +979,7 @@ used by the planning engine to weight delay costs in scenario projections.
 
 ---
 
-### Task P6.3 — Model training pipeline
+### Task P6.3 â€” Model training pipeline
 
 **File:** `services/planning-service/ml/training_pipeline.py`
 
@@ -999,15 +999,15 @@ python -m planning_service.ml.training_pipeline \
 
 ---
 
-## Phase 7 — Decision audit trail ✅
+## Phase 7 â€” Decision audit trail âœ…
 
-### Task P7.1 — Recommendation audit log schema
+### Task P7.1 â€” Recommendation audit log schema
 
 **File:** `services/planning-service/db/audit.py`
 
 Every recommendation (operational or planning) must be logged with its outcome.
 
-Neo4j schema addition — `RecommendationLog` node:
+Neo4j schema addition â€” `RecommendationLog` node:
 
 | Property | Type | Description |
 |---|---|---|
@@ -1029,7 +1029,7 @@ Neo4j schema addition — `RecommendationLog` node:
 
 ---
 
-### Task P7.2 — Outcome measurement
+### Task P7.2 â€” Outcome measurement
 
 **File:** `services/cost-service/services/audit.py`
 
@@ -1061,12 +1061,12 @@ async def measure_recommendation_outcome(rec_id: str,
 ```
 
 This feedback loop is used to:
-1. Surface to the operator: "Our last 5 recommendations saved €47K vs predicted €38K (+24%)"
+1. Surface to the operator: "Our last 5 recommendations saved â‚¬47K vs predicted â‚¬38K (+24%)"
 2. Fine-tune the confidence calibration of the recommendation engine over time
 
 ---
 
-### Task P7.3 — Audit dashboard panel
+### Task P7.3 â€” Audit dashboard panel
 
 Add a "Recommendation history" panel to the `/cost` dashboard:
 
@@ -1074,9 +1074,9 @@ Add a "Recommendation history" panel to the `/cost` dashboard:
 |---|---|
 | Recommendations made (today) | 12 |
 | Applied by operator | 8 (67%) |
-| Total predicted saving | €124,000 |
-| Total actual saving | €108,300 |
-| Prediction accuracy | −12.7% (model underestimates) |
+| Total predicted saving | â‚¬124,000 |
+| Total actual saving | â‚¬108,300 |
+| Prediction accuracy | âˆ’12.7% (model underestimates) |
 
 A table showing every recommendation, applied/rejected, predicted vs actual saving,
 and a sparkline of prediction error over time. This is the transparency layer that
@@ -1084,29 +1084,29 @@ makes the system trustworthy for business use.
 
 ---
 
-## Phase 8 — Planning dashboard ✅
+## Phase 8 â€” Planning dashboard âœ…
 
-### Task P8.1 — Planning page (`/planning`)
+### Task P8.1 â€” Planning page (`/planning`)
 
 New React page with four tabs:
 
-**Tab 1 — Scenario builder**
+**Tab 1 â€” Scenario builder**
 - Form to define a new planning scenario (YAML editor or structured form)
 - Preset templates: + gate, + runway, + security lane, + route, weather stress test
 - Run button with live progress indicator (Monte Carlo progress bar)
 
-**Tab 2 — Results comparison**
+**Tab 2 â€” Results comparison**
 - Side-by-side KPI comparison: baseline vs scenario
-- For each KPI: mean ± confidence band, p5/p95 range displayed as error bars
+- For each KPI: mean Â± confidence band, p5/p95 range displayed as error bars
 - Traffic light indicator: green (improvement > 10%), amber (marginal), red (worse)
 
-**Tab 3 — Investment dashboard**
-- NPV waterfall chart: capex → annual benefits → cumulative NPV over years
+**Tab 3 â€” Investment dashboard**
+- NPV waterfall chart: capex â†’ annual benefits â†’ cumulative NPV over years
 - Payback year marker
 - Sensitivity table: NPV under different demand growth assumptions (low/base/high)
 - IRR vs WACC comparison with recommendation badge (Invest / Marginal / Do not invest)
 
-**Tab 4 — Decision audit trail**
+**Tab 4 â€” Decision audit trail**
 - Recommendation history table (from Task P7.3)
 - Prediction accuracy sparkline
 - Model version and last training date
@@ -1117,7 +1117,7 @@ New React page with four tabs:
 
 ```bash
 # 1. Planning service healthy
-curl http://localhost:8008/health | jq .status
+curl http://localhost:8009/health | jq .status
 # expected: "ok"
 
 # 2. Run a baseline scenario (deterministic, 1 run)
@@ -1127,8 +1127,8 @@ curl -X POST http://localhost:3000/api/v1/planning/scenarios \
 # expected: scenario_id returned
 
 # 3. Run completes in reasonable time
-# 1 day × 1 run should complete in < 2 seconds
-# 1 month × 100 runs should complete in < 3 minutes
+# 1 day Ã— 1 run should complete in < 2 seconds
+# 1 month Ã— 100 runs should complete in < 3 minutes
 
 # 4. Add gate scenario shows positive NPV
 curl http://localhost:3000/api/v1/planning/scenarios/{id}/results | \

@@ -14,7 +14,7 @@ import random
 import time
 from datetime import date, datetime, timedelta
 
-from adapters.registry import get_schedule_adapter
+from adapters.registry import get_schedule_adapter, get_weather_adapter
 from engine.infrastructure import InfrastructureConfig
 from engine.results import DayResult, KPIDistribution, ScenarioResults, aggregate_kpi
 from engine.simulation import PlanningSimEngine
@@ -58,6 +58,8 @@ def _run_monte_carlo(
     base_seed: int | None,
     label: str,
     progress_cb=None,
+    *,
+    demand_multiplier: float = 1.0,
 ) -> list[list[DayResult]]:
     """Run N Monte Carlo iterations for a given infrastructure config.
 
@@ -69,7 +71,12 @@ def _run_monte_carlo(
         run_results: list[DayResult] = []
         for sim_date in dates:
             day_seed = seed + sim_date.toordinal()
-            result = engine.run_day(sim_date=sim_date, infrastructure=infra, seed=day_seed)
+            result = engine.run_day(
+                sim_date=sim_date,
+                infrastructure=infra,
+                seed=day_seed,
+                demand_multiplier=demand_multiplier,
+            )
             result.infrastructure_label = label
             run_results.append(result)
         all_runs.append(run_results)
@@ -90,6 +97,7 @@ def _collect_kpis(all_runs: list[list[DayResult]]) -> dict[str, KPIDistribution]
     run_total_revenue: list[float] = []
     run_gate_conflicts: list[float] = []
     run_security_wait: list[float] = []
+    run_total_flights: list[float] = []
 
     for run_days in all_runs:
         if not run_days:
@@ -105,6 +113,7 @@ def _collect_kpis(all_runs: list[list[DayResult]]) -> dict[str, KPIDistribution]
         run_total_revenue.append(sum(d.total_revenue_eur for d in run_days) / n)
         run_gate_conflicts.append(sum(d.gate_conflicts for d in run_days) / n)
         run_security_wait.append(max(d.security_wait_max_minutes for d in run_days))
+        run_total_flights.append(sum(d.total_flights for d in run_days) / n)
 
     return {
         "avg_delay_minutes": aggregate_kpi(run_avg_delay),
@@ -117,6 +126,7 @@ def _collect_kpis(all_runs: list[list[DayResult]]) -> dict[str, KPIDistribution]
         "total_revenue_eur": aggregate_kpi(run_total_revenue),
         "gate_conflicts": aggregate_kpi(run_gate_conflicts),
         "security_wait_max_minutes": aggregate_kpi(run_security_wait),
+        "total_flights": aggregate_kpi(run_total_flights),
     }
 
 
@@ -192,7 +202,22 @@ def run_scenario(scenario: PlanningScenario) -> None:
 
     try:
         schedule_adapter = get_schedule_adapter(scenario.demand_source)
-        engine = PlanningSimEngine(adapter=schedule_adapter, seed=scenario.random_seed)
+        # If the scenario asks for a different weather source, plug a second
+        # adapter; otherwise the engine reuses the schedule adapter.
+        weather_adapter = None
+        if scenario.weather_source and scenario.weather_source != scenario.demand_source:
+            try:
+                weather_adapter = get_weather_adapter(scenario.weather_source)
+            except ValueError:
+                logger.warning(
+                    "Unknown weather_source %r, falling back to schedule adapter",
+                    scenario.weather_source,
+                )
+        engine = PlanningSimEngine(
+            adapter=schedule_adapter,
+            seed=scenario.random_seed,
+            weather_adapter=weather_adapter,
+        )
 
         dates = _generate_dates(scenario.horizon)
         n_runs = max(1, scenario.monte_carlo_runs)
@@ -202,6 +227,8 @@ def run_scenario(scenario: PlanningScenario) -> None:
         total_runs = n_runs * 2
 
         # ── Phase 1: Run baseline ───────────────────────────
+        # Baseline always runs at the natural demand level (multiplier=1) so
+        # the delta isolates the infrastructure change from any demand shift.
         baseline_infra = InfrastructureConfig.baseline()
         baseline_runs = _run_monte_carlo(
             engine, dates, baseline_infra, n_runs, base_seed, "baseline",
@@ -214,6 +241,7 @@ def run_scenario(scenario: PlanningScenario) -> None:
             engine, dates, scenario.infrastructure, n_runs, base_seed,
             scenario.name or "scenario",
             progress_cb=lambda done: _update_progress(scenario, n_runs + done, total_runs),
+            demand_multiplier=scenario.demand_multiplier,
         )
         scenario_kpis = _collect_kpis(scenario_runs)
 

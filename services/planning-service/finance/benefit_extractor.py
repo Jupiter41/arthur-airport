@@ -66,9 +66,10 @@ def extract_annual_benefit(
 
     # Delay cost saved per day (minutes saved × cost per minute × flights)
     delay_minutes_saved = _delta_mean("avg_delay_minutes")
-    # Use scenario's total flights as the base
+    # Use scenario's total flights as the base. Falls back to 420 only if the
+    # KPI was not aggregated upstream (older runs); current runner emits it.
     flights_key = scenario_kpis.get("total_flights")
-    avg_flights = flights_key.mean if flights_key else 420.0
+    avg_flights = flights_key.mean if flights_key and flights_key.mean > 0 else 420.0
     delay_daily = delay_minutes_saved * avg_flights * DELAY_COST_PER_MINUTE_EUR
     delay_annual = delay_daily * operating_days_per_year
 

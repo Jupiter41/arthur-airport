@@ -190,25 +190,24 @@ async def _persist_baggage(baggage: list[dict]) -> None:
     for i in range(0, len(baggage), batch_size):
         batch = baggage[i : i + batch_size]
         async with driver.session() as session:
-            # Create baggage nodes + relationships in a single query
+            # MERGE on tag to avoid ConstraintError on duplicate tags
             await session.run(
                 """
                 UNWIND $baggage AS b
                 MATCH (pax:Passenger {id: b.passenger_id})
                 MATCH (f:Flight {id: b.flight_id})
-                CREATE (bag:Baggage {
-                    id: b.id,
-                    tag: b.tag,
-                    weight_kg: b.weight_kg,
-                    status: b.status,
-                    is_dangerous_goods: b.is_dangerous_goods,
-                    dg_class: b.dg_class,
-                    last_scan_zone: b.last_scan_zone,
-                    last_scan_at: b.last_scan_at,
-                    carousel: b.carousel
-                })
-                CREATE (pax)-[:CARRIES]->(bag)
-                CREATE (bag)-[:LOADED_ON]->(f)
+                MERGE (bag:Baggage {tag: b.tag})
+                ON CREATE SET
+                    bag.id = b.id,
+                    bag.weight_kg = b.weight_kg,
+                    bag.status = b.status,
+                    bag.is_dangerous_goods = b.is_dangerous_goods,
+                    bag.dg_class = b.dg_class,
+                    bag.last_scan_zone = b.last_scan_zone,
+                    bag.last_scan_at = b.last_scan_at,
+                    bag.carousel = b.carousel
+                MERGE (pax)-[:CARRIES]->(bag)
+                MERGE (bag)-[:LOADED_ON]->(f)
                 """,
                 baggage=batch,
             )
@@ -224,22 +223,22 @@ async def _persist_arrival_baggage(baggage: list[dict]) -> None:
     for i in range(0, len(baggage), batch_size):
         batch = baggage[i : i + batch_size]
         async with driver.session() as session:
+            # MERGE on tag to avoid ConstraintError on duplicate tags
             await session.run(
                 """
                 UNWIND $baggage AS b
                 MATCH (f:Flight {id: b.flight_id})
-                CREATE (bag:Baggage {
-                    id: b.id,
-                    tag: b.tag,
-                    weight_kg: b.weight_kg,
-                    status: b.status,
-                    is_dangerous_goods: b.is_dangerous_goods,
-                    dg_class: b.dg_class,
-                    last_scan_zone: b.last_scan_zone,
-                    last_scan_at: b.last_scan_at,
-                    carousel: b.carousel
-                })
-                CREATE (bag)-[:LOADED_ON]->(f)
+                MERGE (bag:Baggage {tag: b.tag})
+                ON CREATE SET
+                    bag.id = b.id,
+                    bag.weight_kg = b.weight_kg,
+                    bag.status = b.status,
+                    bag.is_dangerous_goods = b.is_dangerous_goods,
+                    bag.dg_class = b.dg_class,
+                    bag.last_scan_zone = b.last_scan_zone,
+                    bag.last_scan_at = b.last_scan_at,
+                    bag.carousel = b.carousel
+                MERGE (bag)-[:LOADED_ON]->(f)
                 """,
                 baggage=batch,
             )

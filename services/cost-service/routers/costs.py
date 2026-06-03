@@ -1,7 +1,7 @@
 """REST API router for cost-service."""
 
 import structlog
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from db import neo4j as db
 from db.queries import (
@@ -28,6 +28,12 @@ def set_rates(rates: dict) -> None:
     _rates = rates
 
 
+def _require_neo4j() -> None:
+    """Raise 503 if Neo4j is not connected. Use at the top of any DB-backed handler."""
+    if db._driver is None:
+        raise HTTPException(status_code=503, detail="neo4j not connected")
+
+
 @router.get("/summary")
 async def cost_summary():
     """Running totals: total cost, revenue, net, by category."""
@@ -51,8 +57,7 @@ async def cost_summary():
 @router.get("/pnl")
 async def get_pnl(day: int = Query(1, ge=1)):
     """Full P&L for a simulated day."""
-    if db._driver is None:
-        return {"error": "neo4j not connected"}
+    _require_neo4j()
     raw = await daily_pnl(db._driver, day)
     # Transform to match frontend CostPnL interface
     by_category: dict[str, float] = {}
@@ -76,16 +81,14 @@ async def get_pnl(day: int = Query(1, ge=1)):
 @router.get("/flight/{flight_id}")
 async def get_flight_costs(flight_id: str):
     """All costs for a specific flight."""
-    if db._driver is None:
-        return {"error": "neo4j not connected"}
+    _require_neo4j()
     return await flight_cost_breakdown(db._driver, flight_id)
 
 
 @router.get("/incident/{incident_id}")
 async def get_incident_costs(incident_id: str):
     """Total financial impact of an incident."""
-    if db._driver is None:
-        return {"error": "neo4j not connected"}
+    _require_neo4j()
     return await incident_total_cost(db._driver, incident_id)
 
 
@@ -105,6 +108,8 @@ async def get_incident_ranking(day: int = Query(1, ge=1), limit: int = Query(5, 
             "type": r.get("type", ""),
             "total_eur": round(r.get("total_impact", 0.0), 2),
             "direct_eur": round(direct, 2),
+            "eu261_eur": round(eu261, 2),
+            # Legacy field name — same value as eu261_eur, kept for backward compatibility.
             "response_eur": round(eu261, 2),
         })
     return {"incidents": incidents}
@@ -114,7 +119,7 @@ async def get_incident_ranking(day: int = Query(1, ge=1), limit: int = Query(5, 
 async def get_hourly_curve(day: int = Query(1, ge=1)):
     """Cost curve per simulated hour — always returns 24 data points (0-23)."""
     if db._driver is None:
-        return {"hours": []}
+        return {"hours": [{"hour": h, "cost_eur": 0.0, "revenue_eur": 0.0, "net_eur": 0.0} for h in range(24)]}
     raw = await hourly_cost_curve(db._driver, day)
     # Build a lookup from actual data
     by_hour: dict[int, dict] = {}
@@ -141,8 +146,7 @@ async def get_hourly_curve(day: int = Query(1, ge=1)):
 @router.get("/terminal/{terminal_id}")
 async def get_terminal_costs(terminal_id: str, day: int = Query(1, ge=1)):
     """P&L per terminal."""
-    if db._driver is None:
-        return {"error": "neo4j not connected"}
+    _require_neo4j()
     return await terminal_pnl(db._driver, terminal_id, day)
 
 
@@ -154,14 +158,39 @@ async def get_rates():
 
 @router.patch("/rates")
 async def update_rates(overrides: dict):
-    """Override cost rates at runtime."""
-    def _deep_merge(base: dict, update: dict) -> dict:
+    """Override cost rates at runtime.
+
+    Validates that:
+    - Only top-level keys that already exist in the rate table are accepted.
+    - Nested values keep the same primitive type as the existing entry.
+
+    Unknown or type-incompatible keys are rejected with HTTP 400 so the
+    frontend cannot accidentally invent a new rate category that no calculator
+    would ever read.
+    """
+    unknown = sorted(k for k in overrides if k not in _rates)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown rate categories: {unknown}",
+        )
+
+    def _deep_merge(base: dict, update: dict, path: str = "") -> None:
         for k, v in update.items():
-            if isinstance(v, dict) and isinstance(base.get(k), dict):
-                _deep_merge(base[k], v)
+            here = f"{path}.{k}" if path else k
+            existing = base.get(k)
+            if isinstance(v, dict) and isinstance(existing, dict):
+                _deep_merge(existing, v, here)
             else:
+                # Reject silent type changes on existing scalar fields.
+                if existing is not None and not isinstance(v, type(existing)):
+                    # Allow int→float and float→int for numeric tuning.
+                    if not (isinstance(existing, (int, float)) and isinstance(v, (int, float))):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"type mismatch for {here}: expected {type(existing).__name__}, got {type(v).__name__}",
+                        )
                 base[k] = v
-        return base
 
     _deep_merge(_rates, overrides)
     # Push updated rates to consumer

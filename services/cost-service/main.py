@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from _logging import setup_logging
@@ -120,11 +120,12 @@ async def health():
 
 
 @app.get("/ready")
-async def ready():
+async def ready(response: Response):
     neo4j_ok = await check_neo4j()
     kafka_ok = check_kafka()
     if neo4j_ok and kafka_ok:
         return {"status": "ready", "neo4j": "ok", "kafka": "ok"}
+    response.status_code = 503
     return {"status": "not ready", "neo4j": "ok" if neo4j_ok else "down", "kafka": "ok" if kafka_ok else "down"}
 
 

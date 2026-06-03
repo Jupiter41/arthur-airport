@@ -311,7 +311,8 @@ async def on_flight_status_changed(payload: dict, sim_time: str, sim_day: int, r
         )
 
         # Ground handling costs
-        bag_count = int(pax_count * 1.2)  # estimate 1.2 bags per pax
+        bags_per_pax = rates.get("operations", {}).get("bags_per_pax", 1.2)
+        bag_count = int(pax_count * bags_per_pax)
         handling = compute_ground_handling(aircraft_type, bag_count, rates)
         for item_name, amount in handling.items():
             await _write_and_emit(
@@ -509,13 +510,18 @@ async def on_clock_tick(payload: dict, sim_time: str, sim_day: int, rates: dict)
     except (ValueError, AttributeError):
         current_hour = -1
 
+    ops = rates.get("operations", {})
+    peak_hours = set(ops.get("peak_hours", list(range(6, 23))))
+    peak_cfg = ops.get("peak", {})
+    off_cfg = ops.get("off_peak", {})
+
     if current_hour != _last_staffing_hour and current_hour >= 0:
         _last_staffing_hour = current_hour
         # Estimate open resources based on time of day
-        is_peak = 6 <= current_hour <= 22
-        security_lanes = 8 if is_peak else 3
-        boarding_flights = 10 if is_peak else 2
-        checkin_desks = 12 if is_peak else 4
+        cfg = peak_cfg if current_hour in peak_hours else off_cfg
+        security_lanes = cfg.get("security_lanes_open", 3)
+        boarding_flights = cfg.get("boarding_flights", 2)
+        checkin_desks = cfg.get("checkin_desks_open", 4)
 
         staffing = compute_staffing_cost_per_hour(
             security_lanes, boarding_flights, checkin_desks, rates,
@@ -537,8 +543,8 @@ async def on_clock_tick(payload: dict, sim_time: str, sim_day: int, rates: dict)
     # Retail revenue — accumulate every 10 sim-minutes
     if tick_number % 10 == 0:
         # Estimate airside pax from time of day
-        is_peak = 6 <= current_hour <= 22
-        airside_pax = 2000 if is_peak else 300
+        cfg = peak_cfg if current_hour in peak_hours else off_cfg
+        airside_pax = cfg.get("airside_pax", 300)
         rev = compute_retail_revenue_per_tick(airside_pax, 10, rates)
         if rev > 0:
             await _write_and_emit(
