@@ -27,6 +27,9 @@ Before doing any edit, do this:
 - ALWAYS address all issues and then write lessons-learned file at the end.
 - This airport is fictionnal, so when using real data select the data concerning a medium sized airport.
 
-The current task is "Add cost models and capacity planning scenarios". Your mission is to implement:
+The current task is "Stabilize architecture and improve business value". Your mission is to implement:
 
-- Improve the style of the existing scenarios in results & investement pages. The little box looks weird.
+- Read all the ROADMAP.md and all the SPEC, verify that everything works correctly and that there is no gap.
+- Refactor duplicate logic, make some things more elegant, and fix any bug you see along the way.
+- Brainstorm about improvements. Write a PLAN.md in the root.md to documents your ideas as tasks to do.
+- Make the cost model, plan computations etc. more robust, accurate and clear to the user.
