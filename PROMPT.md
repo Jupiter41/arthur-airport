@@ -29,7 +29,4 @@ Before doing any edit, do this:
 
 The current task is "Stabilize architecture and improve business value". Your mission is to implement:
 
-- Read all the ROADMAP.md and all the SPEC, verify that everything works correctly and that there is no gap.
-- Refactor duplicate logic, make some things more elegant, and fix any bug you see along the way.
-- Brainstorm about improvements. Write a PLAN.md in the root.md to documents your ideas as tasks to do.
-- Make the cost model, plan computations etc. more robust, accurate and clear to the user.
+- Implement everything detailed in PLAN.md
