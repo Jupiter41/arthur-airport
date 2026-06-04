@@ -11,7 +11,7 @@ import json
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from db.neo4j import check_neo4j, close_neo4j, wait_for_neo4j
@@ -145,23 +145,10 @@ async def perf():
 
 @app.get("/ready")
 async def ready():
-    neo4j_ok = await check_neo4j()
-    kafka_ok = await check_kafka()
-    consumer_ok = is_consumer_running()
+    from _common.ready import readiness_response
 
-    if not neo4j_ok or not kafka_ok or not consumer_ok:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "status": "not ready",
-                "neo4j": neo4j_ok,
-                "kafka": kafka_ok,
-                "consumer": consumer_ok,
-            },
-        )
-    return {
-        "status": "ready",
-        "neo4j": neo4j_ok,
-        "kafka": kafka_ok,
-        "consumer": consumer_ok,
-    }
+    return await readiness_response({
+        "neo4j": check_neo4j,
+        "kafka": check_kafka,
+        "consumer": is_consumer_running,
+    })

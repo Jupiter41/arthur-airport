@@ -1,6 +1,18 @@
 import { getAuthToken } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
 import type { WeatherState } from "../types";
+import type {
+  AuditLogResponse,
+  AuditSummary,
+  DemandForecast,
+  MLStatus,
+  PlanningScenario,
+  ScenarioListResponse,
+  ScenarioResults,
+  ScenarioStatus,
+  ServiceStatus,
+  TemplateCatalogue,
+} from "../types/planning";
 
 const RAW_API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL as string | undefined
@@ -677,16 +689,20 @@ export const planningApi = {
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const q = qs.toString();
-    return apiFetch<{ total: number; scenarios: unknown[] }>(
+    return apiFetch<ScenarioListResponse>(
       `/planning/scenarios${q ? `?${q}` : ""}`,
     );
   },
   getScenario: (id: string) =>
-    apiFetch<unknown>(`/planning/scenarios/${encodeURIComponent(id)}`),
+    apiFetch<PlanningScenario>(`/planning/scenarios/${encodeURIComponent(id)}`),
   getScenarioStatus: (id: string) =>
-    apiFetch<unknown>(`/planning/scenarios/${encodeURIComponent(id)}/status`),
+    apiFetch<ScenarioStatus>(
+      `/planning/scenarios/${encodeURIComponent(id)}/status`,
+    ),
   getScenarioResults: (id: string) =>
-    apiFetch<unknown>(`/planning/scenarios/${encodeURIComponent(id)}/results`),
+    apiFetch<ScenarioResults>(
+      `/planning/scenarios/${encodeURIComponent(id)}/results`,
+    ),
   deleteScenario: (id: string) =>
     apiFetch<{ deleted: string }>(
       `/planning/scenarios/${encodeURIComponent(id)}`,
@@ -705,7 +721,7 @@ export const planningApi = {
 
   // Templates
   listTemplates: () =>
-    apiFetch<{ templates: Record<string, unknown> }>("/planning/templates"),
+    apiFetch<TemplateCatalogue>("/planning/templates"),
   createFromTemplate: (template: string, body: Record<string, unknown>) =>
     apiFetch<{
       scenario_id: string;
@@ -728,22 +744,34 @@ export const planningApi = {
     ),
 
   // Service status
-  serviceStatus: () => apiFetch<unknown>("/planning/service-status"),
+  serviceStatus: () => apiFetch<ServiceStatus>("/planning/service-status"),
 
   // Investment
   analyzeInvestment: (body: Record<string, unknown>) =>
-    apiFetch<unknown>("/planning/investment/analyze", {
+    apiFetch<{
+      capex_eur: number;
+      npv_eur: number;
+      irr_pct: number | null;
+      payback_years: number;
+      recommendation: string;
+      [key: string]: unknown;
+    }>("/planning/investment/analyze", {
       method: "POST",
       body: JSON.stringify(body),
     }),
 
   // Demand forecasting
   demandForecast: (origin: string, dest: string, dateStr: string) =>
-    apiFetch<unknown>(
+    apiFetch<DemandForecast>(
       `/planning/demand/forecast?origin=${origin}&destination=${dest}&date_str=${dateStr}`,
     ),
   demandGrowth: (baseYearPax = 8_000_000, yearsAhead = 10) =>
-    apiFetch<unknown>(
+    apiFetch<{
+      base_year_pax: number;
+      years_ahead: number;
+      growth_rate_pct: number;
+      yearly: { year: number; annual_pax: number }[];
+    }>(
       `/planning/demand/growth?base_year_pax=${baseYearPax}&years_ahead=${yearsAhead}`,
     ),
   demandForecastCustom: (body: {
@@ -783,19 +811,22 @@ export const planningApi = {
 
   // ML models
   trainModels: () =>
-    apiFetch<unknown>("/planning/ml/train", { method: "POST" }),
-  mlStatus: () => apiFetch<unknown>("/planning/ml/status"),
+    apiFetch<{ status: string; demand_model_version: string; delay_model_version: string }>(
+      "/planning/ml/train",
+      { method: "POST" },
+    ),
+  mlStatus: () => apiFetch<MLStatus>("/planning/ml/status"),
 
   // Audit trail
   auditLog: (params?: { type?: string; limit?: number }) => {
     const qs = new URLSearchParams();
     if (params?.type) qs.set("type", params.type);
     if (params?.limit) qs.set("limit", String(params.limit));
-    return apiFetch<{ total: number; entries: unknown[] }>(
+    return apiFetch<AuditLogResponse>(
       `/planning/audit/recommendations?${qs.toString()}`,
     );
   },
-  auditSummary: () => apiFetch<unknown>("/planning/audit/summary"),
+  auditSummary: () => apiFetch<AuditSummary>("/planning/audit/summary"),
 
   // Baseline and cost estimation
   getBaseline: () =>

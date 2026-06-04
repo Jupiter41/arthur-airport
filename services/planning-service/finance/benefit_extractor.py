@@ -11,15 +11,26 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from _common.finance_constants import (
+    DELAY_COST_PER_MINUTE_EUR,
+    EU261_AVERAGE_CLAIM_EUR,
+    OPERATING_DAYS_PER_YEAR,
+    REBOOKING_COST_PER_PAX_EUR,
+)
 from engine.results import KPIDistribution
 
 logger = logging.getLogger(__name__)
 
-# Eurocontrol Standard Inputs 2024 values
-DELAY_COST_PER_MINUTE_EUR = 102.0     # all-in cost per minute of ATFM delay
-REBOOKING_COST_PER_PAX_EUR = 285.0    # average rebooking + accommodation cost
-EU261_AVERAGE_CLAIM_EUR = 400.0       # average EU261 compensation per pax
-OPERATING_DAYS_PER_YEAR = 365
+# Re-exported here for backwards-compatibility with callers that import from
+# this module. The canonical definitions live in services/_common/finance_constants.py.
+__all__ = [
+    "DELAY_COST_PER_MINUTE_EUR",
+    "EU261_AVERAGE_CLAIM_EUR",
+    "OPERATING_DAYS_PER_YEAR",
+    "REBOOKING_COST_PER_PAX_EUR",
+    "AnnualBenefitBreakdown",
+    "extract_annual_benefit",
+]
 
 
 @dataclass

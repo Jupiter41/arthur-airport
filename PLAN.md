@@ -90,20 +90,23 @@ proposed follow-ups; **[P2]** are nice-to-have improvements.
 
 ### Proposed (P1)
 
-- [ ] **Persist scenarios to Neo4j** — `docs/services/planning-service/SPEC.md`
-      §16 says scenarios live in Neo4j; the implementation is in-memory dicts.
-      Either update the spec to reflect reality (lesson 019 chose this) or
-      implement persistence so scenarios survive restarts.
-- [ ] **`new_routes` consumed by engine** — `templates.py` produces them, the
-      scenario carries them, the engine never reads them. Either remove from the
-      model or implement additive demand (preferred).
-- [ ] **Year/10-year horizon: weighted seasonal sample** — the current code
-      truncates to 30 evenly-spaced days. Replace with a weighted sample biased
-      toward shoulder/peak/off-peak ratios from BTS to remove seasonality bias
-      in NPV math.
-- [ ] **Frontend typing for planning API** — `sprint-48` flagged `unknown`
-      types from the planning REST surface. Generate TS types from FastAPI
-      OpenAPI on dashboard build.
+- [x] **Persist scenarios to Neo4j** — chose to formalise in-memory storage
+      (lesson 019). `docs/services/planning-service/SPEC.md` §2/§16 updated to
+      mark Neo4j persistence as reserved-for-future and call out the in-memory
+      decision.
+- [x] **`new_routes` consumed by engine** — `engine/simulation.py` now
+      synthesises flights from each `new_routes[]` entry (daily_flights spread
+      06:00–22:00, pax = seats × load_factor) and appends them to the daily
+      schedule. Wired through `_run_monte_carlo` and surfaced on
+      `CreateScenarioRequest` alongside `demand_multiplier`.
+- [x] **Year/10-year horizon: weighted seasonal sample** — added `_MONTH_WEIGHTS`
+      and `_weighted_seasonal_sample()` in `scenarios/runner.py`; deterministic
+      stratified sampling per month replaces the evenly-spaced truncation.
+- [x] **Frontend typing for planning API** — introduced
+      `dashboards/art-dashboard/src/types/planning.ts` and re-typed every
+      `planningApi` method that previously returned `unknown`. Fixed a latent
+      bug in `WhatIfPage.tsx` that read a non-existent `scenario_id` from
+      scenario summaries.
 
 ### Proposed (P2)
 
@@ -123,15 +126,18 @@ proposed follow-ups; **[P2]** are nice-to-have improvements.
 
 ### Proposed (P1)
 
-- [ ] **Eliminate duplicate Eurocontrol cost constants** — `DELAY_COST_PER_MINUTE_EUR`
-      and friends are defined both in `cost-service/services/cost_engine.py` and
-      `planning-service/finance/benefit_extractor.py` / `engine/simulation.py`.
-      Move to `services/_common/finance_constants.py` and import in both.
-- [ ] **Common `/ready` helper in `_common/`** — every service implements its
-      own readiness check with subtly different semantics (HTTP code, payload
-      shape). Standardize.
-- [ ] **OpenSky adapter** — still a stub; either implement or remove from the
-      `list_available_adapters()` surface.
+- [x] **Eliminate duplicate Eurocontrol cost constants** — canonical values
+      now live in `services/_common/finance_constants.py` (DELAY, REBOOKING,
+      EU261 tiers, landing/gate/pax fees). `planning-service` imports from it
+      and `benefit_extractor.py` re-exports for backwards compatibility.
+- [x] **Common `/ready` helper in `_common/`** — added
+      `services/_common/ready.py` (`evaluate_readiness` / `readiness_response`).
+      All eight Python services (cost, flight, weather, incident, passenger,
+      analysis, baggage, sim-orchestrator) now use it and return a uniform
+      `{ready, checks}` payload with 503 on failure.
+- [x] **OpenSky adapter** — removed from the adapter registry surface
+      (`get_schedule_adapter`, `list_available_adapters`) and SPEC marked it
+      as a stub. The file is kept for future implementation.
 
 ### Proposed (P2)
 

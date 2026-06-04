@@ -120,6 +120,8 @@ class CreateScenarioRequest(BaseModel):
     opex_delta_eur: float = 0.0
     years_horizon: int = 25
     discount_rate: float = 0.07
+    demand_multiplier: float = Field(1.0, gt=0)
+    new_routes: list[dict] = Field(default_factory=list)
 
 
 @router.post("/scenarios", status_code=201)
@@ -151,6 +153,8 @@ async def create_scenario(
         opex_delta_eur=body.opex_delta_eur,
         years_horizon=body.years_horizon,
         discount_rate=body.discount_rate,
+        demand_multiplier=body.demand_multiplier,
+        new_routes=list(body.new_routes),
     )
     store_scenario(scenario)
 

@@ -18,6 +18,13 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time as dt_time, timedelta
 
 from adapters.base import AbstractAdapter
+from _common.finance_constants import (
+    DELAY_COST_PER_MINUTE_EUR,
+    EU261_TIERS,
+    GATE_FEE_PER_HOUR_EUR,
+    LANDING_FEE_PER_TONNE_EUR,
+    PAX_DEPARTURE_FEE_EUR,
+)
 
 from .infrastructure import InfrastructureConfig
 from .interventions import Disruption, Intervention, aggregate_capacity_factor
@@ -42,22 +49,7 @@ SEAT_MAP = {
     "A333": 300, "E195": 120, "DH8D": 78, "AT75": 72,
 }
 
-# ── EU261 compensation tiers ────────────────────────────────
 
-EU261_TIERS = [
-    (180, 1500, 250),
-    (180, 3500, 400),
-    (180, 99999, 600),
-    (240, 99999, 600),
-]
-
-# ── Cost constants (Eurocontrol Standard Inputs) ────────────
-
-DELAY_COST_PER_MINUTE_EUR = 102.0
-REBOOKING_COST_PER_PAX_EUR = 285.0
-LANDING_FEE_PER_TONNE_EUR = 12.0
-GATE_FEE_PER_HOUR_EUR = 150.0
-PAX_DEPARTURE_FEE_EUR = 12.0
 
 # ── Flight states ───────────────────────────────────────────
 
@@ -100,6 +92,62 @@ def _apply_demand_multiplier(
     # Shrinking: sample without replacement.
     rng.shuffle(scaled)
     return scaled[:target]
+
+
+def _expand_new_routes(
+    new_routes: list[dict],
+    sim_date: date,
+    rng: random.Random,
+) -> list[dict]:
+    """Generate synthetic flight dicts for additive routes.
+
+    Each entry of ``new_routes`` looks like::
+
+        {
+            "origin": "ART",
+            "destination": "ZRH",
+            "daily_flights": 2,
+            "aircraft_type": "A320",
+            "distance_km": 1200,        # optional, defaults to 1500
+            "load_factor": 0.82,        # optional, defaults to 0.80
+        }
+
+    Departure times are uniformly spaced across the operating window
+    (06:00–22:00) so they hit a mix of peak and off-peak hours. Flight
+    numbers are deterministic per (route, rotation index) but unique within
+    a day to avoid collisions with the base schedule.
+    """
+    generated: list[dict] = []
+    for route in new_routes or []:
+        dest = str(route.get("destination", "XXX")).upper()
+        rotations = max(0, int(route.get("daily_flights", 0)))
+        if rotations == 0:
+            continue
+        ac_type = str(route.get("aircraft_type", "A320"))
+        distance_km = float(route.get("distance_km", 1500))
+        load_factor = float(route.get("load_factor", 0.80))
+        seats = SEAT_MAP.get(ac_type, 180)
+        pax = max(1, int(round(seats * load_factor)))
+
+        # Spread rotations across the 06:00–22:00 window.
+        window_start_min = 6 * 60
+        window_end_min = 22 * 60
+        window_span = window_end_min - window_start_min
+        spacing = window_span // max(1, rotations)
+        for i in range(rotations):
+            offset = window_start_min + spacing * i + rng.randint(0, max(1, spacing // 4))
+            sched_dt = datetime.combine(sim_date, dt_time()) + timedelta(minutes=offset)
+            generated.append({
+                "flight_number": f"NR{dest}{i:02d}",
+                "airline_code": "NR",
+                "origin_iata": str(route.get("origin", "ART")),
+                "destination_iata": dest,
+                "aircraft_type": ac_type,
+                "scheduled_departure": sched_dt.isoformat(),
+                "pax_count": pax,
+                "distance_km": distance_km,
+            })
+    return generated
 
 
 @dataclass
@@ -193,6 +241,7 @@ class PlanningSimEngine:
         demand_multiplier: float = 1.0,
         interventions: list[Intervention] | None = None,
         disruption: Disruption | None = None,
+        new_routes: list[dict] | None = None,
     ) -> DayResult:
         """Simulate a single day end-to-end. No I/O, no Kafka, no Neo4j.
 
@@ -202,6 +251,10 @@ class PlanningSimEngine:
 
         ``interventions`` and ``disruption`` (1B — Counterfactual Delay Analysis)
         let callers replay the same day under different operator decisions.
+
+        ``new_routes`` (optional) is a list of route additions appended to the
+        base schedule *after* the demand multiplier is applied so the addition
+        is purely additive. See :func:`_expand_new_routes` for the schema.
         """
         t0 = time.monotonic()
         rng = random.Random(seed if seed is not None else self._base_seed)
@@ -211,6 +264,9 @@ class PlanningSimEngine:
 
         if demand_multiplier != 1.0 and demand_multiplier > 0:
             schedule = _apply_demand_multiplier(schedule, demand_multiplier, rng)
+
+        if new_routes:
+            schedule = list(schedule) + _expand_new_routes(new_routes, sim_date, rng)
 
         # 1B — gate_swap interventions add stand capacity for the entire run
         # (transient gate openings are not modelled; the largest delta wins).

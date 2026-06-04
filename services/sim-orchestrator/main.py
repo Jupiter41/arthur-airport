@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from db.neo4j import (
@@ -191,12 +191,9 @@ async def perf():
 
 @app.get("/ready")
 async def ready():
-    neo4j_ok = await check_neo4j()
-    kafka_ok = await check_kafka()
+    from _common.ready import readiness_response
 
-    if not neo4j_ok or not kafka_ok:
-        raise HTTPException(
-            status_code=503,
-            detail={"status": "not ready", "neo4j": neo4j_ok, "kafka": kafka_ok},
-        )
-    return {"status": "ready", "neo4j": neo4j_ok, "kafka": kafka_ok}
+    return await readiness_response({
+        "neo4j": check_neo4j,
+        "kafka": check_kafka,
+    })

@@ -10,8 +10,10 @@ import sys
 from datetime import date
 from pathlib import Path
 
-# Add planning-service to path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "services" / "planning-service"))
+# Add planning-service and shared _common to path
+_SERVICES_DIR = Path(__file__).resolve().parents[2] / "services"
+sys.path.insert(0, str(_SERVICES_DIR / "planning-service"))
+sys.path.insert(0, str(_SERVICES_DIR))
 
 from engine.infrastructure import InfrastructureConfig, RunwayConfig
 from engine.results import DayResult, ScenarioResults, aggregate_kpi

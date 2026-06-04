@@ -89,6 +89,9 @@ class PlanningScenario:
             "interventions": list(self.interventions),
             "disruption": self.disruption,
             "parent_scenario_id": self.parent_scenario_id,
+            "new_routes": list(self.new_routes),
+            "removed_routes": list(self.removed_routes),
+            "demand_multiplier": self.demand_multiplier,
         }
 
     def to_summary(self) -> dict:

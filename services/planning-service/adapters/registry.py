@@ -6,9 +6,13 @@ a different adapter.
 
 Example config:
     adapters:
-      schedule: "simulation"     # or "bts", "opensky"
+      schedule: "simulation"     # or "bts"
       weather:  "mesonet"        # or "simulation"
       demand:   "bts_t100"       # or "simulation", "eurocontrol"
+
+Note: the OpenSky historical CSV adapter (``adapters/opensky.py``) is a stub
+and intentionally excluded from this registry. It will be re-enabled once a
+real trajectory → schedule extractor is implemented.
 """
 
 from __future__ import annotations
@@ -20,7 +24,6 @@ from .base import AbstractAdapter
 from .bts import BTSAdapter
 from .eurocontrol import EurocontrolDemandAdapter
 from .mesonet import MesonetAdapter
-from .opensky import OpenSkyAdapter
 from .simulation import SimulationAdapter
 
 logger = logging.getLogger(__name__)
@@ -41,7 +44,7 @@ def get_schedule_adapter(
     """Return a schedule adapter by name.
 
     Args:
-        source: Adapter name — 'simulation', 'bts', or 'opensky'.
+        source: Adapter name — 'simulation' or 'bts'.
         bts_csv_path: Path to BTS T-100 CSV (for 'bts' source).
         daily_flight_target: Flight count target (for 'simulation' source).
         seed: Random seed for deterministic results (for 'simulation' source).
@@ -52,8 +55,6 @@ def get_schedule_adapter(
         case "bts":
             path = Path(bts_csv_path) if bts_csv_path else _DEFAULT_BTS_PATH
             adapter = BTSAdapter(path)
-        case "opensky":
-            adapter = OpenSkyAdapter()
         case _:
             raise ValueError(f"Unknown schedule adapter: {source}")
 
@@ -122,7 +123,7 @@ def get_demand_adapter(
 def list_available_adapters() -> dict[str, list[str]]:
     """List all available adapter names by domain."""
     return {
-        "schedule": ["simulation", "bts", "opensky"],
+        "schedule": ["simulation", "bts"],
         "weather": ["simulation", "mesonet"],
         "demand": ["simulation", "bts_t100", "eurocontrol"],
     }

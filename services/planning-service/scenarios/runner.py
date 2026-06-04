@@ -39,15 +39,73 @@ def _horizon_to_days(horizon: str) -> int:
     }.get(horizon, 1)
 
 
-def _generate_dates(horizon: str, start: date | None = None) -> list[date]:
-    """Generate simulation dates for the given horizon."""
+# Monthly traffic weights (Northern hemisphere mid-Atlantic hub seasonality).
+# Calibrated to BTS T-100 totals: July/August peak, May/Jun/Sep shoulder,
+# Jan/Feb off-peak. These sum to 12 — relative weights only.
+_MONTH_WEIGHTS: tuple[float, ...] = (
+    0.78, 0.74, 0.92, 0.97, 1.06, 1.10,
+    1.18, 1.18, 1.08, 1.02, 0.85, 0.92,
+)
+
+
+def _weighted_seasonal_sample(
+    start: date, n_days: int, sample_size: int, seed: int = 0,
+) -> list[date]:
+    """Pick ``sample_size`` dates from a horizon, weighted by monthly traffic.
+
+    Uses a deterministic stratified sample: dates are drawn so that each month
+    contributes a number of days proportional to its traffic weight, removing
+    the seasonality bias of naïve even-spaced truncation.
+    """
+    rng = random.Random(seed)
+    # Distribute slots across calendar months proportional to month weight.
+    weight_sum = sum(_MONTH_WEIGHTS) or 1.0
+    raw_alloc = [sample_size * w / weight_sum for w in _MONTH_WEIGHTS]
+    alloc = [int(a) for a in raw_alloc]
+    # Fractional remainder allocation — give leftover slots to highest residuals.
+    remainder = sample_size - sum(alloc)
+    fractions = sorted(
+        enumerate(raw_alloc), key=lambda x: x[1] - alloc[x[0]], reverse=True,
+    )
+    for i in range(remainder):
+        alloc[fractions[i % 12][0]] += 1
+
+    sampled: list[date] = []
+    for month_idx in range(12):
+        slots = alloc[month_idx]
+        if slots <= 0:
+            continue
+        candidates: list[date] = []
+        cursor = start
+        end = start + timedelta(days=n_days)
+        while cursor < end:
+            if cursor.month == month_idx + 1:
+                candidates.append(cursor)
+            cursor += timedelta(days=1)
+        if not candidates:
+            continue
+        if slots >= len(candidates):
+            sampled.extend(candidates)
+        else:
+            sampled.extend(rng.sample(candidates, slots))
+    sampled.sort()
+    return sampled
+
+
+def _generate_dates(
+    horizon: str, start: date | None = None, seed: int | None = None,
+) -> list[date]:
+    """Generate simulation dates for the given horizon.
+
+    For year/10year horizons, returns a seasonally-weighted sample of 30 days
+    so NPV math reflects realistic peak/off-peak traffic mix rather than the
+    uniform-spacing bias of the previous implementation.
+    """
     if start is None:
-        start = date(2026, 6, 15)  # Default mid-year start
+        start = date(2026, 1, 1)
     n_days = _horizon_to_days(horizon)
-    # For year+ horizons, sample representative days to keep runtime manageable
     if n_days > 30:
-        step = n_days // 30
-        return [start + timedelta(days=i * step) for i in range(30)]
+        return _weighted_seasonal_sample(start, n_days, 30, seed=seed or 0)
     return [start + timedelta(days=i) for i in range(n_days)]
 
 
@@ -63,6 +121,7 @@ def _run_monte_carlo(
     demand_multiplier: float = 1.0,
     interventions: list[Intervention] | None = None,
     disruption: Disruption | None = None,
+    new_routes: list[dict] | None = None,
 ) -> list[list[DayResult]]:
     """Run N Monte Carlo iterations for a given infrastructure config.
 
@@ -81,6 +140,7 @@ def _run_monte_carlo(
                 demand_multiplier=demand_multiplier,
                 interventions=interventions,
                 disruption=disruption,
+                new_routes=new_routes,
             )
             result.infrastructure_label = label
             run_results.append(result)
@@ -224,7 +284,7 @@ def run_scenario(scenario: PlanningScenario) -> None:
             weather_adapter=weather_adapter,
         )
 
-        dates = _generate_dates(scenario.horizon)
+        dates = _generate_dates(scenario.horizon, seed=scenario.random_seed)
         n_runs = max(1, scenario.monte_carlo_runs)
         base_seed = scenario.random_seed if scenario.random_seed is not None else random.randint(0, 999_999)
 
@@ -257,6 +317,7 @@ def run_scenario(scenario: PlanningScenario) -> None:
             demand_multiplier=scenario.demand_multiplier,
             interventions=interventions_obj,
             disruption=disruption_obj,
+            new_routes=scenario.new_routes or None,
         )
         scenario_kpis = _collect_kpis(scenario_runs)
 

@@ -3,11 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { planningApi } from "../../hooks/useApi";
 import { KpiCard } from "../../components/KpiCard";
 import { LoadingState, ErrorState } from "../../components/LoadingState";
+import type { PlanningScenarioSummary } from "../../types/planning";
 
-type Scenario = {
-  scenario_id: string;
-  name?: string;
-  status?: string;
+type ScenarioRow = PlanningScenarioSummary & {
   parent_scenario_id?: string | null;
 };
 
@@ -39,9 +37,9 @@ export default function WhatIfPage() {
     refetchInterval: 20_000,
   });
 
-  const list = (scenarios.data?.scenarios ?? []) as Scenario[];
+  const list = (scenarios.data?.scenarios ?? []) as ScenarioRow[];
   const parents = list.filter((s) => !s.parent_scenario_id);
-  const parentId = selected ?? parents[0]?.scenario_id ?? null;
+  const parentId = selected ?? parents[0]?.id ?? null;
 
   const replays = useQuery({
     queryKey: ["planning", "replays", parentId],
@@ -136,8 +134,8 @@ export default function WhatIfPage() {
             className="w-full bg-slate-800 border border-panel-border rounded px-2 py-1.5 text-xs text-white"
           >
             {parents.map((s) => (
-              <option key={s.scenario_id} value={s.scenario_id}>
-                {(s.name ?? s.scenario_id).slice(0, 60)} — {s.status ?? "?"}
+              <option key={s.id} value={s.id}>
+                {(s.name ?? s.id).slice(0, 60)} — {s.status ?? "?"}
               </option>
             ))}
           </select>

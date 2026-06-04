@@ -13,7 +13,8 @@ produces Kafka events.
 
 ## 1. Domain responsibilities
 
-- Own all `PlanningScenario`, `PlanningResult`, and `RecommendationLog` Neo4j nodes
+- Manage `PlanningScenario`, `PlanningResult`, and `RecommendationLog` entities
+  (see §2 for storage model)
 - Run isolated in-memory planning simulations (no live Kafka, no operational Neo4j writes)
 - Expose scenario CRUD, run, and comparison REST endpoints
 - Train and serve demand and delay prediction ML models
@@ -23,9 +24,19 @@ produces Kafka events.
 
 ---
 
-## 2. Data model (Neo4j — planning namespace)
+## 2. Data model
 
-All nodes use the prefix `Planning` to avoid collisions with operational nodes.
+> **Storage decision (lesson 019, 2026-05-29):** scenarios, results, and
+> recommendation logs live in **process-local in-memory dictionaries**, not
+> Neo4j. Planning is a simulation tool whose outputs are ephemeral by design —
+> they describe hypothetical futures, not operational state. Restart wipes the
+> store; clients must re-create scenarios they want to keep. If durability is
+> ever needed (audit-grade comparisons across deploys), the storage layer
+> behind `scenarios/model.py` is the single seam to migrate.
+
+The schemas below describe the **logical record shape** returned by the API
+and stored in memory; the Neo4j labels remain reserved for a future
+persistence implementation but are not currently written.
 
 ### `PlanningScenario`
 
@@ -41,7 +52,8 @@ All nodes use the prefix `Planning` to avoid collisions with operational nodes.
 | `infrastructure_config` | String (JSON)        | Serialised `InfrastructureConfig`              |
 | `demand_source`         | Enum                 | `simulation` · `bts` · `eurocontrol`           |
 | `weather_source`        | Enum                 | `simulation` · `mesonet` · `historical_date`   |
-| `new_routes`            | List[String] (JSON)  | Route additions                                |
+| `demand_multiplier`     | Float                | Linear demand scaling (1.0 = baseline)         |
+| `new_routes`            | List[Object] (JSON)  | Additive routes (destination, daily_flights, aircraft_type, distance_km?, load_factor?) |
 | `capex_eur`             | Float                | Upfront investment cost                        |
 | `opex_delta_eur`        | Float                | Annual operating cost change                   |
 | `years_horizon`         | Integer              | NPV calculation horizon                        |
@@ -90,13 +102,15 @@ One node per scenario, created on completion.
 
 **Relationships:**
 
+Reserved for the future Neo4j-backed implementation (see §2 storage note):
+
 ```cypher
 (PlanningResult)-[:FOR_SCENARIO]->(PlanningScenario)
 (PlanningResult)-[:VS_BASELINE]->(PlanningScenario)
 (RecommendationLog)-[:RECOMMENDED_FOR]->(Flight | Terminal | Incident)
 ```
 
-**Constraints:**
+**Constraints (planned, not currently enforced):**
 
 ```cypher
 CREATE CONSTRAINT planning_scenario_id IF NOT EXISTS
@@ -764,7 +778,7 @@ services/planning-service/
 │   ├── base.py            AbstractAdapter interface
 │   ├── simulation.py      Wraps sim-orchestrator seed logic
 │   ├── bts.py             BTS T-100 CSV reader
-│   ├── opensky.py         OpenSky historical CSV reader
+│   ├── opensky.py         OpenSky historical CSV reader (stub — not registered)
 │   ├── mesonet.py         Iowa State Mesonet CSV reader
 │   ├── eurocontrol.py     Eurocontrol STATFOR demand adapter
 │   └── registry.py        Runtime adapter selection

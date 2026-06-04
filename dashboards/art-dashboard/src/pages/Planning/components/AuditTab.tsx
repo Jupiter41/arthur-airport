@@ -16,8 +16,8 @@ export default function AuditTab() {
     refetchInterval: 10_000,
   });
 
-  const auditSummary = summary as Record<string, unknown> | undefined;
-  const entries = (logData?.entries ?? []) as Array<Record<string, unknown>>;
+  const auditSummary = summary;
+  const entries = logData?.entries ?? [];
 
   return (
     <div className="space-y-5">
