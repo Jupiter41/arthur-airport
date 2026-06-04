@@ -35,6 +35,7 @@ from kafka.producer import (  # noqa: E402
 from routers.costs import router as costs_router  # noqa: E402
 from routers.costs import set_rates as router_set_rates  # noqa: E402
 from services import carbon_tracker  # noqa: E402
+from services import fuel_price as fuel_price_feed  # noqa: E402
 from services.cost_engine import init_running_totals  # noqa: E402
 
 logger = structlog.get_logger("cost-service")
@@ -75,6 +76,9 @@ async def lifespan(app: FastAPI):
 
     # 5. Load cost rates
     rates = load_cost_rates()
+    # Best-effort live fuel-price refresh before consumers start; failures are
+    # logged but never block startup.
+    await fuel_price_feed.refresh_once(rates)
     set_rates(rates)
     router_set_rates(rates)
 
@@ -106,6 +110,9 @@ async def lifespan(app: FastAPI):
             logger.error("kafka consumer crashed", error=str(exc), exc_info=exc)
 
     consumer_task.add_done_callback(_consumer_done)
+
+    # Background fuel-price refresh — no-op when FUEL_PRICE_URL is unset.
+    fuel_task = asyncio.create_task(fuel_price_feed.refresh_loop(rates))
     logger.info("cost-service started")
 
     yield
@@ -115,6 +122,7 @@ async def lifespan(app: FastAPI):
     close_kafka_producer()
     await close_neo4j()
     consumer_task.cancel()
+    fuel_task.cancel()
 
 
 app = FastAPI(

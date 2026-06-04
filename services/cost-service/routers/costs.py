@@ -2,6 +2,7 @@
 
 import structlog
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from db import neo4j as db
 from db.queries import (
@@ -14,6 +15,7 @@ from db.queries import (
 )
 from services.cost_engine import get_running_totals
 from services.recommendations import generate_recommendations
+from services import valuation as valuation_engine
 
 logger = structlog.get_logger(__name__)
 
@@ -206,3 +208,74 @@ async def get_recommendations():
     totals = get_running_totals()
     sim_time = totals.get("last_updated", "")
     return generate_recommendations(totals, sim_time, _rates)
+
+
+# ─── Valuation (3B — Airport Valuation Model) ───────────────────
+
+
+class ValuationSensitivityRequest(BaseModel):
+    """Cartesian product of input deltas applied to the day's EBITDA waterfall."""
+
+    day: int = Field(1, ge=1)
+    horizon: str = Field("year", pattern="^(day|week|year)$")
+    demand_growth: list[float] = Field(
+        default_factory=lambda: [-0.10, 0.0, 0.05],
+        description="Multiplicative demand deltas applied to all revenue streams.",
+    )
+    fuel_price_pct: list[float] = Field(
+        default_factory=lambda: [-0.30, 0.0, 0.30],
+        description="Multiplicative jet-fuel price deltas (informational — pass-through).",
+    )
+    eu261_rate_pct: list[float] = Field(
+        default_factory=lambda: [-0.50, 0.0, 0.50],
+        description="Multiplicative EU261 claim-rate deltas (informational — pass-through).",
+    )
+
+
+class ValuationThesisRequest(BaseModel):
+    day: int = Field(1, ge=1)
+    horizon: str = Field("year", pattern="^(day|week|year)$")
+    demand_growth: list[float] = Field(default_factory=lambda: [-0.05, 0.0, 0.05])
+    fuel_price_pct: list[float] = Field(default_factory=lambda: [-0.20, 0.20])
+    eu261_rate_pct: list[float] = Field(default_factory=lambda: [-0.25, 0.25])
+
+
+@router.get("/ebitda")
+async def get_ebitda(
+    day: int = Query(1, ge=1),
+    horizon: str = Query("year", pattern="^(day|week|year)$"),
+):
+    """Revenue + OpEx waterfall and EBITDA for a sim-day, projected over horizon."""
+    _require_neo4j()
+    pnl = await daily_pnl(db._driver, day)
+    return valuation_engine.build_ebitda(pnl, horizon=horizon)  # type: ignore[arg-type]
+
+
+@router.post("/valuation/sensitivity")
+async def post_valuation_sensitivity(body: ValuationSensitivityRequest):
+    """EBITDA per scenario across a 3-axis cartesian product."""
+    _require_neo4j()
+    pnl = await daily_pnl(db._driver, body.day)
+    base = valuation_engine.build_ebitda(pnl, horizon=body.horizon)  # type: ignore[arg-type]
+    scenarios = valuation_engine.run_sensitivity(
+        base,
+        demand_growth=body.demand_growth,
+        fuel_price_pct=body.fuel_price_pct,
+        eu261_rate_pct=body.eu261_rate_pct,
+    )
+    return {"baseline": base, "scenarios": scenarios}
+
+
+@router.post("/valuation/thesis")
+async def post_valuation_thesis(body: ValuationThesisRequest):
+    """Structured investment-case JSON. Dashboards / PDF renderers consume directly."""
+    _require_neo4j()
+    pnl = await daily_pnl(db._driver, body.day)
+    base = valuation_engine.build_ebitda(pnl, horizon=body.horizon)  # type: ignore[arg-type]
+    scenarios = valuation_engine.run_sensitivity(
+        base,
+        demand_growth=body.demand_growth,
+        fuel_price_pct=body.fuel_price_pct,
+        eu261_rate_pct=body.eu261_rate_pct,
+    )
+    return valuation_engine.build_thesis(base, scenarios)

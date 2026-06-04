@@ -1,13 +1,24 @@
 """Cost-aware financial recommendation engine.
 
-Generates prescriptive recommendations with cost/benefit analysis.
+Generates prescriptive recommendations with cost/benefit analysis. Each
+recommendation now ships with a 95 % confidence interval on the projected
+saving, derived from the rolling 7-day history of the underlying signal
+(see `cost_engine._daily_history`). When fewer than two historical days are
+available, ``saving_eur_ci`` is reported as ``None`` so the dashboard can
+render a "n/a" badge instead of fake-precision range.
 """
 
-from dataclasses import dataclass, asdict
+import math
+from dataclasses import asdict, dataclass, field
 
 import structlog
 
+from services.cost_engine import get_daily_history
+
 logger = structlog.get_logger(__name__)
+
+# 95 % two-sided confidence band on a normally-distributed daily total.
+_Z95 = 1.96
 
 
 @dataclass
@@ -20,6 +31,31 @@ class FinancialRecommendation:
     confidence: float
     payback_sim_minutes: int
     expiry_sim_time: str
+    saving_eur_ci: dict | None = field(default=None)
+
+
+def _ci_for_signal(signal_key: str, saving_factor: float) -> dict | None:
+    """Return a 95 % CI on the projected saving for a given history signal.
+
+    ``saving_factor`` scales the underlying daily total into the recommendation
+    domain (e.g. 0.3 when we believe an action could recover 30 % of EU261
+    exposure). The CI half-width is the same multiplicative factor applied to
+    1.96 σ of the historical population. Returns ``None`` when fewer than two
+    historical days exist.
+    """
+    history = get_daily_history().get(signal_key, [])
+    if len(history) < 2:
+        return None
+    mean = sum(history) / len(history)
+    var = sum((x - mean) ** 2 for x in history) / (len(history) - 1)
+    sigma = math.sqrt(var)
+    half = _Z95 * sigma * saving_factor
+    centre = mean * saving_factor
+    return {
+        "low_eur": round(max(0.0, centre - half), 2),
+        "high_eur": round(centre + half, 2),
+        "sample_days": len(history),
+    }
 
 
 def generate_recommendations(
@@ -45,6 +81,7 @@ def generate_recommendations(
             confidence=0.7,
             payback_sim_minutes=30,
             expiry_sim_time=sim_time,
+            saving_eur_ci=_ci_for_signal("eu261_exposure", 0.3),
         )))
 
     # 2. Ground delay program if holding costs are high
@@ -61,6 +98,7 @@ def generate_recommendations(
             confidence=0.8,
             payback_sim_minutes=15,
             expiry_sim_time=sim_time,
+            saving_eur_ci=_ci_for_signal("by_category.holding_fuel", 0.5),
         )))
 
     # 3. Gate reassignment if ground handling costs are high
@@ -77,6 +115,7 @@ def generate_recommendations(
             confidence=0.6,
             payback_sim_minutes=45,
             expiry_sim_time=sim_time,
+            saving_eur_ci=_ci_for_signal("by_category.ground_handling", 0.1),
         )))
 
     # 4. Open make-up carousel
@@ -91,6 +130,7 @@ def generate_recommendations(
             confidence=0.5,
             payback_sim_minutes=20,
             expiry_sim_time=sim_time,
+            saving_eur_ci=_ci_for_signal("total_cost_eur", 0.02),
         )))
 
     return recs

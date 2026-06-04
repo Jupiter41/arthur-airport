@@ -4,7 +4,8 @@ Computes costs based on Kafka events and writes CostRecord nodes to Neo4j.
 Sources: Eurocontrol Standard Inputs, EU Regulation 261/2004, ACI Airport Charges Report.
 """
 
-from collections import defaultdict
+from collections import defaultdict, deque
+from copy import deepcopy
 from datetime import datetime
 from uuid import uuid4
 
@@ -43,6 +44,26 @@ _holding_accum: dict[str, dict] = {}
 # Track last staffing cost hour to avoid duplicates
 _last_staffing_hour: int = -1
 
+# Track gate occupancy windows by flight_id → sim_time str (ISO 8601)
+# Restart-safe: any flight whose start was missed is silently dropped on exit.
+_gate_occupancy_starts: dict[str, str] = {}
+
+# Rolling history of *completed* sim-days, used by recommendations.py for
+# 95% confidence intervals. Keyed by signal name (category) → deque of daily
+# totals; max 7 entries (last 7 sim-days).
+_DAILY_HISTORY_MAX = 7
+_daily_history: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=_DAILY_HISTORY_MAX))
+
+
+def get_daily_history() -> dict[str, list[float]]:
+    """Return a copy of the rolling per-signal daily history (last 7 days)."""
+    return {k: list(v) for k, v in _daily_history.items()}
+
+
+def reset_daily_history() -> None:
+    """Test helper — clear rolling history."""
+    _daily_history.clear()
+
 
 def get_running_totals() -> dict:
     """Return the current running totals for the REST API."""
@@ -62,9 +83,21 @@ def init_running_totals(totals: dict) -> None:
 
 
 def reset_for_new_day(new_day: int) -> None:
-    """Reset running totals when a new sim day starts (midnight boundary)."""
+    """Reset running totals when a new sim day starts (midnight boundary).
+
+    Before clearing, snapshot the closing day's totals into the rolling history
+    used by `recommendations.py` to compute 95% confidence intervals.
+    """
     global _last_staffing_hour
     logger.info("day transition — resetting running totals", old_day=_running_totals["sim_day"], new_day=new_day)
+
+    # Snapshot previous day's signals before zeroing.
+    _daily_history["total_cost_eur"].append(float(_running_totals["total_cost_eur"]))
+    _daily_history["total_revenue_eur"].append(float(_running_totals["total_revenue_eur"]))
+    _daily_history["eu261_exposure"].append(float(_running_totals["eu261_exposure"]))
+    for cat, val in _running_totals["by_category"].items():
+        _daily_history[f"by_category.{cat}"].append(float(val))
+
     _running_totals["total_cost_eur"] = 0.0
     _running_totals["total_revenue_eur"] = 0.0
     _running_totals["net_eur"] = 0.0
@@ -102,6 +135,45 @@ def _aircraft_family(aircraft_type: str) -> str:
 
 
 # ─── Phase 3: Cost calculators ──────────────────────────────────
+
+
+def _airline_code_from_flight_number(flight_number: str | None) -> str | None:
+    """Extract the IATA carrier code from a flight number (e.g. 'AF1234' → 'AF').
+
+    Falls back to ``None`` when the prefix is missing or malformed so the caller
+    can use the base rate table.
+    """
+    if not flight_number:
+        return None
+    prefix = "".join(c for c in flight_number[:3] if c.isalpha()).upper()
+    return prefix if 2 <= len(prefix) <= 3 else None
+
+
+def resolve_rates_for_airline(rates: dict, airline_code: str | None) -> dict:
+    """Return a rate dict with per-airline overrides applied on top of the base.
+
+    Overrides live under ``rates["airline_overrides"][CODE]`` and are deep-merged
+    so an airline can tune just one leaf field (e.g. only the passenger fee).
+    When no override exists the base ``rates`` dict is returned **unchanged** —
+    callers must not mutate it.
+    """
+    if not airline_code:
+        return rates
+    overrides = rates.get("airline_overrides", {}).get(airline_code)
+    if not overrides:
+        return rates
+
+    merged = deepcopy(rates)
+
+    def _merge(base: dict, patch: dict) -> None:
+        for k, v in patch.items():
+            if isinstance(v, dict) and isinstance(base.get(k), dict):
+                _merge(base[k], v)
+            else:
+                base[k] = v
+
+    _merge(merged, overrides)
+    return merged
 
 
 def compute_landing_fee(aircraft_type: str, rates: dict) -> float:
@@ -279,10 +351,69 @@ async def on_flight_status_changed(payload: dict, sim_time: str, sim_day: int, r
     aircraft_type = flight.get("aircraft_type", "A320")
     pax_count = flight.get("pax_count", 0)
     direction = flight.get("direction", "departure")
+    flight_number = flight.get("flight_number", "")
+
+    # Per-airline rate overrides resolved once per event (cheap deepcopy only
+    # when an override exists for this carrier).
+    airline_code = _airline_code_from_flight_number(flight_number)
+    eff_rates = resolve_rates_for_airline(rates, airline_code)
+
+    # Gate occupancy tracking — open window
+    if direction == "departure" and new_status == "boarding":
+        _gate_occupancy_starts.setdefault(flight_id, sim_time)
+    elif direction == "arrival" and new_status == "at_gate":
+        _gate_occupancy_starts.setdefault(flight_id, sim_time)
+
+    # Gate occupancy tracking — close window + emit gate fee (dual entry)
+    if (direction == "departure" and new_status == "departed") or (
+        direction == "arrival" and new_status == "arrived"
+    ):
+        start = _gate_occupancy_starts.pop(flight_id, None)
+        if start:
+            try:
+                start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(sim_time.replace("Z", "+00:00"))
+                delta_min = max(0, int((end_dt - start_dt).total_seconds() // 60))
+            except (ValueError, AttributeError):
+                delta_min = 0
+            if delta_min > 0:
+                gate_fee = compute_gate_fee(delta_min, eff_rates)
+                if gate_fee > 0:
+                    await _write_and_emit(
+                        {
+                            "id": str(uuid4()),
+                            "category": "gate_fee",
+                            "amount_eur": gate_fee,
+                            "sim_time": sim_time,
+                            "sim_day": sim_day,
+                            "description": (
+                                f"Gate fee — {flight_number} "
+                                f"({delta_min} min occupancy)"
+                            ),
+                            "is_revenue": False,
+                        },
+                        flight_id=flight_id,
+                    )
+                    await _write_and_emit(
+                        {
+                            "id": str(uuid4()),
+                            "category": "gate_fee",
+                            "amount_eur": gate_fee,
+                            "sim_time": sim_time,
+                            "sim_day": sim_day,
+                            "description": f"Gate fee revenue — {flight_number}",
+                            "is_revenue": True,
+                        },
+                        flight_id=flight_id,
+                    )
+
+    # Cancellation drops any pending gate-occupancy window.
+    if new_status == "cancelled":
+        _gate_occupancy_starts.pop(flight_id, None)
 
     # Landing fee on arrival at gate
     if new_status == "at_gate" and direction == "arrival":
-        fee = compute_landing_fee(aircraft_type, rates)
+        fee = compute_landing_fee(aircraft_type, eff_rates)
         # Cost to airline
         await _write_and_emit(
             {
@@ -311,9 +442,9 @@ async def on_flight_status_changed(payload: dict, sim_time: str, sim_day: int, r
         )
 
         # Ground handling costs
-        bags_per_pax = rates.get("operations", {}).get("bags_per_pax", 1.2)
+        bags_per_pax = eff_rates.get("operations", {}).get("bags_per_pax", 1.2)
         bag_count = int(pax_count * bags_per_pax)
-        handling = compute_ground_handling(aircraft_type, bag_count, rates)
+        handling = compute_ground_handling(aircraft_type, bag_count, eff_rates)
         for item_name, amount in handling.items():
             await _write_and_emit(
                 {
@@ -330,7 +461,7 @@ async def on_flight_status_changed(payload: dict, sim_time: str, sim_day: int, r
 
     # Passenger fee on departure
     if new_status == "departed" and direction == "departure":
-        pax_fee = compute_passenger_fee(pax_count, rates)
+        pax_fee = compute_passenger_fee(pax_count, eff_rates)
         await _write_and_emit(
             {
                 "id": str(uuid4()),
@@ -357,7 +488,7 @@ async def on_flight_status_changed(payload: dict, sim_time: str, sim_day: int, r
             flight_id=flight_id,
         )
         # Slot revenue
-        slot_fee = rates["revenue"]["slot_fee_eur"]
+        slot_fee = eff_rates["revenue"]["slot_fee_eur"]
         await _write_and_emit(
             {
                 "id": str(uuid4()),
@@ -375,7 +506,7 @@ async def on_flight_status_changed(payload: dict, sim_time: str, sim_day: int, r
     delay_minutes = payload.get("delay_minutes", 0) or flight.get("delay_minutes", 0)
     if new_status == "delayed" and delay_minutes >= 180:
         distance_km = flight.get("distance_km") or 2000.0
-        amount, desc = compute_eu261(delay_minutes, distance_km, pax_count, rates)
+        amount, desc = compute_eu261(delay_minutes, distance_km, pax_count, eff_rates)
         if amount > 0:
             await _write_and_emit(
                 {
@@ -404,8 +535,16 @@ async def on_flight_cancelled(payload: dict, sim_time: str, sim_day: int, rates:
     pax_count = flight.get("pax_count", 0)
     distance_km = flight.get("distance_km") or 2000.0
 
+    # Resolve per-airline overrides (matters for EU261 if a carrier negotiates
+    # a different settlement schedule; otherwise no-op).
+    airline_code = _airline_code_from_flight_number(flight.get("flight_number"))
+    eff_rates = resolve_rates_for_airline(rates, airline_code)
+
+    # Cancellation also clears any in-flight gate occupancy window.
+    _gate_occupancy_starts.pop(flight_id, None)
+
     # Cancellations always trigger EU261 at max tier
-    for tier in sorted(rates["eu261"], key=lambda t: t.get("compensation_eur", 0), reverse=True):
+    for tier in sorted(eff_rates["eu261"], key=lambda t: t.get("compensation_eur", 0), reverse=True):
         if not tier.get("assistance_only", False) and distance_km <= tier["max_distance_km"]:
             amount = tier["compensation_eur"] * pax_count
             desc = (

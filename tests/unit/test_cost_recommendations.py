@@ -128,10 +128,16 @@ class TestRecommendationSchema:
         required = {
             "action", "description", "cost_eur", "saving_eur",
             "net_benefit_eur", "confidence", "payback_sim_minutes",
-            "expiry_sim_time",
+            "expiry_sim_time", "saving_eur_ci",
         }
         for rec in recs:
             assert set(rec.keys()) == required, f"Missing keys in {rec['action']}"
+            # CI is None unless ≥2 historical days are available; when present
+            # it must expose low/high/sample_days as numerics.
+            ci = rec["saving_eur_ci"]
+            if ci is not None:
+                assert {"low_eur", "high_eur", "sample_days"} <= set(ci.keys())
+                assert ci["low_eur"] <= ci["high_eur"]
 
     def test_confidence_in_valid_range(self):
         totals = _make_totals(

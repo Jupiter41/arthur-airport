@@ -29,5 +29,6 @@ Before doing any edit, do this:
 
 The current task is "Follows the PLAN.md to fix issues and improve the app". Your mission is to implement:
 
-- P1 & P2 from the cost model section
+- P1 & P2 from the Planning model robustness & clarity section
+- P1 & P2 from the Cross-cutting hygiene section
 - Validate & mark them as complete
