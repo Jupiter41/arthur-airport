@@ -22,12 +22,18 @@ TOPICS = [
 _consumer: Consumer | None = None
 _running: bool = False
 _rates: dict = {}
+_carbon_factors: dict = {}
 _consumer_health = ConsumerHealthTracker()
 
 
 def set_rates(rates: dict) -> None:
     global _rates
     _rates = rates
+
+
+def set_carbon_factors(factors: dict) -> None:
+    global _carbon_factors
+    _carbon_factors = factors
 
 
 def make_consumer() -> Consumer:
@@ -51,6 +57,7 @@ async def run_consumer() -> None:
         on_incident_created,
         on_incident_resolved,
     )
+    from services import carbon_tracker
 
     _consumer = make_consumer()
     _consumer.subscribe(TOPICS)
@@ -90,8 +97,17 @@ async def run_consumer() -> None:
                 case "SimClockTick":
                     sim_day = payload.get("day_of_sim", 1)
                     await on_clock_tick(payload, sim_time, sim_day, _rates)
+                    if _carbon_factors:
+                        await carbon_tracker.on_clock_tick(payload, sim_time, sim_day, _carbon_factors, _rates)
                 case "FlightStatusChanged":
                     await on_flight_status_changed(payload, sim_time, sim_day, _rates)
+                    # Carbon: emit flight + APU + ground vehicle on departed
+                    new_status = payload.get("new_status") or payload.get("status")
+                    if new_status == "departed" and _carbon_factors:
+                        from db.neo4j import get_flight_info as _get_fi
+                        flight = await _get_fi(payload.get("flight_id"))
+                        if flight and flight.get("direction", "departure") == "departure":
+                            await carbon_tracker.on_flight_departed(flight, sim_time, sim_day, _carbon_factors)
                 case "FlightCancelled":
                     await on_flight_cancelled(payload, sim_time, sim_day, _rates)
                 case "IncidentCreated":

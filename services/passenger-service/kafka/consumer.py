@@ -47,6 +47,7 @@ from ml.training import add_training_row, maybe_flush, maybe_retrain
 from services.connections import evaluate_connecting_passengers
 from services.security import SecuritySystem
 from services.spatial import walking_time_to_gate
+from services import wheelchair
 from services.state_machine import (
     get_terminal_for_flight,
     sample_dwell_minutes,
@@ -592,6 +593,9 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         # 2. Move booked passengers to checked_in at T-120
         await _advance_booked_to_checkin(sim_time, delta_minutes)
 
+        # 2b. Drain wheelchair request queue (1C — accessibility)
+        await _wheelchair_tick(sim_time)
+
         # 3. Move checked_in passengers to security_queue when check-in closes
         await _advance_checkin_to_security(sim_time, delta_minutes)
 
@@ -785,6 +789,19 @@ async def _advance_booked_to_checkin(sim_time: datetime, delta_minutes: int = 1)
                 flight_id=flight_id,
                 flight_number=pax.get("flight_number"),
             )
+            # 1C — register SA passengers with the wheelchair pool on check-in.
+            if pax.get("special_assistance"):
+                try:
+                    await wheelchair.request(
+                        terminal=terminal,
+                        passenger_id=pax["id"],
+                        sim_time=sim_time,
+                        scheduled_dep_iso=str(scheduled) if scheduled else None,
+                        flight_id=flight_id,
+                        name=pax.get("name"),
+                    )
+                except Exception as exc:
+                    logger.warning("wheelchair request failed for %s: %s", pax["id"], exc)
         total_moved += len(batch)
 
 
@@ -1037,6 +1054,12 @@ async def _advance_airside_to_gate(sim_time: datetime) -> None:
                 flight_id=pax.get("flight_id"),
                 flight_number=pax.get("flight_number"),
             )
+            # 1C — record SLA outcome (wheelchair only).
+            if pax.get("special_assistance"):
+                try:
+                    await wheelchair.mark_at_gate(pax["id"], sim_time)
+                except Exception as exc:
+                    logger.debug("wheelchair mark_at_gate failed: %s", exc)
         except Exception as e:
             logger.warning("Skipping invalid airside passenger record %s: %s", pax.get("id"), e)
             continue
@@ -1142,6 +1165,20 @@ async def _advance_boarding(sim_time: datetime, delta_minutes: int = 1) -> None:
                 flight_id=flight_id,
                 flight_number=pax.get("flight_number"),
             )
+            # 1C — release wheelchair when boarding completes.
+            if pax.get("special_assistance"):
+                try:
+                    await wheelchair.release(pax["id"], sim_time)
+                except Exception as exc:
+                    logger.debug("wheelchair release failed: %s", exc)
+
+
+async def _wheelchair_tick(sim_time: datetime) -> None:
+    """Drain wheelchair queues each clock tick (1C)."""
+    try:
+        await wheelchair.tick(sim_time)
+    except Exception as exc:
+        logger.warning("wheelchair tick failed: %s", exc)
 
 
 async def _advance_arrivals(sim_time: datetime) -> None:

@@ -48,6 +48,14 @@ class PlanningScenario:
     years_horizon: int = 25
     discount_rate: float = 0.07
 
+    # 1B — Counterfactual delay analysis (interventions + synthetic disruption).
+    # Interventions are applied to BOTH baseline and scenario MC runs so deltas
+    # cleanly attribute to infrastructure changes, not to the choice itself.
+    # Counterfactual replays use a child scenario with parent_scenario_id set.
+    interventions: list[dict] = field(default_factory=list)
+    disruption: dict | None = None
+    parent_scenario_id: str | None = None
+
     # Runtime state
     status: str = "pending"  # pending | running | completed | failed
     started_at: str | None = None
@@ -78,6 +86,9 @@ class PlanningScenario:
             "error": self.error,
             "progress_pct": self.progress_pct,
             "runs_completed": self.runs_completed,
+            "interventions": list(self.interventions),
+            "disruption": self.disruption,
+            "parent_scenario_id": self.parent_scenario_id,
         }
 
     def to_summary(self) -> dict:

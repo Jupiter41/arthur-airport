@@ -41,6 +41,8 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { path: "/ground-ops", label: "Ground Ops", icon: "🛬" },
       { path: "/costs", label: "Costs", icon: "💰" },
+      { path: "/carbon", label: "Carbon", icon: "🌱" },
+      { path: "/accessibility", label: "Accessibility", icon: "♿" },
       { path: "/world", label: "World", icon: "🗺️" },
     ],
   },
@@ -51,6 +53,7 @@ const NAV_ITEMS: NavItem[] = [
       { path: "/history", label: "History", icon: "📊" },
       { path: "/scenarios", label: "Scenarios", icon: "🧪" },
       { path: "/planning", label: "Planning", icon: "📐" },
+      { path: "/whatif", label: "What-If", icon: "🔮" },
       { path: "/ml", label: "ML Training", icon: "🧠" },
       { path: "/data-sources", label: "Data Sources", icon: "🔌" },
       { path: "/settings", label: "Settings", icon: "⚙️" },

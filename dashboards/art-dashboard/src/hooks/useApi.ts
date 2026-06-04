@@ -588,6 +588,79 @@ export const costsApi = {
     }),
   recommendations: () =>
     apiFetch<FinancialRecommendation[]>("/costs/recommendations"),
+  // Carbon Footprint Tracker (Phase 1A)
+  carbonSummary: () =>
+    apiFetch<{
+      sim_day: number;
+      total_co2_kg: number;
+      total_co2_tonnes: number;
+      by_source: Record<string, number>;
+      record_count: number;
+    }>("/costs/carbon/summary"),
+  carbonBySource: (day = 1) =>
+    apiFetch<{
+      sim_day: number;
+      sources: { source: string; total_kg: number; records: number }[];
+    }>(`/costs/carbon/by-source?day=${day}`),
+  carbonTimeline: (day = 1) =>
+    apiFetch<{
+      sim_day: number;
+      hours: { hour: number; co2_kg: number; records: number }[];
+    }>(`/costs/carbon/timeline?day=${day}`),
+  carbonFactors: () =>
+    apiFetch<Record<string, unknown>>("/costs/carbon/factors"),
+  carbonScenario: (body: {
+    gpu_adoption_pct: number;
+    ev_adoption_pct: number;
+    solar_offset_pct: number;
+  }) =>
+    apiFetch<{
+      baseline_kg: number;
+      projected_kg: number;
+      saved_kg: number;
+      saved_pct: number;
+      breakdown: Record<string, { baseline_kg: number; projected_kg: number }>;
+    }>("/costs/carbon/scenario", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+};
+
+// ── Accessibility (Phase 1C) ──
+export const accessibilityApi = {
+  sla: () =>
+    apiFetch<{
+      target_pct: number;
+      actual_pct: number;
+      compliant: boolean;
+      samples: number;
+      mean_dispatch_wait_minutes: number;
+      by_terminal: Record<
+        string,
+        { samples: number; sla_pct: number; mean_wait_minutes: number }
+      >;
+    }>("/passengers/accessibility/sla"),
+  resources: () =>
+    apiFetch<{
+      terminals: {
+        terminal: string;
+        total: number;
+        in_use: number;
+        available: number;
+        queue_depth: number;
+      }[];
+    }>("/passengers/accessibility/resources"),
+  staffing: () =>
+    apiFetch<{
+      method: string;
+      headroom_factor: number;
+      terminals: {
+        terminal: string;
+        recommended_agents: number;
+        peak_hourly_demand: number;
+        current_pool: number;
+      }[];
+    }>("/passengers/accessibility/staffing"),
 };
 
 // ── Planning ──
@@ -741,4 +814,65 @@ export const planningApi = {
       method: "POST",
       body: JSON.stringify({ infrastructure }),
     }),
+
+  // Counterfactual Delay Analysis (Phase 1B)
+  replayScenario: (
+    id: string,
+    body: {
+      interventions?: Record<string, unknown>[];
+      disruption?: Record<string, unknown> | null;
+      label?: string;
+    },
+  ) =>
+    apiFetch<{
+      scenario_id: string;
+      parent_scenario_id: string;
+      status: string;
+    }>(`/planning/scenarios/${encodeURIComponent(id)}/replay`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  counterfactualReport: (
+    id: string,
+    body: {
+      intervention: Record<string, unknown>;
+      shifts_minutes: number[];
+      disruption?: Record<string, unknown> | null;
+    },
+  ) =>
+    apiFetch<{
+      parent_scenario_id: string;
+      intervention_index: number;
+      children: {
+        scenario_id: string;
+        shift_minutes: number;
+        applied_sim_minute: number;
+        label: string;
+      }[];
+    }>(`/planning/scenarios/${encodeURIComponent(id)}/counterfactual-report`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  causalGraph: (id: string) =>
+    apiFetch<{
+      scenario_id: string;
+      nodes: {
+        id: string;
+        kind: string;
+        label: string;
+        data?: Record<string, unknown>;
+      }[];
+      edges: { source: string; target: string; kind: string }[];
+    }>(`/planning/scenarios/${encodeURIComponent(id)}/causal-graph`),
+  listReplays: (id: string) =>
+    apiFetch<{
+      parent_scenario_id: string;
+      replays: {
+        scenario_id: string;
+        status: string;
+        created_at?: string;
+        label?: string;
+        results?: Record<string, unknown>;
+      }[];
+    }>(`/planning/scenarios/${encodeURIComponent(id)}/replays`),
 };

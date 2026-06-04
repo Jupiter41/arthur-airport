@@ -12,212 +12,272 @@ The airport is modelled as a directed property graph. Physical objects (planes, 
 
 The graph lets us answer complex operational questions in a single query that would require multi-table joins in a relational model. Examples:
 
-- *"Which passengers are currently airside and whose connecting flight is at risk?"*
-- *"What baggage is loaded on a flight that has been held due to a runway incursion?"*
-- *"Which gates are blocked because of a cascading delay originating from weather on runway 09L?"*
+- _"Which passengers are currently airside and whose connecting flight is at risk?"_
+- _"What baggage is loaded on a flight that has been held due to a runway incursion?"_
+- _"Which gates are blocked because of a cascading delay originating from weather on runway 09L?"_
 
 ---
 
 ## 2. Node catalogue
 
 ### `Airport`
+
 The singleton root node. All terminals, runways, and infrastructure belong to this node.
 
-| Property | Type | Description |
-|---|---|---|
-| `iata` | String | `"ART"` |
-| `icao` | String | `"KART"` |
-| `name` | String | `"Arthur International Airport"` |
-| `timezone` | String | `"America/Arthur"` (fictional) |
-| `total_gates` | Integer | 42 |
-| `created_at` | DateTime | seed timestamp |
+| Property      | Type     | Description                      |
+| ------------- | -------- | -------------------------------- |
+| `iata`        | String   | `"ART"`                          |
+| `icao`        | String   | `"KART"`                         |
+| `name`        | String   | `"Arthur International Airport"` |
+| `timezone`    | String   | `"America/Arthur"` (fictional)   |
+| `total_gates` | Integer  | 42                               |
+| `created_at`  | DateTime | seed timestamp                   |
 
 ---
 
 ### `Terminal`
+
 One of three terminals (A, B, C).
 
-| Property | Type | Description |
-|---|---|---|
-| `id` | String | `"T-A"`, `"T-B"`, `"T-C"` |
-| `name` | String | `"Terminal A"` etc. |
-| `gate_count` | Integer | 14 |
-| `open` | Boolean | operational status |
+| Property     | Type    | Description               |
+| ------------ | ------- | ------------------------- |
+| `id`         | String  | `"T-A"`, `"T-B"`, `"T-C"` |
+| `name`       | String  | `"Terminal A"` etc.       |
+| `gate_count` | Integer | 14                        |
+| `open`       | Boolean | operational status        |
 
 ---
 
 ### `Gate`
+
 An individual boarding gate. 42 total (A01–A14, B01–B14, C01–C14).
 
-| Property | Type | Description |
-|---|---|---|
-| `id` | String | `"A01"` … `"C14"` |
-| `terminal_id` | String | FK-style reference |
-| `status` | Enum | `available` · `occupied` · `maintenance` · `closed` |
-| `pier` | String | `"A"`, `"B"`, `"C"` |
-| `jetbridge` | Boolean | has jetbridge |
-| `last_assigned_at` | DateTime | last flight assignment |
+| Property           | Type     | Description                                         |
+| ------------------ | -------- | --------------------------------------------------- |
+| `id`               | String   | `"A01"` … `"C14"`                                   |
+| `terminal_id`      | String   | FK-style reference                                  |
+| `status`           | Enum     | `available` · `occupied` · `maintenance` · `closed` |
+| `pier`             | String   | `"A"`, `"B"`, `"C"`                                 |
+| `jetbridge`        | Boolean  | has jetbridge                                       |
+| `last_assigned_at` | DateTime | last flight assignment                              |
 
 ---
 
 ### `Runway`
+
 One of two runways.
 
-| Property | Type | Description |
-|---|---|---|
-| `id` | String | `"09L"`, `"27R"`, `"09R"`, `"27L"` |
-| `length_m` | Integer | runway length in metres |
-| `status` | Enum | `open` · `closed` · `restricted` · `incident` |
-| `surface` | String | `"asphalt"` |
-| `ils` | Boolean | instrument landing system available |
-| `current_use` | Enum | `landing` · `takeoff` · `idle` |
+| Property      | Type    | Description                                   |
+| ------------- | ------- | --------------------------------------------- |
+| `id`          | String  | `"09L"`, `"27R"`, `"09R"`, `"27L"`            |
+| `length_m`    | Integer | runway length in metres                       |
+| `status`      | Enum    | `open` · `closed` · `restricted` · `incident` |
+| `surface`     | String  | `"asphalt"`                                   |
+| `ils`         | Boolean | instrument landing system available           |
+| `current_use` | Enum    | `landing` · `takeoff` · `idle`                |
 
 ---
 
 ### `Flight`
+
 A single flight movement (arrival or departure). Each physical flight has two nodes: one for the arrival leg and one for the departure leg.
 
-| Property | Type | Description |
-|---|---|---|
-| `id` | String | UUID |
-| `flight_number` | String | e.g. `"AX412"` |
-| `airline_code` | String | 2-letter fictional IATA code |
-| `direction` | Enum | `arrival` · `departure` |
-| `status` | Enum | `scheduled` · `boarding` · `departed` · `airborne` · `approach` · `landed` · `taxiing` · `at_gate` · `delayed` · `cancelled` · `diverted` |
-| `aircraft_type` | String | e.g. `"B738"`, `"A320"` |
-| `aircraft_registration` | String | e.g. `"ART-001"` |
-| `origin_iata` | String | origin airport (fictional) |
-| `destination_iata` | String | destination airport (fictional) |
-| `scheduled_time` | DateTime | original STA/STD |
-| `estimated_time` | DateTime | current ETA/ETD (updated dynamically) |
-| `actual_time` | DateTime | actual ATA/ATD (set on event) |
-| `delay_minutes` | Integer | cumulative delay |
-| `delay_reason` | String | free-text reason code |
-| `pax_count` | Integer | booked passenger count |
-| `seat_capacity` | Integer | aircraft seat capacity |
+| Property                | Type     | Description                                                                                                                               |
+| ----------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                    | String   | UUID                                                                                                                                      |
+| `flight_number`         | String   | e.g. `"AX412"`                                                                                                                            |
+| `airline_code`          | String   | 2-letter fictional IATA code                                                                                                              |
+| `direction`             | Enum     | `arrival` · `departure`                                                                                                                   |
+| `status`                | Enum     | `scheduled` · `boarding` · `departed` · `airborne` · `approach` · `landed` · `taxiing` · `at_gate` · `delayed` · `cancelled` · `diverted` |
+| `aircraft_type`         | String   | e.g. `"B738"`, `"A320"`                                                                                                                   |
+| `aircraft_registration` | String   | e.g. `"ART-001"`                                                                                                                          |
+| `origin_iata`           | String   | origin airport (fictional)                                                                                                                |
+| `destination_iata`      | String   | destination airport (fictional)                                                                                                           |
+| `scheduled_time`        | DateTime | original STA/STD                                                                                                                          |
+| `estimated_time`        | DateTime | current ETA/ETD (updated dynamically)                                                                                                     |
+| `actual_time`           | DateTime | actual ATA/ATD (set on event)                                                                                                             |
+| `delay_minutes`         | Integer  | cumulative delay                                                                                                                          |
+| `delay_reason`          | String   | free-text reason code                                                                                                                     |
+| `pax_count`             | Integer  | booked passenger count                                                                                                                    |
+| `seat_capacity`         | Integer  | aircraft seat capacity                                                                                                                    |
 
 ---
 
 ### `Passenger`
 
-| Property | Type | Description |
-|---|---|---|
-| `id` | String | UUID |
-| `name` | String | generated fake name |
-| `pnr` | String | booking reference (6-char fake) |
-| `nationality` | String | ISO 3166-1 alpha-2 |
-| `status` | Enum | `checked_in` · `security_queue` · `airside` · `at_gate` · `boarded` · `deplaning` · `baggage_claim` · `departed_airport` |
-| `location_zone` | String | current zone: `"check-in"`, `"security"`, `"gate-B07"`, etc. |
-| `seat` | String | e.g. `"23A"` |
-| `special_assistance` | Boolean | requires assistance |
-| `connection` | Boolean | has a connecting flight |
-| `connection_flight_id` | String | if `connection=true` |
-| `checked_in_at` | DateTime | |
-| `boarded_at` | DateTime | |
+| Property               | Type     | Description                                                                                                              |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `id`                   | String   | UUID                                                                                                                     |
+| `name`                 | String   | generated fake name                                                                                                      |
+| `pnr`                  | String   | booking reference (6-char fake)                                                                                          |
+| `nationality`          | String   | ISO 3166-1 alpha-2                                                                                                       |
+| `status`               | Enum     | `checked_in` · `security_queue` · `airside` · `at_gate` · `boarded` · `deplaning` · `baggage_claim` · `departed_airport` |
+| `location_zone`        | String   | current zone: `"check-in"`, `"security"`, `"gate-B07"`, etc.                                                             |
+| `seat`                 | String   | e.g. `"23A"`                                                                                                             |
+| `special_assistance`   | Boolean  | requires assistance                                                                                                      |
+| `connection`           | Boolean  | has a connecting flight                                                                                                  |
+| `connection_flight_id` | String   | if `connection=true`                                                                                                     |
+| `checked_in_at`        | DateTime |                                                                                                                          |
+| `boarded_at`           | DateTime |                                                                                                                          |
 
 ---
 
 ### `Baggage`
 
-| Property | Type | Description |
-|---|---|---|
-| `id` | String | UUID |
-| `tag` | String | 10-digit barcode e.g. `"0074123456"` |
-| `weight_kg` | Float | |
-| `status` | Enum | `dropped_off` · `inducted` · `screening` · `sorting` · `loaded` · `in_hold` · `arrived` · `on_carousel` · `collected` · `lost` · `flagged` |
-| `is_dangerous_goods` | Boolean | DG flag |
-| `dg_class` | String | IATA DG class if flagged |
-| `carousel` | Integer | arrival carousel number (1–6) |
-| `last_scan_zone` | String | last RFID/barcode scan location |
-| `last_scan_at` | DateTime | |
+| Property             | Type     | Description                                                                                                                                |
+| -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                 | String   | UUID                                                                                                                                       |
+| `tag`                | String   | 10-digit barcode e.g. `"0074123456"`                                                                                                       |
+| `weight_kg`          | Float    |                                                                                                                                            |
+| `status`             | Enum     | `dropped_off` · `inducted` · `screening` · `sorting` · `loaded` · `in_hold` · `arrived` · `on_carousel` · `collected` · `lost` · `flagged` |
+| `is_dangerous_goods` | Boolean  | DG flag                                                                                                                                    |
+| `dg_class`           | String   | IATA DG class if flagged                                                                                                                   |
+| `carousel`           | Integer  | arrival carousel number (1–6)                                                                                                              |
+| `last_scan_zone`     | String   | last RFID/barcode scan location                                                                                                            |
+| `last_scan_at`       | DateTime |                                                                                                                                            |
 
 ---
 
 ### `WeatherState`
+
 A snapshot of current weather conditions at KART. One active node at any time; history retained as a chain.
 
-| Property | Type | Description |
-|---|---|---|
-| `id` | String | UUID |
-| `timestamp` | DateTime | when this state became active |
-| `category` | Enum | `CAVOK` · `VMC` · `IMC` · `LIFR` |
-| `visibility_m` | Integer | visibility in metres |
-| `wind_direction` | Integer | degrees |
-| `wind_speed_kt` | Integer | knots |
-| `wind_gust_kt` | Integer | gusts (0 if none) |
-| `ceiling_ft` | Integer | cloud ceiling in feet |
-| `temperature_c` | Float | |
-| `dew_point_c` | Float | |
-| `qnh_hpa` | Integer | altimeter setting |
-| `phenomena` | List[String] | e.g. `["TS", "FG", "SN"]` |
-| `runway_impact` | Enum | `none` · `reduced_rate` · `single_runway` · `closed` |
+| Property         | Type         | Description                                          |
+| ---------------- | ------------ | ---------------------------------------------------- |
+| `id`             | String       | UUID                                                 |
+| `timestamp`      | DateTime     | when this state became active                        |
+| `category`       | Enum         | `CAVOK` · `VMC` · `IMC` · `LIFR`                     |
+| `visibility_m`   | Integer      | visibility in metres                                 |
+| `wind_direction` | Integer      | degrees                                              |
+| `wind_speed_kt`  | Integer      | knots                                                |
+| `wind_gust_kt`   | Integer      | gusts (0 if none)                                    |
+| `ceiling_ft`     | Integer      | cloud ceiling in feet                                |
+| `temperature_c`  | Float        |                                                      |
+| `dew_point_c`    | Float        |                                                      |
+| `qnh_hpa`        | Integer      | altimeter setting                                    |
+| `phenomena`      | List[String] | e.g. `["TS", "FG", "SN"]`                            |
+| `runway_impact`  | Enum         | `none` · `reduced_rate` · `single_runway` · `closed` |
 
 ---
 
 ### `Incident`
 
-| Property | Type | Description |
-|---|---|---|
-| `id` | String | UUID |
-| `type` | Enum | `runway_incursion` · `baggage_fire` · `security_breach` · `severe_weather` · `system_failure` |
-| `severity` | Enum | `low` · `medium` · `high` · `critical` |
-| `status` | Enum | `active` · `contained` · `resolved` · `escalated` |
-| `trigger` | Enum | `manual` · `probabilistic` |
-| `title` | String | short human-readable label |
-| `description` | String | |
-| `location` | String | zone/gate/runway where incident occurred |
-| `started_at` | DateTime | |
-| `resolved_at` | DateTime | null if active |
-| `affected_entity_ids` | List[String] | IDs of impacted flights/gates/etc. |
-| `cascade_events` | List[String] | IDs of child incidents/alerts spawned |
-| `protocol` | String | emergency protocol triggered |
+| Property              | Type         | Description                                                                                   |
+| --------------------- | ------------ | --------------------------------------------------------------------------------------------- |
+| `id`                  | String       | UUID                                                                                          |
+| `type`                | Enum         | `runway_incursion` · `baggage_fire` · `security_breach` · `severe_weather` · `system_failure` |
+| `severity`            | Enum         | `low` · `medium` · `high` · `critical`                                                        |
+| `status`              | Enum         | `active` · `contained` · `resolved` · `escalated`                                             |
+| `trigger`             | Enum         | `manual` · `probabilistic`                                                                    |
+| `title`               | String       | short human-readable label                                                                    |
+| `description`         | String       |                                                                                               |
+| `location`            | String       | zone/gate/runway where incident occurred                                                      |
+| `started_at`          | DateTime     |                                                                                               |
+| `resolved_at`         | DateTime     | null if active                                                                                |
+| `affected_entity_ids` | List[String] | IDs of impacted flights/gates/etc.                                                            |
+| `cascade_events`      | List[String] | IDs of child incidents/alerts spawned                                                         |
+| `protocol`            | String       | emergency protocol triggered                                                                  |
 
 ---
 
 ### `CostRecord`
+
 One record per cost or revenue event. Written by cost-service.
 
-| Property | Type | Description |
-|---|---|---|
-| `id` | String (UUID) | unique |
-| `category` | Enum | `landing_fee`, `gate_fee`, `passenger_fee`, `eu261_compensation`, `crew_overtime`, `holding_fuel`, `ground_handling`, `incident_direct`, `incident_response`, `staffing`, `retail_revenue`, `slot_revenue` |
-| `amount_eur` | Float | cost or revenue amount (always positive) |
-| `currency` | String | `"EUR"` |
-| `sim_time` | String (ISO) | when the cost was incurred |
-| `sim_day` | Integer | day number in simulation |
-| `description` | String | human-readable label |
-| `is_revenue` | Boolean | true for revenue records |
+| Property      | Type          | Description                                                                                                                                                                                                |
+| ------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | String (UUID) | unique                                                                                                                                                                                                     |
+| `category`    | Enum          | `landing_fee`, `gate_fee`, `passenger_fee`, `eu261_compensation`, `crew_overtime`, `holding_fuel`, `ground_handling`, `incident_direct`, `incident_response`, `staffing`, `retail_revenue`, `slot_revenue` |
+| `amount_eur`  | Float         | cost or revenue amount (always positive)                                                                                                                                                                   |
+| `currency`    | String        | `"EUR"`                                                                                                                                                                                                    |
+| `sim_time`    | String (ISO)  | when the cost was incurred                                                                                                                                                                                 |
+| `sim_day`     | Integer       | day number in simulation                                                                                                                                                                                   |
+| `description` | String        | human-readable label                                                                                                                                                                                       |
+| `is_revenue`  | Boolean       | true for revenue records                                                                                                                                                                                   |
+
+---
+
+### `CarbonRecord`
+
+One record per CO₂ emission event. Written by cost-service (1A — Carbon Footprint Tracker).
+Source attribution per ICAO Carbon Calculator + ACI Airport Carbon Accreditation methodology.
+
+| Property      | Type          | Description                                    |
+| ------------- | ------------- | ---------------------------------------------- |
+| `id`          | String (UUID) | unique                                         |
+| `source`      | Enum          | `flight`, `apu`, `terminal`, `ground_vehicle`  |
+| `co2_kg`      | Float         | emissions in kilograms (always positive)       |
+| `sim_time`    | String (ISO)  | when the emission was incurred                 |
+| `sim_day`     | Integer       | day number in simulation                       |
+| `description` | String        | human-readable label                           |
+| `flight_id`   | String        | linked flight UUID, empty for terminal sources |
+
+---
+
+### `WheelchairResource`
+
+Per-terminal pool of wheelchairs serving SA passengers (1C — Accessibility).
+
+| Property          | Type         | Description                      |
+| ----------------- | ------------ | -------------------------------- |
+| `terminal`        | String       | terminal letter (A/B/C) — unique |
+| `total_count`     | Integer      | configured pool size             |
+| `available_count` | Integer      | currently available units        |
+| `updated_at`      | String (ISO) | last sync time                   |
+
+### `WheelchairAssignment`
+
+One record per SA passenger lifecycle (request → dispatch → at_gate → return).
+
+| Property             | Type                 | Description                                        |
+| -------------------- | -------------------- | -------------------------------------------------- |
+| `id`                 | String (UUID)        | unique                                             |
+| `passenger_id`       | String               | SA passenger uuid                                  |
+| `terminal`           | String               | terminal letter                                    |
+| `flight_id`          | String \| null       | linked flight uuid                                 |
+| `scheduled_dep_iso`  | String (ISO) \| null | flight scheduled departure                         |
+| `requested_at`       | String (ISO)         | check-in time                                      |
+| `dispatched_at`      | String (ISO) \| null | when a chair was assigned                          |
+| `arrived_at_gate_at` | String (ISO) \| null | when SA pax reached the gate                       |
+| `released_at`        | String (ISO) \| null | when boarded / chair freed                         |
+| `queued_position`    | Integer              | queue position at request (0 = served immediately) |
+| `sla_met`            | Boolean \| null      | true if reached gate ≥ T-cutoff                    |
 
 ---
 
 ## 3. Relationship catalogue
 
-| Relationship | From → To | Properties | Description |
-|---|---|---|---|
-| `HAS_TERMINAL` | Airport → Terminal | — | airport owns terminal |
-| `HAS_GATE` | Terminal → Gate | — | terminal owns gate |
-| `HAS_RUNWAY` | Airport → Runway | — | airport owns runway |
-| `ASSIGNED_TO` | Flight → Gate | `assigned_at: DateTime` | flight assigned to gate |
-| `USES_RUNWAY` | Flight → Runway | `operation: "landing"/"takeoff"`, `at: DateTime` | runway usage event |
-| `ON_FLIGHT` | Passenger → Flight | `seat: String`, `boarded_at: DateTime` | passenger booked on flight |
-| `CARRIES` | Passenger → Baggage | `checked_in_at: DateTime` | passenger owns baggage |
-| `LOADED_ON` | Baggage → Flight | `loaded_at: DateTime` | baggage in flight hold |
-| `AFFECTS` | Incident → Flight | `impact: String` | incident impacts flight |
-| `AFFECTS` | Incident → Gate | `impact: String` | incident impacts gate |
-| `AFFECTS` | Incident → Runway | `impact: String` | incident impacts runway |
-| `SPAWNED` | Incident → Incident | `reason: String`, `at: DateTime` | cascade: parent spawned child |
-| `CURRENT_WEATHER` | Airport → WeatherState | — | active weather snapshot |
-| `PREVIOUS_WEATHER` | WeatherState → WeatherState | — | weather history chain |
-| `FOR_FLIGHT` | CostRecord → Flight | — | cost linked to a specific flight |
-| `FOR_TERMINAL` | CostRecord → Terminal | — | cost linked to a terminal |
-| `CAUSED_BY` | CostRecord → Incident | — | cost caused by an incident |
-| `FOR_DAY` | CostRecord → Airport | `day: Integer` | daily cost rollup |
+| Relationship       | From → To                        | Properties                                       | Description                        |
+| ------------------ | -------------------------------- | ------------------------------------------------ | ---------------------------------- |
+| `HAS_TERMINAL`     | Airport → Terminal               | —                                                | airport owns terminal              |
+| `HAS_GATE`         | Terminal → Gate                  | —                                                | terminal owns gate                 |
+| `HAS_RUNWAY`       | Airport → Runway                 | —                                                | airport owns runway                |
+| `ASSIGNED_TO`      | Flight → Gate                    | `assigned_at: DateTime`                          | flight assigned to gate            |
+| `USES_RUNWAY`      | Flight → Runway                  | `operation: "landing"/"takeoff"`, `at: DateTime` | runway usage event                 |
+| `ON_FLIGHT`        | Passenger → Flight               | `seat: String`, `boarded_at: DateTime`           | passenger booked on flight         |
+| `CARRIES`          | Passenger → Baggage              | `checked_in_at: DateTime`                        | passenger owns baggage             |
+| `LOADED_ON`        | Baggage → Flight                 | `loaded_at: DateTime`                            | baggage in flight hold             |
+| `AFFECTS`          | Incident → Flight                | `impact: String`                                 | incident impacts flight            |
+| `AFFECTS`          | Incident → Gate                  | `impact: String`                                 | incident impacts gate              |
+| `AFFECTS`          | Incident → Runway                | `impact: String`                                 | incident impacts runway            |
+| `SPAWNED`          | Incident → Incident              | `reason: String`, `at: DateTime`                 | cascade: parent spawned child      |
+| `CURRENT_WEATHER`  | Airport → WeatherState           | —                                                | active weather snapshot            |
+| `PREVIOUS_WEATHER` | WeatherState → WeatherState      | —                                                | weather history chain              |
+| `FOR_FLIGHT`       | CostRecord → Flight              | —                                                | cost linked to a specific flight   |
+| `FOR_TERMINAL`     | CostRecord → Terminal            | —                                                | cost linked to a terminal          |
+| `CAUSED_BY`        | CostRecord → Incident            | —                                                | cost caused by an incident         |
+| `FOR_DAY`          | CostRecord → Airport             | `day: Integer`                                   | daily cost rollup                  |
+| `FOR_FLIGHT`       | CarbonRecord → Flight            | —                                                | carbon emission linked to a flight |
+| `FOR_TERMINAL`     | CarbonRecord → Terminal          | —                                                | terminal energy emission           |
+| `FOR_DAY`          | CarbonRecord → Airport           | `day: Integer`                                   | daily carbon rollup                |
+| `FOR_PASSENGER`    | WheelchairAssignment → Passenger | —                                                | SA assignment for a passenger      |
 
 ---
 
 ## 4. Key Cypher query patterns
 
 ### Find all at-risk connecting passengers
+
 ```cypher
 MATCH (p:Passenger {connection: true})-[:ON_FLIGHT]->(f:Flight)
 WHERE f.status IN ['delayed', 'cancelled']
@@ -229,6 +289,7 @@ ORDER BY f.delay_minutes DESC
 ```
 
 ### Find all baggage on a delayed or cancelled flight
+
 ```cypher
 MATCH (b:Baggage)-[:LOADED_ON]->(f:Flight)
 WHERE f.status IN ['delayed', 'cancelled']
@@ -236,12 +297,14 @@ RETURN b.tag, b.status, f.flight_number, f.delay_minutes
 ```
 
 ### Find cascade chain from an incident
+
 ```cypher
 MATCH path = (i:Incident {id: $incident_id})-[:SPAWNED*1..5]->(child:Incident)
 RETURN path
 ```
 
 ### Find all flights affected by current weather
+
 ```cypher
 MATCH (a:Airport)-[:CURRENT_WEATHER]->(w:WeatherState)
 WHERE w.runway_impact <> 'none'
@@ -252,6 +315,7 @@ ORDER BY f.estimated_time ASC
 ```
 
 ### Get full passenger journey
+
 ```cypher
 MATCH (p:Passenger {pnr: $pnr})
 MATCH (p)-[r:ON_FLIGHT]->(f:Flight)
@@ -273,6 +337,9 @@ CREATE CONSTRAINT gate_id IF NOT EXISTS FOR (g:Gate) REQUIRE g.id IS UNIQUE;
 CREATE CONSTRAINT runway_id IF NOT EXISTS FOR (r:Runway) REQUIRE r.id IS UNIQUE;
 CREATE CONSTRAINT incident_id IF NOT EXISTS FOR (i:Incident) REQUIRE i.id IS UNIQUE;
 CREATE CONSTRAINT cost_record_id IF NOT EXISTS FOR (c:CostRecord) REQUIRE c.id IS UNIQUE;
+CREATE CONSTRAINT carbon_record_id IF NOT EXISTS FOR (c:CarbonRecord) REQUIRE c.id IS UNIQUE;
+CREATE CONSTRAINT wheelchair_resource_terminal IF NOT EXISTS FOR (w:WheelchairResource) REQUIRE w.terminal IS UNIQUE;
+CREATE CONSTRAINT wheelchair_assignment_id IF NOT EXISTS FOR (a:WheelchairAssignment) REQUIRE a.id IS UNIQUE;
 
 // Lookup indexes
 CREATE INDEX flight_number IF NOT EXISTS FOR (f:Flight) ON (f.flight_number);
@@ -288,6 +355,10 @@ CREATE INDEX incident_type IF NOT EXISTS FOR (i:Incident) ON (i.type);
 CREATE INDEX incident_status IF NOT EXISTS FOR (i:Incident) ON (i.status);
 CREATE INDEX cost_record_category IF NOT EXISTS FOR (c:CostRecord) ON (c.category);
 CREATE INDEX cost_record_sim_day IF NOT EXISTS FOR (c:CostRecord) ON (c.sim_day);
+CREATE INDEX carbon_record_source IF NOT EXISTS FOR (c:CarbonRecord) ON (c.source);
+CREATE INDEX carbon_record_sim_day IF NOT EXISTS FOR (c:CarbonRecord) ON (c.sim_day);
+CREATE INDEX wheelchair_assignment_terminal IF NOT EXISTS FOR (a:WheelchairAssignment) ON (a.terminal);
+CREATE INDEX wheelchair_assignment_requested IF NOT EXISTS FOR (a:WheelchairAssignment) ON (a.requested_at);
 ```
 
 ---

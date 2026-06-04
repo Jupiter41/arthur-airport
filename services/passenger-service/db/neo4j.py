@@ -13,6 +13,9 @@ _driver: AsyncDriver | None = None
 
 CONSTRAINTS = [
     "CREATE CONSTRAINT passenger_id IF NOT EXISTS FOR (p:Passenger) REQUIRE p.id IS UNIQUE",
+    # 1C — Accessibility & special assistance pool
+    "CREATE CONSTRAINT wheelchair_resource_terminal IF NOT EXISTS FOR (w:WheelchairResource) REQUIRE w.terminal IS UNIQUE",
+    "CREATE CONSTRAINT wheelchair_assignment_id IF NOT EXISTS FOR (a:WheelchairAssignment) REQUIRE a.id IS UNIQUE",
 ]
 
 INDEXES = [
@@ -22,6 +25,9 @@ INDEXES = [
     "CREATE INDEX passenger_flight IF NOT EXISTS FOR (p:Passenger) ON (p.flight_id)",
     "CREATE INDEX flight_scheduled IF NOT EXISTS FOR (f:Flight) ON (f.scheduled_time)",
     "CREATE INDEX flight_direction IF NOT EXISTS FOR (f:Flight) ON (f.direction)",
+    # 1C — find recent assignments by hour for staffing analytics
+    "CREATE INDEX wheelchair_assignment_terminal IF NOT EXISTS FOR (a:WheelchairAssignment) ON (a.terminal)",
+    "CREATE INDEX wheelchair_assignment_requested IF NOT EXISTS FOR (a:WheelchairAssignment) ON (a.requested_at)",
 ]
 
 
@@ -523,3 +529,60 @@ async def get_alerts(
     """Get recent alerts from in-memory store (no Neo4j storage for alerts)."""
     # Alerts are stored in-memory and provided via the consumer module
     return []
+
+
+# ---------------------------------------------------------------------------
+# Wheelchair / accessibility (1C)
+# ---------------------------------------------------------------------------
+
+async def upsert_wheelchair_resource(
+    terminal: str, total_count: int, available_count: int
+) -> None:
+    """Create or update the WheelchairResource for a terminal."""
+    driver = get_driver()
+    async with driver.session() as session:
+        await session.run(
+            """
+            MERGE (w:WheelchairResource {terminal: $terminal})
+            SET w.total_count = $total_count,
+                w.available_count = $available_count,
+                w.updated_at = $updated_at
+            """,
+            terminal=terminal,
+            total_count=int(total_count),
+            available_count=int(available_count),
+            updated_at=datetime.utcnow().isoformat(),
+        )
+
+
+async def write_wheelchair_assignment(record: dict) -> None:
+    """Persist (or update) a WheelchairAssignment record."""
+    driver = get_driver()
+    async with driver.session() as session:
+        await session.run(
+            """
+            MERGE (a:WheelchairAssignment {id: $id})
+            SET a += $props
+            WITH a
+            OPTIONAL MATCH (p:Passenger {id: $passenger_id})
+            FOREACH (_ IN CASE WHEN p IS NULL THEN [] ELSE [1] END |
+                MERGE (a)-[:FOR_PASSENGER]->(p)
+            )
+            """,
+            id=record["id"],
+            passenger_id=record.get("passenger_id"),
+            props={k: v for k, v in record.items() if k != "id" and v is not None},
+        )
+
+
+async def list_recent_assignments(since_iso: str | None = None, limit: int = 5000) -> list[dict]:
+    """List WheelchairAssignment records since a given sim-time ISO string."""
+    driver = get_driver()
+    cypher = (
+        "MATCH (a:WheelchairAssignment) "
+        + ("WHERE a.requested_at >= $since " if since_iso else "")
+        + "RETURN a ORDER BY a.requested_at DESC LIMIT $limit"
+    )
+    async with driver.session() as session:
+        result = await session.run(cypher, since=since_iso, limit=int(limit))
+        return [dict(rec["a"]) async for rec in result]

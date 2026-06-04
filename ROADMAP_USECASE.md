@@ -23,6 +23,8 @@ An item is included only if it meets all three:
 
 ### 1A. Carbon Footprint Tracker
 
+**Status:** ✅ Backend + dashboard shipped (`/carbon` route; cost-service `/api/v1/costs/carbon/*`). See [docs/lessons-learned/phase-1-roadmap-usecase-report.md](docs/lessons-learned/phase-1-roadmap-usecase-report.md).
+
 _Source: use case 3.1_
 
 **Data:** ICAO Carbon Emissions Calculator (free) · ACI Airport Carbon Accreditation benchmarks (free) · IPCC emission factors (public)
@@ -45,6 +47,8 @@ _Source: use case 3.1_
 ---
 
 ### 1B. Counterfactual Delay Analysis
+
+**Status:** ✅ Backend + dashboard shipped (`/whatif` route; planning-service `/api/v1/planning/scenarios/{id}/{replay,counterfactual-report,causal-graph,replays}`).
 
 _Source: use case 5.3_
 
@@ -72,6 +76,8 @@ _Source: use case 5.3_
 ---
 
 ### 1C. Accessibility & Special Assistance Optimisation
+
+**Status:** ✅ Backend + dashboard shipped (`/accessibility` route; passenger-service `/api/v1/passengers/accessibility/{sla,resources,staffing}`).
 
 _Source: use case 4.3_
 

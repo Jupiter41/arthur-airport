@@ -25,7 +25,7 @@ from db.neo4j import (  # noqa: E402
     rebuild_running_totals,
     wait_for_neo4j,
 )
-from kafka.consumer import run_consumer, set_rates, stop_consumer  # noqa: E402
+from kafka.consumer import run_consumer, set_carbon_factors, set_rates, stop_consumer  # noqa: E402
 from kafka.producer import (  # noqa: E402
     check_kafka,
     close_kafka_producer,
@@ -34,11 +34,13 @@ from kafka.producer import (  # noqa: E402
 )
 from routers.costs import router as costs_router  # noqa: E402
 from routers.costs import set_rates as router_set_rates  # noqa: E402
+from services import carbon_tracker  # noqa: E402
 from services.cost_engine import init_running_totals  # noqa: E402
 
 logger = structlog.get_logger("cost-service")
 
 FIXTURES_PATH = Path(__file__).parent / "fixtures" / "cost_rates.json"
+CARBON_FIXTURES_PATH = Path(__file__).parent / "fixtures" / "carbon_factors.json"
 
 
 def load_cost_rates() -> dict:
@@ -47,6 +49,14 @@ def load_cost_rates() -> dict:
         rates = json.load(f)
     logger.info("cost rates loaded", keys=list(rates.keys()))
     return rates
+
+
+def load_carbon_factors() -> dict:
+    """Load carbon emission factor fixtures."""
+    with open(CARBON_FIXTURES_PATH) as f:
+        factors = json.load(f)
+    logger.info("carbon factors loaded", keys=list(factors.keys()))
+    return factors
 
 
 @asynccontextmanager
@@ -68,6 +78,12 @@ async def lifespan(app: FastAPI):
     set_rates(rates)
     router_set_rates(rates)
 
+    # 5b. Load carbon factors
+    carbon_factors = load_carbon_factors()
+    set_carbon_factors(carbon_factors)
+    from routers import carbon as carbon_router_module
+    carbon_router_module.set_factors(carbon_factors)
+
     # 6. Rebuild running totals from Neo4j
     totals = await rebuild_running_totals()
     if totals:
@@ -77,6 +93,7 @@ async def lifespan(app: FastAPI):
             cost=totals.get("total_cost_eur", 0),
             revenue=totals.get("total_revenue_eur", 0),
         )
+    await carbon_tracker.restore_totals_from_db()
 
     # 7. Start Kafka consumer
     consumer_task = asyncio.create_task(run_consumer())
@@ -112,6 +129,9 @@ Instrumentator().instrument(app).expose(app)
 
 # Mount router
 app.include_router(costs_router)
+
+from routers.carbon import router as carbon_router  # noqa: E402
+app.include_router(carbon_router)
 
 
 @app.get("/health")

@@ -172,6 +172,51 @@ async def emit_congestion_detected(
     return payload
 
 
+# ── 1C — Accessibility events ────────────────────────────────────────────
+
+
+async def emit_wheelchair_dispatched(
+    *,
+    assignment_id: str,
+    passenger_id: str,
+    terminal: str,
+    flight_id: str | None,
+    wait_minutes: float,
+    sim_time: datetime,
+) -> dict:
+    """Emit WheelchairDispatched event."""
+    payload = {
+        "assignment_id": assignment_id,
+        "passenger_id": passenger_id,
+        "terminal": terminal,
+        "flight_id": flight_id,
+        "wait_minutes": round(wait_minutes, 2),
+        "at": sim_time.isoformat(),
+    }
+    _produce_event("WheelchairDispatched", sim_time, payload, key=passenger_id)
+    return payload
+
+
+async def emit_wheelchair_returned(
+    *,
+    assignment_id: str,
+    passenger_id: str,
+    terminal: str,
+    sla_met: bool,
+    sim_time: datetime,
+) -> dict:
+    """Emit WheelchairReturned event."""
+    payload = {
+        "assignment_id": assignment_id,
+        "passenger_id": passenger_id,
+        "terminal": terminal,
+        "sla_met": bool(sla_met),
+        "at": sim_time.isoformat(),
+    }
+    _produce_event("WheelchairReturned", sim_time, payload, key=passenger_id)
+    return payload
+
+
 async def check_kafka() -> bool:
     try:
         admin = AdminClient({

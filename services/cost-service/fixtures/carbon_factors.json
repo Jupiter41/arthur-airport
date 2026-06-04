@@ -1,0 +1,35 @@
+{
+  "_comment": "ICAO Carbon Emissions Calculator + ACI Carbon Accreditation + IPCC factors. All public sources.",
+  "flight": {
+    "_comment": "Per-passenger-km emission factors from ICAO Carbon Calculator (2024). Falls back to short_haul.",
+    "short_haul_kg_per_pax_km": 0.1581,
+    "medium_haul_kg_per_pax_km": 0.1213,
+    "long_haul_kg_per_pax_km": 0.1024,
+    "short_haul_max_km": 1500,
+    "medium_haul_max_km": 4000
+  },
+  "apu": {
+    "_comment": "ICAO Doc 9889 / EEDB. Default narrow-body APU burn ~3.0 kg CO2/min (~1.0 kg fuel × 3.16 EI).",
+    "kg_per_minute": {
+      "narrow": 3.0,
+      "wide": 7.5,
+      "regional": 1.5
+    },
+    "stand_minutes_default": 45
+  },
+  "terminal": {
+    "_comment": "ACI energy benchmark + EU grid intensity (EEA 2023, ~233 g CO2/kWh).",
+    "kwh_per_pax_per_hour": 0.012,
+    "grid_kg_per_kwh": 0.233
+  },
+  "ground_vehicle": {
+    "_comment": "Ground service equipment (tugs, belt loaders) per turnaround. ICAO Annex 16 reference.",
+    "kg_per_turnaround": 8.5
+  },
+  "scenario": {
+    "_comment": "Reduction factors when toggled in net-zero builder.",
+    "gpu_apu_reduction_pct": 0.9,
+    "ev_ground_reduction_pct": 0.8,
+    "solar_terminal_reduction_pct": 0.5
+  }
+}

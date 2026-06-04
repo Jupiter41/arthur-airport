@@ -82,3 +82,42 @@ def emit_cost_recorded(
         callback=lambda err, msg: logger.error("kafka produce error", error=str(err)) if err else None,
     )
     _producer.poll(0)
+
+
+def emit_carbon_recorded(
+    record_id: str,
+    source: str,
+    co2_kg: float,
+    sim_time: str | datetime,
+    sim_day: int,
+    description: str,
+    flight_id: str | None = None,
+) -> None:
+    """Emit a CarbonRecorded event to cost.events."""
+    if _producer is None:
+        return
+    sim_time_str = sim_time.isoformat() if isinstance(sim_time, datetime) else sim_time
+    envelope = {
+        "event_id": str(uuid4()),
+        "event_type": "CarbonRecorded",
+        "schema_version": "1.0",
+        "produced_at": datetime.now(timezone.utc).isoformat(),
+        "sim_time": sim_time_str,
+        "producer": "cost-service",
+        "payload": {
+            "carbon_record_id": record_id,
+            "source": source,
+            "co2_kg": co2_kg,
+            "flight_id": flight_id,
+            "description": description,
+            "sim_time": sim_time_str,
+            "sim_day": sim_day,
+        },
+    }
+    _producer.produce(
+        topic=EVENTS_TOPIC,
+        key=(record_id or "").encode("utf-8"),
+        value=json.dumps(envelope).encode("utf-8"),
+        callback=lambda err, msg: logger.error("kafka produce error", error=str(err)) if err else None,
+    )
+    _producer.poll(0)

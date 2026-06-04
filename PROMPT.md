@@ -27,6 +27,7 @@ Before doing any edit, do this:
 - ALWAYS address all issues and then write lessons-learned file at the end.
 - This airport is fictionnal, so when using real data select the data concerning a medium sized airport.
 
-The current task is "Stabilize architecture and improve business value". Your mission is to implement:
+The current task is "Follows the PLAN.md to fix issues and improve the app". Your mission is to implement:
 
-- Implement everything detailed in PLAN.md
+- P1 & P2 from the cost model section
+- Validate & mark them as complete

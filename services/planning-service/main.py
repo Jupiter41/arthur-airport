@@ -17,6 +17,7 @@ setup_logging("planning-service")
 
 from adapters.registry import list_available_adapters  # noqa: E402
 from routers.planning import router as planning_router  # noqa: E402
+from routers.counterfactual import router as counterfactual_router  # noqa: E402
 from scenarios.metrics import planning_metrics  # noqa: E402
 
 logger = structlog.get_logger("planning-service")
@@ -39,6 +40,7 @@ app = FastAPI(
 Instrumentator().instrument(app).expose(app)
 
 app.include_router(planning_router)
+app.include_router(counterfactual_router)
 
 
 @app.get("/health")

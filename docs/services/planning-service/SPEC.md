@@ -392,6 +392,80 @@ cost rate table and returns the created scenario_id immediately.
 
 ---
 
+### Counterfactual delay analysis (1B)
+
+Replay an existing scenario with operator interventions to measure their causal
+impact on KPIs. Both the baseline and the scenario re-runs apply the same
+interventions and synthetic disruption so deltas isolate the decision change.
+
+#### `POST /scenarios/{id}/replay`
+
+```json
+{
+  "interventions": [
+    {
+      "action": "gdp_start",
+      "sim_minute": 60,
+      "duration_minutes": 120,
+      "params": { "cap_pct": 0.6 }
+    },
+    {
+      "action": "open_security_lanes",
+      "sim_minute": 90,
+      "duration_minutes": 180,
+      "params": { "delta": 2 }
+    }
+  ],
+  "disruption": {
+    "sim_minute": 60,
+    "duration_minutes": 120,
+    "capacity_pct": 0.5
+  },
+  "label": "earlier-gdp"
+}
+```
+
+`action` ∈ {`gdp_start`, `gdp_end`, `open_security_lanes`, `gate_swap`}. Returns the
+new child scenario id; poll its status endpoint for progress.
+
+#### `POST /scenarios/{id}/counterfactual-report`
+
+```json
+{
+  "base_interventions": [
+    {
+      "action": "gdp_start",
+      "sim_minute": 60,
+      "duration_minutes": 120,
+      "params": { "cap_pct": 0.6 }
+    }
+  ],
+  "disruption": {
+    "sim_minute": 60,
+    "duration_minutes": 120,
+    "capacity_pct": 0.5
+  },
+  "shifts": [-30, -15, 0, 15, 30],
+  "intervention_index": 0
+}
+```
+
+Spawns one replay per shift, varying the timing of the indexed intervention.
+Returns `{ children: [{ scenario_id, shift_minutes, applied_sim_minute, label }] }`.
+
+#### `GET /scenarios/{id}/causal-graph`
+
+Returns a JSON DAG with `nodes` (scenario, disruption, intervention, kpi) and
+`edges` (`triggers`, `responds_to`, `affects`). Used by the dashboard "What-If"
+panel.
+
+#### `GET /scenarios/{id}/replays`
+
+Returns the list of all child replay scenarios spawned from a parent, with their
+status and (if completed) results — used to render the comparison view.
+
+---
+
 ### Demand model
 
 #### `GET /demand/forecast`

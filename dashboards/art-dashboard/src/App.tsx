@@ -29,9 +29,12 @@ const DataSourcesPage = lazy(
 const CostDashboardPage = lazy(
   () => import("./pages/CostDashboard/CostDashboardPage"),
 );
-const PlanningPage = lazy(
-  () => import("./pages/Planning/PlanningPage"),
+const PlanningPage = lazy(() => import("./pages/Planning/PlanningPage"));
+const CarbonPage = lazy(() => import("./pages/Carbon/CarbonPage"));
+const AccessibilityPage = lazy(
+  () => import("./pages/Accessibility/AccessibilityPage"),
 );
+const WhatIfPage = lazy(() => import("./pages/WhatIf/WhatIfPage"));
 
 const PageFallback = () => (
   <div className="flex items-center justify-center h-full text-gray-400">
@@ -61,6 +64,9 @@ function AppShell() {
             <Route path="/data-sources" element={<DataSourcesPage />} />
             <Route path="/costs" element={<CostDashboardPage />} />
             <Route path="/planning" element={<PlanningPage />} />
+            <Route path="/carbon" element={<CarbonPage />} />
+            <Route path="/accessibility" element={<AccessibilityPage />} />
+            <Route path="/whatif" element={<WhatIfPage />} />
           </Routes>
         </Suspense>
       </main>

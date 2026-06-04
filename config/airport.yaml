@@ -15,6 +15,18 @@ infrastructure:
       length_m: 3500
       ils: false
 
+# 1C — accessibility & special assistance pool sizing.
+# total_per_terminal: number of wheelchairs (and dispatch agents implied)
+# sla_target_pct: ECAC Doc 30 — 90% of SA pax should reach the gate before
+#                 the boarding cutoff (T-15 by default).
+# boarding_cutoff_minutes: minutes before scheduled departure used as the SLA
+#                          deadline for SA passengers reaching the gate.
+accessibility:
+  total_per_terminal: { A: 8, B: 12, C: 8 }
+  sla_target_pct: 90.0
+  boarding_cutoff_minutes: 15
+  max_dispatch_wait_minutes: 30
+
 simulation:
   daily_flight_target: 420
   load_factor_mean: 0.80

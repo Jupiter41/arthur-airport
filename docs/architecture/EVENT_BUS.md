@@ -18,34 +18,34 @@
 
 ## 2. Topic catalogue
 
-| Topic               | Producer                     | Consumers                                                         | Retention |
-| ------------------- | ---------------------------- | ----------------------------------------------------------------- | --------- |
-| `sim.clock`         | sim-orchestrator             | all services                                                      | 1h        |
+| Topic               | Producer                     | Consumers                                                                       | Retention |
+| ------------------- | ---------------------------- | ------------------------------------------------------------------------------- | --------- |
+| `sim.clock`         | sim-orchestrator             | all services                                                                    | 1h        |
 | `flights.events`    | flight-service               | passenger-service, baggage-service, incident-service, cost-service, api-gateway | 7 days    |
-| `flights.schedule`  | sim-orchestrator             | flight-service                                                    | 7 days    |
-| `passengers.events` | passenger-service            | incident-service, cost-service, api-gateway                       | 7 days    |
-| `baggage.events`    | baggage-service              | cost-service, api-gateway                                         | 7 days    |
-| `weather.events`    | weather-service              | flight-service, incident-service, api-gateway                     | 7 days    |
+| `flights.schedule`  | sim-orchestrator             | flight-service                                                                  | 7 days    |
+| `passengers.events` | passenger-service            | incident-service, cost-service, api-gateway                                     | 7 days    |
+| `baggage.events`    | baggage-service              | cost-service, api-gateway                                                       | 7 days    |
+| `weather.events`    | weather-service              | flight-service, incident-service, api-gateway                                   | 7 days    |
 | `incidents.events`  | incident-service             | flight-service, passenger-service, baggage-service, cost-service, api-gateway   | 30 days   |
-| `incidents.alerts`  | incident-service             | api-gateway                                                       | 30 days   |
-| `incidents.inject`  | api-gateway (manual trigger) | incident-service                                                  | 1h        |
-| `cost.events`       | cost-service                 | api-gateway                                                       | 7 days    |
+| `incidents.alerts`  | incident-service             | api-gateway                                                                     | 30 days   |
+| `incidents.inject`  | api-gateway (manual trigger) | incident-service                                                                | 1h        |
+| `cost.events`       | cost-service                 | api-gateway                                                                     | 7 days    |
 
 ---
 
 ## 3. Partition and consumer group strategy
 
-| Topic               | Partitions | Key            | Consumer groups                               |
-| ------------------- | ---------- | -------------- | --------------------------------------------- |
-| `sim.clock`         | 1          | —              | all services (broadcast)                      |
-| `flights.events`    | 6          | `flight_id`    | `pax-svc`, `bag-svc`, `inc-svc`, `cost-svc`, `gateway` |
-| `passengers.events` | 6          | `passenger_id` | `cost-svc`, `gateway`                         |
-| `baggage.events`    | 6          | `baggage_tag`  | `cost-svc`, `gateway`                         |
-| `weather.events`    | 1          | —              | `flight-svc`, `inc-svc`, `gateway`            |
-| `incidents.events`  | 3          | `incident_id`  | `flight-svc`, `pax-svc`, `bag-svc`, `cost-svc`, `gateway` |
-| `incidents.alerts`  | 3          | `incident_id`  | `gateway`                                     |
-| `incidents.inject`  | 1          | —              | `inc-svc`                                     |
-| `cost.events`       | 3          | `cost_record_id`| `gateway`                                     |
+| Topic               | Partitions | Key              | Consumer groups                                           |
+| ------------------- | ---------- | ---------------- | --------------------------------------------------------- |
+| `sim.clock`         | 1          | —                | all services (broadcast)                                  |
+| `flights.events`    | 6          | `flight_id`      | `pax-svc`, `bag-svc`, `inc-svc`, `cost-svc`, `gateway`    |
+| `passengers.events` | 6          | `passenger_id`   | `cost-svc`, `gateway`                                     |
+| `baggage.events`    | 6          | `baggage_tag`    | `cost-svc`, `gateway`                                     |
+| `weather.events`    | 1          | —                | `flight-svc`, `inc-svc`, `gateway`                        |
+| `incidents.events`  | 3          | `incident_id`    | `flight-svc`, `pax-svc`, `bag-svc`, `cost-svc`, `gateway` |
+| `incidents.alerts`  | 3          | `incident_id`    | `gateway`                                                 |
+| `incidents.inject`  | 1          | —                | `inc-svc`                                                 |
+| `cost.events`       | 3          | `cost_record_id` | `gateway`                                                 |
 
 ---
 
@@ -211,6 +211,44 @@ Emitted whenever a flight transitions between states.
     "slowdown_factor": 0.58,
     "forecast_queue_depth": 67,
     "at": "2024-06-15T14:43:00Z"
+  }
+}
+```
+
+#### `WheelchairDispatched` (1C)
+
+Emitted when a wheelchair is assigned to a SA passenger. `wait_minutes` is the
+queue wait between request and dispatch (0 if served immediately).
+
+```json
+{
+  "event_type": "WheelchairDispatched",
+  "payload": {
+    "assignment_id": "uuid",
+    "passenger_id": "uuid",
+    "terminal": "B",
+    "flight_id": "uuid",
+    "wait_minutes": 0.0,
+    "at": "2024-06-15T13:18:00Z"
+  }
+}
+```
+
+#### `WheelchairReturned` (1C)
+
+Emitted when the SA passenger boards (chair freed). `sla_met` is true when
+the passenger reached the gate before the configured boarding cutoff (T-15 by
+default; ECAC Doc 30 reference).
+
+```json
+{
+  "event_type": "WheelchairReturned",
+  "payload": {
+    "assignment_id": "uuid",
+    "passenger_id": "uuid",
+    "terminal": "B",
+    "sla_met": true,
+    "at": "2024-06-15T14:55:00Z"
   }
 }
 ```
@@ -462,6 +500,34 @@ Triggered: whenever a CostRecord is written to Neo4j
   }
 }
 ```
+
+### CarbonRecorded
+
+Topic: `cost.events`  
+Producer: cost-service (1A — Carbon Footprint Tracker)  
+Triggered: whenever a CarbonRecord is written to Neo4j (flight departure, terminal energy tick, ground vehicle turnaround)
+
+```json
+{
+  "event_id": "uuid",
+  "event_type": "CarbonRecorded",
+  "schema_version": "1.0",
+  "produced_at": "2024-06-15T14:32:00Z",
+  "sim_time": "2024-06-15T14:32:00Z",
+  "producer": "cost-service",
+  "payload": {
+    "carbon_record_id": "uuid",
+    "source": "flight",
+    "co2_kg": 18421.5,
+    "flight_id": "uuid | null",
+    "description": "Flight emissions — AX204 (180 pax × 1450 km)",
+    "sim_time": "2024-06-15T14:32:00Z",
+    "sim_day": 1
+  }
+}
+```
+
+`source` is one of: `flight` (Scope 3, ICAO methodology), `apu` (Scope 1, ICAO Doc 9889 reference burn rates), `terminal` (Scope 2, ACI energy benchmarks × EU grid intensity), `ground_vehicle` (Scope 1, GSE per turnaround).
 
 ---
 

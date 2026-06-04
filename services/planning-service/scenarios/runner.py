@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 
 from adapters.registry import get_schedule_adapter, get_weather_adapter
 from engine.infrastructure import InfrastructureConfig
+from engine.interventions import Disruption, Intervention
 from engine.results import DayResult, KPIDistribution, ScenarioResults, aggregate_kpi
 from engine.simulation import PlanningSimEngine
 from finance.benefit_extractor import extract_annual_benefit
@@ -60,6 +61,8 @@ def _run_monte_carlo(
     progress_cb=None,
     *,
     demand_multiplier: float = 1.0,
+    interventions: list[Intervention] | None = None,
+    disruption: Disruption | None = None,
 ) -> list[list[DayResult]]:
     """Run N Monte Carlo iterations for a given infrastructure config.
 
@@ -76,6 +79,8 @@ def _run_monte_carlo(
                 infrastructure=infra,
                 seed=day_seed,
                 demand_multiplier=demand_multiplier,
+                interventions=interventions,
+                disruption=disruption,
             )
             result.infrastructure_label = label
             run_results.append(result)
@@ -230,9 +235,17 @@ def run_scenario(scenario: PlanningScenario) -> None:
         # Baseline always runs at the natural demand level (multiplier=1) so
         # the delta isolates the infrastructure change from any demand shift.
         baseline_infra = InfrastructureConfig.baseline()
+        # 1B — interventions/disruption affect both baseline and scenario so
+        # delta KPIs cleanly attribute to infrastructure differences.
+        interventions_obj = [Intervention.from_dict(i) for i in scenario.interventions]
+        disruption_obj = (
+            Disruption.from_dict(scenario.disruption) if scenario.disruption else None
+        )
         baseline_runs = _run_monte_carlo(
             engine, dates, baseline_infra, n_runs, base_seed, "baseline",
             progress_cb=lambda done: _update_progress(scenario, done, total_runs),
+            interventions=interventions_obj,
+            disruption=disruption_obj,
         )
         baseline_kpis = _collect_kpis(baseline_runs)
 
@@ -242,6 +255,8 @@ def run_scenario(scenario: PlanningScenario) -> None:
             scenario.name or "scenario",
             progress_cb=lambda done: _update_progress(scenario, n_runs + done, total_runs),
             demand_multiplier=scenario.demand_multiplier,
+            interventions=interventions_obj,
+            disruption=disruption_obj,
         )
         scenario_kpis = _collect_kpis(scenario_runs)
 

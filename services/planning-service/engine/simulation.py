@@ -20,6 +20,7 @@ from datetime import date, datetime, time as dt_time, timedelta
 from adapters.base import AbstractAdapter
 
 from .infrastructure import InfrastructureConfig
+from .interventions import Disruption, Intervention, aggregate_capacity_factor
 from .results import DayResult
 
 logger = logging.getLogger(__name__)
@@ -190,12 +191,17 @@ class PlanningSimEngine:
         seed: int | None = None,
         *,
         demand_multiplier: float = 1.0,
+        interventions: list[Intervention] | None = None,
+        disruption: Disruption | None = None,
     ) -> DayResult:
         """Simulate a single day end-to-end. No I/O, no Kafka, no Neo4j.
 
         ``demand_multiplier`` scales both the flight count and the per-flight
         passenger count linearly. A value of 1.2 simulates a 20% demand growth
         scenario without changing the underlying schedule data.
+
+        ``interventions`` and ``disruption`` (1B — Counterfactual Delay Analysis)
+        let callers replay the same day under different operator decisions.
         """
         t0 = time.monotonic()
         rng = random.Random(seed if seed is not None else self._base_seed)
@@ -206,8 +212,19 @@ class PlanningSimEngine:
         if demand_multiplier != 1.0 and demand_multiplier > 0:
             schedule = _apply_demand_multiplier(schedule, demand_multiplier, rng)
 
-        state = self._initialise_state(schedule, infrastructure, sim_date, rng)
+        # 1B — gate_swap interventions add stand capacity for the entire run
+        # (transient gate openings are not modelled; the largest delta wins).
+        gate_swap_total = 0
+        if interventions:
+            for iv in interventions:
+                if iv.action == "gate_swap":
+                    gate_swap_total += int(iv.params.get("delta", 1))
 
+        state = self._initialise_state(schedule, infrastructure, sim_date, rng)
+        if gate_swap_total > 0:
+            for i in range(gate_swap_total):
+                state.gate_occupancy[f"X{i + 1:02d}"] = None
+            state.gate_hours_available = len(state.gate_occupancy) * 24.0
         # Build hour→weather lookup
         weather_by_hour: dict[int, dict] = {}
         for w in weather_seq:
@@ -231,7 +248,12 @@ class PlanningSimEngine:
                 state.runway_departures_this_hour = 0
                 state.runway_arrivals_this_hour = 0
 
-            self._tick(state, sim_time, weather, infrastructure, rng)
+            self._tick(
+                state, sim_time, weather, infrastructure, rng,
+                interventions=interventions or [],
+                disruption=disruption,
+                minute=minute,
+            )
 
         # Final hour
         state.runway_ops_per_hour.append(
@@ -298,6 +320,10 @@ class PlanningSimEngine:
         weather: dict,
         infra: InfrastructureConfig,
         rng: random.Random,
+        *,
+        interventions: list[Intervention] | None = None,
+        disruption: Disruption | None = None,
+        minute: int = 0,
     ) -> None:
         """Process one simulated minute."""
         category = weather.get("category", "CAVOK")
@@ -319,6 +345,18 @@ class PlanningSimEngine:
         elif wind_kt > 25:
             max_dep = int(max_dep * 0.85)
             max_arr = int(max_arr * 0.85)
+
+        # 1B — apply interventions + baseline disruption to runway/security/gate capacity.
+        cap_factor = 1.0
+        extra_lanes = 0
+        extra_gates = 0
+        if interventions or disruption:
+            cap_factor, extra_lanes, extra_gates = aggregate_capacity_factor(
+                interventions or [], disruption, minute,
+            )
+            if cap_factor < 1.0:
+                max_dep = int(max_dep * cap_factor)
+                max_arr = int(max_arr * cap_factor)
 
         for flight in state.flights.values():
             if flight.status == "completed":
@@ -342,7 +380,7 @@ class PlanningSimEngine:
                         mtow_tonnes = seats * 0.4  # rough estimate
                         fee = mtow_tonnes * LANDING_FEE_PER_TONNE_EUR
                         state.revenues["landing_fees"] += fee
-                        state.costs["landing_fees"] += fee * 0.3  # airport cost portion
+                        state.costs["landing_fees"] += fee * 0.3  # airport cost p + extra_lanesortion
                     else:
                         # No gate available — gate conflict
                         state.gate_conflicts += 1
@@ -354,7 +392,7 @@ class PlanningSimEngine:
                 # Security queue modelling (simplified)
                 if minutes_to_departure <= 90 and minutes_to_departure > 60:
                     terminal = flight.terminal or "A"
-                    sec_lanes = infra.security_lanes_per_terminal.get(terminal, 4)
+                    sec_lanes = infra.security_lanes_per_terminal.get(terminal, 4) + extra_lanes
                     pax_per_min = flight.pax_count / 30  # pax arrive over 30 min
                     throughput_per_min = sec_lanes * 3  # ~3 pax/min/lane
                     if pax_per_min > throughput_per_min:
@@ -407,7 +445,7 @@ class PlanningSimEngine:
                     else:
                         # Holding — runway at capacity
                         state.holding_events += 1
-                        flight.delay_minutes += 1
+                        flight.delay_minutes += 1 + extra_lanes
                         flight.estimated_departure = sim_time + timedelta(minutes=1)
                         state.total_delay_minutes += 1
 
@@ -419,7 +457,7 @@ class PlanningSimEngine:
 
         # Decay security queues naturally each minute
         for terminal in list(state.security_queues.keys()):
-            sec_lanes = infra.security_lanes_per_terminal.get(terminal, 4)
+            sec_lanes = infra.security_lanes_per_terminal.get(terminal, 4) + extra_lanes
             drain = sec_lanes * 3  # 3 pax/min/lane
             state.security_queues[terminal] = max(0, state.security_queues[terminal] - drain)
 

@@ -13,11 +13,14 @@ _driver: AsyncDriver | None = None
 
 CONSTRAINTS = [
     "CREATE CONSTRAINT cost_record_id IF NOT EXISTS FOR (c:CostRecord) REQUIRE c.id IS UNIQUE",
+    "CREATE CONSTRAINT carbon_record_id IF NOT EXISTS FOR (c:CarbonRecord) REQUIRE c.id IS UNIQUE",
 ]
 
 INDEXES = [
     "CREATE INDEX cost_record_category IF NOT EXISTS FOR (c:CostRecord) ON (c.category)",
     "CREATE INDEX cost_record_sim_day IF NOT EXISTS FOR (c:CostRecord) ON (c.sim_day)",
+    "CREATE INDEX carbon_record_source IF NOT EXISTS FOR (c:CarbonRecord) ON (c.source)",
+    "CREATE INDEX carbon_record_sim_day IF NOT EXISTS FOR (c:CarbonRecord) ON (c.sim_day)",
 ]
 
 
@@ -229,3 +232,154 @@ async def rebuild_running_totals() -> dict:
                 totals["by_category"][r["category"]] = r["total"]
         totals["net_eur"] = totals["total_revenue_eur"] - totals["total_cost_eur"]
         return totals
+
+
+# ---------------------------------------------------------------------------
+# Carbon (1A — Carbon Footprint Tracker)
+# ---------------------------------------------------------------------------
+
+async def write_carbon_record(record: dict) -> None:
+    """Persist a CarbonRecord node."""
+    if _driver is None:
+        return
+    async with _driver.session() as session:
+        await session.run(
+            """
+            MERGE (c:CarbonRecord {id: $id})
+            SET c += $props
+            """,
+            id=record["id"],
+            props={k: v for k, v in record.items() if k != "id" and v is not None},
+        )
+
+
+async def link_carbon_to_flight(carbon_id: str, flight_id: str) -> None:
+    if _driver is None or not flight_id:
+        return
+    async with _driver.session() as session:
+        await session.run(
+            """
+            MATCH (c:CarbonRecord {id: $cid})
+            MATCH (f:Flight {id: $fid})
+            MERGE (c)-[:FOR_FLIGHT]->(f)
+            """,
+            cid=carbon_id,
+            fid=flight_id,
+        )
+
+
+async def link_carbon_to_terminal(carbon_id: str, terminal_id: str) -> None:
+    if _driver is None or not terminal_id:
+        return
+    async with _driver.session() as session:
+        await session.run(
+            """
+            MATCH (c:CarbonRecord {id: $cid})
+            MERGE (t:Terminal {id: $tid})
+            MERGE (c)-[:FOR_TERMINAL]->(t)
+            """,
+            cid=carbon_id,
+            tid=terminal_id,
+        )
+
+
+async def link_carbon_to_airport_day(carbon_id: str, day: int) -> None:
+    if _driver is None:
+        return
+    async with _driver.session() as session:
+        await session.run(
+            """
+            MATCH (c:CarbonRecord {id: $cid})
+            MERGE (a:Airport {iata: 'ART'})
+            MERGE (c)-[:FOR_DAY {day: $day}]->(a)
+            """,
+            cid=carbon_id,
+            day=int(day),
+        )
+
+
+async def rebuild_carbon_totals() -> dict:
+    """Rebuild running carbon totals from Neo4j on restart (latest sim day only)."""
+    if _driver is None:
+        return {}
+    async with _driver.session() as session:
+        day_result = await session.run(
+            "MATCH (c:CarbonRecord) RETURN max(c.sim_day) AS latest_day"
+        )
+        day_record = await day_result.single()
+        latest_day = (
+            day_record["latest_day"] if day_record and day_record["latest_day"] is not None else 1
+        )
+        result = await session.run(
+            """
+            MATCH (c:CarbonRecord {sim_day: $day})
+            RETURN c.source AS source, sum(c.co2_kg) AS total_kg
+            """,
+            day=latest_day,
+        )
+        totals: dict = {"sim_day": latest_day, "total_kg": 0.0, "by_source": {}}
+        async for r in result:
+            kg = float(r["total_kg"] or 0.0)
+            totals["by_source"][r["source"]] = kg
+            totals["total_kg"] += kg
+        return totals
+
+
+async def carbon_summary_by_source(sim_day: int | None = None) -> list[dict]:
+    """Return per-source totals for the given (or latest) sim day.
+
+    Each row: ``{"source": str, "total_kg": float, "records": int}``.
+    """
+    if _driver is None:
+        return []
+    async with _driver.session() as session:
+        if sim_day is None:
+            day_record = await (await session.run(
+                "MATCH (c:CarbonRecord) RETURN max(c.sim_day) AS latest_day"
+            )).single()
+            sim_day = (
+                day_record["latest_day"] if day_record and day_record["latest_day"] is not None else 1
+            )
+        result = await session.run(
+            """
+            MATCH (c:CarbonRecord {sim_day: $day})
+            RETURN c.source AS source, sum(c.co2_kg) AS total_kg, count(c) AS records
+            ORDER BY total_kg DESC
+            """,
+            day=int(sim_day),
+        )
+        return [
+            {
+                "source": r["source"],
+                "total_kg": float(r["total_kg"] or 0.0),
+                "records": int(r["records"]),
+            }
+            async for r in result
+        ]
+
+
+async def carbon_hourly_timeline(sim_day: int | None = None) -> list[dict]:
+    """Return per-hour CO₂ totals for the given (or latest) sim day."""
+    if _driver is None:
+        return []
+    async with _driver.session() as session:
+        if sim_day is None:
+            day_record = await (await session.run(
+                "MATCH (c:CarbonRecord) RETURN max(c.sim_day) AS latest_day"
+            )).single()
+            sim_day = (
+                day_record["latest_day"] if day_record and day_record["latest_day"] is not None else 1
+            )
+        result = await session.run(
+            """
+            MATCH (c:CarbonRecord {sim_day: $day})
+            WITH c, toInteger(split(split(c.sim_time, 'T')[1], ':')[0]) AS hour
+            RETURN hour, sum(c.co2_kg) AS total_kg
+            ORDER BY hour
+            """,
+            day=int(sim_day),
+        )
+        return [
+            {"hour": int(r["hour"]), "co2_kg": float(r["total_kg"] or 0.0)}
+            async for r in result
+        ]
