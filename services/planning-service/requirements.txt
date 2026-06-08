@@ -8,3 +8,4 @@ prometheus-fastapi-instrumentator>=6.1.0
 python-dotenv>=1.0.0
 lightgbm>=4.3.0
 scikit-learn>=1.4.0
+pulp>=2.8.0

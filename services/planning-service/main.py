@@ -18,6 +18,8 @@ setup_logging("planning-service")
 from adapters.registry import list_available_adapters  # noqa: E402
 from routers.planning import router as planning_router  # noqa: E402
 from routers.counterfactual import router as counterfactual_router  # noqa: E402
+from routers.slots import router as slots_router  # noqa: E402
+from routers.network import router as network_router  # noqa: E402
 from scenarios.metrics import planning_metrics  # noqa: E402
 
 logger = structlog.get_logger("planning-service")
@@ -41,6 +43,8 @@ Instrumentator().instrument(app).expose(app)
 
 app.include_router(planning_router)
 app.include_router(counterfactual_router)
+app.include_router(slots_router)
+app.include_router(network_router)
 
 
 @app.get("/health")

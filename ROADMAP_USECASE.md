@@ -138,6 +138,8 @@ _Source: use case 1.2_
 
 ### 2B. Slot Allocation & Coordination Simulator
 
+**Status:** ✅ Backend shipped (`/api/v1/planning/slots/{allocate,compress,compare}`).
+
 _Source: use case 2.1_
 
 **Data:** None — uses existing schedule model.
@@ -191,6 +193,8 @@ _Source: use case 2.2_
 ---
 
 ### 2D. Network Resilience & Hub Dependency
+
+**Status:** ✅ Backend shipped (`/api/v1/planning/network/{dependency,disruption,diversify}`).
 
 _Source: use case 2.3_
 

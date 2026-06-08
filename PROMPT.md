@@ -27,7 +27,7 @@ Before doing any edit, do this:
 - ALWAYS address all issues and then write lessons-learned file at the end.
 - This airport is fictionnal, so when using real data select the data concerning a medium sized airport.
 
-The current task is "Follows the PLAN.md to fix issues and improve the app". Your mission is to implement:
+The current task is "Follows the ROADMAP_USECASE.md to extend the domain of the app". Your mission is to implement:
 
-- P2 from the Planning model robustness & clarity and then from the Cross-cutting hygiene section
+- Finish to implement everything in Phase 2
 - Validate & mark them as complete

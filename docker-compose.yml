@@ -411,6 +411,7 @@ services:
     ports:
       - "8009:8009"
     volumes:
+      - ./services/_common:/app/_common:ro
       - ./data:/app/data:ro
     environment:
       LOG_LEVEL: INFO

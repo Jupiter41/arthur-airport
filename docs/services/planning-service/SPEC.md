@@ -40,28 +40,28 @@ persistence implementation but are not currently written.
 
 ### `PlanningScenario`
 
-| Property                | Type                 | Description                                    |
-| ----------------------- | -------------------- | ---------------------------------------------- |
-| `id`                    | String (UUID)        | Unique                                         |
-| `name`                  | String               | Human-readable scenario name                   |
-| `description`           | String               |                                                |
-| `status`                | Enum                 | `pending` · `running` · `completed` · `failed` |
-| `horizon`               | Enum                 | `day` · `week` · `month` · `year` · `10year`   |
-| `monte_carlo_runs`      | Integer              | Number of stochastic iterations                |
-| `random_seed`           | Integer \| null      | null = random                                  |
-| `infrastructure_config` | String (JSON)        | Serialised `InfrastructureConfig`              |
-| `demand_source`         | Enum                 | `simulation` · `bts` · `eurocontrol`           |
-| `weather_source`        | Enum                 | `simulation` · `mesonet` · `historical_date`   |
-| `demand_multiplier`     | Float                | Linear demand scaling (1.0 = baseline)         |
+| Property                | Type                 | Description                                                                             |
+| ----------------------- | -------------------- | --------------------------------------------------------------------------------------- |
+| `id`                    | String (UUID)        | Unique                                                                                  |
+| `name`                  | String               | Human-readable scenario name                                                            |
+| `description`           | String               |                                                                                         |
+| `status`                | Enum                 | `pending` · `running` · `completed` · `failed`                                          |
+| `horizon`               | Enum                 | `day` · `week` · `month` · `year` · `10year`                                            |
+| `monte_carlo_runs`      | Integer              | Number of stochastic iterations                                                         |
+| `random_seed`           | Integer \| null      | null = random                                                                           |
+| `infrastructure_config` | String (JSON)        | Serialised `InfrastructureConfig`                                                       |
+| `demand_source`         | Enum                 | `simulation` · `bts` · `eurocontrol`                                                    |
+| `weather_source`        | Enum                 | `simulation` · `mesonet` · `historical_date`                                            |
+| `demand_multiplier`     | Float                | Linear demand scaling (1.0 = baseline)                                                  |
 | `new_routes`            | List[Object] (JSON)  | Additive routes (destination, daily_flights, aircraft_type, distance_km?, load_factor?) |
-| `capex_eur`             | Float                | Upfront investment cost                        |
-| `opex_delta_eur`        | Float                | Annual operating cost change                   |
-| `years_horizon`         | Integer              | NPV calculation horizon                        |
-| `discount_rate`         | Float                | WACC (default 0.07)                            |
-| `created_at`            | String (ISO)         |                                                |
-| `started_at`            | String (ISO) \| null |                                                |
-| `completed_at`          | String (ISO) \| null |                                                |
-| `error`                 | String \| null       | Error message if failed                        |
+| `capex_eur`             | Float                | Upfront investment cost                                                                 |
+| `opex_delta_eur`        | Float                | Annual operating cost change                                                            |
+| `years_horizon`         | Integer              | NPV calculation horizon                                                                 |
+| `discount_rate`         | Float                | WACC (default 0.07)                                                                     |
+| `created_at`            | String (ISO)         |                                                                                         |
+| `started_at`            | String (ISO) \| null |                                                                                         |
+| `completed_at`          | String (ISO) \| null |                                                                                         |
+| `error`                 | String \| null       | Error message if failed                                                                 |
 
 ### `PlanningResult`
 
@@ -480,6 +480,101 @@ status and (if completed) results — used to render the comparison view.
 
 ---
 
+### Slot allocation & coordination (2B)
+
+Allocate slot requests to available capacity using different strategies.
+Extends planning-service with ILP-based optimisation via PuLP.
+
+#### `POST /slots/allocate`
+
+```json
+{
+  "requests": [
+    {
+      "id": "s1",
+      "airline": "BA",
+      "requested_hour": 8,
+      "priority": 3,
+      "direction": "departure"
+    },
+    {
+      "id": "s2",
+      "airline": "LH",
+      "requested_hour": 8,
+      "priority": 1,
+      "direction": "departure"
+    }
+  ],
+  "strategy": "optimised",
+  "hourly_capacity": 60
+}
+```
+
+`strategy` ∈ {`fcfs`, `priority_weighted`, `optimised`}. Returns allocation
+results with displacement per request, total displacement, and hourly
+demand/capacity breakdown.
+
+#### `POST /slots/compress`
+
+```json
+{
+  "schedule": [
+    {
+      "flight_number": "BA123",
+      "airline_code": "BA",
+      "scheduled_departure": "2026-06-15T08:30:00"
+    }
+  ],
+  "hourly_capacity": 60,
+  "shift_limit_minutes": 15
+}
+```
+
+Identifies flights shiftable ±N minutes to smooth demand peaks. Returns
+compression opportunities with suggested shifts and throughput gains.
+
+#### `POST /slots/compare`
+
+Runs all three strategies (FCFS, priority-weighted, ILP-optimised) on the same
+input and returns side-by-side total displacement, max displacement, and
+identifies the best strategy.
+
+---
+
+### Network resilience & hub dependency (2D)
+
+Analyse route network concentration and simulate airline disruptions.
+Uses BTS T-100 data for real route statistics and a gravity model for
+diversification recommendations.
+
+#### `GET /network/dependency`
+
+Returns hub dependency scoring: Herfindahl-Hirschman Index, concentration
+rating (`low`/`moderate`/`high`/`very_high`), top airline shares, effective
+number of airlines.
+
+#### `POST /network/disruption`
+
+```json
+{ "airline": "B6", "reduction_pct": 100 }
+```
+
+Simulates the impact of an airline reducing/ceasing operations. Returns lost
+daily departures, passengers, exclusive routes lost, residual gate utilisation,
+revenue impact, and the resulting HHI change.
+
+#### `POST /network/diversify`
+
+```json
+{ "target_hhi": 0.15, "max_recommendations": 10 }
+```
+
+Recommends new routes to reduce hub concentration using a gravity model
+(`demand ∝ pop_origin × pop_dest / distance²`). Returns candidate destinations
+ranked by estimated demand, with recommended frequency and aircraft type.
+
+---
+
 ### Demand model
 
 #### `GET /demand/forecast`
@@ -785,7 +880,10 @@ services/planning-service/
 ├── engine/
 │   ├── simulation.py      In-memory planning simulation engine
 │   ├── infrastructure.py  InfrastructureConfig dataclass
-│   └── results.py         DayResult, KPIDistribution models
+│   ├── interventions.py   Disruption, Intervention models (counterfactual)
+│   ├── results.py         DayResult, KPIDistribution models
+│   ├── slots.py           Slot allocation engine (FCFS, priority, ILP)
+│   └── network.py         Network resilience & hub dependency analysis
 ├── scenarios/
 │   ├── model.py           PlanningScenario dataclass
 │   ├── runner.py          ScenarioRunner, Monte Carlo loop

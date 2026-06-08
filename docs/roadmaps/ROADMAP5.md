@@ -110,9 +110,9 @@ proposed follow-ups; **[P2]** are nice-to-have improvements.
 
 ### Proposed (P2)
 
-- [ ] **Counterfactual replay** (`ROADMAP_USECASE.md` 1B).
-- [ ] **Slot allocation simulator** (2B).
-- [ ] **Network resilience tab** (2D) — feeds off existing BTS adapter.
+- [x] **Counterfactual replay** (`ROADMAP_USECASE.md` 1B).
+- [x] **Slot allocation simulator** (2B).
+- [x] **Network resilience tab** (2D) — feeds off existing BTS adapter.
 
 ---
 
@@ -141,11 +141,11 @@ proposed follow-ups; **[P2]** are nice-to-have improvements.
 
 ### Proposed (P2)
 
-- [ ] **End-to-end smoke test in CI** — current CI runs unit tests only.
+- [x] **End-to-end smoke test in CI** — current CI runs unit tests only.
       Bring up `docker compose up neo4j kafka` + cost-service + planning-service
       and run a 60-second sim, assert `cost_records > 0` and a planning scenario
       completes.
-- [ ] **Promote `helper_test_cost_endpoints.sh` to a `pytest` integration**.
+- [x] **Promote `helper_test_cost_endpoints.sh` to a `pytest` integration**.
 
 ---
 

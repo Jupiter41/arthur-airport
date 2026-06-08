@@ -279,3 +279,21 @@ Checks verified:
 - No flights before 05:00 or after 23:00
 - Mid-day (10–16) between 60 and 120 flights
 - All slots are 5-minute aligned
+
+---
+
+## helper_test_planning_slots_network.sh
+
+End-to-end test of slot allocation and network resilience endpoints in the planning-service.
+Tests FCFS, optimised, and comparison strategies for slot allocation, plus hub dependency
+scoring, airline disruption simulation, and diversification recommendations.
+
+```bash
+# Default (direct to planning-service on port 8009)
+bash scripts/helper_test_planning_slots_network.sh
+
+# Custom base URL
+bash scripts/helper_test_planning_slots_network.sh http://localhost:3000/api/v1/planning
+```
+
+Requires: `curl`, `jq`, and `planning-service` running with BTS data mounted.

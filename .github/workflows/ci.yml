@@ -27,6 +27,8 @@ jobs:
           ruff check services/incident-service/
           ruff check services/sim-orchestrator/
           ruff check services/analysis-service/
+          ruff check services/cost-service/
+          ruff check services/planning-service/
 
   lint-node:
     name: Lint & build Node.js
@@ -140,3 +142,37 @@ jobs:
         run: docker compose build
       - name: Verify images created
         run: docker compose config --services | wc -l
+
+  # ── End-to-end smoke test ──────────────────────────────────
+  e2e-smoke-test:
+    name: End-to-end smoke test
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: pip install pytest pytest-asyncio httpx requests
+      - name: Start infrastructure + services
+        run: |
+          docker compose up -d neo4j zookeeper kafka cost-service planning-service sim-orchestrator
+          echo "Waiting for services to become healthy..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8008/health > /dev/null 2>&1 && \
+               curl -sf http://localhost:8009/health > /dev/null 2>&1; then
+              echo "Services healthy after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+      - name: Run smoke test
+        run: python -m pytest tests/integration/test_e2e_smoke.py -v --tb=short
+        timeout-minutes: 5
+      - name: Collect logs on failure
+        if: failure()
+        run: docker compose logs --tail=100
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
