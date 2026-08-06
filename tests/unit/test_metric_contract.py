@@ -34,6 +34,7 @@ EXPECTED_METRICS: dict[str, list[tuple[str, str, frozenset[str]]]] = {
         ("ground_vehicle_utilisation_pct", "Gauge", frozenset({"vehicle_type"})),
         ("ground_vehicle_contention_total", "Counter", frozenset({"vehicle_type"})),
         ("envelope_invalid_total", "Counter", frozenset({"reason"})),
+        ("flight_commands_total", "Counter", frozenset({"command_type", "outcome"})),
     ],
     "passenger-service": [
         ("passengers_in_airport", "Gauge", frozenset({"status"})),

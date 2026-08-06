@@ -5,7 +5,7 @@ and standard fields. Replaces ``logging.basicConfig()`` in each service's
 ``main.py``.
 
 Usage:
-    from _logging import setup_logging
+    from _common._logging import setup_logging
     setup_logging("flight-service")
 """
 
@@ -25,7 +25,7 @@ def _add_trace_context(
 ) -> dict:
     """Inject OpenTelemetry trace_id and span_id into every log line."""
     try:
-        from _tracing import get_trace_context
+        from _common._tracing import get_trace_context
 
         ctx = get_trace_context()
         if ctx.get("trace_id"):

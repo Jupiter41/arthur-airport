@@ -23,6 +23,8 @@ from db.neo4j import (
     flag_baggage,
     get_baggage_counts_by_status,
     get_baggage_in_pipeline,
+    redirect_baggage_to_flight,
+    get_baggage_by_id,
 )
 from kafka.producer import (
     emit_baggage_status_changed,
@@ -49,7 +51,9 @@ from metrics import (
     dangerous_goods_detected_total as m_dg_detected,
     screening_false_positives_total as m_false_pos,
     envelope_invalid_total as m_envelope_invalid,
+    baggage_commands_total as m_commands,
 )
+from application.commands import parse_command, RedirectBaggage
 
 logger = logging.getLogger(__name__)
 
@@ -186,12 +190,12 @@ async def run_consumer() -> None:
     global _consumer, _consumer_running
 
     _consumer = _make_consumer()
-    _consumer.subscribe(["sim.clock", "flights.events", "incidents.events"])
+    _consumer.subscribe(["sim.clock", "flights.events", "incidents.events", "baggage.commands"])
     _consumer_running = True
 
     loop = asyncio.get_event_loop()
     logger.info(
-        "Kafka consumer started (topics: sim.clock, flights.events, incidents.events)"
+        "Kafka consumer started (topics: sim.clock, flights.events, incidents.events, baggage.commands)"
     )
 
     try:
@@ -270,7 +274,16 @@ def _validate_envelope(envelope: dict) -> tuple[str, datetime, dict] | None:
 
 
 async def _dispatch(envelope: dict) -> None:
-    """Route events to handlers based on event_type."""
+    """Route events to handlers based on event_type.
+
+    Command envelopes (keyed on ``command_type``, from ``baggage.commands``)
+    are imperatives, not facts — they take a separate path.
+    """
+    # Commands are keyed on command_type (no event_type / sim_time).
+    if envelope.get("command_type") is not None:
+        await _handle_command(envelope)
+        return
+
     validated = _validate_envelope(envelope)
     if validated is None:
         return
@@ -295,6 +308,67 @@ async def _dispatch(envelope: dict) -> None:
             await _on_incident_status_changed(payload, sim_time)
         case _:
             pass
+
+
+async def _handle_command(envelope: dict) -> None:
+    """Execute an operator/agent command from ``baggage.commands``.
+
+    Dedupes the command, parses/validates it, verifies the bag and target flight
+    exist in Neo4j, then re-assigns the LOADED_ON relationship and removes the
+    bag from its current conveyor zone. Emits BaggageStatusChanged on success.
+    """
+    command_id = envelope.get("command_id", "")
+    if command_id and _state.check_idempotency(command_id):
+        return
+
+    command_type = envelope.get("command_type")
+    cmd, error = parse_command(command_type, envelope.get("payload"))
+    if error is not None:
+        m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
+        logger.warning("Rejected command %s: %s", command_type, error)
+        return
+
+    sim_time = _state.sim_time
+    if sim_time is None:
+        m_commands.labels(command_type=command_type, outcome="rejected").inc()
+        logger.warning("Rejected command %s: clock not started yet", command_type)
+        return
+
+    if isinstance(cmd, RedirectBaggage):
+        bag = await get_baggage_by_id(cmd.bag_id)
+        if bag is None:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            logger.warning("Rejected RedirectBaggage: bag %s not found", cmd.bag_id)
+            return
+
+        ok = await redirect_baggage_to_flight(cmd.bag_id, cmd.target_flight_id, sim_time)
+        if not ok:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            logger.warning(
+                "Rejected RedirectBaggage: target flight %s not found", cmd.target_flight_id
+            )
+            return
+
+        # Remove from the current conveyor zone so it doesn't continue down
+        # the wrong pipeline; a future induction tick will pick it up.
+        _state.conveyor.remove_bag_from_all_zones(cmd.bag_id)
+
+        prev_status = bag.get("status", "unknown")
+        await emit_baggage_status_changed(
+            baggage_id=cmd.bag_id,
+            tag=bag.get("tag", ""),
+            previous_status=prev_status,
+            new_status="redirected",
+            scan_zone="redirected",
+            sim_time=sim_time,
+            passenger_id=bag.get("passenger", {}) and bag["passenger"].get("id"),
+            flight_id=cmd.target_flight_id,
+        )
+        m_commands.labels(command_type=command_type, outcome="accepted").inc()
+        logger.info(
+            "Executed RedirectBaggage: bag %s → flight %s",
+            cmd.bag_id, cmd.target_flight_id,
+        )
 
 
 BULK_SNAPSHOT_INTERVAL_SIM_MIN = int(os.getenv("BULK_SNAPSHOT_INTERVAL_MIN", "60"))

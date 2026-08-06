@@ -41,9 +41,10 @@ RUNWAY_CAPACITY: dict[str, dict[str, int]] = {
     "LIFR":  {"arrival": 8,  "departure": 6,  "runways": 1},
 }
 
-# ── Wide body aircraft for turnaround buffer ────────────────
+# ── Seat map for capacity estimates ─────────────────────────
+# (Body-class classification lives in _common.aircraft — the single source of
+# truth. This engine only needs per-type seat counts.)
 
-WIDE_BODY_TYPES = {"B77W", "A333", "A332", "B748", "A380"}
 SEAT_MAP = {
     "B738": 189, "A320": 180, "A321": 220, "B77W": 396,
     "A333": 300, "E195": 120, "DH8D": 78, "AT75": 72,
@@ -386,13 +387,27 @@ class PlanningSimEngine:
         wind_kt = weather.get("wind_speed_kt", 5)
         cap = RUNWAY_CAPACITY.get(category, RUNWAY_CAPACITY["CAVOK"])
 
-        # Runway capacity adjusted for wind
-        max_dep = cap["departure"]
-        max_arr = cap["arrival"]
-        active_runways = min(cap["runways"], infra.runway_count)
-        if active_runways < 2 and infra.runway_count >= 2:
-            max_dep = max_dep  # single runway ops due to weather
-            max_arr = max_arr
+        # Runway capacity scaled by the scenario's runway count.
+        #
+        # The per-category rates are calibrated for the 2-runway KART baseline
+        # (RUNWAY_CAPACITY[...]["runways"] records how many runways that rate
+        # assumes). Scale linearly by how many runways the scenario can actually
+        # work so that adding or closing a runway moves capacity — the previous
+        # code had a no-op branch here, so runway_count had *zero* effect on
+        # throughput (a "close a runway" scenario showed no impact at all).
+        #
+        # In good visibility every physical runway is usable; in low-visibility
+        # categories (cap["runways"] < 2) the weather binds the usable count
+        # regardless of how many runways physically exist (only ILS/reduced-rate
+        # ops), so we never scale *up* past the category's limit there.
+        category_runways = cap["runways"]
+        if category_runways >= 2:
+            usable_runways = infra.runway_count
+        else:
+            usable_runways = min(infra.runway_count, category_runways)
+        runway_scale = usable_runways / category_runways
+        max_dep = int(cap["departure"] * runway_scale)
+        max_arr = int(cap["arrival"] * runway_scale)
 
         # Apply wind reductions
         if wind_kt > 35:

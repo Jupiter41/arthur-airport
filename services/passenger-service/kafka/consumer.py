@@ -71,7 +71,9 @@ from metrics import (
     connections_missed_total as m_connections_missed,
     passenger_alerts_total as m_passenger_alerts,
     envelope_invalid_total as m_envelope_invalid,
+    pax_commands_total as m_commands,
 )
+from application.commands import parse_command, OpenSecurityLane
 
 logger = logging.getLogger(__name__)
 
@@ -362,12 +364,14 @@ async def run_consumer() -> None:
         "incidents.events",
         "baggage.events",
         "weather.events",
+        "passengers.commands",
     ])
     _consumer_running = True
 
     loop = asyncio.get_event_loop()
     logger.info(
-        "Kafka consumer started (topics: sim.clock, flights.events, incidents.events, baggage.events, weather.events)"
+        "Kafka consumer started (topics: sim.clock, flights.events, incidents.events, "
+        "baggage.events, weather.events, passengers.commands)"
     )
 
     try:
@@ -450,7 +454,16 @@ def _validate_envelope(envelope: dict) -> tuple[str, datetime, dict] | None:
 
 
 async def _dispatch(envelope: dict) -> None:
-    """Route events to handlers based on event_type."""
+    """Route events to handlers based on event_type.
+
+    Command envelopes (keyed on ``command_type``, from ``passengers.commands``)
+    are imperatives, not facts — they take a separate path.
+    """
+    # Commands are keyed on command_type (no event_type / sim_time).
+    if envelope.get("command_type") is not None:
+        await _handle_command(envelope)
+        return
+
     validated = _validate_envelope(envelope)
     if validated is None:
         return
@@ -481,6 +494,41 @@ async def _dispatch(envelope: dict) -> None:
             await _on_baggage_status_changed(payload, sim_time)
         case _:
             pass
+
+
+async def _handle_command(envelope: dict) -> None:
+    """Execute an operator/agent command from ``passengers.commands``.
+
+    Dedupes the command, parses/validates it, then executes the in-memory
+    mutation. A rejected command produces no side effect.
+    """
+    command_id = envelope.get("command_id", "")
+    if command_id and _state.check_idempotency(command_id):
+        return
+
+    command_type = envelope.get("command_type")
+    cmd, error = parse_command(command_type, envelope.get("payload"))
+    if error is not None:
+        m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
+        logger.warning("Rejected command %s: %s", command_type, error)
+        return
+
+    if isinstance(cmd, OpenSecurityLane):
+        checkpoint = _state.security.checkpoints.get(cmd.terminal)
+        if checkpoint is None:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            logger.warning("Rejected OpenSecurityLane: unknown terminal %r", cmd.terminal)
+            return
+        old_count = checkpoint.lanes_open
+        checkpoint.lanes_open = cmd.lanes_open
+        # Update Prometheus gauge immediately so the dashboard reflects the change
+        # before the next clock tick updates all security metrics.
+        m_sec_lanes.labels(terminal=cmd.terminal).set(cmd.lanes_open)
+        m_commands.labels(command_type=command_type, outcome="accepted").inc()
+        logger.info(
+            "Executed OpenSecurityLane: terminal %s lanes %d → %d",
+            cmd.terminal, old_count, cmd.lanes_open,
+        )
 
 
 _tick_counter: int = 0

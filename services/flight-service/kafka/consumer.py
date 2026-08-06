@@ -23,6 +23,9 @@ from db.neo4j import (
     update_flight_status,
     get_boarded_percentage,
     assign_flight_to_runway,
+    assign_flight_to_gate,
+    is_gate_occupied,
+    get_flight_by_id,
     release_gate,
     get_open_runway,
     get_paired_flight,
@@ -42,6 +45,17 @@ from kafka.producer import (
     emit_ground_vehicle_returned,
 )
 from services.state_machine import evaluate_transition
+from application.decisions import (
+    boarding_delay_update,
+    resolve_delay_reason,
+    suppress_transition_for_turnaround,
+)
+from application.commands import (
+    HoldFlight,
+    ReassignGate,
+    parse_command,
+    validate_hold_precondition,
+)
 from services.runway_queue import RunwayQueue
 from services.gate_resolver import ensure_gate_assigned
 from services.turnaround import propagate_turnaround_delay
@@ -60,6 +74,7 @@ from metrics import (
     envelope_invalid_total as m_envelope_invalid,
     ground_vehicle_utilisation_pct as m_vehicle_util,
     ground_vehicle_contention_total as m_vehicle_contention,
+    flight_commands_total as m_commands,
 )
 
 logger = logging.getLogger(__name__)
@@ -274,11 +289,11 @@ async def run_consumer() -> None:
     global _consumer, _consumer_running
 
     _consumer = _make_consumer()
-    _consumer.subscribe(["sim.clock", "weather.events", "incidents.events", "flights.schedule", "baggage.events"])
+    _consumer.subscribe(["sim.clock", "weather.events", "incidents.events", "flights.schedule", "baggage.events", "flights.commands"])
     _consumer_running = True
 
     loop = asyncio.get_event_loop()
-    logger.info("Kafka consumer started (topics: sim.clock, weather.events, incidents.events, flights.schedule)")
+    logger.info("Kafka consumer started (topics: sim.clock, weather.events, incidents.events, flights.schedule, baggage.events, flights.commands)")
 
     try:
         while _consumer_running:
@@ -362,7 +377,16 @@ def _validate_envelope(envelope: dict) -> tuple[str | None, dict, datetime | Non
 
 
 async def _dispatch(envelope: dict) -> None:
-    """Route events to handlers based on event_type."""
+    """Route events to handlers based on event_type.
+
+    Command envelopes (keyed on ``command_type``, from ``flights.commands``) are
+    imperatives, not facts — they take a separate path.
+    """
+    # Commands are keyed on command_type (no event_type / sim_time).
+    if envelope.get("command_type") is not None:
+        await _handle_command(envelope)
+        return
+
     event_id = envelope.get("event_id", "")
 
     # Idempotency check
@@ -388,6 +412,55 @@ async def _dispatch(envelope: dict) -> None:
             await _on_baggage_flagged(payload, sim_time)
         case _:
             pass
+
+
+async def _handle_command(envelope: dict) -> None:
+    """Execute an operator/agent command from ``flights.commands``.
+
+    Validates and dedupes the command, loads the target flight, enforces
+    preconditions, then executes via the existing hold/reassign executors — each
+    of which emits the normal fact on ``flights.events``. A rejected command
+    produces no fact.
+    """
+    command_id = envelope.get("command_id", "")
+    if command_id and _state.check_idempotency(command_id):
+        return
+
+    command_type = envelope.get("command_type")
+    cmd, error = parse_command(command_type, envelope.get("payload"))
+    if error is not None:
+        m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
+        logger.warning("Rejected command %s: %s", command_type, error)
+        return
+
+    # Commands carry no sim time — stamp resulting facts with the current clock.
+    sim_time = _state.sim_time
+    if sim_time is None:
+        m_commands.labels(command_type=command_type, outcome="rejected").inc()
+        logger.warning("Rejected command %s: no sim_time yet (clock not started)", command_type)
+        return
+
+    flight = await get_flight_by_id(cmd.flight_id)
+    if not flight:
+        m_commands.labels(command_type=command_type, outcome="rejected").inc()
+        logger.warning("Rejected command %s: flight %s not found", command_type, cmd.flight_id)
+        return
+
+    if isinstance(cmd, HoldFlight):
+        precondition_error = validate_hold_precondition(flight.get("status", ""))
+        if precondition_error is not None:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            logger.warning("Rejected HoldFlight %s: %s", cmd.flight_id, precondition_error)
+            return
+        await hold_flight(cmd.flight_id, cmd.reason, cmd.duration_min, sim_time)
+        m_commands.labels(command_type=command_type, outcome="accepted").inc()
+        logger.info("Executed HoldFlight for %s (%s, %dmin)", cmd.flight_id, cmd.reason, cmd.duration_min)
+
+    elif isinstance(cmd, ReassignGate):
+        ok = await reassign_gate(cmd.flight_id, cmd.gate_id, sim_time)
+        outcome = "accepted" if ok else "rejected"
+        m_commands.labels(command_type=command_type, outcome=outcome).inc()
+        logger.info("ReassignGate for %s → gate %s: %s", cmd.flight_id, cmd.gate_id, outcome)
 
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
@@ -889,21 +962,19 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
     )
 
     # ── Turnaround-aware gating ──
+    # Arrivals can't reach `arrived` until deplaning is done; departures can't
+    # (re-)enter `boarding` until the aircraft is cleaned and ready. The pure
+    # decision lives in application.decisions; we supply the plan's flags.
     reg = flight.get("aircraft_registration", "")
-
-    # Gate arrival at_gate → arrived on deplaning completion
-    if (new_status == "arrived" and direction == "arrival"
-            and reg and reg in _state.turnaround_plans):
+    if reg and reg in _state.turnaround_plans:
         plan = _state.turnaround_plans[reg]
-        if not plan.deplaning_done:
-            new_status = None  # wait for deplaning to complete
-
-    # Gate departure scheduled → boarding on turnaround readiness
-    if (new_status == "boarding" and direction == "departure"
-            and reg and reg in _state.turnaround_plans):
-        plan = _state.turnaround_plans[reg]
-        if not plan.ready_for_boarding:
-            new_status = None  # wait for cleaning + deplaning
+        if suppress_transition_for_turnaround(
+            new_status,
+            direction,
+            deplaning_done=plan.deplaning_done,
+            ready_for_boarding=plan.ready_for_boarding,
+        ):
+            new_status = None  # wait for turnaround progress
 
     # ── Noise model draws (Phase 1.2) ──
 
@@ -1014,25 +1085,23 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
         # estimated_time forward.  Previously this used estimated_time, which
         # caused delay_minutes to stall after noise delays and the 90-min
         # force-departure grace to trigger much too late.
-        if current_status == "boarding" and direction == "departure":
-            scheduled = flight.get("scheduled_time") or flight.get("estimated_time")
-            if scheduled:
-                try:
-                    sched = datetime.fromisoformat(str(scheduled))
-                    if sim_time > sched and boarded_pct < 0.95:
-                        delay = int((sim_time - sched).total_seconds() / 60)
-                        if delay > (flight.get("delay_minutes", 0) or 0):
-                            # Preserve noise-model delay reasons
-                            current_reason = flight.get("delay_reason", "")
-                            noise_reasons = {"crew_readiness", "ctot_slot", "equipment_failure"}
-                            reason = current_reason if current_reason in noise_reasons else "boarding_incomplete"
-                            await update_flight_status(
-                                flight_id, "boarding", sim_time,
-                                delay_minutes=delay,
-                                delay_reason=reason,
-                            )
-                except (ValueError, TypeError):
-                    pass
+        scheduled = flight.get("scheduled_time") or flight.get("estimated_time")
+        update = boarding_delay_update(
+            current_status,
+            direction,
+            scheduled,
+            sim_time,
+            boarded_pct,
+            flight.get("delay_minutes", 0) or 0,
+            flight.get("delay_reason", ""),
+        )
+        if update is not None:
+            delay, reason = update
+            await update_flight_status(
+                flight_id, "boarding", sim_time,
+                delay_minutes=delay,
+                delay_reason=reason,
+            )
         return
 
     # Execute the transition
@@ -1107,17 +1176,16 @@ async def _execute_transition(
                     )
 
         case "delayed":
-            # Check if it's a weather/incident delay
-            reason = flight.get("delay_reason", "")
-            if flight_id in _state.held_flights:
-                reason = _state.held_flights[flight_id].get("reason", "manual_hold")
-            elif flight.get("runway_id") in _state.incident_affected_runways:
-                reason = "runway_incident"
-            elif flight.get("gate_id") in _state.incident_affected_gates:
-                reason = "gate_incident"
-            else:
-                reason = reason or "operational"
-            update_kwargs["delay_reason"] = reason
+            # Resolve the delay reason (hold > runway incident > gate incident >
+            # existing reason > operational). Pure decision; state lookups here.
+            hold = _state.held_flights.get(flight_id)
+            update_kwargs["delay_reason"] = resolve_delay_reason(
+                flight.get("delay_reason", ""),
+                is_held=flight_id in _state.held_flights,
+                hold_reason=hold.get("reason") if hold else None,
+                runway_incident=flight.get("runway_id") in _state.incident_affected_runways,
+                gate_incident=flight.get("gate_id") in _state.incident_affected_gates,
+            )
 
         case "cancelled":
             update_kwargs["delay_reason"] = "delay_exceeded_180min"
@@ -1455,3 +1523,47 @@ async def release_flight(flight_id: str, sim_time: datetime) -> dict | None:
         )
 
     return updated
+
+
+async def reassign_gate(flight_id: str, gate_id: str, sim_time: datetime) -> dict | None:
+    """Reassign a flight to a specific gate.
+
+    Re-links the ``ASSIGNED_TO`` relationship and emits the existing
+    ``FlightGateAssigned`` fact. Returns the flight dict on success, or ``None``
+    if the flight doesn't exist or the target gate is occupied by another flight.
+    """
+    flight = await get_flight_by_id(flight_id)
+    if not flight:
+        return None
+
+    # Don't double-book: reject if the gate is held by a *different* flight.
+    if await is_gate_occupied(gate_id, exclude_flight_id=flight_id):
+        logger.warning("ReassignGate: gate %s occupied — refusing to reassign %s", gate_id, flight_id)
+        return None
+
+    await assign_flight_to_gate(flight_id, gate_id, sim_time)
+
+    flight_number = flight.get("flight_number", "")
+    emit_flight_gate_assigned(
+        flight_id=flight_id,
+        flight_number=flight_number,
+        gate_id=gate_id,
+        sim_time=sim_time,
+        reason="reassignment",
+    )
+
+    # Broadcast to WebSocket
+    if _state.ws_broadcast:
+        try:
+            asyncio.create_task(_state.ws_broadcast({
+                "type": "FlightGateAssigned",
+                "flight_id": flight_id,
+                "flight_number": flight_number,
+                "gate_id": gate_id,
+                "sim_time": sim_time.isoformat(),
+            }))
+        except Exception:
+            pass
+
+    flight["gate_id"] = gate_id
+    return flight

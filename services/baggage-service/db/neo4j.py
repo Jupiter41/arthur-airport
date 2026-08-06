@@ -453,6 +453,36 @@ async def set_loaded_on_timestamp(
         )
 
 
+async def redirect_baggage_to_flight(
+    baggage_id: str, target_flight_id: str, sim_time: datetime
+) -> bool:
+    """Re-assign a baggage item's LOADED_ON relationship to a different flight.
+
+    Returns True if both the bag and the target flight exist and the relationship
+    was updated, False otherwise.
+    """
+    driver = get_driver()
+    query = """
+    MATCH (b:Baggage {id: $bid})
+    MATCH (f:Flight {id: $fid})
+    OPTIONAL MATCH (b)-[old:LOADED_ON]->(:Flight)
+    DELETE old
+    CREATE (b)-[:LOADED_ON {redirected_at: $at}]->(f)
+    SET b.last_scan_zone = 'redirected',
+        b.last_scan_at = $at
+    RETURN b.id AS id
+    """
+    async with driver.session() as session:
+        result = await session.run(
+            query,
+            bid=baggage_id,
+            fid=target_flight_id,
+            at=sim_time.isoformat(),
+        )
+        record = await result.single()
+        return record is not None
+
+
 async def get_baggage_in_pipeline() -> list[dict]:
     """Return bags currently in the conveyor pipeline (inducted/screening/sorting/loaded/in_hold/flagged)."""
     driver = get_driver()

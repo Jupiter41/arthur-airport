@@ -33,7 +33,9 @@ TERMINAL_FALLBACK = {
 }
 
 INTERNATIONAL_FLIGHT_TYPES = {"international_short", "international_long"}
-WIDE_BODY_TYPES = {"B77W", "A333", "A332", "B748", "A380"}
+
+# Body-class classification is shared across all services — see _common/aircraft.py.
+from _common.aircraft import WIDE_BODY_TYPES
 
 
 def _gate_to_terminal(gate_id: str) -> str:

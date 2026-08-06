@@ -12,9 +12,6 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-# Wide-body aircraft types (longer turnaround buffer)
-WIDE_BODY_TYPES = {"B77W", "A333", "A332", "B748", "A380"}
-
 # Explicit valid transitions
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "scheduled": {"boarding", "delayed", "cancelled"},

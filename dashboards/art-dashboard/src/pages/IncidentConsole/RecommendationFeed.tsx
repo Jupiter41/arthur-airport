@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { StatusBadge } from "../../components/StatusBadge";
 import { analysisApi } from "../../hooks/useApi";
+import { queryClient } from "../../queryClient";
 import type {
   AnalysisBottleneck,
   AnalysisRecommendation,
@@ -15,6 +16,7 @@ export function RecommendationFeed({
   recommendations: AnalysisRecommendation[];
 }) {
   const [applying, setApplying] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (bottlenecks.length === 0 && recommendations.length === 0) {
     return (
@@ -29,6 +31,12 @@ export function RecommendationFeed({
       <h3 className="text-xs text-gray-400 uppercase tracking-wide">
         Bottlenecks &amp; Recommendations
       </h3>
+
+      {error && (
+        <div className="text-xs text-red-400 bg-red-900/20 rounded px-2 py-1">
+          {error}
+        </div>
+      )}
 
       {bottlenecks.map((bn) => (
         <div
@@ -102,19 +110,19 @@ export function RecommendationFeed({
                 disabled={applying === rec.id}
                 onClick={async () => {
                   setApplying(rec.id);
+                  setError(null);
                   try {
-                    await analysisApi.whatIf({
-                      actions: [
-                        {
-                          action_type: rec.action_type,
-                          description: rec.description,
-                          parameters: rec.parameters,
-                        },
-                      ],
-                      horizon_minutes: 60,
+                    // Real server-side apply: records the operator action and
+                    // emits an AutonomousActionApplied event (no longer a
+                    // discarded what-if projection).
+                    await analysisApi.applyRecommendation(rec.id);
+                    await queryClient.invalidateQueries({
+                      queryKey: ["analysis", "recommendations"],
                     });
-                  } catch {
-                    // silently ignore — projection-only
+                  } catch (err) {
+                    setError(
+                      err instanceof Error ? err.message : "Apply failed",
+                    );
                   } finally {
                     setApplying(null);
                   }

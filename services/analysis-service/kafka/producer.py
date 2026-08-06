@@ -15,6 +15,8 @@ _producer: Producer | None = None
 
 PRODUCER_NAME = "analysis-service"
 EVENTS_TOPIC = "analysis.events"
+# A7/A9: command input topic consumed by flight-service (see EVENT_BUS §4.8b).
+COMMANDS_TOPIC = "flights.commands"
 
 
 def init_kafka_producer() -> None:
@@ -150,6 +152,59 @@ def emit_autonomous_action(action: dict, sim_time: datetime) -> None:
         action,
         key=action.get("id", ""),
     )
+
+
+def emit_action_proposed(proposal: dict, sim_time: datetime) -> None:
+    """Emit ActionProposed — a proposal was enqueued for human approval (A9)."""
+    _produce_event(
+        "ActionProposed",
+        sim_time,
+        proposal,
+        key=proposal.get("id", ""),
+    )
+
+
+def emit_flight_command(
+    command_type: str,
+    payload: dict,
+    *,
+    issued_by: str,
+    issued_at: datetime,
+) -> None:
+    """Publish a command to ``flights.commands`` (A7 envelope, §4.8b).
+
+    Commands are keyed on ``command_type`` (not ``event_type``) and carry no
+    sim_time — flight-service stamps the resulting facts with the current
+    ``sim.clock``. ``command_id`` gives the consumer an idempotency key.
+    """
+    if _producer is None:
+        raise RuntimeError("Kafka producer not initialized")
+
+    envelope = {
+        "command_type": command_type,
+        "command_id": str(uuid4()),
+        "schema_version": "1.0",
+        "issued_by": issued_by,
+        "issued_at": issued_at.isoformat(),
+        "producer": PRODUCER_NAME,
+        "payload": payload,
+    }
+    try:
+        from _tracing import get_trace_context
+        ctx = get_trace_context()
+        if ctx.get("trace_id"):
+            envelope["trace_id"] = ctx["trace_id"]
+            envelope["span_id"] = ctx["span_id"]
+    except Exception:
+        pass
+
+    _producer.produce(
+        topic=COMMANDS_TOPIC,
+        key=payload.get("flight_id", "").encode("utf-8") if payload.get("flight_id") else None,
+        value=json.dumps(envelope).encode("utf-8"),
+        callback=_delivery_report,
+    )
+    _producer.poll(0)
 
 
 def emit_anomaly_detected(anomaly: dict, sim_time: datetime) -> None:

@@ -31,6 +31,22 @@ def _read_source(service: str, module_path: str) -> str:
         return f.read()
 
 
+def _effective_envelope_source(service: str, module_path: str) -> str:
+    """Producer source plus any shared envelope builder it delegates to.
+
+    Envelope construction was centralised into ``_common.kafka_runtime``; a
+    producer that delegates there no longer contains the envelope fields
+    inline. Concatenating the shared module's source keeps the envelope
+    contract enforceable regardless of where the fields are built.
+    """
+    source = _read_source(service, module_path)
+    if "kafka_runtime" in source:
+        runtime_path = os.path.join(ROOT, "services", "_common", "kafka_runtime.py")
+        with open(runtime_path, encoding="utf-8") as f:
+            source += "\n" + f.read()
+    return source
+
+
 def _import_baggage_consumer():
     """Import baggage-service consumer with mocked I/O dependencies."""
     svc_dir = os.path.join(ROOT, "services", "baggage-service")
@@ -486,7 +502,12 @@ class TestEventEnvelopeContract:
     """Verify all services produce events matching the EVENT_BUS.md envelope format."""
 
     def test_all_producers_include_event_id(self):
-        """Every event producer must include event_id in the envelope."""
+        """Every event producer must include event_id in the envelope.
+
+        A producer may build the envelope inline or delegate to
+        ``_common.kafka_runtime`` — either way the field must be present in
+        the effective source.
+        """
         for svc, module in [
             ("flight-service", "kafka.producer"),
             ("passenger-service", "kafka.producer"),
@@ -494,7 +515,7 @@ class TestEventEnvelopeContract:
             ("weather-service", "kafka.producer"),
             ("incident-service", "kafka.producer"),
         ]:
-            source = _read_source(svc, module)
+            source = _effective_envelope_source(svc, module)
             assert "event_id" in source, (
                 f"{svc} producer must include 'event_id' in event envelope"
             )
@@ -508,7 +529,7 @@ class TestEventEnvelopeContract:
             ("weather-service", "kafka.producer"),
             ("incident-service", "kafka.producer"),
         ]:
-            source = _read_source(svc, module)
+            source = _effective_envelope_source(svc, module)
             assert "sim_time" in source, (
                 f"{svc} producer must include 'sim_time' in event envelope"
             )

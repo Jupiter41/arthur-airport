@@ -84,15 +84,23 @@ def extract_annual_benefit(
     delay_daily = delay_minutes_saved * avg_flights * DELAY_COST_PER_MINUTE_EUR
     delay_annual = delay_daily * operating_days_per_year
 
-    # Missed connections saved per day
-    missed_saved = _delta_mean("missed_connections")
-    missed_annual = missed_saved * REBOOKING_COST_PER_PAX_EUR * operating_days_per_year
+    # Missed connections — NOT monetized.
+    #
+    # The planning simulation has no connecting-passenger / MCT model, so
+    # `missed_connections` is structurally always 0 (see engine/simulation.py:
+    # the field is declared and reported but never incremented). Feeding an
+    # always-zero — and therefore meaningless — signal into an NPV that drives
+    # eight-figure capacity decisions is worse than omitting it: it reads as a
+    # real, quantified benefit line. We keep the field for schema compatibility
+    # but hold it at 0.0 and exclude it from the total until a real connection
+    # model exists to populate it. (ROADMAP_REAL_LDT.md §1.3 / A2.)
+    missed_annual = 0.0
 
     # Revenue uplift per day
     revenue_daily = -_delta_mean("total_revenue_eur")  # scenario > baseline = positive
     revenue_annual = revenue_daily * operating_days_per_year
 
-    total = eu261_annual + delay_annual + missed_annual + revenue_annual
+    total = eu261_annual + delay_annual + revenue_annual
 
     return AnnualBenefitBreakdown(
         eu261_avoided_annual=eu261_annual,

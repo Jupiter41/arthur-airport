@@ -51,6 +51,22 @@ jobs:
         working-directory: dashboards/art-dashboard
         run: npx tsc && npx vite build
 
+  # ── Gateway tests ──────────────────────────────────────────
+  gateway-tests:
+    name: Gateway tests (node:test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install gateway dependencies
+        working-directory: services/api-gateway
+        run: npm ci
+      - name: Run gateway unit tests
+        working-directory: services/api-gateway
+        run: npm test
+
   # ── Unit tests ─────────────────────────────────────────────
   unit-tests:
     name: Unit tests (pytest)
@@ -70,6 +86,8 @@ jobs:
           pip install -r services/incident-service/requirements.txt
           pip install -r services/sim-orchestrator/requirements.txt
           pip install -r services/analysis-service/requirements.txt
+          pip install -r services/cost-service/requirements.txt
+          pip install -r services/planning-service/requirements.txt
       - name: Run unit tests
         run: python -m pytest tests/unit/ -v --tb=short
 
@@ -121,7 +139,7 @@ jobs:
           python-version: "3.11"
       - name: Install test dependencies
         run: |
-          pip install pytest pytest-asyncio httpx
+          pip install pytest pytest-asyncio httpx requests
           pip install -r services/flight-service/requirements.txt
       - name: Run integration tests
         env:
@@ -129,7 +147,9 @@ jobs:
           NEO4J_USER: neo4j
           NEO4J_PASSWORD: art-digital-twin
           KAFKA_BROKERS: localhost:9092
-        run: python -m pytest tests/integration/ -v --tb=short || true
+        # No `|| true`: modules skip themselves (skipif on service reachability)
+        # when the app stack isn't up, so a real failure now fails CI honestly.
+        run: python -m pytest tests/integration/ -v --tb=short
 
   # ── Build ──────────────────────────────────────────────────
   docker-build:

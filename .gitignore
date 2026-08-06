@@ -53,4 +53,13 @@ coverage.xml
 
 # Build artefacts
 *.log
+
+# Azure Storage emulator (Azurite) — not part of this stack; must never be committed
+AzuriteConfig
+__azurite_db_table__.json
+__blobstorage__/
+__queuestorage__/
+.azurite/
 MISC.md
+
+.claude

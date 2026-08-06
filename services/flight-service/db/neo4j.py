@@ -5,11 +5,11 @@ import logging
 import os
 from datetime import datetime, timedelta
 
-from neo4j import AsyncGraphDatabase, AsyncDriver
+from neo4j import AsyncDriver
+
+from _common import neo4j_client
 
 logger = logging.getLogger(__name__)
-
-_driver: AsyncDriver | None = None
 
 CONSTRAINTS = [
     "CREATE CONSTRAINT flight_id IF NOT EXISTS FOR (f:Flight) REQUIRE f.id IS UNIQUE",
@@ -30,47 +30,23 @@ INDEXES = [
 
 
 async def init_neo4j() -> None:
-    """Create the async Neo4j driver and verify connectivity."""
-    global _driver
-    _driver = AsyncGraphDatabase.driver(
-        os.getenv("NEO4J_URI", "bolt://neo4j:7687"),
-        auth=(
-            os.getenv("NEO4J_USER", "neo4j"),
-            os.getenv("NEO4J_PASSWORD", "art-digital-twin"),
-        ),
-        max_connection_pool_size=int(os.getenv("NEO4J_POOL_SIZE", "50")),
-        connection_acquisition_timeout=float(os.getenv("NEO4J_POOL_TIMEOUT", "60")),
-        max_connection_lifetime=int(os.getenv("NEO4J_CONN_LIFETIME", "3600")),
-    )
-    await _driver.verify_connectivity()
-    logger.info("Neo4j driver initialized")
+    """Create the async Neo4j driver and verify connectivity (shared lifecycle)."""
+    await neo4j_client.init_driver()
 
 
 async def close_neo4j() -> None:
     """Close the Neo4j driver and release resources."""
-    global _driver
-    if _driver:
-        await _driver.close()
-        _driver = None
-        logger.info("Neo4j driver closed")
+    await neo4j_client.close_driver()
 
 
 def get_driver() -> AsyncDriver:
     """Return the initialised async Neo4j driver, or raise if not yet initialised."""
-    if _driver is None:
-        raise RuntimeError("Neo4j driver not initialised")
-    return _driver
+    return neo4j_client.get_driver()
 
 
 async def check_neo4j() -> bool:
     """Return True if the Neo4j driver can verify connectivity."""
-    try:
-        if _driver is None:
-            return False
-        await _driver.verify_connectivity()
-        return True
-    except Exception:
-        return False
+    return await neo4j_client.check_connectivity()
 
 
 async def wait_for_neo4j(max_attempts: int = 12, delay_s: float = 5) -> None:
@@ -89,11 +65,10 @@ async def wait_for_neo4j(max_attempts: int = 12, delay_s: float = 5) -> None:
                 "Neo4j not ready (attempt %d/%d): %s — retrying in %.0fs",
                 attempt, max_attempts, e, wait,
             )
-            if _driver:
-                try:
-                    await _driver.close()
-                except Exception:
-                    pass
+            try:
+                await neo4j_client.close_driver()
+            except Exception:
+                pass
             await asyncio.sleep(wait)
     raise RuntimeError(f"Neo4j not reachable after {max_attempts} attempts")
 

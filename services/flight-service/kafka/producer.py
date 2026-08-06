@@ -1,13 +1,18 @@
-"""Kafka producer for flight-service — flight events to flights.events topic."""
+"""Kafka producer for flight-service — flight events to flights.events topic.
 
-import json
+Producer lifecycle and the standard event-envelope build/emit are owned by
+``_common.kafka_runtime`` (shared across all producing services). This module
+keeps only the flight-domain ``emit_*`` helpers and the topic names.
+"""
+
 import logging
 import os
-from datetime import datetime, timezone
-from uuid import uuid4
+from datetime import datetime
 
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient
+
+from _common import kafka_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -21,30 +26,17 @@ GROUND_TOPIC = "ground.events"
 def init_kafka_producer() -> None:
     """Create the confluent-kafka Producer with delivery guarantees."""
     global _producer
-    _producer = Producer({
-        "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
-        "client.id": PRODUCER_NAME,
-        "acks": "all",
-        "retries": 3,
-    })
-    logger.info("Kafka producer initialized")
+    _producer = kafka_runtime.init_producer(PRODUCER_NAME)
 
 
 def close_kafka_producer() -> None:
     """Flush pending messages and shut down the producer."""
-    if _producer:
-        _producer.flush(timeout=10)
-        logger.info("Kafka producer flushed and closed")
-
-
-def _delivery_report(err, msg):
-    if err:
-        logger.error("Kafka delivery failed: %s", err)
+    kafka_runtime.close_producer(_producer)
 
 
 def _produce_event(
     event_type: str,
-    sim_time: datetime,
+    sim_time,
     payload: dict,
     key: str | None = None,
     topic: str | None = None,
@@ -58,36 +50,15 @@ def _produce_event(
         key: Optional Kafka message key (typically flight_id) for partition affinity.
         topic: Target topic, defaults to ``flights.events``.
     """
-    if _producer is None:
-        raise RuntimeError("Kafka producer not initialized")
-
-    envelope = {
-        "event_id": str(uuid4()),
-        "event_type": event_type,
-        "schema_version": "1.0",
-        "produced_at": datetime.now(timezone.utc).isoformat(),
-        "sim_time": sim_time.isoformat(),
-        "producer": PRODUCER_NAME,
-        "payload": payload,
-    }
-
-    # P6-1: Inject OpenTelemetry trace context into envelope
-    try:
-        from _tracing import get_trace_context
-        ctx = get_trace_context()
-        if ctx.get("trace_id"):
-            envelope["trace_id"] = ctx["trace_id"]
-            envelope["span_id"] = ctx["span_id"]
-    except Exception:
-        pass
-
-    _producer.produce(
+    kafka_runtime.produce_event(
+        _producer,
+        event_type,
+        sim_time,
+        payload,
+        producer_name=PRODUCER_NAME,
         topic=topic or TOPIC,
-        key=key.encode("utf-8") if key else None,
-        value=json.dumps(envelope).encode("utf-8"),
-        callback=_delivery_report,
+        key=key,
     )
-    _producer.poll(0)
 
 
 def emit_flight_status_changed(

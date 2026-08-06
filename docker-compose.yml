@@ -429,7 +429,12 @@ services:
       - "3000:3000"
     environment:
       PORT: 3000
+      # DEV ONLY. In production set a strong random JWT_SECRET and provide
+      # AUTH_CLIENTS (JSON: {"<id>":{"secret":"...","role":"operator|approver"}}).
+      # With NODE_ENV=production the gateway fails closed (503) if either the
+      # secret is left at this default or AUTH_CLIENTS is unset. See auth.ts.
       JWT_SECRET: art-digital-twin-dev
+      # AUTH_CLIENTS:  # required in production; dev falls back to a built-in client
       KAFKA_BROKERS: kafka:9092
       KAFKA_GROUP_ID: api-gateway
       FLIGHT_SERVICE_URL: http://flight-service:8001

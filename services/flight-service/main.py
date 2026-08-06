@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from _logging import setup_logging
+from _common._logging import setup_logging
 
 setup_logging("flight-service")
 
@@ -120,14 +120,14 @@ async def lifespan(app: FastAPI):
         get_adsb_cache().stop()
     close_kafka_producer()
     await close_neo4j()
-    from _tracing import shutdown_tracing
+    from _common._tracing import shutdown_tracing
     shutdown_tracing()
     logger.info("flight-service shutdown complete")
 
 
 app = FastAPI(title="flight-service", lifespan=lifespan)
 
-from _tracing import init_tracing  # noqa: E402
+from _common._tracing import init_tracing  # noqa: E402
 init_tracing(app, "flight-service")
 
 Instrumentator().instrument(app).expose(app)
@@ -178,7 +178,7 @@ async def health():
 @app.get("/perf")
 async def perf():
     """P6-3: Tick processing performance stats."""
-    from _profiler import get_perf_stats
+    from _common._profiler import get_perf_stats
     return get_perf_stats()
 
 

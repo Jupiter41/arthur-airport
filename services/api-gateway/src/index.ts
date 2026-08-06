@@ -4,7 +4,7 @@ import { shutdownTracing } from "./tracing";
 import express, { Request, Response } from "express";
 import { createServer } from "http";
 import client from "prom-client";
-import { handleToken, authMiddleware } from "./auth";
+import { handleToken, authMiddleware, requireRole } from "./auth";
 import { setupProxy } from "./proxy";
 import { handleAggregate } from "./aggregate";
 import { handleDataSources } from "./dataSources";
@@ -78,6 +78,19 @@ app.use("/api/v1/airport", heavyLimiter);
 app.use("/api/v1/sim/reset", simResetLimiter);
 app.use("/api/v1/incidents/inject", injectLimiter);
 app.use(defaultLimiter);
+
+// RBAC: approving/rejecting a safety-guarded proposal (A9) is the highest-
+// privilege command path — gate the mutating verbs on the `approver` role.
+// Listing the queue (GET) stays at normal auth so an operator can see what is
+// pending. Mounted before the proxy so unauthorized approvals never hit upstream.
+const approverGate = requireRole("approver");
+app.use("/api/v1/analysis/approvals", (req, res, next) => {
+  if (req.method === "GET") {
+    next();
+    return;
+  }
+  approverGate(req, res, next);
+});
 
 // Aggregate and health
 app.get("/api/v1/airport", handleAggregate);

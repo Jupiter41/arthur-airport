@@ -27,18 +27,9 @@ from db.neo4j import (
 )
 from kafka.producer import emit_carbon_recorded
 
+from _common.aircraft import aircraft_family as _aircraft_family
+
 logger = structlog.get_logger(__name__)
-
-WIDE_BODY_TYPES = {"B77W", "A333", "A332", "A359", "B748", "A380"}
-REGIONAL_TYPES = {"DH8D", "E195", "AT75"}
-
-
-def _aircraft_family(aircraft_type: str) -> str:
-    if aircraft_type in WIDE_BODY_TYPES:
-        return "wide"
-    if aircraft_type in REGIONAL_TYPES:
-        return "regional"
-    return "narrow"
 
 
 # In-memory running totals — rebuilt from Neo4j on restart

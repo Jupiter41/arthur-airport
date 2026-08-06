@@ -29,7 +29,11 @@
 | `incidents.events`  | incident-service             | flight-service, passenger-service, baggage-service, cost-service, api-gateway   | 30 days   |
 | `incidents.alerts`  | incident-service             | api-gateway                                                                     | 30 days   |
 | `incidents.inject`  | api-gateway (manual trigger) | incident-service                                                                | 1h        |
-| `cost.events`       | cost-service                 | api-gateway                                                                     | 7 days    |
+| `flights.commands`     | api-gateway, analysis-service | flight-service                                                              | 1h        |
+| `passengers.commands`  | api-gateway, analysis-service | passenger-service                                                           | 1h        |
+| `baggage.commands`     | api-gateway, analysis-service | baggage-service                                                             | 1h        |
+| `cost.events`          | cost-service                 | api-gateway                                                                  | 7 days    |
+| `analysis.events`      | analysis-service             | api-gateway                                                                  | 7 days    |
 
 ---
 
@@ -45,7 +49,11 @@
 | `incidents.events`  | 3          | `incident_id`    | `flight-svc`, `pax-svc`, `bag-svc`, `cost-svc`, `gateway` |
 | `incidents.alerts`  | 3          | `incident_id`    | `gateway`                                                 |
 | `incidents.inject`  | 1          | —                | `inc-svc`                                                 |
-| `cost.events`       | 3          | `cost_record_id` | `gateway`                                                 |
+| `flights.commands`    | 6          | `flight_id`      | `flight-svc`                                            |
+| `passengers.commands` | 3          | `terminal`       | `pax-svc`                                               |
+| `baggage.commands`    | 6          | `bag_id`         | `bag-svc`                                               |
+| `cost.events`         | 3          | `cost_record_id` | `gateway`                                               |
+| `analysis.events`     | 1          | entity id / —    | `gateway`                                               |
 
 ---
 
@@ -432,6 +440,155 @@ Sent by the API gateway (from the dashboard) to manually fire a hazardous event.
     "trigger": "manual",
     "requested_by": "operator-dashboard",
     "at": "2024-06-15T14:45:00.000Z"
+  }
+}
+```
+
+---
+
+### 4.8b `flights.commands` — operator/agent command input
+
+**Commands, not facts.** Unlike every other topic in this catalogue, `flights.commands` carries
+*imperatives* ("do this"), not facts ("this happened"). It is the intent channel: the API gateway
+(operator actions from the dashboard) and the analysis-service (autonomous/approved recommendations)
+publish commands here; **flight-service is the sole consumer and the sole authority** that decides
+whether to execute them. Executing a command still produces the normal facts on `flights.events`
+(`FlightStatusChanged` for a hold, `FlightGateAssigned` for a gate reassignment) — so downstream
+services never consume commands, only the resulting facts. This preserves the "services react to
+facts" rule while giving a single, auditable place for human/agent intent.
+
+Command envelope (distinct from the fact envelope — keyed on `command_type`, not `event_type`):
+
+```json
+{
+  "command_type": "HoldFlight",
+  "command_id": "b1c2d3e4-...",
+  "issued_by": "operator-dashboard",
+  "issued_at": "2024-06-15T14:45:00.000Z",
+  "payload": { "flight_id": "AR1234-...", "reason": "gate_conflict", "duration_min": 20 }
+}
+```
+
+- `command_id` (UUID) is required and used for **idempotency** — flight-service dedupes on it exactly
+  like `event_id`, so an at-least-once redelivery executes once.
+- `issued_by` / `issued_at` are audit metadata. `issued_at` is wall-clock; the executor stamps the
+  resulting fact with the current `sim_time` from `sim.clock` (commands do not carry sim time).
+- Commands are validated by flight-service and may be **rejected** (bad payload, unknown flight, or a
+  precondition failure — e.g. a hold is only accepted from `boarding` / `scheduled` / `approach`).
+  A rejected command produces no fact.
+
+Supported commands:
+
+| `command_type` | payload fields                                  | Effect on accept                                         |
+| -------------- | ----------------------------------------------- | -------------------------------------------------------- |
+| `HoldFlight`   | `flight_id`, `reason`, `duration_min`           | Flight → `delayed`; emits `FlightStatusChanged`          |
+| `ReassignGate` | `flight_id`, `gate_id`                          | Re-links `ASSIGNED_TO`; emits `FlightGateAssigned`       |
+
+`HoldFlight.duration_min` also accepts the legacy key `expected_duration_minutes` (the REST
+`HoldRequest` field name).
+
+---
+
+### 4.8c `analysis.events` — analysis-service facts
+
+Facts emitted by the analysis-service as it detects bottlenecks, generates recommendations, and
+runs autonomous mode. All are facts ("this happened / this was proposed"), consumed only by the API
+gateway for dashboard fan-out. Event types on this topic:
+
+| `event_type`              | Emitted when                                                        | Key           |
+| ------------------------- | ------------------------------------------------------------------- | ------------- |
+| `BottleneckDetected`      | A new bottleneck crosses a detection threshold                      | bottleneck id |
+| `BottleneckResolved`      | A previously-detected bottleneck clears                             | bottleneck id |
+| `RecommendationGenerated` | A recommendation is produced for an active bottleneck               | rec id        |
+| `ActionProposed`          | A proposal is enqueued for human approval or auto-approved (A9)     | proposal id   |
+| `AutonomousActionApplied` | An action was applied (auto, operator "Apply", or approved proposal)| action id     |
+| `AnomalyDetected`         | The anomaly detector flags a deviation from baseline                | `anomaly`     |
+| `NarrationGenerated`      | A narration line is produced                                        | `narration`   |
+
+**`ActionProposed` (A9).** The autonomous engine no longer silently applies or silently drops
+candidate actions — every candidate becomes a **Proposal** routed through the approval queue.
+Safety-guarded actions (`ground_delay_program`, `rebook_passengers`) and any that need a human are
+enqueued `pending`; confident, unguarded, non-blocked actions are auto-approved and executed. Both
+paths emit `ActionProposed` so the dashboard can show the queue and the audit trail.
+
+```json
+{
+  "event_type": "ActionProposed",
+  "producer": "analysis-service",
+  "payload": {
+    "id": "prop-a1b2c3d4e5f6",
+    "action_type": "ground_delay_program",
+    "description": "Impose a 15-min ground delay program on arrivals",
+    "parameters": { "delay_minutes": 15 },
+    "confidence_score": 0.91,
+    "proposed_by": "autonomous",
+    "proposed_at": "2024-06-15T14:45:00.000Z",
+    "recommendation_id": "rec-...",
+    "bottleneck_id": "bn-...",
+    "status": "pending",
+    "requires_human": true
+  }
+}
+```
+
+When an operator approves a proposal that targets a **concrete flight**, the analysis-service maps it
+to a `flights.commands` command (`HoldFlight` / `ReassignGate`, see §4.8b) and publishes it there —
+aggregate/terminal-level proposals carry no concrete `flight_id` and are recorded as facts only.
+
+---
+
+### 4.8d `passengers.commands` — passenger-service command input
+
+Same envelope contract as `flights.commands` (§4.8b): keyed on `command_type`; `command_id` for
+idempotency; `issued_by`/`issued_at` audit metadata; no `sim_time` — passenger-service uses the
+current clock when executing.
+
+**Supported commands**
+
+| `command_type`     | Required payload fields          | Effect |
+|--------------------|----------------------------------|--------|
+| `OpenSecurityLane` | `terminal` (A/B/C), `lanes_open` (1–20) | Sets the number of open lanes at the named terminal checkpoint immediately; next drain tick reflects the new capacity. |
+
+**Rejection semantics:** unknown `command_type`, missing/invalid `terminal`, non-positive or out-of-range `lanes_open`, or no clock tick yet received → rejected, no side effect, counter incremented.
+
+**Example:**
+```json
+{
+  "command_type": "OpenSecurityLane",
+  "command_id": "cmd-...",
+  "issued_by": "operator",
+  "issued_at": "2024-06-15T14:50:00.000Z",
+  "payload": {
+    "terminal": "B",
+    "lanes_open": 6
+  }
+}
+```
+
+---
+
+### 4.8e `baggage.commands` — baggage-service command input
+
+Same envelope contract as `flights.commands` (§4.8b).
+
+**Supported commands**
+
+| `command_type`   | Required payload fields                      | Effect |
+|------------------|----------------------------------------------|--------|
+| `RedirectBaggage` | `bag_id`, `target_flight_id` (must differ) | Re-assigns the `LOADED_ON` relationship in Neo4j to the target flight, removes the bag from its current conveyor zone, updates `last_scan_zone` to `"redirected"`, and emits `BaggageStatusChanged`. |
+
+**Rejection semantics:** unknown `command_type`, missing/empty `bag_id` or `target_flight_id`, `bag_id == target_flight_id`, bag not found in Neo4j, target flight not found in Neo4j → rejected, no side effect.
+
+**Example:**
+```json
+{
+  "command_type": "RedirectBaggage",
+  "command_id": "cmd-...",
+  "issued_by": "operator",
+  "issued_at": "2024-06-15T14:52:00.000Z",
+  "payload": {
+    "bag_id": "bag-uuid-...",
+    "target_flight_id": "flight-uuid-..."
   }
 }
 ```

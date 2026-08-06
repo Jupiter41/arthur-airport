@@ -54,3 +54,9 @@ envelope_invalid_total = Counter(
     "Rejected Kafka envelopes",
     ["reason"],
 )
+
+pax_commands_total = Counter(
+    "pax_commands_total",
+    "passengers.commands consumed by command_type and outcome (accepted/rejected)",
+    ["command_type", "outcome"],
+)

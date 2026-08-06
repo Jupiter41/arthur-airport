@@ -129,7 +129,8 @@ Populated at schedule seed time. Every aircraft has exactly two legs per day.
 # aircraft_registration → {inbound_flight_id, outbound_flight_id}
 _turnaround_map: dict[str, dict] = {}
 
-WIDE_BODY_TYPES = {"B77W", "A333", "A332", "B748", "A380"}
+# Body-class classification is shared — import, do not redefine.
+from _common.aircraft import WIDE_BODY_TYPES
 
 async def propagate_turnaround(flight_id: str, delay_min: int,
                                 depth: int, sim_time: datetime):

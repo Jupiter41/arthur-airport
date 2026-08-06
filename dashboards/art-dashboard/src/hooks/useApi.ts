@@ -214,13 +214,15 @@ export const incidentsApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  contain: (id: string) =>
+  contain: (id: string, note = "") =>
     apiFetch<unknown>(`/incidents/${encodeURIComponent(id)}/contain`, {
       method: "POST",
+      body: JSON.stringify({ note }),
     }),
-  resolve: (id: string) =>
+  resolve: (id: string, note = "") =>
     apiFetch<unknown>(`/incidents/${encodeURIComponent(id)}/resolve`, {
       method: "POST",
+      body: JSON.stringify({ note }),
     }),
   report: (id: string) =>
     apiFetch<unknown>(`/incidents/${encodeURIComponent(id)}/report`),
@@ -275,6 +277,24 @@ export const airportApi = {
 };
 
 // ── Analysis ──
+export interface Approval {
+  id: string;
+  action_type: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  confidence_score: number;
+  proposed_by: string;
+  proposed_at: string;
+  recommendation_id: string | null;
+  bottleneck_id: string | null;
+  status: "pending" | "approved" | "rejected" | "executed";
+  requires_human: boolean;
+  decided_by: string | null;
+  decided_at: string | null;
+  reject_reason: string | null;
+  executed_at: string | null;
+}
+
 export const analysisApi = {
   bottlenecks: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
@@ -285,6 +305,11 @@ export const analysisApi = {
   recommendations: () =>
     apiFetch<{ recommendations: unknown[]; count: number }>(
       "/analysis/recommendations",
+    ),
+  applyRecommendation: (id: string) =>
+    apiFetch<{ applied: boolean; action: Record<string, unknown> }>(
+      `/analysis/recommendations/${encodeURIComponent(id)}/apply`,
+      { method: "POST" },
     ),
   whatIf: (body: {
     actions: Array<{
@@ -311,6 +336,26 @@ export const analysisApi = {
   autonomousLog: (limit = 50) =>
     apiFetch<{ actions: unknown[]; total: number }>(
       `/analysis/autonomous/log?limit=${limit}`,
+    ),
+  // A9: approval queue — proposals awaiting a human Approve/Reject.
+  approvals: (all = false) =>
+    apiFetch<{ approvals: Approval[]; count: number; sim_time: string | null }>(
+      `/analysis/approvals${all ? "?all=true" : ""}`,
+    ),
+  approveProposal: (id: string, decided_by = "operator") =>
+    apiFetch<{
+      approved: boolean;
+      executed: boolean;
+      command: string | null;
+      action: Record<string, unknown>;
+    }>(`/analysis/approvals/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ decided_by }),
+    }),
+  rejectProposal: (id: string, reason = "", decided_by = "operator") =>
+    apiFetch<{ rejected: boolean; proposal: Approval }>(
+      `/analysis/approvals/${encodeURIComponent(id)}/reject`,
+      { method: "POST", body: JSON.stringify({ reason, decided_by }) },
     ),
   // Phase 5: Anomaly detection (P5-3-1)
   anomalies: () => apiFetch<unknown>("/analysis/anomalies"),

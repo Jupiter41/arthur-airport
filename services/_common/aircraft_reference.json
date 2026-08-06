@@ -1,0 +1,5 @@
+{
+  "_comment": "Single source of truth for aircraft body-class classification, shared across all services (cost, planning, flight). Edit here — do not redefine WIDE_BODY_TYPES/REGIONAL_TYPES in individual services. Anything not listed defaults to the 'narrow' family.",
+  "wide_body_types": ["A332", "A333", "A359", "A380", "B748", "B77W"],
+  "regional_types": ["AT75", "DH8D", "E195"]
+}

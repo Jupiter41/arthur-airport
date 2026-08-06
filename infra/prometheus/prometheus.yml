@@ -36,6 +36,14 @@ scrape_configs:
     static_configs:
       - targets: ['analysis-service:8007']
 
+  - job_name: cost-service
+    static_configs:
+      - targets: ['cost-service:8008']
+
+  - job_name: planning-service
+    static_configs:
+      - targets: ['planning-service:8009']
+
   - job_name: api-gateway
     static_configs:
       - targets: ['api-gateway:3000']

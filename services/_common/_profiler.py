@@ -4,7 +4,7 @@ Measures wall-clock time spent processing each SimClockTick and exposes
 Prometheus metrics for tick budget utilisation monitoring.
 
 Usage in kafka/consumer.py:
-    from _profiler import tick_timer, update_speed
+    from _common._profiler import tick_timer, update_speed
 
     with tick_timer():
         # ... process tick ...

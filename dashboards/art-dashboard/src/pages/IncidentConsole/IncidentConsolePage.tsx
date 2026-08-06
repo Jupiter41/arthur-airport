@@ -23,12 +23,14 @@ import {
   ReportGenerator,
 } from "./Phase5Panels";
 import { IncidentCard } from "./IncidentCard";
+import { IncidentActions } from "./IncidentActions";
 import { CascadeVisualizerPanel, CascadeModal } from "./CascadeTree";
 import { ProtocolBar } from "./ProtocolBar";
 import { AlertFeed } from "./AlertFeed";
 import { InjectModal } from "./InjectModal";
 import { ResolvedList } from "./ResolvedList";
 import { RecommendationFeed } from "./RecommendationFeed";
+import { ApprovalQueue } from "./ApprovalQueue";
 import { TABS } from "./constants";
 import type { TabId } from "./constants";
 import type { ExportFormat } from "../../utils/exportData";
@@ -168,6 +170,9 @@ export default function IncidentConsolePage() {
             </div>
 
             <div className="col-span-2 space-y-3">
+              {selectedIncident && (
+                <IncidentActions incident={selectedIncident} />
+              )}
               <CascadeVisualizerPanel incident={selectedIncident} />
               <ProtocolBar incident={selectedIncident} />
             </div>
@@ -185,6 +190,8 @@ export default function IncidentConsolePage() {
       {/* ── Tab: Analysis ── */}
       {activeTab === "analysis" && (
         <>
+          <ApprovalQueue />
+
           <RecommendationFeed
             bottlenecks={
               (bnQuery.data as AnalysisBottleneck[] | undefined) ??

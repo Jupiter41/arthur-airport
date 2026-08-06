@@ -27,6 +27,7 @@ from models.domain import (
     AutonomousSettings,
     Recommendation,
 )
+from services import approval_queue
 from services.whatif import _log_entry
 
 logger = logging.getLogger(__name__)
@@ -131,34 +132,73 @@ def evaluate_and_apply(
             )
             continue
 
-        # P2-4-4: Safety guard check
-        if rec.action_type in SAFETY_GUARDED_ACTIONS:
-            logger.info(
-                "Autonomous: skipping safety-guarded action %s (%s)",
-                rec.action_type, rec.id,
-            )
+        if rec.expiry_sim_time < sim_time:
             continue
 
-        if rec.action_type in _settings.blocked_actions:
+        # A9: route every candidate through the approval queue. The gating rule
+        # decides auto-apply vs human-approval vs block/skip.
+        verdict = approval_queue.classify(
+            rec.action_type.value,
+            rec.confidence_score,
+            safety_guarded=rec.action_type in SAFETY_GUARDED_ACTIONS,
+            blocked=rec.action_type in _settings.blocked_actions,
+            threshold=_settings.confidence_threshold,
+        )
+
+        if verdict == approval_queue.BLOCK:
             logger.info(
                 "Autonomous: skipping user-blocked action %s (%s)",
                 rec.action_type, rec.id,
             )
             continue
 
-        if rec.confidence_score < _settings.confidence_threshold:
+        if verdict == approval_queue.SKIP:
             logger.debug(
                 "Autonomous: confidence %.2f < threshold %.2f for %s",
                 rec.confidence_score, _settings.confidence_threshold, rec.id,
             )
             continue
 
-        if rec.expiry_sim_time < sim_time:
+        if verdict == approval_queue.HUMAN:
+            # Safety-guarded: surface for human Approve/Reject instead of
+            # silently dropping. The recommendation is NOT applied yet; the
+            # cooldown is registered so we don't re-propose the same bottleneck
+            # every cycle while it awaits a decision.
+            approval_queue.propose(
+                action_type=rec.action_type.value,
+                description=rec.description,
+                parameters=dict(rec.parameters),
+                confidence_score=rec.confidence_score,
+                proposed_by="autonomous",
+                proposed_at=sim_time,
+                recommendation_id=rec.id,
+                bottleneck_id=rec.bottleneck_id,
+                requires_human=True,
+            )
+            _bottleneck_cooldowns[rec.bottleneck_id] = sim_time
+            logger.info(
+                "Autonomous: proposed safety-guarded action %s (%s) for approval",
+                rec.action_type, rec.id,
+            )
             continue
 
-        # Auto-apply this recommendation
+        # verdict == AUTO — auto-apply this recommendation
         rec.applied = True
         rec.applied_at = sim_time
+
+        # Record an auto-approved+executed proposal for a unified, auditable trail.
+        _proposal = approval_queue.propose(
+            action_type=rec.action_type.value,
+            description=rec.description,
+            parameters=dict(rec.parameters),
+            confidence_score=rec.confidence_score,
+            proposed_by="autonomous",
+            proposed_at=sim_time,
+            recommendation_id=rec.id,
+            bottleneck_id=rec.bottleneck_id,
+            requires_human=False,
+        )
+        approval_queue.mark_executed(_proposal.id, sim_time)
 
         # Record cooldown so we don't re-apply for this bottleneck
         _bottleneck_cooldowns[rec.bottleneck_id] = sim_time
@@ -201,6 +241,93 @@ def evaluate_and_apply(
             break
 
     return actions_taken
+
+
+def apply_recommendation(
+    recommendations: list[Recommendation],
+    recommendation_id: str,
+    sim_time: datetime,
+    *,
+    initiated_by: str = "operator",
+) -> dict | None:
+    """Apply a single recommendation by id (manual operator "Apply").
+
+    This is the real, non-theatrical replacement for the old client-side
+    what-if projection: it marks the recommendation applied, records it in the
+    action log (tagged with who initiated it), registers the bottleneck
+    cooldown so the autonomous engine won't immediately re-action it, and
+    returns the log entry so the caller can emit the corresponding event.
+
+    Returns the log entry on success, or ``None`` if the recommendation id is
+    unknown or already applied. Pure w.r.t. I/O — no Kafka/Neo4j here; the
+    caller emits the event.
+    """
+    rec = next((r for r in recommendations if r.id == recommendation_id), None)
+    if rec is None or rec.applied:
+        return None
+
+    rec.applied = True
+    rec.applied_at = sim_time
+    _bottleneck_cooldowns[rec.bottleneck_id] = sim_time
+
+    log_entry = {
+        "id": f"op-{uuid4().hex[:12]}",
+        "recommendation_id": rec.id,
+        "action_type": rec.action_type.value,
+        "description": rec.description,
+        "confidence_score": rec.confidence_score,
+        "applied_at": sim_time.isoformat(),
+        "expected_impact": rec.expected_impact,
+        "initiated_by": initiated_by,
+        "parameters": dict(rec.parameters),
+        "actual_outcome": None,
+        "outcome_measured_at": None,
+    }
+    _action_log.append(log_entry)
+    if len(_action_log) > MAX_ACTION_LOG:
+        _action_log.pop(0)
+
+    logger.info(
+        "Recommendation %s applied by %s — %s",
+        rec.id, initiated_by, rec.description,
+    )
+    return log_entry
+
+
+def record_proposal_execution(
+    proposal: dict,
+    sim_time: datetime,
+    *,
+    decided_by: str,
+) -> dict:
+    """Record an action-log entry for an approved+executed proposal.
+
+    Produces the same log shape as an autonomous/operator apply so the existing
+    ``record_outcome`` can later fill in the measured outcome (30 min later).
+    Returns the log entry for the caller to emit as an event.
+    """
+    log_entry = {
+        "id": f"appr-{uuid4().hex[:12]}",
+        "recommendation_id": proposal.get("recommendation_id"),
+        "proposal_id": proposal.get("id"),
+        "action_type": proposal.get("action_type"),
+        "description": proposal.get("description"),
+        "confidence_score": proposal.get("confidence_score"),
+        "applied_at": sim_time.isoformat(),
+        "initiated_by": proposal.get("proposed_by"),
+        "approved_by": decided_by,
+        "parameters": dict(proposal.get("parameters") or {}),
+        "actual_outcome": None,
+        "outcome_measured_at": None,
+    }
+    _action_log.append(log_entry)
+    if len(_action_log) > MAX_ACTION_LOG:
+        _action_log.pop(0)
+    logger.info(
+        "Approved proposal %s executed (approved_by=%s) — %s",
+        proposal.get("id"), decided_by, proposal.get("description"),
+    )
+    return log_entry
 
 
 def record_outcome(

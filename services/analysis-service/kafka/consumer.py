@@ -26,6 +26,7 @@ from services.state import OperationalState
 from services.detectors import check_resolved, detect_all
 from services.recommender import generate_recommendations
 from services.autonomous import evaluate_and_apply, evaluate_rl_agent, should_evaluate, get_settings as get_autonomous_settings, _bottleneck_cooldowns
+from services import approval_queue
 from services.anomaly import detector as anomaly_detector
 from services.nlp.narration import narration as narration_engine
 from kafka.producer import (
@@ -33,6 +34,7 @@ from kafka.producer import (
     emit_bottleneck_resolved,
     emit_recommendation_generated,
     emit_autonomous_action,
+    emit_action_proposed,
     emit_anomaly_detected,
     emit_narration_generated,
 )
@@ -351,6 +353,12 @@ async def _on_tick(payload: dict) -> None:
             autonomous_actions_total.labels(
                 action_type=action.get("action_type", ""),
             ).inc()
+
+        # A9: emit ActionProposed for any proposals the engine surfaced this
+        # cycle (safety-guarded actions awaiting human approval, plus the
+        # auto-approved audit records). Each proposal is emitted exactly once.
+        for proposal in approval_queue.take_unemitted():
+            emit_action_proposed(proposal.to_dict(), now)
 
     # P5-3-1: Anomaly detection
     anomaly_result = anomaly_detector.on_tick(

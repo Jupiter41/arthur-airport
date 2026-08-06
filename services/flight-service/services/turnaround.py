@@ -13,7 +13,8 @@ from db.neo4j import get_paired_flight, apply_delay
 
 logger = logging.getLogger(__name__)
 
-WIDE_BODY_TYPES = {"B77W", "A333", "A332", "B748", "A380"}
+# Body-class classification is shared across all services — see _common/aircraft.py.
+from _common.aircraft import WIDE_BODY_TYPES
 
 CASCADE_MAX_DEPTH = int(os.getenv("CASCADE_MAX_DEPTH", "5"))
 TURNAROUND_NARROW_MIN = int(os.getenv("TURNAROUND_NARROW_MIN", "30"))

@@ -22,10 +22,9 @@ from db.neo4j import (
 )
 from kafka.producer import emit_cost_recorded
 
-logger = structlog.get_logger(__name__)
+from _common.aircraft import WIDE_BODY_TYPES, aircraft_family as _aircraft_family
 
-WIDE_BODY_TYPES = {"B77W", "A333", "A332", "A359"}
-REGIONAL_TYPES = {"DH8D", "E195", "AT75"}
+logger = structlog.get_logger(__name__)
 
 # In-memory running totals — rebuilt from Neo4j on restart
 _running_totals: dict = {
@@ -124,14 +123,6 @@ def _record_cost(amount: float, category: str, is_revenue: bool = False, *, sim_
         _running_totals["total_revenue_eur"] - _running_totals["total_cost_eur"]
     )
     _running_totals["last_updated"] = sim_time or _running_totals["last_updated"]
-
-
-def _aircraft_family(aircraft_type: str) -> str:
-    if aircraft_type in WIDE_BODY_TYPES:
-        return "wide"
-    if aircraft_type in REGIONAL_TYPES:
-        return "regional"
-    return "narrow"
 
 
 # ─── Phase 3: Cost calculators ──────────────────────────────────

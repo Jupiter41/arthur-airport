@@ -72,3 +72,9 @@ ground_vehicle_contention_total = Counter(
     "Total ground vehicle contention events (no vehicle available)",
     ["vehicle_type"],
 )
+
+flight_commands_total = Counter(
+    "flight_commands_total",
+    "flights.commands consumed by command_type and outcome (accepted/rejected)",
+    ["command_type", "outcome"],
+)

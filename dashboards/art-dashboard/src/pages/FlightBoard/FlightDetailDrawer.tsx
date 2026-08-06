@@ -1,5 +1,8 @@
+import { useState } from "react";
 import type { Flight } from "../../types";
 import { StatusBadge } from "../../components/StatusBadge";
+import { flightsApi } from "../../hooks/useApi";
+import { queryClient } from "../../queryClient";
 import { formatTime } from "./helpers";
 
 function Info({ label, value }: { label: string; value: string }) {
@@ -7,6 +10,119 @@ function Info({ label, value }: { label: string; value: string }) {
     <div>
       <div className="text-xs text-gray-400 font-medium">{label}</div>
       <div className="text-gray-100">{value}</div>
+    </div>
+  );
+}
+
+// Mirrors the flight-service REST guards (routers/flights.py): hold is only
+// accepted before/at a decision point; release only unwinds a held (delayed)
+// flight. We surface the button that the backend will actually accept.
+const HOLDABLE_STATUSES = new Set(["scheduled", "boarding", "approach"]);
+
+const HOLD_REASONS = [
+  "gate_conflict",
+  "crew_readiness",
+  "ctot_slot",
+  "connecting_pax",
+  "equipment_failure",
+] as const;
+
+function FlightActions({ flight }: { flight: Flight }) {
+  const [reason, setReason] = useState<string>(HOLD_REASONS[0]);
+  const [duration, setDuration] = useState<number>(15);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const canHold = HOLDABLE_STATUSES.has(flight.status);
+  const canRelease = flight.status === "delayed";
+
+  if (!canHold && !canRelease) return null;
+
+  const refresh = () =>
+    queryClient.invalidateQueries({ queryKey: ["flights"] });
+
+  const run = async (fn: () => Promise<unknown>, label: string) => {
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      await fn();
+      await refresh();
+      setDone(label);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-gray-700 pt-4">
+      <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+        Operator Actions
+      </h3>
+
+      {canHold && (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <select
+              aria-label="Hold reason"
+              className="flex-1 bg-gray-700 text-gray-100 text-sm rounded px-2 py-1 border border-gray-600"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              disabled={busy}
+            >
+              {HOLD_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {r.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+            <input
+              aria-label="Hold duration (minutes)"
+              type="number"
+              min={1}
+              max={240}
+              className="w-20 bg-gray-700 text-gray-100 text-sm rounded px-2 py-1 border border-gray-600"
+              value={duration}
+              onChange={(e) => setDuration(Number(e.target.value))}
+              disabled={busy}
+            />
+            <span className="self-center text-xs text-gray-400">min</span>
+          </div>
+          <button
+            className="w-full text-sm font-bold px-3 py-2 rounded bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50"
+            disabled={busy || duration < 1}
+            onClick={() =>
+              run(
+                () => flightsApi.hold(flight.id, reason, duration),
+                `Held ${flight.flight_number} (${duration} min)`,
+              )
+            }
+          >
+            {busy ? "…" : "Hold flight"}
+          </button>
+        </div>
+      )}
+
+      {canRelease && (
+        <button
+          className="w-full text-sm font-bold px-3 py-2 rounded bg-green-600 text-white hover:bg-green-500 disabled:opacity-50"
+          disabled={busy}
+          onClick={() =>
+            run(
+              () => flightsApi.release(flight.id),
+              `Released ${flight.flight_number}`,
+            )
+          }
+        >
+          {busy ? "…" : "Release hold"}
+        </button>
+      )}
+
+      {done && <div className="text-xs text-green-400 mt-2">✓ {done}</div>}
+      {error && <div className="text-xs text-red-400 mt-2">{error}</div>}
     </div>
   );
 }
@@ -154,6 +270,8 @@ export function FlightDetailDrawer({
               </div>
             )}
         </div>
+
+        <FlightActions flight={flight} />
       </div>
     </div>
   );
