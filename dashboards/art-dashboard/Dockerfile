@@ -2,7 +2,7 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 COPY package*.json .
-RUN npm install
+RUN npm ci
 COPY . .
 
 # Accept Mapbox token as a build-time arg so Vite can inline it

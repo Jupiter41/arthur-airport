@@ -395,10 +395,18 @@ All seven Python services use the same Dockerfile structure:
 ```dockerfile
 FROM python:3.11-slim
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# BuildKit cache mount: pip's wheel/HTTP cache lives outside the image layers,
+# so rebuilds reuse downloads even when the layer itself is invalidated.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --only-binary=:all: -r requirements.txt
 
 COPY . .
 
@@ -411,27 +419,57 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
 ```
 
+**Size/caching notes (all Python services):**
+
+- Dependencies are **pinned with `==`** in `requirements.txt` so builds are reproducible and the
+  pip layer cache stays valid predictably.
+- The `--mount=type=cache,target=/root/.cache/pip` BuildKit mount keeps pip's download cache
+  *between* builds (no re-downloads when the layer rebuilds) while never baking it into the image.
+- `--only-binary=:all:` avoids source builds.
+- **analysis-service** additionally installs CPU-only torch (SB3 requires it, and PyPI's default
+  build bundles the ~2.5 GB CUDA runtime):
+  ```dockerfile
+  RUN --mount=type=cache,target=/root/.cache/pip \
+      pip install "torch==2.13.0+cpu" --extra-index-url https://download.pytorch.org/whl/cpu
+  ```
+  `tensorboard` (training-only) lives in `requirements-training.txt`, not the runtime image.
+
 ---
 
 ## 5. Node.js gateway Dockerfile template
 
 ```dockerfile
-FROM node:20-slim
+FROM node:20-slim AS builder
 
 WORKDIR /app
+COPY package*.json .
+RUN npm ci
+COPY . .
+RUN npx tsc
+
+FROM node:20-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV NODE_ENV=production
 
 COPY package*.json .
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-COPY . .
+COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-CMD ["node", "src/index.js"]
+CMD ["node", "dist/index.js"]
 ```
+
+The gateway uses a **multi-stage build**: devDependencies (typescript, ts-node, @types/*) are
+installed only in the builder stage, so the runtime image ships production `node_modules` + `dist`
+only. `npm ci` (not `npm install`) is used for deterministic, cache-friendly installs.
 
 ---
 

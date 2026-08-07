@@ -1,0 +1,4 @@
+# Extra deps for RL training only (not needed at runtime).
+# Install alongside requirements.txt when training models:
+#   pip install -r requirements-training.txt
+tensorboard==2.21.0

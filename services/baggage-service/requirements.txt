@@ -1,14 +1,14 @@
-fastapi>=0.111.0
-uvicorn[standard]>=0.29.0
-pydantic>=2.7.0
-neo4j>=5.20.0
-confluent-kafka>=2.4.0
-prometheus-fastapi-instrumentator>=6.1.0
-python-dotenv>=1.0.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+pydantic==2.13.4
+neo4j==6.2.0
+confluent-kafka==2.15.0
+prometheus-fastapi-instrumentator==8.1.0
+python-dotenv==1.2.2
 # Phase 6: OpenTelemetry tracing (P6-1)
-opentelemetry-api>=1.24.0
-opentelemetry-sdk>=1.24.0
-opentelemetry-exporter-otlp-proto-http>=1.24.0
-opentelemetry-instrumentation-fastapi>=0.45b0
+opentelemetry-api==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.44.0
+opentelemetry-instrumentation-fastapi==0.65b0
 # Phase 6: Structured logging (P6-2)
-structlog>=24.1.0
+structlog==26.1.0

@@ -1,10 +1,15 @@
 __pycache__/
 *.pyc
 *.pyo
+.venv/
+venv/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
 *.egg-info/
+.git/
+.env
+*.log
 SKILL.md
 README.md
 tests/
