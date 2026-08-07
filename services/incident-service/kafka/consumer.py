@@ -19,6 +19,7 @@ from typing import Callable, Awaitable
 from confluent_kafka import Consumer
 
 from _common.consumer_health import ConsumerHealthTracker
+from _common.airport_config import load_airport_runtime_config
 
 from db.neo4j import find_active_incident_by_type_and_location
 from kafka.producer import (
@@ -59,7 +60,7 @@ BASE_PROBABILITIES = {
     "system_failure": float(os.getenv("PROB_SYSTEM_FAILURE_PER_HR", "0.015")),
 }
 
-PEAK_HOURS = {7, 8, 9, 17, 18, 19}
+PEAK_HOURS = set(load_airport_runtime_config().simulation.peak_hours)
 RUNWAY_IDS = ["runway-09L", "runway-09R", "runway-27L", "runway-27R"]
 TERMINAL_IDS = ["terminal-A", "terminal-B", "terminal-C"]
 SYSTEM_SUBTYPES = ["conveyor_jam", "power_outage", "it_failure"]

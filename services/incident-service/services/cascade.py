@@ -1,13 +1,14 @@
 """Cascade engine — rule-based child incident spawning with depth limit and delay support."""
 
 import logging
-import os
 
 from datetime import datetime, timedelta
 
+from _common.airport_config import load_airport_runtime_config
+
 logger = logging.getLogger(__name__)
 
-CASCADE_MAX_DEPTH = int(os.getenv("CASCADE_MAX_DEPTH", "5"))
+CASCADE_MAX_DEPTH = load_airport_runtime_config().operations.cascade_max_depth
 
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 

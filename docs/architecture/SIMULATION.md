@@ -210,7 +210,7 @@ Flight delayed / cancelled
 
 - A delay propagates to the turnaround departure only if the delay is ≥ 15 minutes.
 - The turnaround delay = max(0, inbound_delay - turnaround_buffer) where `turnaround_buffer` = 30 minutes for narrow-body, 45 minutes for wide-body.
-- Maximum cascade depth: 5 hops (to prevent runaway propagation in simulation).
+- Maximum cascade depth: 5 hops (to prevent runaway propagation in simulation). Configurable via `operations.cascade_max_depth` in `config/airport.yaml` (default 5).
 
 ---
 
@@ -399,7 +399,7 @@ This section makes explicit the simplifications and assumptions underlying the s
 | Base probabilities are per simulated hour          | ~2–3 incidents per 8-hour shift on average      |
 | Peak-hour multiplier × 1.8                         | Higher traffic = higher risk                    |
 | Suppression window × 0.3 for 2 hours               | Prevents unrealistic incident clustering        |
-| Maximum cascade depth = 5                          | Prevents runaway computation                    |
+| Maximum cascade depth = 5 (`operations.cascade_max_depth` in `config/airport.yaml`) | Prevents runaway computation |
 | TTR is sampled uniformly from type-specific ranges | Simplification; real TTR has heavier right tail |
 
 ---

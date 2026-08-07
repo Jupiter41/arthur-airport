@@ -10,6 +10,8 @@ from uuid import uuid4
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient
 
+from services.airport_config import load_airport_runtime_config
+
 logger = logging.getLogger(__name__)
 
 _producer: Producer | None = None
@@ -172,6 +174,7 @@ def emit_weather_state_changed(
     category: str,
 ) -> None:
     """Emit initial WeatherStateChanged event."""
+    _cavok = load_airport_runtime_config().operations.weather_capacity["CAVOK"]
     payload = {
         "weather_id": str(uuid4()),
         "previous_category": None,
@@ -184,8 +187,8 @@ def emit_weather_state_changed(
         "temperature_c": 18.0,
         "phenomena": [],
         "runway_impact": "none",
-        "recommended_arrival_rate": 32,
-        "recommended_departure_rate": 32,
+        "recommended_arrival_rate": _cavok.arrival,
+        "recommended_departure_rate": _cavok.departure,
         "at": sim_time.isoformat(),
     }
     produce_event(

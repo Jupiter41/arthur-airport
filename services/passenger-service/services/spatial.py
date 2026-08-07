@@ -8,7 +8,9 @@ Special assistance: walking time × 2.5.
 import math
 from typing import Optional
 
-WALKING_SPEED = 84.0  # m/min (1.4 m/s)
+from _common.airport_config import load_airport_runtime_config
+
+WALKING_SPEED = load_airport_runtime_config().operations.walking_speed_m_min  # m/min (1.4 m/s)
 SPECIAL_ASSIST_MULT = 2.5
 
 

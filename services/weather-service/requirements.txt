@@ -14,3 +14,4 @@ opentelemetry-instrumentation-fastapi==0.65b0
 structlog==26.1.0
 websockets==17.0.1
 httpx==0.28.1
+pyyaml==6.0.3

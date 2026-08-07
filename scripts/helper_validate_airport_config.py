@@ -19,7 +19,10 @@ from typing import Any
 
 
 def _load_airport_config_module(repo_root: Path):
-    module_path = repo_root / "services" / "sim-orchestrator" / "services" / "airport_config.py"
+    services_dir = repo_root / "services"
+    if str(services_dir) not in sys.path:
+        sys.path.insert(0, str(services_dir))
+    module_path = services_dir / "_common" / "airport_config.py"
     spec = importlib.util.spec_from_file_location("airport_config", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load module at {module_path}")
@@ -68,17 +71,46 @@ def _runtime_to_dict(runtime: Any) -> dict[str, Any]:
             }
             for a in runtime.airlines
         ],
+        "accessibility": {
+            "total_per_terminal": runtime.accessibility.total_per_terminal,
+            "sla_target_pct": runtime.accessibility.sla_target_pct,
+            "boarding_cutoff_minutes": runtime.accessibility.boarding_cutoff_minutes,
+            "max_dispatch_wait_minutes": runtime.accessibility.max_dispatch_wait_minutes,
+        },
+        "operations": {
+            "walking_speed_m_min": runtime.operations.walking_speed_m_min,
+            "apron_speed_m_min": runtime.operations.apron_speed_m_min,
+            "cascade_max_depth": runtime.operations.cascade_max_depth,
+            "weather_capacity": {
+                c: {
+                    "arrival": runtime.operations.weather_capacity[c].arrival,
+                    "departure": runtime.operations.weather_capacity[c].departure,
+                    "runways": runtime.operations.weather_capacity[c].runways,
+                }
+                for c in runtime.operations.weather_capacity
+            },
+            "wind_thresholds_kt": runtime.operations.wind_thresholds_kt,
+            "wind_reductions": runtime.operations.wind_reductions,
+        },
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate airport.yaml and show normalized runtime config")
-    parser.add_argument("--path", default="config/airport.yaml", help="Path to airport config YAML")
+    parser = argparse.ArgumentParser(
+        description="Validate airport.yaml and show normalized runtime config"
+    )
+    parser.add_argument(
+        "--path", default="config/airport.yaml", help="Path to airport config YAML"
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON output")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
-    config_path = (repo_root / args.path).resolve() if not Path(args.path).is_absolute() else Path(args.path)
+    config_path = (
+        (repo_root / args.path).resolve()
+        if not Path(args.path).is_absolute()
+        else Path(args.path)
+    )
     os.environ["AIRPORT_CONFIG_PATH"] = str(config_path)
 
     if not config_path.exists():
@@ -101,12 +133,26 @@ def main() -> int:
         print(f"Codes: {runtime.identity.iata}/{runtime.identity.icao}")
         print(f"Terminals: {', '.join(runtime.terminal_codes)}")
         print(f"Total gates: {runtime.total_gates}")
-        print(f"Runway directions: {', '.join(d['id'] for d in runtime.runway_directions)}")
+        print(
+            f"Runway directions: {', '.join(d['id'] for d in runtime.runway_directions)}"
+        )
         print(f"Daily flights: {runtime.simulation.daily_flight_target}")
         print(f"Load factor mean: {runtime.simulation.load_factor_mean:.2f}")
         print(f"Peak hours: {runtime.simulation.peak_hours}")
         ft = runtime.flight_types.normalized
-        print(f"Flight types: DOM={ft['domestic']:.0%} INT-S={ft['international_short']:.0%} INT-L={ft['international_long']:.0%} CGO={ft['cargo']:.0%} CHR={ft['charter']:.0%}")
+        print(
+            f"Flight types: DOM={ft['domestic']:.0%} INT-S={ft['international_short']:.0%} INT-L={ft['international_long']:.0%} CGO={ft['cargo']:.0%} CHR={ft['charter']:.0%}"
+        )
+        print(f"Walking speed: {runtime.operations.walking_speed_m_min:.1f} m/min")
+        print(f"Apron speed: {runtime.operations.apron_speed_m_min:.1f} m/min")
+        print(f"Cascade depth: {runtime.operations.cascade_max_depth}")
+        wc = runtime.operations.weather_capacity
+        print(
+            "Weather capacity: "
+            + " | ".join(
+                f"{c}={wc[c].arrival}/{wc[c].departure}/{wc[c].runways}" for c in wc
+            )
+        )
 
     return 0
 

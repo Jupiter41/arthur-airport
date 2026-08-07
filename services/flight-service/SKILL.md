@@ -131,10 +131,11 @@ _turnaround_map: dict[str, dict] = {}
 
 # Body-class classification is shared — import, do not redefine.
 from _common.aircraft import WIDE_BODY_TYPES
+from _common.airport_config import load_airport_runtime_config
 
 async def propagate_turnaround(flight_id: str, delay_min: int,
                                 depth: int, sim_time: datetime):
-    if depth >= int(os.getenv("CASCADE_MAX_DEPTH", "5")):
+    if depth >= load_airport_runtime_config().operations.cascade_max_depth:
         return
     reg = await get_aircraft_registration(flight_id)
     outbound_id = _turnaround_map.get(reg, {}).get("outbound_flight_id")

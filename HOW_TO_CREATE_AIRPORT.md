@@ -165,6 +165,71 @@ airlines:
     hub_terminal: "B"
 ```
 
+### `operations` — Operational constants (D6)
+
+These constants are read by **all** domain services at startup from this single
+file (via `services/_common/airport_config.py`). Tune an airport by editing this
+one section — there are no private copies left in service code.
+
+| Field                         | Type          | Default                         | Constraints    | Description                                                        |
+| ----------------------------- | ------------- | ------------------------------- | -------------- | ------------------------------------------------------------------ |
+| `walking_speed_m_min`         | float         | `84.0`                          | > 0            | Passenger walking speed on footpaths (m/min)                       |
+| `apron_speed_m_min`           | float         | `83.3`                          | > 0            | Apron walking / ground-vehicle speed (m/min)                       |
+| `cascade_max_depth`           | int           | `5`                             | ≥ 1            | Max turnaround-propagation / incident-cascade tree depth           |
+| `weather_capacity`            | map           | _(see below)_                   | must cover all | Per-category runway arrival/departure rates and active runways     |
+| `wind_thresholds_kt`          | map           | `{crosswind: 25, crosswind_heavy: 35, tailwind: 10}` | all keys | Wind speeds that trigger capacity reductions (knots)               |
+| `wind_reductions`             | map           | `{crosswind: 0.85, crosswind_heavy: 0.60, tailwind: 0.70}` | all keys | Capacity multipliers applied when thresholds are exceeded          |
+
+**`weather_capacity`** entries — one per category `CAVOK`, `VMC`, `IMC`, `LIFR`:
+
+| Field       | Type | Description                                                |
+| ----------- | ---- | ---------------------------------------------------------- |
+| `arrival`   | int  | Arrival rate per hour (flights/h)                          |
+| `departure` | int  | Departure rate per hour (flights/h)                        |
+| `runways`   | int  | Active runways in this category (1 or 2)                   |
+
+```yaml
+operations:
+  walking_speed_m_min: 84.0
+  apron_speed_m_min: 83.3
+  cascade_max_depth: 5
+  weather_capacity:
+    CAVOK: { arrival: 32, departure: 32, runways: 2 }
+    VMC:   { arrival: 28, departure: 28, runways: 2 }
+    IMC:   { arrival: 18, departure: 16, runways: 1 }
+    LIFR:  { arrival: 8,  departure: 6,  runways: 1 }
+  wind_thresholds_kt:
+    crosswind: 25
+    crosswind_heavy: 35
+    tailwind: 10
+  wind_reductions:
+    crosswind: 0.85
+    crosswind_heavy: 0.60
+    tailwind: 0.70
+```
+
+### `accessibility` — Special assistance (1C)
+
+Sizes the wheelchair / special-assistance pool per terminal.
+
+| Field                        | Type          | Default             | Description                                             |
+| ---------------------------- | ------------- | ------------------- | ------------------------------------------------------- |
+| `total_per_terminal`         | map[str, int] | `{A: 8, B: 12, C: 8}` | Assistance staff pool size per terminal               |
+| `sla_target_pct`             | float         | `90.0`              | % of requests handled within SLA                        |
+| `boarding_cutoff_minutes`    | int           | `15`                | Cut-off before departure for boarding assistance        |
+| `max_dispatch_wait_minutes`  | int           | `30`                | Max wait before dispatch                                 |
+
+```yaml
+accessibility:
+  total_per_terminal:
+    A: 8
+    B: 12
+    C: 8
+  sla_target_pct: 90.0
+  boarding_cutoff_minutes: 15
+  max_dispatch_wait_minutes: 30
+```
+
 ---
 
 ## Runtime-tuneable parameters
@@ -494,13 +559,14 @@ flight_types:
 
 ## Config resolution order
 
-The sim-orchestrator looks for the config file in this order:
+All Python services look for the config file in this order:
 
 1. `AIRPORT_CONFIG_PATH` environment variable (if set)
 2. `config/airport.yaml` relative to the repository root
 3. `/app/config/airport.yaml` inside the Docker container
 
-In docker-compose, the sim-orchestrator mounts `./config` to `/app/config`.
+In docker-compose, the `x-python-service` anchor mounts `./config` to
+`/app/config` (read-only) for every service.
 
 If no config file is found, the simulation uses built-in defaults (Arthur
 International Airport with 3 terminals, 42 gates, 2 runways, 420 flights/day).
@@ -531,6 +597,8 @@ Common validation errors:
 - `gates_per_terminal length must match terminals` — ensure the list has exactly as many entries as `terminals`
 - `flight_types weights must sum to ~1.0` — ensure the five type percentages add up to 1.0 (±0.01)
 - `peak_hours contains invalid values` — all hours must be 0–23
+- `operations.weather_capacity must cover ...` — all four categories (CAVOK, VMC, IMC, LIFR) are required
+- `operations.wind_thresholds_kt must include ...` — all three keys (`crosswind`, `crosswind_heavy`, `tailwind`) are required
 
 ---
 

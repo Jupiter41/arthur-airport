@@ -473,7 +473,7 @@ Streams all incident events in real time. Always receives `IncidentAlert` payloa
 | `NEO4J_USER`                      | `neo4j`             |                                  |
 | `NEO4J_PASSWORD`                  | `art-digital-twin`  |                                  |
 | `KAFKA_BROKERS`                   | `kafka:9092`        |                                  |
-| `CASCADE_MAX_DEPTH`               | `5`                 | Maximum cascade tree depth       |
+| `CASCADE_MAX_DEPTH`               | `5`                 | Maximum cascade tree depth — now from `operations.cascade_max_depth` in `config/airport.yaml` (D6), env var removed |
 | `PROB_RUNWAY_INCURSION_PER_HR`    | `0.005`             | Base probability                 |
 | `PROB_BAGGAGE_FIRE_PER_HR`        | `0.008`             | Base probability                 |
 | `PROB_SECURITY_BREACH_PER_HR`     | `0.010`             | Base probability                 |

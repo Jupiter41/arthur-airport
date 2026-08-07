@@ -91,9 +91,9 @@
     "slot_fee_eur": 2000.0
   },
   "operations": {
-    "_comment": "Operating estimates used by hourly cost ticks. Tunable at runtime via PATCH /rates.",
+    "_comment": "Operating estimates used by hourly cost ticks. peak_hours mirrors simulation.peak_hours in config/airport.yaml (single source, guarded by tests/unit/test_operational_constants_single_source.py). Tunable at runtime via PATCH /rates.",
     "peak_hours": [
-      6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22
+      7, 8, 9, 17, 18, 19
     ],
     "peak": {
       "security_lanes_open": 8,

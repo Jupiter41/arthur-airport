@@ -326,7 +326,7 @@ Maintains a map of `aircraft_registration → (inbound_flight, outbound_flight)`
 | `KAFKA_BROKERS` | `kafka:9092` | Kafka bootstrap servers |
 | `TURNAROUND_NARROW_MIN` | `30` | Narrow-body turnaround buffer (minutes) |
 | `TURNAROUND_WIDE_MIN` | `45` | Wide-body turnaround buffer |
-| `CASCADE_MAX_DEPTH` | `5` | Max turnaround propagation hops |
+| `CASCADE_MAX_DEPTH` | `5` | Max turnaround propagation hops — now from `operations.cascade_max_depth` in `config/airport.yaml` (D6), env var removed |
 | `LOG_LEVEL` | `INFO` | |
 
 ---

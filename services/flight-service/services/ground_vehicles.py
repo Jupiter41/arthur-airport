@@ -14,6 +14,8 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from _common.airport_config import load_airport_runtime_config
+
 logger = logging.getLogger(__name__)
 
 # Vehicle types and the turnaround tasks they serve
@@ -38,7 +40,7 @@ FLEET_SIZE: dict[str, int] = {
 DEPOT_POSITION: dict[str, float] = {"x": 500.0, "y": 300.0}
 
 # Vehicle speed on apron in metres per minute (same as spatial.APRON_SPEED)
-VEHICLE_SPEED_M_PER_MIN = 83.3
+VEHICLE_SPEED_M_PER_MIN = load_airport_runtime_config().operations.apron_speed_m_min
 
 
 @dataclass

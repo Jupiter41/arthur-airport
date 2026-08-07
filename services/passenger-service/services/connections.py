@@ -8,6 +8,8 @@ import math
 import os
 from datetime import datetime
 
+from _common.airport_config import load_airport_runtime_config
+
 MCT_MINUTES = int(os.getenv("MIN_CONNECTION_TIME_MIN", "45"))
 
 
@@ -51,7 +53,7 @@ def compute_time_to_connection(
     return max(0, int(delta.total_seconds() / 60))
 
 
-_WALKING_SPEED = 84.0  # m/min
+_WALKING_SPEED = load_airport_runtime_config().operations.walking_speed_m_min  # m/min
 _SPECIAL_ASSIST_MULT = 2.5
 
 

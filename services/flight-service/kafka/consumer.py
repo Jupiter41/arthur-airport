@@ -14,6 +14,7 @@ from typing import Callable, Awaitable
 
 from _common.idempotency import IdempotencyTracker
 from _common.consumer_health import ConsumerHealthTracker
+from _common.airport_config import load_airport_runtime_config
 
 from confluent_kafka import Consumer
 
@@ -133,7 +134,7 @@ class FlightConsumerState:
             "holding_fuel_warn_minutes": 30,
             "holding_fuel_panpan_minutes": 45,
         }
-        self.peak_hours: set[int] = {7, 8, 9, 17, 18, 19}
+        self.peak_hours: set[int] = set(load_airport_runtime_config().simulation.peak_hours)
         # ── Ground vehicle pool (Phase 1.3) ──
         self.vehicle_pool = GroundVehiclePool()
         self.vehicles_initialized: bool = False
@@ -232,6 +233,7 @@ class FlightConsumerState:
 
 
 # Module-level singleton
+_cavok = load_airport_runtime_config().operations.weather_capacity["CAVOK"]
 _state = FlightConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False
@@ -1349,8 +1351,8 @@ async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
     _state.sim_time = sim_time
 
     category = payload.get("new_category", "CAVOK")
-    arrival_rate = payload.get("recommended_arrival_rate", 32)
-    departure_rate = payload.get("recommended_departure_rate", 32)
+    arrival_rate = payload.get("recommended_arrival_rate", _cavok.arrival)
+    departure_rate = payload.get("recommended_departure_rate", _cavok.departure)
     runway_impact = payload.get("runway_impact", "none")
 
     _state.runway_queue.update_capacity(arrival_rate, departure_rate, category)

@@ -360,7 +360,7 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
 - ✅ Promote to `_common` and delete copies: `neo4j_client`, `kafka_runtime`, `EventEnvelope` producer
   path, `_logging/_tracing/_profiler`; make `IdempotencyTracker` mandatory. Fix `_template`. *(A5 — pilot: flight-service)*
 - ✅ Refactor consumers into thin adapters over pure `application.handle()` (start with flight + pax). *(A6 — partial: pure decisions extracted, full handle() inversion deferred)*
-- Externalize D6 constants to `config/airport.yaml`.
+- ✅ Externalize D6 constants to `config/airport.yaml`.
 - *Affected:* all `services/*/db|kafka`, `_common/*`, `_template/*`. **Complexity:** MED–HIGH.
   **Deps:** none (mechanical). **Value:** HIGH — every later change gets cheaper; unit tests become
   possible.

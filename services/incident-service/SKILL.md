@@ -170,7 +170,7 @@ SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
 async def evaluate_cascades(parent: dict, sim_time: datetime):
     depth = parent.get("cascade_depth", 0)
-    if depth >= int(os.getenv("CASCADE_MAX_DEPTH", "5")):
+    if depth >= load_airport_runtime_config().operations.cascade_max_depth:
         return
 
     rules = CASCADE_RULES.get(parent["type"], [])

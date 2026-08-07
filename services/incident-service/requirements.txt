@@ -12,3 +12,4 @@ opentelemetry-exporter-otlp-proto-http==1.44.0
 opentelemetry-instrumentation-fastapi==0.65b0
 # Phase 6: Structured logging (P6-2)
 structlog==26.1.0
+pyyaml==6.0.3

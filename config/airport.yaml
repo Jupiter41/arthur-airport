@@ -51,6 +51,30 @@ simulation:
     21: 5
     22: 3
 
+# D6 — operational constants. Single source of truth, loaded via
+# `_common/airport_config.py`. Tuning an airport is editing this file.
+# Walking/apron speeds in m/min; cascade_max_depth caps incident + turnaround
+# delay propagation; weather_capacity = per-category runway rates; the wind
+# thresholds/reductions apply the published reductions when wind exceeds the
+# threshold (crosswind > 25kt → ×0.85, > 35kt → ×0.60, tailwind > 10kt → ×0.70).
+operations:
+  walking_speed_m_min: 84.0
+  apron_speed_m_min: 83.3
+  cascade_max_depth: 5
+  weather_capacity:
+    CAVOK: { arrival: 32, departure: 32, runways: 2 }
+    VMC:   { arrival: 28, departure: 28, runways: 2 }
+    IMC:   { arrival: 18, departure: 16, runways: 1 }
+    LIFR:  { arrival: 8,  departure: 6,  runways: 1 }
+  wind_thresholds_kt:
+    crosswind: 25
+    crosswind_heavy: 35
+    tailwind: 10
+  wind_reductions:
+    crosswind: 0.85
+    crosswind_heavy: 0.60
+    tailwind: 0.70
+
 flight_types:
   domestic: 0.42
   international_short: 0.28

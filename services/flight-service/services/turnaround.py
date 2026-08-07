@@ -15,8 +15,9 @@ logger = logging.getLogger(__name__)
 
 # Body-class classification is shared across all services — see _common/aircraft.py.
 from _common.aircraft import WIDE_BODY_TYPES
+from _common.airport_config import load_airport_runtime_config
 
-CASCADE_MAX_DEPTH = int(os.getenv("CASCADE_MAX_DEPTH", "5"))
+CASCADE_MAX_DEPTH = load_airport_runtime_config().operations.cascade_max_depth
 TURNAROUND_NARROW_MIN = int(os.getenv("TURNAROUND_NARROW_MIN", "30"))
 TURNAROUND_WIDE_MIN = int(os.getenv("TURNAROUND_WIDE_MIN", "45"))
 

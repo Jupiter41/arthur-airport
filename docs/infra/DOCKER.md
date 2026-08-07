@@ -214,7 +214,6 @@ services:
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: art-digital-twin
       KAFKA_BROKERS: kafka:9092
-      CASCADE_MAX_DEPTH: 5
       PROB_RUNWAY_INCURSION_PER_HR: 0.005
       PROB_BAGGAGE_FIRE_PER_HR: 0.008
       PROB_SECURITY_BREACH_PER_HR: 0.010
@@ -557,20 +556,26 @@ The simulation is **config-driven**: airport properties are read from `config/ai
 
 ### Config file location
 
-The `docker-compose.yml` mounts the local `config/` directory into all services:
+The `docker-compose.yml` mounts the local `config/` directory read-only into every Python service via the `x-python-service` anchor:
 
 ```yaml
-sim-orchestrator:
+x-python-service: &python-service
   volumes:
-    - ./config:/app/config # Mounts config/airport.yaml into container
+    - ./services/_common:/app/_common:ro
+    - ./config:/app/config:ro   # config/airport.yaml for all services
 ```
 
-### Config loading order (sim-orchestrator)
+### Config loading order (all Python services)
 
 1. Check `AIRPORT_CONFIG_PATH` environment variable
 2. Try `config/airport.yaml` in repo root (local dev)
 3. Try `/app/config/airport.yaml` in container
 4. Fall back to built-in defaults (zero downtime)
+
+The loader lives once in `services/_common/airport_config.py`. Since D6, every
+service reads its operational constants (peak hours, walking/apron speeds,
+cascade depth, weather capacity thresholds) from this single file instead of a
+private copy.
 
 ### Customizing the airport
 

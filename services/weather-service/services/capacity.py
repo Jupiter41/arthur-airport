@@ -1,14 +1,15 @@
 """Runway capacity calculation based on weather conditions."""
 
+from _common.airport_config import load_airport_runtime_config
+
 from services.parameters import WeatherParams
 
-# Base capacity rates per weather category
-_BASE_CAPACITY = {
-    "CAVOK": {"arrival": 32, "departure": 32, "runways": 2},
-    "VMC":   {"arrival": 28, "departure": 28, "runways": 2},
-    "IMC":   {"arrival": 18, "departure": 16, "runways": 1},
-    "LIFR":  {"arrival": 8,  "departure": 6,  "runways": 1},
-}
+_operations = load_airport_runtime_config().operations
+
+# Capacity rates per weather category (D6 — single source: config/airport.yaml)
+_BASE_CAPACITY = _operations.weather_capacity
+_WIND_THRESHOLDS = _operations.wind_thresholds_kt
+_WIND_REDUCTIONS = _operations.wind_reductions
 
 # Runway impact labels per category
 _RUNWAY_IMPACT = {
@@ -43,27 +44,27 @@ def compute_runway_capacity(params: WeatherParams) -> dict:
     """
     base = _BASE_CAPACITY[params.category]
 
-    arrival_rate = base["arrival"]
-    departure_rate = base["departure"]
+    arrival_rate = base.arrival
+    departure_rate = base.departure
 
     # Crosswind reduction
-    if params.wind_speed_kt > 35:
-        arrival_rate = int(arrival_rate * 0.60)
-        departure_rate = int(departure_rate * 0.60)
-    elif params.wind_speed_kt > 25:
-        arrival_rate = int(arrival_rate * 0.85)
-        departure_rate = int(departure_rate * 0.85)
+    if params.wind_speed_kt > _WIND_THRESHOLDS["crosswind_heavy"]:
+        arrival_rate = int(arrival_rate * _WIND_REDUCTIONS["crosswind_heavy"])
+        departure_rate = int(departure_rate * _WIND_REDUCTIONS["crosswind_heavy"])
+    elif params.wind_speed_kt > _WIND_THRESHOLDS["crosswind"]:
+        arrival_rate = int(arrival_rate * _WIND_REDUCTIONS["crosswind"])
+        departure_rate = int(departure_rate * _WIND_REDUCTIONS["crosswind"])
 
     # Tailwind reduction (simplified: wind direction > 180 = tailwind on 09L)
     tailwind = params.wind_direction > 180
-    if tailwind and params.wind_speed_kt > 10:
-        arrival_rate = int(arrival_rate * 0.70)
-        departure_rate = int(departure_rate * 0.70)
+    if tailwind and params.wind_speed_kt > _WIND_THRESHOLDS["tailwind"]:
+        arrival_rate = int(arrival_rate * _WIND_REDUCTIONS["tailwind"])
+        departure_rate = int(departure_rate * _WIND_REDUCTIONS["tailwind"])
 
     return {
         "arrival_rate": arrival_rate,
         "departure_rate": departure_rate,
-        "active_runways": base["runways"],
+        "active_runways": base.runways,
         "ils_required": params.category in ("IMC", "LIFR"),
         "active_runway": "09L" if params.category in ("IMC", "LIFR") else "09L/27R",
         "runway_impact": _RUNWAY_IMPACT[params.category],
@@ -80,6 +81,6 @@ def compute_impact_summary(params: WeatherParams, capacity: dict) -> dict:
         "arrival_rate": capacity["arrival_rate"],
         "departure_rate": capacity["departure_rate"],
         "crosswind_kt": crosswind_kt,
-        "crosswind_limit_kt": 35,
+        "crosswind_limit_kt": _WIND_THRESHOLDS["crosswind_heavy"],
         "operations_normal": params.category in ("CAVOK", "VMC"),
     }

@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -29,6 +28,7 @@ from kafka.producer import (
     wait_for_kafka,
 )
 from _logging import setup_logging
+from _common.airport_config import load_airport_runtime_config
 
 setup_logging("passenger-service")
 
@@ -124,33 +124,13 @@ async def lifespan(app: FastAPI):
 
 
 def _configure_accessibility_from_yaml() -> None:
-    """Load accessibility section from config/airport.yaml and apply to wheelchair pool."""
-    import yaml
-
-    candidates = [
-        os.getenv("AIRPORT_CONFIG"),
-        "/app/config/airport.yaml",
-        os.path.join(os.path.dirname(__file__), "..", "..", "config", "airport.yaml"),
-    ]
-    cfg: dict | None = None
-    for path in candidates:
-        if not path:
-            continue
-        try:
-            with open(path) as fh:
-                cfg = yaml.safe_load(fh) or {}
-                logger.info("accessibility: loaded config from %s", path)
-                break
-        except FileNotFoundError:
-            continue
-        except Exception as exc:
-            logger.warning("accessibility: failed to read %s: %s", path, exc)
-    accessibility = (cfg or {}).get("accessibility") or {}
+    """Apply accessibility section from config/airport.yaml (shared loader)."""
+    accessibility = load_airport_runtime_config().accessibility
     wheelchair.configure_pools(
-        total_per_terminal=accessibility.get("total_per_terminal"),
-        sla_target_pct=accessibility.get("sla_target_pct"),
-        boarding_cutoff_minutes=accessibility.get("boarding_cutoff_minutes"),
-        max_dispatch_wait_minutes=accessibility.get("max_dispatch_wait_minutes"),
+        total_per_terminal=accessibility.total_per_terminal,
+        sla_target_pct=accessibility.sla_target_pct,
+        boarding_cutoff_minutes=accessibility.boarding_cutoff_minutes,
+        max_dispatch_wait_minutes=accessibility.max_dispatch_wait_minutes,
     )
 
 

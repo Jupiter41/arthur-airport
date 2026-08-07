@@ -19,6 +19,7 @@ from confluent_kafka import Consumer
 
 from _common.consumer_health import ConsumerHealthTracker
 from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
+from _common.airport_config import load_airport_runtime_config
 from db.neo4j import persist_weather_state, get_current_weather, get_airport_identity
 from kafka.producer import emit_weather_state_changed, emit_metar_issued
 from services.fsm import evaluate_transition
@@ -200,8 +201,8 @@ class WeatherConsumerState:
         m_wind_speed.set(params.wind_speed_kt)
         m_wind_gust.set(params.wind_gust_kt or 0)
         if capacity:
-            m_arr_rate.set(capacity.get("recommended_arrival_rate", capacity.get("arrival_rate", 32)))
-            m_dep_rate.set(capacity.get("recommended_departure_rate", capacity.get("departure_rate", 32)))
+            m_arr_rate.set(capacity.get("recommended_arrival_rate", capacity.get("arrival_rate", _cavok.arrival)))
+            m_dep_rate.set(capacity.get("recommended_departure_rate", capacity.get("departure_rate", _cavok.departure)))
 
     async def on_clock_tick(self, payload: dict, sim_time: datetime) -> None:
         """Process a SimClockTick event.
@@ -511,6 +512,7 @@ class WeatherConsumerState:
 
 
 # Module-level singleton — used by router and main.py
+_cavok = load_airport_runtime_config().operations.weather_capacity["CAVOK"]
 _state = WeatherConsumerState()
 _consumer: Consumer | None = None
 _consumer_running = False

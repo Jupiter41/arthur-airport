@@ -17,7 +17,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from heapq import heappush, heappop
 
+from _common.airport_config import load_airport_runtime_config
+
 logger = logging.getLogger(__name__)
+
+_cavok_capacity = load_airport_runtime_config().operations.weather_capacity["CAVOK"]
 
 # ── Wake turbulence separation (P1-4-1) ─────────────────────
 
@@ -109,8 +113,8 @@ class RunwayQueue:
         self._queued_flights: set[str] = set()  # prevent duplicates
 
         # Capacity from weather — updated by WeatherStateChanged events
-        self._arrival_rate: int = 32   # movements/hour (CAVOK default)
-        self._departure_rate: int = 32
+        self._arrival_rate: int = _cavok_capacity.arrival  # movements/hour (CAVOK default)
+        self._departure_rate: int = _cavok_capacity.departure
         self._weather_category: str = "CAVOK"
         self._ils_required: bool = False
 

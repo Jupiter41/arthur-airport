@@ -11,11 +11,15 @@ Speeds:
 import math
 from typing import Optional
 
+from _common.airport_config import load_airport_runtime_config
+
+_operations = load_airport_runtime_config().operations
+
 # Speeds in metres per minute
 TAXIWAY_SPEED = 250.0       # 15 km/h
-APRON_SPEED = 83.3           # 5 km/h
+APRON_SPEED = _operations.apron_speed_m_min  # 5 km/h
 APRON_RADIUS = 200.0         # metres within gate considered apron
-WALKING_SPEED = 84.0         # 1.4 m/s
+WALKING_SPEED = _operations.walking_speed_m_min  # 1.4 m/s
 SPECIAL_ASSIST_MULT = 2.5
 
 # Default fallback values (used when positions unavailable)

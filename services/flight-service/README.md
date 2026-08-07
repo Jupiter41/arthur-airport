@@ -97,4 +97,6 @@ python -m pytest tests/integration/ -k flight -v
 | `NEO4J_PASSWORD`    | `art-digital-twin`  | Neo4j password               |
 | `KAFKA_BROKERS`     | `kafka:9092`        | Kafka bootstrap servers      |
 | `LOG_LEVEL`         | `INFO`              | Logging level                |
-| `CASCADE_MAX_DEPTH` | `5`                 | Max turnaround cascade depth |
+
+Cascade depth is no longer an env var — it comes from
+`operations.cascade_max_depth` in `config/airport.yaml` (D6, default 5).
