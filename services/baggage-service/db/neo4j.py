@@ -234,6 +234,27 @@ async def get_baggage_by_tag(tag: str) -> dict | None:
         return bag
 
 
+async def update_baggage_statuses(changes: list[dict], sim_time: datetime) -> None:
+    """Persist independent bag transitions together, retaining every scan record."""
+    if not changes:
+        return
+    async with get_driver().session() as session:
+        result = await session.run(
+            """
+            UNWIND $changes AS change
+            MATCH (b:Baggage {id: change.id})
+            SET b.status = change.status, b.last_scan_zone = change.zone,
+                b.last_scan_at = $at,
+                b.carousel = coalesce(change.carousel, b.carousel)
+            CREATE (s:ScanEvent {baggage_tag: b.tag, zone: change.zone,
+                                 status: change.status, at: $at})
+            CREATE (b)-[:SCANNED_AT]->(s)
+            """,
+            changes=changes, at=sim_time.isoformat(),
+        )
+        await result.consume()
+
+
 async def update_baggage_status(
     baggage_id: str,
     new_status: str,
@@ -486,14 +507,19 @@ async def redirect_baggage_to_flight(
 
 
 async def get_baggage_in_pipeline() -> list[dict]:
-    """Return bags currently in the conveyor pipeline (inducted/screening/sorting/loaded/in_hold/flagged)."""
+    """Return pipeline state using the same scan fields written by transitions."""
     driver = get_driver()
     query = """
     MATCH (b:Baggage)
-    WHERE b.status IN ['inducted', 'screening', 'sorting', 'loaded', 'in_hold', 'flagged']
+    WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived', 'loaded', 'in_hold', 'flagged']
     OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
-    RETURN b.id AS id, b.status AS status, b.current_zone AS current_zone,
-           b.last_scan_at AS last_scan_at, f.id AS flight_id
+    OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
+    OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
+    RETURN b.id AS id, b.tag AS tag, b.status AS status,
+           coalesce(b.last_scan_zone, b.current_zone) AS current_zone,
+           b.last_scan_at AS last_scan_at, f.id AS flight_id,
+           b.is_dangerous_goods AS is_dg, b.dg_class AS dg_class,
+           p.id AS passenger_id, g.id AS gate_id, g.terminal_id AS terminal_id
     """
     async with driver.session() as session:
         result = await session.run(query)

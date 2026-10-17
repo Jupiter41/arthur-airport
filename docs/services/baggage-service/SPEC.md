@@ -28,6 +28,15 @@ persisted by baggage-service in `BaggageProjection {id: 'latest', document}` so
 analysis can recover occupancy without replaying sampled events. Persistence
 precedes publication; transactional outbox delivery remains tracked in G1.
 
+Flight-wide and induction status changes may use one Neo4j batch transaction.
+Each changed bag still receives its own scan-history record and Kafka fact;
+the batch is persisted before its facts or in-memory queue additions are made.
+
+Restart recovery reads `last_scan_zone` (with a legacy `current_zone` fallback),
+restores queued departure and arrived bags, and retains their tags, dangerous
+goods attributes, passenger link and terminal routing metadata. Cross-terminal
+transit progress and active incident recovery remain tracked in roadmap G9.
+
 ---
 
 ## 2. Baggage state machine

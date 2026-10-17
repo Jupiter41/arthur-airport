@@ -90,6 +90,32 @@ def test_persisted_progress_is_visible_to_another_reader(context):
     assert model.list_scenarios(status="running")[1] == 1
 
 
+def test_replay_keeps_parent_configuration_and_independent_mutable_state(context, monkeypatch):
+    _, _, model, _ = context
+    router = importlib.import_module("routers.counterfactual")
+    parent = model.PlanningScenario(
+        name="Synthetic parent", status="completed", progress_pct=100, runs_completed=4,
+        random_seed=42, weather_date="2026-01-02", demand_multiplier=1.25,
+        new_routes=[{"destination": "XAA"}], removed_routes=["XBB"],
+        disruption={"capacity_pct": 0.5}, completed_at="2026-01-03T00:00:00",
+    )
+    saved = []
+    monkeypatch.setattr(router, "store_scenario", saved.append)
+    child = router._spawn_replay_scenario(parent, [], None, "timing change")
+    assert saved == [child]
+    assert child.id != parent.id and child.parent_scenario_id == parent.id
+    assert (child.status, child.progress_pct, child.runs_completed, child.completed_at) == ("pending", 0, 0, None)
+    for key in ("random_seed", "weather_date", "demand_multiplier", "new_routes", "removed_routes", "disruption"):
+        assert getattr(child, key) == getattr(parent, key)
+    child.infrastructure.gates_per_terminal["A"] = 1
+    child.new_routes[0]["destination"] = "XCC"
+    child.disruption["capacity_pct"] = 0.1
+    assert parent.infrastructure.gates_per_terminal["A"] == 14
+    assert parent.new_routes[0]["destination"] == "XAA"
+    assert parent.disruption["capacity_pct"] == 0.5
+    assert child.to_summary()["parent_scenario_id"] == parent.id
+
+
 def test_deletion_blocks_active_jobs_and_removes_completed_results(context):
     _, _, model, _ = context
     s = model.PlanningScenario()

@@ -419,6 +419,12 @@ Replay an existing scenario with operator interventions to measure their causal
 impact on KPIs. Both the baseline and the scenario re-runs apply the same
 interventions and synthetic disruption so deltas isolate the decision change.
 
+Replay/report parents must be completed (409 otherwise). Children retain all
+parent demand, weather, infrastructure and financial configuration and its
+persisted random seed, with independent mutable copies; only the requested
+interventions/disruption and child identity/job metadata change. Scenario list
+summaries include `parent_scenario_id` so replay children can be distinguished.
+
 #### `POST /scenarios/{id}/replay`
 
 ```json
@@ -434,7 +440,7 @@ interventions and synthetic disruption so deltas isolate the decision change.
       "action": "open_security_lanes",
       "sim_minute": 90,
       "duration_minutes": 180,
-      "params": { "delta": 2 }
+      "params": { "lanes": 2 }
     }
   ],
   "disruption": {
@@ -479,6 +485,10 @@ Returns `{ children: [{ scenario_id, shift_minutes, applied_sim_minute, label }]
 Returns a JSON DAG with `nodes` (scenario, disruption, intervention, kpi) and
 `edges` (`triggers`, `responds_to`, `affects`). Used by the dashboard "What-If"
 panel.
+
+Nodes use `type` and top-level `mean` for KPI nodes. Edges use `from`/`to`.
+Replay entries use the scenario's `id`/`name` and nested `results.kpis` metric
+distributions; they do not use the creation response's `scenario_id` field.
 
 #### `GET /scenarios/{id}/replays`
 

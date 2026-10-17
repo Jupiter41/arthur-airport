@@ -191,11 +191,7 @@ class TestBug3SystemFailureConveyorChain:
                 zones = zones_raw
             # power-A should affect induction-A, screening-unit-1, screening-unit-2
             affected = ["induction-A", "screening-unit-1", "screening-unit-2"]
-            for zone_id in affected:
-                zone = zones.get(zone_id, {})
-                if zone.get("status") == "offline":
-                    return True
-            return None
+            return all(zones.get(zone_id, {}).get("status") == "offline" for zone_id in affected)
 
         result = _poll_until(
             check_zones_offline,
@@ -506,7 +502,9 @@ class TestLiveEventSchemaValidation:
         data = r.json()
         assert "zones" in data
         zones = data["zones"]
-        assert isinstance(zones, dict)
+        assert isinstance(zones, list)
+        assert zones, "Flow map must include the configured conveyor zones"
         # Each zone should have a status
-        for zone_id, zone_data in zones.items():
-            assert "status" in zone_data, f"Zone '{zone_id}' missing 'status'"
+        for zone in zones:
+            assert isinstance(zone["zone_id"], str)
+            assert zone["status"] in {"normal", "degraded", "offline"}

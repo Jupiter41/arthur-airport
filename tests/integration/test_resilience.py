@@ -14,6 +14,8 @@ import time
 import pytest
 import requests
 
+from scripts.validate_stack import SERVICES
+
 GATEWAY = os.getenv("GATEWAY_URL", "http://localhost:3000")
 FLIGHT_SVC = os.getenv("FLIGHT_SVC_URL", "http://localhost:8001")
 PASSENGER_SVC = os.getenv("PASSENGER_SVC_URL", "http://localhost:8002")
@@ -39,7 +41,7 @@ def _wait_for_service(url: str, timeout: int = 60) -> bool:
             r = requests.get(f"{url}/health", timeout=3)
             if r.status_code == 200:
                 return True
-        except requests.ConnectionError:
+        except requests.RequestException:
             pass
         time.sleep(2)
     return False
@@ -53,7 +55,7 @@ def _wait_for_ready(url: str, timeout: int = 90) -> bool:
             r = requests.get(f"{url}/ready", timeout=3)
             if r.status_code == 200:
                 return True
-        except requests.ConnectionError:
+        except requests.RequestException:
             pass
         time.sleep(2)
     return False
@@ -78,7 +80,7 @@ class TestServiceRestart:
         # Restart flight-service
         subprocess.run(
             ["docker", "compose", "restart", "flight-service"],
-            cwd=COMPOSE_DIR, timeout=30, capture_output=True,
+            cwd=COMPOSE_DIR, timeout=30, capture_output=True, check=True,
         )
 
         # Wait for recovery
@@ -99,7 +101,7 @@ class TestServiceRestart:
 
         subprocess.run(
             ["docker", "compose", "restart", "weather-service"],
-            cwd=COMPOSE_DIR, timeout=30, capture_output=True,
+            cwd=COMPOSE_DIR, timeout=30, capture_output=True, check=True,
         )
 
         assert _wait_for_ready(WEATHER_SVC, timeout=60), "weather-service failed to become ready"
@@ -115,15 +117,12 @@ class TestAllServicesRestart:
     def test_full_restart(self):
         subprocess.run(
             ["docker", "compose", "restart"],
-            cwd=COMPOSE_DIR, timeout=120, capture_output=True,
+            cwd=COMPOSE_DIR, timeout=120, capture_output=True, check=True,
         )
 
         # Wait for all services
-        services = [
-            (FLIGHT_SVC, "flight-service"),
-            (WEATHER_SVC, "weather-service"),
-            (SIM_SVC, "sim-orchestrator"),
-        ]
+        services = [(os.getenv(env, f"http://localhost:{port}"), name)
+                    for name, (env, port) in SERVICES.items()]
 
         for url, name in services:
             assert _wait_for_ready(url, timeout=90), f"{name} failed to become ready after restart"
@@ -146,7 +145,7 @@ class TestRestartRebuild:
 
         subprocess.run(
             ["docker", "compose", "restart", "baggage-service"],
-            cwd=COMPOSE_DIR, timeout=30, capture_output=True,
+            cwd=COMPOSE_DIR, timeout=30, capture_output=True, check=True,
         )
         assert _wait_for_ready(BAGGAGE_SVC, timeout=60)
 
@@ -155,20 +154,22 @@ class TestRestartRebuild:
 
     def test_passenger_service_security_rebuild(self):
         """Passenger service rebuilds security queues from Neo4j on restart."""
-        r = requests.get(f"{PASSENGER_SVC}/api/v1/passengers/security/status", timeout=10)
+        r = requests.get(f"{PASSENGER_SVC}/api/v1/flow/summary", timeout=10)
         assert r.status_code == 200
 
         subprocess.run(
             ["docker", "compose", "restart", "passenger-service"],
-            cwd=COMPOSE_DIR, timeout=30, capture_output=True,
+            cwd=COMPOSE_DIR, timeout=30, capture_output=True, check=True,
         )
         assert _wait_for_ready(PASSENGER_SVC, timeout=60)
 
-        r = requests.get(f"{PASSENGER_SVC}/api/v1/passengers/security/status", timeout=10)
+        r = requests.get(f"{PASSENGER_SVC}/api/v1/flow/summary", timeout=10)
         assert r.status_code == 200
         after = r.json()
-        for terminal in after.get("checkpoints", {}).values():
-            assert terminal.get("queue_depth", 0) >= 0
+        assert set(after["security"]) == {"A", "B", "C"}
+        for terminal in after["security"].values():
+            assert terminal["queue_length"] >= 0
+            assert terminal["lanes_open"] >= 0
 
     def test_flight_service_incident_impacts_rebuild(self):
         """Flight service rebuilds incident-affected gates/runways from Neo4j."""
@@ -178,7 +179,7 @@ class TestRestartRebuild:
 
         subprocess.run(
             ["docker", "compose", "restart", "flight-service"],
-            cwd=COMPOSE_DIR, timeout=30, capture_output=True,
+            cwd=COMPOSE_DIR, timeout=30, capture_output=True, check=True,
         )
         assert _wait_for_ready(FLIGHT_SVC, timeout=60)
 

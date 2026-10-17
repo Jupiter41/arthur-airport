@@ -9,6 +9,8 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
+from dataclasses import replace
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -56,21 +58,17 @@ def _spawn_replay_scenario(
     label: str,
 ) -> PlanningScenario:
     """Create a child scenario referencing the parent."""
-    child = PlanningScenario(
+    fresh = PlanningScenario()
+    child = replace(
+        deepcopy(parent),
+        id=fresh.id,
+        created_at=fresh.created_at,
         name=f"{parent.name} — {label}",
         description=f"Counterfactual replay of {parent.id}: {label}",
-        horizon=parent.horizon,
-        monte_carlo_runs=parent.monte_carlo_runs,
-        random_seed=parent.random_seed,
-        infrastructure=parent.infrastructure,
-        demand_source=parent.demand_source,
-        weather_source=parent.weather_source,
-        capex_eur=parent.capex_eur,
-        opex_delta_eur=parent.opex_delta_eur,
-        years_horizon=parent.years_horizon,
-        discount_rate=parent.discount_rate,
-        interventions=interventions,
-        disruption=disruption,
+        status="pending", started_at=None, completed_at=None, error=None,
+        progress_pct=0, runs_completed=0,
+        interventions=deepcopy(interventions),
+        disruption=deepcopy(disruption if disruption is not None else parent.disruption),
         parent_scenario_id=parent.id,
     )
     store_scenario(child)
@@ -91,6 +89,8 @@ async def scenario_replay(
     parent = (await asyncio.to_thread(get_scenario, scenario_id))
     if not parent:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    if parent.status != "completed":
+        raise HTTPException(status_code=409, detail="Run the parent scenario to completion first")
 
     interventions = [iv.model_dump() for iv in body.interventions]
     disruption = body.disruption.model_dump() if body.disruption else None
@@ -141,6 +141,8 @@ async def counterfactual_report(
     parent = (await asyncio.to_thread(get_scenario, scenario_id))
     if not parent:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    if parent.status != "completed":
+        raise HTTPException(status_code=409, detail="Run the parent scenario to completion first")
     if not body.base_interventions:
         raise HTTPException(status_code=400, detail="base_interventions cannot be empty")
     if body.intervention_index >= len(body.base_interventions):

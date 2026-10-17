@@ -142,7 +142,8 @@ async def run_consumer() -> None:
 
     try:
         while _running:
-            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(num_messages=50, timeout=0.5))
+            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(num_messages=5000, timeout=0.1))
+            latest_tick = None
 
             for msg in msgs:
                 if msg.error():
@@ -166,7 +167,12 @@ async def run_consumer() -> None:
 
                 # On clock ticks, run analysis
                 if event_type == "SimClockTick":
-                    await _on_tick(payload)
+                    latest_tick = payload
+
+            # Evaluate the latest operational view once after catching up facts.
+            # Per-entity events and receipts above are never sampled or skipped.
+            if latest_tick is not None:
+                await _on_tick(latest_tick)
 
             _consumer_health.mark_message()
 

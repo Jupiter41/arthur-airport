@@ -18,6 +18,11 @@ Only an owning service's `CommandExecuted` receipt marks an action applied.
 `command_type` on the owner's existing facts topic and use its simulation clock.
 An unavailable clock or publisher is an error, never a successful apply.
 
+Consumers drain bursts in batches and analysis evaluates once using the latest
+clock in each batch. Every domain fact and receipt is still processed. Owners
+retain commands received before their first simulation clock until a validated
+`SimClockTick` supplies that clock; `issued_at` cannot substitute for it.
+
 Proposal IDs are also stable command IDs, so retries reuse the same identity.
 Safety guarded actions always need the approval endpoint; manual Apply cannot
 bypass that gate. Unsupported guarded actions can be reviewed/rejected but cannot

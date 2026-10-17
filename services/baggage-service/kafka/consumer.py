@@ -21,6 +21,7 @@ from confluent_kafka import Consumer
 from db.neo4j import (
     get_dropped_off_baggage_for_departures,
     update_baggage_status,
+    update_baggage_statuses,
     flag_baggage,
     get_baggage_counts_by_status,
     get_baggage_in_pipeline,
@@ -99,23 +100,30 @@ class BaggageConsumerState:
     async def rebuild_from_neo4j(self) -> None:
         """Rebuild in-memory state from Neo4j on startup (catch-up)."""
         bags = await get_baggage_in_pipeline()
+        self.conveyor = ConveyorSystem()
+        self.inducted_bag_ids.clear()
         inducted = 0
         for bag in bags:
             tag = bag["id"]
             status = bag.get("status", "dropped_off")
-            if status in ("inducted", "screening", "sorting"):
+            if status in ("inducted", "screening", "sorting", "arrived"):
                 zone_id = bag.get("current_zone")
                 if zone_id:
                     zone = self.conveyor.get_zone(zone_id)
                     if zone:
+                        terminal = str(bag.get("terminal_id") or "T-A")[-1]
+                        if terminal not in {"A", "B", "C"}:
+                            terminal = "A"
+                        gate_terminal = str(bag.get("gate_id") or terminal)[0]
                         zone.queue.append(BagInZone(
                             baggage_id=tag,
-                            tag="",
+                            tag=bag.get("tag") or "",
                             flight_id=bag.get("flight_id", ""),
-                            is_dg=False,
-                            dg_class=None,
-                            passenger_id=None,
-                            terminal="A",
+                            is_dg=bool(bag.get("is_dg")),
+                            dg_class=bag.get("dg_class"),
+                            passenger_id=bag.get("passenger_id"),
+                            terminal=terminal,
+                            gate_terminal=gate_terminal if gate_terminal in {"A", "B", "C"} else terminal,
                             entered_at=bag.get("last_scan_at") or "",
                         ))
                 self.inducted_bag_ids.add(tag)
@@ -199,6 +207,7 @@ async def run_consumer() -> None:
         "Kafka consumer started (topics: sim.clock, flights.events, incidents.events, baggage.commands)"
     )
 
+    deferred_commands: list[dict] = []
     try:
         while _consumer_running:
             msgs = await loop.run_in_executor(None, lambda: _consumer.consume(200, timeout=1.0))
@@ -226,7 +235,16 @@ async def run_consumer() -> None:
             if skipped_ticks > 0:
                 logger.debug("Skipped %d stale clock ticks", skipped_ticks)
 
+            if _state.sim_time is None and latest_tick_envelope is not None:
+                validated = _validate_envelope(latest_tick_envelope)
+                if validated is not None:
+                    _state.sim_time = validated[1]
+            other_envelopes = deferred_commands + other_envelopes
+            deferred_commands = []
             for envelope in other_envelopes:
+                if envelope.get("command_type") and _state.sim_time is None:
+                    deferred_commands.append(envelope)
+                    continue
                 try:
                     await _dispatch(envelope)
                 except Exception as e:
@@ -420,12 +438,17 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     outputs = _state.conveyor.advance_tick(sim_time_str, delta_minutes)
 
     # 3. Process zone outputs
-    for zone_id, bags in outputs.items():
-        for bag in bags:
-            try:
-                await _process_bag_exit(zone_id, bag, sim_time)
-            except Exception as e:
-                logger.error("Failed to process bag %s exiting %s: %s", bag.baggage_id, zone_id, e)
+    # Bags leave at most one zone per tick. Run independent bag writes with
+    # bounded concurrency; each bag's ordered transitions remain sequential.
+    exits = [(zone_id, bag) for zone_id, bags in outputs.items() for bag in bags]
+    for start in range(0, len(exits), 16):
+        chunk = exits[start:start + 16]
+        results = await asyncio.gather(*(
+            _process_bag_exit(zone_id, bag, sim_time) for zone_id, bag in chunk
+        ), return_exceptions=True)
+        for (zone_id, bag), result in zip(chunk, results):
+            if isinstance(result, BaseException):
+                logger.error("Failed to process bag %s exiting %s: %s", bag.baggage_id, zone_id, result)
 
     # 4. Update Prometheus gauges (reduced frequency in BULK mode)
     gauge_interval = 20 if is_bulk else 1
@@ -517,6 +540,8 @@ async def _induct_new_bags(sim_time: datetime, delta_minutes: int = 1) -> None:
     # Limit batch size per tick to avoid blocking — scale with delta
     batch_count = 0
     MAX_BATCH_PER_TICK = 500 * delta_minutes
+    changes = []
+    selected = []
 
     for bag in bags:
         if batch_count >= MAX_BATCH_PER_TICK:
@@ -532,21 +557,9 @@ async def _induct_new_bags(sim_time: datetime, delta_minutes: int = 1) -> None:
 
         # For flights already departed/airborne — fast-track to in_hold
         if flight_status in ("departed", "airborne"):
-            _state.inducted_bag_ids.add(bag_id)
             batch_count += 1
-            await update_baggage_status(
-                bag_id, "in_hold", "aircraft-hold", sim_time
-            )
-            await _emit_status_changed_with_metric(
-                baggage_id=bag_id,
-                tag=bag["tag"],
-                previous_status="dropped_off",
-                new_status="in_hold",
-                scan_zone="aircraft-hold",
-                sim_time=sim_time,
-                passenger_id=bag.get("passenger_id"),
-                flight_id=bag.get("flight_id"),
-            )
+            changes.append({"id": bag_id, "status": "in_hold", "zone": "aircraft-hold"})
+            selected.append((bag, None))
             continue
 
         # For flights still at the airport: check 90-min window
@@ -559,7 +572,6 @@ async def _induct_new_bags(sim_time: datetime, delta_minutes: int = 1) -> None:
             except (ValueError, TypeError):
                 pass
 
-        _state.inducted_bag_ids.add(bag_id)
         batch_count += 1
 
         # Determine terminal from gate assignment (fallback to round-robin)
@@ -591,18 +603,21 @@ async def _induct_new_bags(sim_time: datetime, delta_minutes: int = 1) -> None:
             gate_terminal=gate_terminal,
         )
 
-        zone_id = _state.conveyor.induct_bag(bag_in_zone, sim_time_str)
+        changes.append({"id": bag_id, "status": "inducted", "zone": f"induction-{terminal}"})
+        selected.append((bag, bag_in_zone))
 
-        # Update Neo4j: status → inducted
-        await update_baggage_status(bag_id, "inducted", zone_id, sim_time)
-
-        # Emit BaggageStatusChanged event
+    await update_baggage_statuses(changes, sim_time)
+    for change, (bag, bag_in_zone) in zip(changes, selected):
+        bag_id = bag["id"]
+        _state.inducted_bag_ids.add(bag_id)
+        if bag_in_zone is not None:
+            _state.conveyor.induct_bag(bag_in_zone, sim_time_str)
         event_payload = await _emit_status_changed_with_metric(
             baggage_id=bag_id,
             tag=bag["tag"],
             previous_status="dropped_off",
-            new_status="inducted",
-            scan_zone=zone_id,
+            new_status=change["status"],
+            scan_zone=change["zone"],
             sim_time=sim_time,
             passenger_id=bag.get("passenger_id"),
             flight_id=bag.get("flight_id"),
@@ -833,10 +848,12 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
             flight_id,
             statuses=["loaded", "sorting", "screening", "inducted", "dropped_off"],
         )
+        await update_baggage_statuses([
+            {"id": bag["id"], "status": "in_hold", "zone": "aircraft-hold"}
+            for bag in bags
+        ], sim_time)
         for bag in bags:
-            await update_baggage_status(
-                bag["id"], "in_hold", "aircraft-hold", sim_time
-            )
+            _state.conveyor.remove_bag_from_all_zones(bag["id"])
             event_payload = await _emit_status_changed_with_metric(
                 baggage_id=bag["id"],
                 tag=bag["tag"],
@@ -867,10 +884,12 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
         terminal = gate_id[0].upper() if gate_id else "A"
         terminal_carousels = arrival_carousel_for_terminal(terminal)
         carousel = terminal_carousels[hash(flight_id) % len(terminal_carousels)]
+        await update_baggage_statuses([
+            {"id": bag["id"], "status": "arrived", "zone": f"arrival-belt-{carousel}",
+             "carousel": carousel}
+            for bag in bags
+        ], sim_time)
         for bag in bags:
-            await update_baggage_status(
-                bag["id"], "arrived", f"arrival-belt-{carousel}", sim_time
-            )
 
             # Place bag on arrival belt in conveyor — it will be drained
             # on subsequent ticks and transition to on_carousel then collected.
@@ -887,9 +906,6 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
             arrival_zone = _state.conveyor.get_zone(f"arrival-belt-{carousel}")
             if arrival_zone:
                 arrival_zone.queue.append(bag_in_zone)
-
-            from db.neo4j import set_baggage_carousel
-            await set_baggage_carousel(bag["id"], carousel, sim_time)
 
             event_payload = await _emit_status_changed_with_metric(
                 baggage_id=bag["id"],

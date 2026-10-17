@@ -296,15 +296,13 @@ KPIs scale differently with demand:
 
 ## Decision Audit Trail
 
-The Audit tab tracks every autonomous recommendation the system makes during simulation:
+The Audit tab displays persisted recommendation logs, predicted benefits and
+outcomes supplied through the outcome API. Summary accuracy includes only records
+with a measured outcome. It does not prove that predictions are calibrated.
 
-1. System detects a threshold being exceeded (e.g., EU261 > €10K)
-2. System recommends an action (e.g., "Open security lane in Terminal A")
-3. System records the **predicted cost saving**
-4. 30 simulated minutes later, system measures the **actual outcome**
-5. Prediction accuracy is computed as: `actual_saving / predicted_saving × 100`
-
-This feedback loop calibrates model accuracy over time.
+Automatic measurement 30 simulation minutes after execution and attribution to a
+baseline remain planned work (`ROADMAP_REAL_LDT.md` §10 G8). Analysis execution
+receipts and planning audit logs are not yet one automatic feedback pipeline.
 
 ---
 

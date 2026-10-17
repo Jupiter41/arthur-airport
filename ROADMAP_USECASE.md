@@ -55,7 +55,11 @@ _Source: use case 3.1_
 
 ### 1B. Counterfactual Delay Analysis
 
-**Status:** ✅ Backend + dashboard shipped (`/whatif` route; planning-service `/api/v1/planning/scenarios/{id}/{replay,counterfactual-report,causal-graph,replays}`).
+**Status:** Functional replay/report path validated locally in `ROADMAP_REAL_LDT.md`
+A17, after correcting API request/response mismatches and lost parent settings.
+The graph describes configured interventions and resulting KPIs; it is not a
+measured event-history causal reconstruction. Shared calibrated effects and
+automatic outcome attribution remain open (G4/G8).
 
 _Source: use case 5.3_
 

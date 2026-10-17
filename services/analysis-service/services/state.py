@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +167,13 @@ class OperationalState:
 
     def on_clock_tick(self, payload: dict) -> None:
         """Process SimClockTick."""
-        self.sim_time = _parse_dt(payload.get("sim_time"))
+        clock = _parse_dt(payload.get("sim_time"))
+        if clock and self.sim_time and _utc(clock) < _utc(self.sim_time):
+            # A simulation rewind must not pin aggregates to a future timestamp.
+            self.baggage_zones.clear()
+            self.baggage_snapshot_at = None
+            self.makeup_over_threshold_since.clear()
+        self.sim_time = clock
         self.speed_multiplier = payload.get("speed_multiplier", 1.0)
         self.tick_number = payload.get("tick_number", 0)
 
@@ -278,7 +284,7 @@ class OperationalState:
 
     def on_baggage_zone_snapshot(self, payload: dict) -> None:
         at = _parse_dt(payload.get("at"))
-        if at is None or (self.baggage_snapshot_at and at < self.baggage_snapshot_at):
+        if at is None or (self.baggage_snapshot_at and _utc(at) < _utc(self.baggage_snapshot_at)):
             return
         zones = {}
         for row in payload["zones"]:
@@ -428,3 +434,8 @@ def _parse_dt(value: str | datetime | None) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return None
+
+
+def _utc(value: datetime) -> datetime:
+    """Legacy naive simulation timestamps represent UTC too."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)

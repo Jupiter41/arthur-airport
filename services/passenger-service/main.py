@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -116,6 +116,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     stop_consumer()
+    with suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.gather(consumer_task, return_exceptions=True), timeout=5)
     close_kafka_producer()
     await close_neo4j()
     from _tracing import shutdown_tracing

@@ -100,6 +100,7 @@ class PlanningScenario:
     def to_summary(self) -> dict:
         return {
             "id": self.id,
+            "parent_scenario_id": self.parent_scenario_id,
             "name": self.name,
             "status": self.status,
             "horizon": self.horizon,

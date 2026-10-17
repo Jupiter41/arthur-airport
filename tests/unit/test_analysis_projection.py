@@ -131,3 +131,13 @@ def test_graph_loader_reads_all_sections_from_one_driver_transaction(monkeypatch
     assert set(snapshot) == {"flights", "gates", "incidents", "weather", "baggage"}
     assert len(queries) == 5
     assert all("SET " not in query and "CREATE " not in query for query in queries)
+
+
+def test_clock_rewind_releases_baggage_snapshot_timestamp_guard():
+    state = import_service_module("analysis", "services.state").OperationalState()
+    state.on_clock_tick({"sim_time": "2026-01-01T10:00:00Z"})
+    state.on_baggage_zone_snapshot({"zones": [], "at": "2026-01-01T10:00:00"})
+    state.on_clock_tick({"sim_time": "2026-01-01T09:00:00Z"})
+    assert state.baggage_snapshot_at is None
+    state.on_baggage_zone_snapshot({"zones": [], "at": "2026-01-01T09:01:00"})
+    assert state.baggage_snapshot_at == datetime(2026, 1, 1, 9, 1)

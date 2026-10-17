@@ -383,10 +383,11 @@ async def run_consumer() -> None:
         "baggage.events, weather.events, passengers.commands)"
     )
 
+    deferred_commands: list[dict] = []
     try:
         while _consumer_running:
             # Batch-consume to allow tick skipping when behind
-            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(500, timeout=1.0))
+            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(5000, timeout=0.1))
             if not msgs:
                 continue
 
@@ -412,8 +413,19 @@ async def run_consumer() -> None:
             if skipped_ticks > 0:
                 logger.debug("Skipped %d stale clock ticks", skipped_ticks)
 
+            # On recovery a command can be fetched before the first clock.
+            # Bootstrap only from a validated SimClockTick, never issued_at.
+            if _state.sim_time is None and latest_tick_envelope is not None:
+                validated = _validate_envelope(latest_tick_envelope)
+                if validated is not None:
+                    _state.sim_time = validated[1]
+            other_envelopes = deferred_commands + other_envelopes
+            deferred_commands = []
             # Process non-tick events first (flight status changes, etc.)
             for envelope in other_envelopes:
+                if envelope.get("command_type") and _state.sim_time is None:
+                    deferred_commands.append(envelope)
+                    continue
                 try:
                     await _dispatch(envelope)
                 except Exception as e:

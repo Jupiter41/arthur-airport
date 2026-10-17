@@ -913,8 +913,8 @@ export const planningApi = {
   counterfactualReport: (
     id: string,
     body: {
-      intervention: Record<string, unknown>;
-      shifts_minutes: number[];
+      base_interventions: Record<string, unknown>[];
+      shifts: number[];
       disruption?: Record<string, unknown> | null;
     },
   ) =>
@@ -936,21 +936,15 @@ export const planningApi = {
       scenario_id: string;
       nodes: {
         id: string;
-        kind: string;
+        type: string;
         label: string;
-        data?: Record<string, unknown>;
+        mean?: number | null;
       }[];
-      edges: { source: string; target: string; kind: string }[];
+      edges: { from: string; to: string; kind: string }[];
     }>(`/planning/scenarios/${encodeURIComponent(id)}/causal-graph`),
   listReplays: (id: string) =>
     apiFetch<{
       parent_scenario_id: string;
-      replays: {
-        scenario_id: string;
-        status: string;
-        created_at?: string;
-        label?: string;
-        results?: Record<string, unknown>;
-      }[];
+      replays: (PlanningScenario & { results: ScenarioResults | null })[];
     }>(`/planning/scenarios/${encodeURIComponent(id)}/replays`),
 };

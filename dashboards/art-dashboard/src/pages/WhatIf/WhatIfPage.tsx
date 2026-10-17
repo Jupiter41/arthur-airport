@@ -3,23 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { planningApi } from "../../hooks/useApi";
 import { KpiCard } from "../../components/KpiCard";
 import { LoadingState, ErrorState } from "../../components/LoadingState";
-import type { PlanningScenarioSummary } from "../../types/planning";
+import type { PlanningScenarioSummary, PlanningScenario, ScenarioResults } from "../../types/planning";
 
 type ScenarioRow = PlanningScenarioSummary & {
   parent_scenario_id?: string | null;
 };
 
-type Replay = {
-  scenario_id: string;
-  status: string;
-  label?: string;
-  created_at?: string;
-  results?: {
-    avg_delay_minutes_mean?: number;
-    missed_connections_mean?: number;
-    eu261_eur_mean?: number;
-  };
-};
+type Replay = PlanningScenario & { results: ScenarioResults | null };
 
 const ACTIONS = ["gdp_start", "gdp_end", "open_security_lanes", "gate_swap"];
 
@@ -38,7 +28,7 @@ export default function WhatIfPage() {
   });
 
   const list = (scenarios.data?.scenarios ?? []) as ScenarioRow[];
-  const parents = list.filter((s) => !s.parent_scenario_id);
+  const parents = list.filter((s) => !s.parent_scenario_id && s.status === "completed");
   const parentId = selected ?? parents[0]?.id ?? null;
 
   const replays = useQuery({
@@ -58,7 +48,7 @@ export default function WhatIfPage() {
     mutationFn: () => {
       const params: Record<string, unknown> = {};
       if (action === "open_security_lanes") params.lanes = lanes;
-      if (action === "gate_swap") params.count = lanes;
+      if (action === "gate_swap") params.delta = lanes;
       return planningApi.replayScenario(parentId!, {
         interventions: [
           {
@@ -80,15 +70,15 @@ export default function WhatIfPage() {
     mutationFn: () => {
       const params: Record<string, unknown> = {};
       if (action === "open_security_lanes") params.lanes = lanes;
-      if (action === "gate_swap") params.count = lanes;
+      if (action === "gate_swap") params.delta = lanes;
       return planningApi.counterfactualReport(parentId!, {
-        intervention: {
+        base_interventions: [{
           action,
           sim_minute: simMinute,
           duration_minutes: durationMin,
           params,
-        },
-        shifts_minutes: [-60, -30, 0, 30, 60],
+        }],
+        shifts: [-60, -30, 0, 30, 60],
       });
     },
     onSuccess: () => {
@@ -107,7 +97,7 @@ export default function WhatIfPage() {
     );
 
   const replayList = (replays.data?.replays ?? []) as Replay[];
-  const kpiNodes = (causal.data?.nodes ?? []).filter((n) => n.kind === "kpi");
+  const kpiNodes = (causal.data?.nodes ?? []).filter((n) => n.type === "kpi");
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
@@ -225,15 +215,11 @@ export default function WhatIfPage() {
               </div>
             ) : (
               kpiNodes.map((n) => {
-                const d = (n.data ?? {}) as {
-                  mean?: number;
-                  unit?: string;
-                };
                 return (
                   <KpiCard
                     key={n.id}
                     label={n.label}
-                    value={`${(d.mean ?? 0).toFixed(2)} ${d.unit ?? ""}`}
+                    value={n.mean == null ? "—" : n.mean.toFixed(2)}
                     sub="baseline (parent)"
                   />
                 );
@@ -264,10 +250,10 @@ export default function WhatIfPage() {
                 <tbody className="text-gray-200">
                   {replayList.map((r) => (
                     <tr
-                      key={r.scenario_id}
+                      key={r.id}
                       className="border-b border-panel-border/50"
                     >
-                      <td className="py-2">{r.label ?? "—"}</td>
+                      <td className="py-2">{r.name}</td>
                       <td>
                         <span
                           className={
@@ -282,16 +268,16 @@ export default function WhatIfPage() {
                         </span>
                       </td>
                       <td className="text-right font-mono">
-                        {r.results?.avg_delay_minutes_mean?.toFixed(2) ?? "—"}
+                        {r.results?.kpis.avg_delay_minutes?.mean?.toFixed(2) ?? "—"}
                       </td>
                       <td className="text-right font-mono">
-                        {r.results?.missed_connections_mean?.toFixed(1) ?? "—"}
+                        {r.results?.kpis.missed_connections?.mean?.toFixed(1) ?? "—"}
                       </td>
                       <td className="text-right font-mono">
-                        {r.results?.eu261_eur_mean?.toFixed(0) ?? "—"}
+                        {r.results?.kpis.eu261_liability_eur?.mean?.toFixed(0) ?? "—"}
                       </td>
                       <td className="pl-3 font-mono text-gray-500 text-[10px]">
-                        {r.scenario_id.slice(0, 8)}
+                        {r.id.slice(0, 8)}
                       </td>
                     </tr>
                   ))}

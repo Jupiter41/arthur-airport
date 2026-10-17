@@ -70,7 +70,7 @@ def main() -> int:
         return 0
     env = {**os.environ, "REQUIRE_LIVE_STACK": "1"}
     return subprocess.run(
-        [sys.executable, "-m", "pytest", "tests/integration", "-q", "--tb=short"],
+        [sys.executable, "-m", "pytest", "tests/integration", "-q", "--tb=short", "--maxfail=1"],
         cwd=ROOT, env=env, check=False,
     ).returncode
 

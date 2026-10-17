@@ -1222,10 +1222,10 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
 | G7 / P1 | Planning data now survives restart, but background jobs do not resume and have no durable worker lease/claim. Persisted interrupted runs can remain `running`. Analysis proposals are durable, but not coordinated across replicas. | Durable job scheduling/recovery, ownership and concurrency tests. Persistence is not equivalent to durable execution. |
 | G8 / P1 | `PLANNING.md` promises actual outcomes after 30 sim-minutes. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
-| G9 / P1 | Flight/gate/weather/incident projections now rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage occupancy now uses a durable unsampled owner snapshot, including BULK mode. Security/vehicle projections and owner pipeline/vehicle recovery still need a complete restart contract; aggregate publication still has the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
+| G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. Security/vehicle projections, cross-terminal transit, incident impacts and full owner recovery still need a complete restart contract; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
-| G12 / P2 | Compose config validates, but this machine has no running Docker engine. No live DB restart, broker redelivery, full-stack UI or load validation ran. K8s has no planning/cost service manifests. | Exercise the new lifecycle/storage against the full stack, add missing deployment manifests, validate image packaging and readiness. Unit/build success is not deployment certification. |
+| G12 / P2 | A17 runs the complete local Compose stack, all-service readiness, live integration, full restart, command replay and browser checks. Earlier CI runs reached all-service readiness but exposed five failures corrected in A17. K8s still lacks planning/cost manifests; sustained load, crash-window and replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -1351,3 +1351,91 @@ GitHub run `39016849378` for `625ee09` passed Linux Python units, lint, gateway
 tests and both builds, built all Compose images, and reached the strict live
 readiness/integration stage. Its final deployment result is recorded separately
 when available; reaching that stage is not a full-stack pass.
+
+
+## 13. A17 — Local full-stack validation and recovery corrections (2026-10-17)
+
+### Findings and corrections
+
+GitHub runs `39016849378` and `39017397993` reached readiness for all nine
+services and gateway, then reported **93 passed / 5 failed** live tests. Two
+failures were obsolete test contracts: baggage `/flow/map` returns the specified
+zone list, and passenger security is exposed by `/flow/summary`, not the removed
+`/passengers/security/status` path. Those checks now assert the actual contracts.
+
+The other failures exposed real latency under the default 60x simulation:
+
+- Baggage performed hundreds of sequential status/scan writes before consuming
+  incidents. Induction and flight-wide arrival/departure changes now persist in
+  batches, preserving per-bag scan history and facts. Independent conveyor bag
+  writes use bounded concurrency while each bag's transitions stay ordered.
+  Departed bags are removed from the conveyor instead of advancing again later.
+- Analysis/passenger consumers drain larger event bursts. Analysis evaluates the
+  latest clock once per batch while processing every fact/receipt. Passenger and
+  baggage commands arriving before the first clock are retained until a valid
+  `SimClockTick`, rather than logged and discarded for lacking a clock. This is
+  not a transactional Kafka inbox: the broader G1 crash window remains open.
+- These services now stop/await their consumer task before closing its producer
+  and Neo4j driver. Clock rewind releases the analysis baggage timestamp guard;
+  naive/aware legacy timestamps are compared in UTC.
+
+Checking the assertions behind the previous restart pass found another real
+recovery error: writes used `last_scan_zone` while the baggage loader read only
+`current_zone`. Recovery now reads the written field, restores arrived queues,
+and preserves tag, dangerous-goods, passenger and terminal-routing metadata.
+Repeated rebuilding does not duplicate queues. This closes that specific defect,
+not the remaining transit/incident/vehicle recovery work in G9.
+
+Browser inspection then exposed an independent broken What-If Replay page:
+Report posted the wrong keys, KPI nodes used the wrong discriminator/shape, and
+replay rows used `scenario_id` where responses contain `id`. The page and typed
+API now use the real contracts and render nested KPI distributions. Gate
+interventions send `delta`, matching the engine. Completed parent scenarios are
+distinguished from replay children in list summaries.
+
+Replay creation previously dropped demand multiplier, route changes and weather
+date, and shared mutable infrastructure with its parent. It now copies the full
+parent configuration, retains its persisted seed/disruption, resets only job
+metadata and requested decisions, and requires a completed parent (409 otherwise).
+That completion requirement is an explicit contract correction documented in the
+planning spec. Live tests exercise both replay and report creation and verify
+preserved inputs and completed results.
+
+`PLANNING.md` no longer describes the unimplemented automatic 30-minute outcome
+loop as delivered. `ROADMAP_USECASE.md` qualifies the counterfactual graph: it is
+constructed from configured decisions/results, not measured causal event history.
+
+### Actual local evidence
+
+Docker Desktop is now working. Validation used an isolated export of the intended
+Git tree, excluding unrelated Raspberry Pi/access-control edits, under Compose
+project **`art-ldt-validation`** with its own volumes. The disposable project was
+reset and started from empty volumes at the default 60x speed. All service images,
+gateway and dashboard built. Container Python is 3.11; host tests used 3.14.3.
+
+| Check | Result |
+|---|---|
+| Strict readiness | All nine services and gateway return 200 from `/ready`. |
+| Python unit suite | **962 passed**, no skips, including actual LightGBM/PPO artifact tests and new burst/recovery/replay regressions; 18 deprecation/undefined-AUC warnings. |
+| Complete live integration suite | **100 passed**, no skips, final run **112.55 s**. An earlier clean-start run also passed all 100 tests. |
+| Live LDT behavior | Real forecast source/clock, isolated operational what-if, approved proposal recovery → Kafka owner execution → durable receipt → analysis confirmation, owner restart and fresh receipt on duplicate replay all pass. |
+| Live planning behavior | Actual synthetic Monte Carlo/financial computation, unchanged persisted results after planning restart, configuration-preserving replay/report and real graph/row shapes pass. |
+| Restart coverage | Full Compose restart now requires readiness of all nine services and gateway; individual owner restarts also pass. Restart subprocess failures are no longer ignored. |
+| Incident propagation | Power failure requires all mapped zones offline; sorting failure and resolution/restore checks pass locally. |
+| Dashboard tests/build | **44 passed**, 9 files; TypeScript/Vite build passes. Existing bundle-size/Browserslist warnings remain. |
+| Gateway | Unchanged in A17; **22 tests** and build validated in A15. |
+| Browser | Flight/passenger pages show live API/WS data. What-If Report produces five completed children and displays parent/replay KPI values without a crash. |
+| Ruff / diff whitespace | Changed services, scripts and tests pass the declared baseline; staged whitespace check passes. |
+
+The local stack remains available at `http://localhost:5173`. The browser report
+is a functional check, not evidence of calibrated benefit: identical results are
+valid when the chosen intervention does not affect that synthetic scenario.
+
+### Completion decision
+
+**Keep this roadmap active.** Local functional checks now pass, but G1–G12 still
+include material unfinished behavior: transactional delivery/dedup, unified rates
+and effect/ranking models, unsupported actions, interrupted-job recovery,
+automatic attributed outcomes, complete projections and deployment/load work.
+Neither these test passes nor older plan checkmarks justify saying every planned
+capability is implemented or archiving the roadmap into an old-roadmap folder.

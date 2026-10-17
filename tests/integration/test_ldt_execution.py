@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PASSENGER = os.getenv("PASSENGER_SVC_URL", "http://localhost:8002")
 ANALYSIS = os.getenv("ANALYSIS_SVC_URL", "http://localhost:8007")
 SIM = os.getenv("SIM_SVC_URL", "http://localhost:8006")
+PLANNING = os.getenv("PLANNING_SVC_URL", "http://localhost:8009")
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -51,6 +52,90 @@ def test_forecast_points_identify_real_source_and_clock():
     assert body["congestion_risk"]["confidence"] is None
     assert all(point["source"] in {"lightgbm", "schedule_ratio"} for point in body["forecast"])
     assert all(point["predicted_queue_depth"] >= 0 for point in body["forecast"])
+
+
+def test_live_what_if_projects_without_mutating_owner_capacity():
+    before = requests.get(f"{PASSENGER}/api/v1/flow/summary", timeout=10).json()["security"]["B"]["lanes_open"]
+    response = requests.post(f"{ANALYSIS}/api/v1/analysis/what-if", json={
+        "actions": [{"action_type": "open_security_lane",
+                     "parameters": {"terminal": "Terminal B", "new_lane_count": before + 1}}],
+        "horizon_minutes": 15,
+    }, timeout=30)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["sim_time_at_request"] and body["horizon_minutes"] == 15
+    assert len(body["projections"]) == 1
+    assert 0 <= body["baseline"]["gate_utilisation_pct"] <= 100
+    after = requests.get(f"{PASSENGER}/api/v1/flow/summary", timeout=10).json()["security"]["B"]["lanes_open"]
+    assert after == before
+
+
+def test_planning_runs_synthetic_scenario_and_recovers_results_after_restart():
+    response = requests.post(f"{PLANNING}/api/v1/planning/scenarios", json={
+        "name": "Synthetic local recovery validation", "horizon": "day",
+        "monte_carlo_runs": 2, "random_seed": 42, "demand_multiplier": 1.1,
+        "demand_source": "simulation", "weather_source": "simulation",
+        "capex_eur": 1000, "opex_delta_eur": 10, "years_horizon": 3,
+    }, timeout=30)
+    assert response.status_code == 201, response.text
+    scenario_id = response.json()["scenario_id"]
+    endpoint = f"{PLANNING}/api/v1/planning/scenarios/{scenario_id}"
+
+    children = []
+
+    def completed(url=endpoint):
+        result = requests.get(f"{url}/status", timeout=10)
+        result.raise_for_status()
+        status = result.json()
+        assert status["status"] != "failed", status
+        return status if status["status"] == "completed" else None
+
+    try:
+        assert wait_for(completed)["progress_pct"] == 100
+        response = requests.get(f"{endpoint}/results", timeout=10)
+        assert response.status_code == 200, response.text
+        saved = json.loads(response.text, parse_constant=lambda value: pytest.fail(f"Nonfinite result: {value}"))
+        assert saved["kpis"] and saved["baseline_kpis"] and saved["financials"]
+        subprocess.run(["docker", "compose", "restart", "planning-service"], cwd=ROOT, check=True, timeout=90)
+
+        def ready():
+            try:
+                return requests.get(f"{PLANNING}/ready", timeout=5).status_code == 200
+            except requests.RequestException:
+                return False
+
+        wait_for(ready)
+        scenario = requests.get(endpoint, timeout=10).json()
+        assert scenario["random_seed"] == 42 and scenario["demand_multiplier"] == 1.1
+        assert scenario["status"] == "completed"
+        assert requests.get(f"{endpoint}/results", timeout=10).json() == saved
+        graph = requests.get(f"{endpoint}/causal-graph", timeout=10).json()
+        assert any(node["type"] == "kpi" and node["mean"] is not None for node in graph["nodes"])
+        intervention = {"action": "open_security_lanes", "sim_minute": 120,
+                        "duration_minutes": 60, "params": {"lanes": 2}}
+        for route, payload in [
+            ("replay", {"interventions": [intervention], "label": "synthetic-replay"}),
+            ("counterfactual-report", {"base_interventions": [intervention], "shifts": [0]}),
+        ]:
+            response = requests.post(f"{endpoint}/{route}", json=payload, timeout=30)
+            assert response.status_code == 202, response.text
+            body = response.json()
+            child_id = body["scenario_id"] if route == "replay" else body["children"][0]["scenario_id"]
+            child_url = f"{PLANNING}/api/v1/planning/scenarios/{child_id}"
+            children.append(child_url)
+            wait_for(lambda: completed(child_url))
+            child = requests.get(child_url, timeout=10).json()
+            assert child["demand_multiplier"] == 1.1 and child["random_seed"] == 42
+            assert child["parent_scenario_id"] == scenario_id
+        replays = requests.get(f"{endpoint}/replays", timeout=10).json()["replays"]
+        assert len(replays) == 2
+        assert all(row["id"] and row["name"] and row["results"]["kpis"] for row in replays)
+    finally:
+        for child_url in children:
+            response = requests.delete(child_url, timeout=10)
+            assert response.status_code == 200, response.text
+        response = requests.delete(endpoint, timeout=10)
+        assert response.status_code == 200, response.text
 
 
 def test_approved_proposal_executes_and_receipt_survives_restart_and_replay():
