@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
 from _common.idempotency import IdempotencyTracker
+from _common.commands import CommandReceipts
 from _common.consumer_health import ConsumerHealthTracker
 
 from confluent_kafka import Consumer
@@ -310,36 +311,49 @@ async def _dispatch(envelope: dict) -> None:
             pass
 
 
+
+_command_receipts = CommandReceipts()
+
+
 async def _handle_command(envelope: dict) -> None:
+    from kafka.producer import _produce_event
+    from db.neo4j import get_driver
+    from _common.command_store import load_receipt, save_receipt
+
+    await _command_receipts.handle(
+        envelope, _state.sim_time, _execute_command,
+        lambda kind, clock, payload, key: _produce_event(kind, clock, payload, key=key),
+        load=lambda key: load_receipt(get_driver(), key),
+        save=lambda key, receipt: save_receipt(get_driver(), key, receipt),
+    )
+
+
+async def _execute_command(envelope: dict) -> str | None:
     """Execute an operator/agent command from ``baggage.commands``.
 
     Dedupes the command, parses/validates it, verifies the bag and target flight
     exist in Neo4j, then re-assigns the LOADED_ON relationship and removes the
     bag from its current conveyor zone. Emits BaggageStatusChanged on success.
     """
-    command_id = envelope.get("command_id", "")
-    if command_id and _state.check_idempotency(command_id):
-        return
-
     command_type = envelope.get("command_type")
     cmd, error = parse_command(command_type, envelope.get("payload"))
     if error is not None:
         m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
         logger.warning("Rejected command %s: %s", command_type, error)
-        return
+        return error
 
     sim_time = _state.sim_time
     if sim_time is None:
         m_commands.labels(command_type=command_type, outcome="rejected").inc()
         logger.warning("Rejected command %s: clock not started yet", command_type)
-        return
+        return "Simulation clock not available"
 
     if isinstance(cmd, RedirectBaggage):
         bag = await get_baggage_by_id(cmd.bag_id)
         if bag is None:
             m_commands.labels(command_type=command_type, outcome="rejected").inc()
             logger.warning("Rejected RedirectBaggage: bag %s not found", cmd.bag_id)
-            return
+            return "Baggage not found"
 
         ok = await redirect_baggage_to_flight(cmd.bag_id, cmd.target_flight_id, sim_time)
         if not ok:
@@ -347,7 +361,7 @@ async def _handle_command(envelope: dict) -> None:
             logger.warning(
                 "Rejected RedirectBaggage: target flight %s not found", cmd.target_flight_id
             )
-            return
+            return "Target flight not found"
 
         # Remove from the current conveyor zone so it doesn't continue down
         # the wrong pipeline; a future induction tick will pick it up.
@@ -369,6 +383,8 @@ async def _handle_command(envelope: dict) -> None:
             "Executed RedirectBaggage: bag %s → flight %s",
             cmd.bag_id, cmd.target_flight_id,
         )
+
+    return None
 
 
 BULK_SNAPSHOT_INTERVAL_SIM_MIN = int(os.getenv("BULK_SNAPSHOT_INTERVAL_MIN", "60"))

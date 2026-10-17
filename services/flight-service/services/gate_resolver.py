@@ -16,6 +16,8 @@ from db.neo4j import (
     is_gate_occupied,
 )
 
+from _common.aircraft import WIDE_BODY_TYPES
+
 logger = logging.getLogger(__name__)
 
 # Terminal ID mapping from gate prefix
@@ -35,7 +37,6 @@ TERMINAL_FALLBACK = {
 INTERNATIONAL_FLIGHT_TYPES = {"international_short", "international_long"}
 
 # Body-class classification is shared across all services — see _common/aircraft.py.
-from _common.aircraft import WIDE_BODY_TYPES
 
 
 def _gate_to_terminal(gate_id: str) -> str:
@@ -90,7 +91,8 @@ async def check_and_resolve_conflict(
         return None
 
     # Reassign
-    await assign_flight_to_gate(flight_id, new_gate, sim_time)
+    if not await assign_flight_to_gate(flight_id, new_gate, sim_time):
+        return None
     logger.info(
         "Gate conflict resolved: flight %s reassigned from %s to %s",
         flight_id, gate_id, new_gate,
@@ -149,7 +151,8 @@ async def ensure_gate_assigned(
                 break
 
     if gate:
-        await assign_flight_to_gate(flight_id, gate, sim_time)
+        if not await assign_flight_to_gate(flight_id, gate, sim_time):
+            return None
         logger.info("Gate %s assigned to flight %s", gate, flight_id)
     else:
         logger.warning("No gate available for flight %s", flight_id)

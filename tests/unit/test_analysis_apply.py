@@ -7,6 +7,7 @@ event; this function only mutates in-memory state and returns the log entry.
 """
 
 from datetime import datetime, timedelta
+import pytest
 
 from tests.conftest import import_service_module
 
@@ -31,9 +32,16 @@ def _rec(rec_id: str, *, applied: bool = False) -> Recommendation:
         confidence_score=0.8,
         expiry_sim_time=NOW + timedelta(minutes=45),
         priority_rank=1,
-        parameters={"alternate_terminal": "B"},
+        parameters={"flight_id": "f1", "gate_id": "B12"},
         applied=applied,
     )
+
+
+@pytest.fixture(autouse=True)
+def reset_queue():
+    _auto.approval_queue.clear()
+    yield
+    _auto.approval_queue.clear()
 
 
 class TestApplyRecommendation:
@@ -43,21 +51,22 @@ class TestApplyRecommendation:
         assert entry is not None
         assert entry["recommendation_id"] == "rec-1"
         assert entry["action_type"] == "reassign_gate"
-        assert entry["initiated_by"] == "operator"
-        assert entry["applied_at"] == NOW.isoformat()
+        assert entry["proposed_by"] == "operator"
+        assert entry["proposed_at"] == NOW.isoformat()
+        assert entry["status"] == "approved"
         # The recommendation object is marked applied in place.
-        assert recs[0].applied is True
-        assert recs[0].applied_at == NOW
+        assert recs[0].applied is False
+        assert recs[0].applied_at is None
 
     def test_carries_parameters_into_log(self):
         recs = [_rec("rec-1")]
         entry = apply_recommendation(recs, "rec-1", NOW)
-        assert entry["parameters"] == {"alternate_terminal": "B"}
+        assert entry["parameters"] == {"flight_id": "f1", "gate_id": "B12"}
 
     def test_initiated_by_is_overridable(self):
         recs = [_rec("rec-1")]
         entry = apply_recommendation(recs, "rec-1", NOW, initiated_by="agent")
-        assert entry["initiated_by"] == "agent"
+        assert entry["proposed_by"] == "agent"
 
     def test_unknown_id_returns_none(self):
         recs = [_rec("rec-1")]
@@ -81,10 +90,23 @@ class TestApplyRecommendation:
         apply_recommendation(recs, "rec-1", NOW)
         assert _auto._bottleneck_cooldowns.get("bn-rec-1") == NOW
 
-    def test_appends_to_action_log(self):
+    def test_does_not_fabricate_an_execution_log(self):
         before = len(_auto.get_action_log())
         recs = [_rec("rec-log")]
         apply_recommendation(recs, "rec-log", NOW)
         after = _auto.get_action_log()
-        assert len(after) == before + 1
-        assert after[-1]["recommendation_id"] == "rec-log"
+        assert len(after) == before
+
+    def test_advisory_action_is_rejected(self):
+        rec = _rec("advisory")
+        rec.parameters = {"alternate_terminal": "B"}
+        with pytest.raises(ValueError, match="advisory"):
+            apply_recommendation([rec], rec.id, NOW)
+        assert not rec.applied
+        assert _auto.approval_queue.list_all() == []
+
+    def test_expired_action_is_rejected(self):
+        rec = _rec("expired")
+        rec.expiry_sim_time = NOW
+        with pytest.raises(ValueError, match="expired"):
+            apply_recommendation([rec], rec.id, NOW)

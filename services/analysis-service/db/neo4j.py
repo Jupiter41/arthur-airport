@@ -1,6 +1,6 @@
 """Neo4j async driver for analysis-service.
 
-Read-only service — no constraints or indexes to create (we only query existing data).
+Operational domain data is read-only. Analysis owns durable action proposals.
 """
 
 import asyncio
@@ -120,25 +120,22 @@ async def query_connection_clusters(min_cluster_size: int = 5) -> list[dict]:
     driver = get_driver()
     async with driver.session() as session:
         result = await session.run("""
-            MATCH (p:Passenger)-[:ON_FLIGHT]->(inbound:Flight)
-            WHERE p.is_connecting = true
-              AND inbound.status IN ['delayed', 'holding', 'approaching']
+            MATCH (p:Passenger {connection: true})-[:ON_FLIGHT]->(inbound:Flight)
+            WHERE inbound.direction = 'arrival'
               AND inbound.delay_minutes > 0
-            WITH p, inbound
-            MATCH (p)-[:ON_FLIGHT]->(outbound:Flight)
-            WHERE outbound.flight_id <> inbound.flight_id
-              AND outbound.flight_type = 'departure'
+              AND NOT p.status IN ['boarded', 'departed_airport', 'missed_connection']
+            MATCH (outbound:Flight {id: p.connection_flight_id})
+            WHERE outbound.id <> inbound.id AND outbound.direction = 'departure'
+              AND outbound.status IN ['scheduled', 'boarding']
             WITH inbound, outbound,
-                 collect(p.passenger_id) AS passengers,
+                 collect(p.id) AS passengers,
                  count(p) AS pax_count,
                  inbound.delay_minutes AS inbound_delay
             WHERE pax_count >= $min_size
-            RETURN inbound.flight_id AS inbound_flight,
-                   outbound.flight_id AS outbound_flight,
-                   pax_count,
-                   passengers,
-                   inbound_delay,
-                   outbound.scheduled_departure AS connection_departure
+            RETURN inbound.id AS inbound_flight,
+                   outbound.id AS outbound_flight,
+                   pax_count, passengers, inbound_delay,
+                   outbound.scheduled_time AS connection_departure
             ORDER BY pax_count DESC
         """, min_size=min_cluster_size)
         records = await result.data()
@@ -173,3 +170,28 @@ async def query_active_flights_summary() -> dict:
         """)
         records = await result.data()
     return {r["status"]: r["cnt"] for r in records}
+
+
+async def initialize_action_store() -> None:
+    async with get_driver().session() as session:
+        result = await session.run(
+            "CREATE CONSTRAINT actionproposal_id IF NOT EXISTS FOR (p:ActionProposal) REQUIRE p.id IS UNIQUE"
+        )
+        await result.consume()
+
+
+async def save_proposal(document: dict) -> None:
+    import json
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MERGE (p:ActionProposal {id: $id}) SET p.document = $document",
+            id=document["id"], document=json.dumps(document),
+        )
+        await result.consume()
+
+
+async def load_proposals() -> list[dict]:
+    import json
+    async with get_driver().session() as session:
+        result = await session.run("MATCH (p:ActionProposal) RETURN p.document AS document")
+        return [json.loads(row["document"]) async for row in result]

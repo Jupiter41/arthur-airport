@@ -79,7 +79,7 @@ def check_resolved(
     if bottleneck.type == BottleneckType.SECURITY_QUEUE:
         terminal = bottleneck.zone
         sec = state.security.get(terminal)
-        if sec and sec.forecast_wait_minutes < SECURITY_WAIT_WARNING_MIN * 0.8:
+        if sec and max(sec.forecast_wait_minutes, sec.observed_wait_minutes) < SECURITY_WAIT_WARNING_MIN * 0.8:
             return True
 
     elif bottleneck.type == BottleneckType.GATE_UTILISATION:
@@ -137,10 +137,13 @@ def _detect_security_queue(
         if key in active_keys:
             continue
 
-        wait = sec.forecast_wait_minutes
+        observed = sec.observed_wait_minutes
+        wait = max(sec.forecast_wait_minutes, observed)
         conf = sec.forecast_confidence
 
-        if wait >= SECURITY_WAIT_WARNING_MIN and conf >= SECURITY_CONFIDENCE_THRESHOLD:
+        observed_congestion = observed >= SECURITY_WAIT_WARNING_MIN
+        predicted_congestion = sec.forecast_wait_minutes >= SECURITY_WAIT_WARNING_MIN and conf >= SECURITY_CONFIDENCE_THRESHOLD
+        if observed_congestion or predicted_congestion:
             severity = (
                 BottleneckSeverity.CRITICAL
                 if wait >= SECURITY_WAIT_CRITICAL_MIN
@@ -151,7 +154,8 @@ def _detect_security_queue(
                 type=BottleneckType.SECURITY_QUEUE,
                 severity=severity,
                 zone=terminal,
-                root_cause=(
+                root_cause=(f"Observed security queue wait is {observed:.0f} min in {terminal}"
+                if observed_congestion else
                     f"Security queue forecast predicts {wait:.0f} min wait "
                     f"(confidence {conf:.0%}) in {terminal}"
                 ),
@@ -161,6 +165,7 @@ def _detect_security_queue(
                 metrics={
                     "queue_depth": sec.queue_depth,
                     "forecast_wait_minutes": wait,
+                    "signal_source": "observed" if observed_congestion else "forecast",
                     "forecast_confidence": conf,
                     "open_lanes": sec.open_lanes,
                 },
@@ -367,7 +372,7 @@ def _detect_runway_capacity(
     # Count flights in approach/holding queue
     queue_count = sum(
         1 for f in state.flights.values()
-        if f.status in ("approaching", "holding", "ready_for_departure", "taxiing")
+        if f.status in ("approach", "approaching", "holding", "ready_for_departure", "taxiing")
     )
     if queue_count < RUNWAY_QUEUE_THRESHOLD:
         return []

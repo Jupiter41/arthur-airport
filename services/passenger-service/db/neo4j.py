@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 _driver: AsyncDriver | None = None
 
 CONSTRAINTS = [
+    "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
+    "CREATE CONSTRAINT security_checkpoint_terminal IF NOT EXISTS FOR (s:SecurityCheckpoint) REQUIRE s.terminal IS UNIQUE",
     "CREATE CONSTRAINT passenger_id IF NOT EXISTS FOR (p:Passenger) REQUIRE p.id IS UNIQUE",
     # 1C — Accessibility & special assistance pool
     "CREATE CONSTRAINT wheelchair_resource_terminal IF NOT EXISTS FOR (w:WheelchairResource) REQUIRE w.terminal IS UNIQUE",
@@ -586,3 +588,22 @@ async def list_recent_assignments(since_iso: str | None = None, limit: int = 500
     async with driver.session() as session:
         result = await session.run(cypher, since=since_iso, limit=int(limit))
         return [dict(rec["a"]) async for rec in result]
+
+
+async def save_security_lanes(terminal: str, lanes: int, sim_time: datetime) -> None:
+    """Passenger-service owns operational security lane overrides."""
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MERGE (s:SecurityCheckpoint {terminal: $terminal}) "
+            "SET s.lanes_open = $lanes, s.updated_at = $sim_time",
+            terminal=terminal, lanes=lanes, sim_time=sim_time.isoformat(),
+        )
+        await result.consume()
+
+
+async def load_security_lanes() -> dict[str, int]:
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MATCH (s:SecurityCheckpoint) RETURN s.terminal AS terminal, s.lanes_open AS lanes"
+        )
+        return {row["terminal"]: row["lanes"] async for row in result}

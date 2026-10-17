@@ -20,10 +20,11 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Sequence
 
+from _common.aircraft import WIDE_BODY_TYPES
+
 logger = logging.getLogger(__name__)
 
 # Body-class classification is shared across all services — see _common/aircraft.py.
-from _common.aircraft import WIDE_BODY_TYPES
 
 
 # ── Task status enum ────────────────────────────────────────

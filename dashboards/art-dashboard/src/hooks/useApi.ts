@@ -287,12 +287,13 @@ export interface Approval {
   proposed_at: string;
   recommendation_id: string | null;
   bottleneck_id: string | null;
-  status: "pending" | "approved" | "rejected" | "executed";
+  status: "pending" | "approved" | "dispatched" | "rejected" | "executed" | "failed";
   requires_human: boolean;
   decided_by: string | null;
   decided_at: string | null;
   reject_reason: string | null;
   executed_at: string | null;
+  failure_reason?: string | null;
 }
 
 export const analysisApi = {
@@ -307,7 +308,7 @@ export const analysisApi = {
       "/analysis/recommendations",
     ),
   applyRecommendation: (id: string) =>
-    apiFetch<{ applied: boolean; action: Record<string, unknown> }>(
+    apiFetch<{ applied: boolean; executed: boolean; status: string; proposal_id: string }>(
       `/analysis/recommendations/${encodeURIComponent(id)}/apply`,
       { method: "POST" },
     ),
@@ -347,7 +348,8 @@ export const analysisApi = {
       approved: boolean;
       executed: boolean;
       command: string | null;
-      action: Record<string, unknown>;
+      status: string;
+      proposal_id: string;
     }>(`/analysis/approvals/${encodeURIComponent(id)}/approve`, {
       method: "POST",
       body: JSON.stringify({ decided_by }),

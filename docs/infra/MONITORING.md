@@ -389,3 +389,11 @@ All five dashboard JSON files live in `grafana/dashboards/` and are auto-loaded 
 | Password | `art-grafana`         |
 
 Change via `GF_SECURITY_ADMIN_PASSWORD` env var in `docker-compose.yml`.
+
+
+### Command execution metrics (Real LDT)
+
+`flight_commands_total`, `pax_commands_total`, and `baggage_commands_total` are
+Counters labelled by `command_type` and `outcome` (`accepted` / `rejected`).
+They describe the owning service's execution decision. Dispatch by analysis
+alone must not increment them or be displayed as successful execution.

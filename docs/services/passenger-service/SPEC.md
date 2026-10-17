@@ -527,3 +527,23 @@ Supports filter frame:
 | `forecast_queue_depth`          | Gauge   | Predicted queue depth per terminal (next 30 sim-min) |
 | `forecast_model_trained`        | Gauge   | 1 if LightGBM model is loaded, per terminal          |
 | `forecast_mae`                  | Gauge   | Mean absolute error of last model evaluation         |
+
+
+### Command execution receipts (Real LDT correction)
+
+Accepted commands emit the existing domain fact plus `CommandExecuted`; rejected
+commands emit `CommandRejected` with a reason. Both receipts carry `command_id`
+and `command_type`, use the current simulation clock, and are stored in Neo4j
+for restart-safe redelivery. See `EVENT_BUS.md`, “Real LDT execution and planning
+corrections”, for the lifecycle and transaction-boundary limitation.
+
+`OpenSecurityLane` also persists `SecurityCheckpoint.lanes_open`, restores these
+overrides on restart, and emits `SecurityLanesChanged` with the previous count.
+
+
+`SecurityQueueUpdated` is an unsampled aggregate on `passengers.events` with
+`terminal`, `queue_depth`, `lanes_open`, `wait_minutes` and `at`. Passenger-service
+publishes it on each normal tick (every 20 ticks in BULK mode). Analysis uses
+these measured snapshots to detect and resolve observed congestion. It does
+not invent forecast confidence from an observed wait. This also avoids trying
+to reconstruct exact queue counts from sampled per-passenger events.

@@ -25,14 +25,16 @@ External world (simulated)
   └── Incident injector    → fires hazardous events (manual or probabilistic)
 
 Airport Digital Twin
-  ├── 7 domain microservices  (Python / FastAPI)
+  ├── 5 operational domain services (Python / FastAPI)
+  ├── 1 analysis-service       (Python / FastAPI)
+  ├── 1 planning-service       (Python / FastAPI)
   ├── 1 cost-service           (Python / FastAPI, read-only financial layer)
   ├── 1 API gateway            (Node.js / Express)
   ├── 1 simulation orchestrator
   ├── Kafka event bus          (async inter-service communication)
   ├── Neo4j graph database     (entity state + relationships)
   ├── Prometheus + Grafana     (metrics + dashboards)
-  └── React frontend           (11 dashboard pages)
+  └── React frontend           (operational and planning dashboards)
 ```
 
 ---
@@ -49,7 +51,8 @@ Airport Digital Twin
 | `sim-orchestrator`  | Python / FastAPI  | 8006 | Simulation clock, schedule seeding, event injection                        |
 | `analysis-service`  | Python / FastAPI  | 8007 | Bottleneck detection, recommendations, what-if analysis, anomaly detection |
 | `cost-service`      | Python / FastAPI  | 8008 | Financial layer: cost accumulation, P&L, EU261 tracking, recommendations  |
-| `api-gateway`       | Node.js / Express | 3000 | REST aggregation, WebSocket fan-out, auth (JWT stub)                       |
+| `planning-service`  | Python / FastAPI  | 8009 | Isolated capacity simulations, investment analysis, durable scenario/audit records |
+| `api-gateway`       | Node.js / Express | 3000 | REST aggregation, WebSocket fan-out, client authentication and RBAC                       |
 
 > **See also:** [ROUTES.md](ROUTES.md) for the full endpoint inventory,
 > [EVENT_BUS.md](EVENT_BUS.md) for Kafka topic schemas,
@@ -79,7 +82,9 @@ analysis-service → topic: analysis.events
 
 ### Real-time push (WebSocket)
 
-The API gateway subscribes to all Kafka topics and fans out relevant events to connected dashboard clients over WebSocket. Dashboards never poll — they react to pushed events.
+The API gateway subscribes to all Kafka topics and fans out relevant events to connected dashboard clients over WebSocket. Operational facts are pushed over WebSocket. REST supplies initial loads,
+planning/history queries and reconciliation polling; consolidating overlapping
+frontend state remains roadmap work.
 
 ---
 
@@ -107,10 +112,10 @@ The simulation orchestrator controls a virtual clock that can run at configurabl
 
 | Speed                | 1 simulated minute = |
 | -------------------- | -------------------- |
-| 1× (real time)       | 1 real second        |
+| 1× (real time)       | 60 real seconds      |
 | 10×                  | 6 real seconds       |
 | 60× (default)        | 1 real second        |
-| 3600× (fast-forward) | 1 real millisecond   |
+| 3600× (fast-forward) | 1/60 real second     |
 
 All services consume the `sim.clock` Kafka topic to advance their internal time. No service has a wall-clock dependency.
 
@@ -169,8 +174,12 @@ All services consume the `sim.clock` Kafka topic to advance their internal time.
 
 ---
 
-## 9. Security (stub)
+## 9. Gateway authentication
 
-Authentication is stubbed for portfolio purposes. The API gateway issues a static JWT on `/auth/token` (no real credentials). All endpoints accept this token via `Authorization: Bearer <token>`. In a production system, this would be replaced with an OAuth2 provider.
+The gateway validates client secrets before issuing JWTs. Operator and approver
+roles gate writes and human approvals. Non-production includes an explicit demo
+client; production fails closed without configured `JWT_SECRET` and
+`AUTH_CLIENTS`. This is client authentication, with OAuth2/user identity as future
+work. See the gateway specification and the Real LDT roadmap for validation limits.
 
 No real personal data exists in the system. All passenger names, IDs, and records are randomly generated.

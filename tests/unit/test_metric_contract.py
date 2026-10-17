@@ -46,6 +46,7 @@ EXPECTED_METRICS: dict[str, list[tuple[str, str, frozenset[str]]]] = {
         ("passenger_alerts_total", "Counter", frozenset({"type"})),
         ("zone_load_pct", "Gauge", frozenset({"zone_id"})),
         ("envelope_invalid_total", "Counter", frozenset({"reason"})),
+        ("pax_commands_total", "Counter", frozenset({"command_type", "outcome"})),
     ],
     "baggage-service": [
         ("baggage_in_system", "Gauge", frozenset({"status"})),
@@ -60,6 +61,7 @@ EXPECTED_METRICS: dict[str, list[tuple[str, str, frozenset[str]]]] = {
         ("conveyor_transit_queue", "Gauge", frozenset()),
         ("conveyor_delay_total", "Counter", frozenset({"terminal"})),
         ("envelope_invalid_total", "Counter", frozenset({"reason"})),
+        ("baggage_commands_total", "Counter", frozenset({"command_type", "outcome"})),
     ],
     "weather-service": [
         ("weather_category", "Gauge", frozenset()),

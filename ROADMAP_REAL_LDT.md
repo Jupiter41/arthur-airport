@@ -1,5 +1,12 @@
 # Roadmap to a Real Living Digital Twin (LDT)
 
+> **Current verification: 2026-10-17.** The architecture review in §§0–9 and
+> execution entries A1–A10 are historical observations, not a blanket claim that
+> the LDT is complete. A11–A14 record this continuation; §10 is the current gap
+> register. In particular, the old “applied” behavior in A8/A9 was an audit fact,
+> not domain execution. It has been replaced by command dispatch plus owner
+> receipts. Full Kafka/Neo4j runtime validation is still outstanding.
+
 > Principal-architect / product-CTO review of the Arthur International Airport digital twin, and a
 > pragmatic transformation plan to evolve it from a **facade of an LDT** into an **operational LDT**
 > with a closed descriptive → predictive → prescriptive → actionable loop.
@@ -342,13 +349,13 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
 
 ## 7. Refactoring Roadmap
 
-### Phase 0 — Stabilization (weeks 0–3) ✅ COMPLETE
+### Phase 0 — Stabilization (weeks 0–3) ⚠ PARTIAL (see §10)
 **Objectives:** stop the bleeding; make numbers and money trustworthy; kill fake signals.
 - ✅ Fix cost-service idempotency + double-counting (`kafka/consumer.py` add `IdempotencyTracker`; dedup
   dual-entry). *Affected:* `cost-service/kafka/consumer.py`, `cost_engine.py`. *(A1)*
 - ✅ Fix planning trust bugs: runway capacity scaling (`simulation.py:392`),
   `missed_connections`/cascade increments or stop monetizing them (`benefit_extractor.py:88`). *(A2)*
-- ✅ Reconcile `WIDE_BODY_TYPES` (D3); single finance source (D2). *(A3)*
+- ✅ Reconcile `WIDE_BODY_TYPES` (D3). **D2 remains partial:** default-value equality tests do not make the runtime rate JSON and Python constants one source. *(A3, §10 G2)*
 - ✅ CI gaps: cost/planning deps missing from `unit-tests`; remove `|| true` on integration; add gateway
   tests; scrape cost/planning `/metrics`. *(A4)*
 - ✅ Delete committed Azurite artifacts; gitignore caches; archive doc sprawl. *(A4)*
@@ -357,9 +364,9 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
 
 ### Phase 1 — Architecture Foundation (weeks 2–8, overlaps P0) ✅ PARTIAL
 **Objectives:** kill duplication; invert dependencies; make domain logic testable.
-- ✅ Promote to `_common` and delete copies: `neo4j_client`, `kafka_runtime`, `EventEnvelope` producer
+- ⚠ Pilot only — promote to `_common` and delete copies: `neo4j_client`, `kafka_runtime`, `EventEnvelope` producer
   path, `_logging/_tracing/_profiler`; make `IdempotencyTracker` mandatory. Fix `_template`. *(A5 — pilot: flight-service)*
-- ✅ Refactor consumers into thin adapters over pure `application.handle()` (start with flight + pax). *(A6 — partial: pure decisions extracted, full handle() inversion deferred)*
+- ⚠ Partial — refactor consumers into thin adapters over pure `application.handle()` (start with flight + pax). *(A6 — partial: pure decisions extracted, full handle() inversion deferred)*
 - ✅ Externalize D6 constants to `config/airport.yaml`.
 - *Affected:* all `services/*/db|kafka`, `_common/*`, `_template/*`. **Complexity:** MED–HIGH.
   **Deps:** none (mechanical). **Value:** HIGH — every later change gets cheaper; unit tests become
@@ -370,7 +377,7 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
 - Canonical entities + value objects in `twin-core`/`_common` (§4.2).
 - **Unify the 3 what-if simulators (D5)** into `simulation-core`; rewire planning MC, analysis
   what-if, RL env. **Complexity:** HIGH. **Deps:** P1. **Value:** HIGH — correctness + coherence.
-- Persist planning scenarios/audit to Neo4j (fix rule-#3 violation).
+- ✅ Persist planning scenarios/results/audit to Neo4j with a durable lifecycle outbox. *(A12; repository-boundary tests, live DB validation pending)*
 
 ### Phase 3 — Intelligence Platform (weeks 10–16)
 **Objectives:** one trustworthy recommender; real forecasting where claimed.
@@ -390,7 +397,7 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
 - ✅ Harden auth (kill dev backdoor, real secret, RBAC) — prerequisite for real action execution. *(A10)*
 - ✅ `passengers.commands` + passenger-service `OpenSecurityLane` handler.
 - ✅ `baggage.commands` + baggage-service `RedirectBaggage` handler (Neo4j redirect + conveyor eviction + `BaggageStatusChanged` fact).
-- `incidents.commands` and full-fleet command coverage deferred (no unsatisfied roadmap item).
+- ⚠ `incidents.commands`, concrete GDP/rebooking execution and remaining action coverage are still open. Unsupported/aggregate actions are advisory and cannot claim execution. *(A11, §10 G6)*
 
 ---
 
@@ -860,7 +867,7 @@ consumer.
 
 ---
 
-### A8 — Wire the already-existing UI actions (close the manual loop) ✅
+### A8 — Wire the already-existing UI actions (historical; execution corrected by A11) ⚠
 
 **Status:** Done and validated on the frontend (type-check + build + vitest) and on the new backend
 apply logic (unit + mutation). The three previously-dead action affordances now hit real endpoints.
@@ -921,7 +928,7 @@ with real branching — is fully unit-tested, and the frontend wiring is type-ch
 `analysis.events` event types (incl. `AutonomousActionApplied`) are not catalogued in `EVENT_BUS.md`
 today, so no spec entry was churned; adding `initiated_by`/`parameters` to that payload is additive.
 
-### A9 — Approval queue: activate the safety guards and close the autonomous loop ✅
+### A9 — Approval queue (historical; execution corrected by A11) ⚠
 
 **Status:** Done and validated on the pure decision logic (unit + mutation) and the frontend
 (type-check + build + vitest). The Kafka emission and HTTP round-trips are reasoned about but not run
@@ -1054,3 +1061,174 @@ caveat as A5–A9 — the middleware itself is unit-tested in isolation and moun
 client is deliberately `approver` so the single-console demo keeps full function; a real multi-user
 deployment would define distinct `operator`/`approver` clients in `AUTH_CLIENTS`. Role is asserted at the
 gateway (the trust boundary); upstream services still trust the gateway, unchanged.
+
+
+### A11 — Commands now require owner confirmation; live congestion reaches the loop ✅
+
+**Implemented (2026-10-17).** Manual Apply, automatic rules, RL-selected concrete
+recommendations and human approval share `_common.commands.action_command` and
+`analysis/services/action_execution.py`. Mappings cover concrete flight holds,
+gate reassignment, security lane counts and baggage flight redirection. Terminal
+labels and the existing outbound-flight/hold-duration fields are normalized.
+Unsupported targets return 422 / remain advisory. Expired recommendations are
+rejected. A pending command is not marked applied, including after approval.
+
+Proposals follow `pending → approved → dispatched → executed|failed`, or rejection.
+Neo4j `ActionProposal` records rebuild the cache and confirmed execution log.
+Publishing waits for broker acknowledgement off the event loop. Failures retain
+an approved retryable proposal; every retry uses the proposal ID as command ID.
+Missing receipts are retried after five simulation minutes. Owning services emit
+`CommandExecuted` / `CommandRejected` and reload saved Neo4j `CommandReceipt`
+records before redelivery. Only an owner-topic receipt marks execution, updates
+the recommendation and increments the action metric. The UI displays advisory,
+pending, dispatched, executed and failed states separately.
+
+Additional defects found while driving the real owners:
+- Security lane commands previously changed only memory. They now save
+  `SecurityCheckpoint`, emit `SecurityLanesChanged` and restore overrides.
+- Analysis expected terminal/forecast fields absent from real passenger events.
+  Passenger-service now publishes unsampled `SecurityQueueUpdated` aggregates.
+  Analysis detects and resolves **observed** congestion without inventing a
+  forecast confidence score; per-passenger event sampling cannot corrupt these
+  aggregate queue counts.
+- Manual holds previously vanished on restart and replaced existing delay totals.
+  Hold metadata is committed with the delayed Flight, the cache rebuilds from
+  Neo4j, delay increments preserve prior delay, and failed writes do not create
+  a memory-only hold. Release clears cache only after a successful DB update.
+- Gate assignment matched the new gate after deleting the old relationship.
+  It now resolves/locks/checks the target first and returns a real success flag;
+  rejected assignments cannot emit `FlightGateAssigned` or a success receipt.
+- Connection-cluster queries used nonexistent `flight_id`, `flight_type`,
+  `is_connecting` and `passenger_id` graph properties. They now use the documented
+  IDs, direction and `connection_flight_id`. Actual flight direction/gate fields
+  are accepted by the analysis projection.
+
+**Validation:** real handler tests stub only DB/Kafka/metrics and unrelated ML
+training boundaries. They cover accepted/rejected flight commands, receipt
+redelivery after a new cache, lane persistence/rebuild, failed hold writes,
+cumulative delay and rejected gate assignment. Lifecycle tests cover correct
+owner-topic routing, early/duplicate/rejected receipts, unavailable broker,
+stable retry IDs and unsupported actions. Measured queue snapshots detect and
+resolve a real observed bottleneck. See A14 for final suite totals.
+
+**Boundary:** domain mutations, their receipts and Kafka facts are not one atomic
+transaction. A crash between them remains a correctness gap (G1); no exactly-once
+claim is made. Multi-replica analysis proposal coordination is not implemented.
+
+### A12 — Durable planning records, outbox and reproducible financial comparisons ✅
+
+**Implemented.** `planning-service/db/store.py` replaces worker-local scenario,
+result and audit stores with constrained Neo4j documents. Reads always consult
+Neo4j. No silent memory fallback exists. Async routes offload synchronous driver
+work to threads; the Monte Carlo worker durably writes seed, status and progress.
+Pending/running deletion is rejected. Result persistence precedes completed
+status; failed result writes produce failed scenarios. Completed deletion also
+removes results. Counterfactual children and comparison/audit reads use the same
+store. Service counts use total matches instead of the first 20 rows.
+
+Every planning write commits a `PlanningEvent` outbox record in the same
+transaction. A background publisher sends `planning.events`, retains failed
+messages and acknowledges only confirmed delivery. Retries preserve event IDs.
+Readiness checks Neo4j and Kafka; Compose now explicitly supplies planning's DB
+and broker settings and creates planning/command topics.
+
+The resolved random seed is persisted **before** date sampling and reused for
+both comparison arms. Negative annual benefits now reach DCF unchanged (they were
+silently clamped to zero). Audit accuracy compares measured predictions only,
+rather than treating unmeasured recommendations as zero savings. Scenario
+serialization now also preserves `weather_date`.
+
+**Validation:** repository-injection tests cover full configuration roundtrips,
+independent reads, durable progress, deletion, no-memory fallback, atomic
+record/outbox writes, failed broker retry identity, like-for-like audit accuracy,
+runner seed/progress/results, negative benefits and failed result storage.
+These are repository-boundary tests, **not a live Neo4j restart test**. Interrupted
+jobs retain progress but are not automatically resumed (G7).
+
+### A13 — Honest training availability and demand features ✅
+
+**Implemented.** Analysis training rejects forecast/anomaly/unknown requests
+instead of manufacturing completed runs. RL requires a usable policy before its
+mode can be enabled. Policy selection must resolve to the same guarded concrete
+recommendation path as other control modes. Training uses the current Python
+interpreter, unique artifact paths, drains stdout while the process runs, labels
+progress estimates, and reports completion only after a successful process exit
+and a new model archive. Successful artifacts replace the canonical policy
+atomically; stopping/shutdown reaps the training process. The UI disables the
+unimplemented training choices and labels estimated progress.
+
+Planning demand training aggregates route/calendar-month observations and builds
+history exclusively from **earlier months**, never the current target. Labels
+use actual days in each month; statute miles convert with 1.609344. Training
+requires at least ten lagged observations and chronological validation.
+
+**Validation:** synthetic CSV tests prove current/future months cannot enter the
+historical feature and a single month cannot train itself. Training tests reject
+fake run types, reject a zero-exit job without an artifact, and verify successful
+archive promotion. No actual PPO/LightGBM training or forecast calibration is
+claimed from these tests. Shared simulation effects and calibrated intelligence
+remain open (G4/G8).
+
+### A14 — Validation, documentation and completion-claim reconciliation ✅
+
+Architecture overview now includes planning-service, correct speed conversions,
+actual authentication and the existing REST/WS behavior. Graph/event/service
+contracts describe the new records and lifecycle. Gateway health inventory now
+includes cost and planning. A portable Node test runner replaces the committed
+Unix `find` substitution so `npm test` works on Windows and Linux. Command metric catalogues include passenger/baggage
+counters. Four pre-existing flight import-order lint failures were corrected.
+`PLANNING.md`, `AUTONOMOUS_OPS.md` and related roadmaps point to the audit below.
+
+**Final validation on the exact staged tree**, exported to a separate directory
+without the unrelated working-tree edits. Node dependencies were installed there
+using the committed lockfiles (`npm ci --no-audit --no-fund`).
+
+| Command / scope | Result |
+|---|---|
+| `python -m pytest tests/unit -q --tb=short` | **936 passed**, no skips; 14 deprecation warnings for existing job-metadata `utcnow` calls. Local interpreter: Python 3.14.3; CI still targets 3.11. |
+| Gateway: `npm test` | **17 passed**, portable discovery, no broker required. |
+| Gateway: `npm run build` | TypeScript build passed. |
+| Dashboard: `npm test` | **43 passed** across 8 files. |
+| Dashboard: `npm run build` | TypeScript + Vite build passed; existing bundle-size/Browserslist warnings remain. |
+| `python -m ruff check` on all nine services plus the new common modules | Passed. |
+| `docker compose config --quiet` | Passed on the isolated staged Compose file. |
+| `git diff --cached --check` | Passed. |
+
+Tests requiring local sockets/temp-file operations ran outside the restricted
+Windows sandbox after sandbox denials; they did not require a live broker or DB.
+No full-stack test is counted as passed: Docker Desktop's engine pipe is absent.
+Neo4j queries/transactions, live restart behavior and Kafka crash windows remain
+explicit deployment-validation work (G1/G12).
+
+Existing unrelated Raspberry Pi deployment/access-control changes were preserved
+and excluded from this continuation's commit. The isolated tree contains 936 tests;
+the additional eight uncommitted Pi/checkpoint tests are intentionally not part of
+that committed-suite count.
+
+## 10. Current gap register — checked against code and completed plan claims
+
+**The roadmap is not complete.** Historical checkmarks describe delivered slices;
+they do not prove the intended behavior across the whole digital twin. This audit
+cross-checked this roadmap, `PLANNING.md`, `AUTONOMOUS_OPS.md`, `ROADMAP_USECASE.md`,
+capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths.
+
+| ID / priority | Remaining gap and evidence | What completion actually requires |
+|---|---|---|
+| G1 / P0 | Owning-service domain writes, receipt writes and fact delivery are separate. Cost `process_envelope` still records dedup before handlers and retains IDs only in memory. | Transactional domain/outbox/inbox boundaries, durable event IDs and crash/retry tests with Kafka + Neo4j. Current tests do not prove crash-window exactly-once behavior. |
+| G2 / P0–P1 | A1 explicitly deferred first-delivery fee cost+revenue accounting. A3's fee-equality tests leave `_common/finance_constants.py` and runtime `cost_rates.json` independently editable. | An agreed airport/airline accounting perspective, migration of affected projections, and one authoritative rate loader for live and planning use. Phase 0 cannot be labelled entirely complete. |
+| G3 / P1 | A5 is a flight pilot. There are still 28 tracked local logging/tracing/profiling files; `_common` does not own all consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Roll out the shared runtime/template and invert flight/passenger application orchestration with real adapter tests. |
+| G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
+| G5 / P1 | Cost and analysis still have separate recommenders. Analysis ranking remains largely confidence-based rather than impact × confidence ÷ cost. | Emit cost signals into one recommendation/ranking path with comparable quantified impacts/costs. |
+| G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
+| G7 / P1 | Planning data now survives restart, but background jobs do not resume and have no durable worker lease/claim. Persisted interrupted runs can remain `running`. Analysis proposals are durable, but not coordinated across replicas. | Durable job scheduling/recovery, ownership and concurrency tests. Persistence is not equivalent to durable execution. |
+| G8 / P1 | `PLANNING.md` promises actual outcomes after 30 sim-minutes. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
+| G9 / P1 | Analysis operational flights/baggage/vehicle projections still start largely from Kafka `latest`, without a complete Neo4j rehydrate. Baggage events use `scan_zone` while parts of analysis expect `new_zone`/`old_zone`; sampled events cannot reconstruct exact occupancy. The queue aggregate and manual hold/lane caches were corrected in A11. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
+| G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
+| G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
+| G12 / P2 | Compose config validates, but this machine has no running Docker engine. No live DB restart, broker redelivery, full-stack UI or load validation ran. K8s has no planning/cost service manifests. | Exercise the new lifecycle/storage against the full stack, add missing deployment manifests, validate image packaging and readiness. Unit/build success is not deployment certification. |
+
+**Corrected completion claims:** A8/A9 now send executable commands and wait for
+owner receipts; security commands persist and publish facts; planning records are
+durable; training stubs no longer claim success; negative investment benefits and
+demand target leakage are fixed. Remaining rows above stay open rather than being
+silently checked off. Existing historical logs are retained for traceability.

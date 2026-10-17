@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from _common.commands import CommandIntent
+
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient
 
@@ -164,47 +166,45 @@ def emit_action_proposed(proposal: dict, sim_time: datetime) -> None:
     )
 
 
-def emit_flight_command(
-    command_type: str,
-    payload: dict,
-    *,
-    issued_by: str,
-    issued_at: datetime,
-) -> None:
-    """Publish a command to ``flights.commands`` (A7 envelope, §4.8b).
+def emit_action_event(event_type: str, action: dict, sim_time: datetime) -> None:
+    _produce_event(event_type, sim_time, action, key=action.get("id", ""))
 
-    Commands are keyed on ``command_type`` (not ``event_type``) and carry no
-    sim_time — flight-service stamps the resulting facts with the current
-    ``sim.clock``. ``command_id`` gives the consumer an idempotency key.
-    """
+
+async def emit_domain_command(intent: CommandIntent, *, command_id: str, issued_by: str,
+                              issued_at: datetime) -> None:
+    """Return only after the broker acknowledges the command (off the event loop)."""
+    import asyncio
+    import time
+
     if _producer is None:
         raise RuntimeError("Kafka producer not initialized")
-
+    producer = _producer
     envelope = {
-        "command_type": command_type,
-        "command_id": str(uuid4()),
+        "command_type": intent.command_type,
+        "command_id": command_id,
         "schema_version": "1.0",
         "issued_by": issued_by,
         "issued_at": issued_at.isoformat(),
         "producer": PRODUCER_NAME,
-        "payload": payload,
+        "payload": intent.payload,
     }
-    try:
-        from _tracing import get_trace_context
-        ctx = get_trace_context()
-        if ctx.get("trace_id"):
-            envelope["trace_id"] = ctx["trace_id"]
-            envelope["span_id"] = ctx["span_id"]
-    except Exception:
-        pass
 
-    _producer.produce(
-        topic=COMMANDS_TOPIC,
-        key=payload.get("flight_id", "").encode("utf-8") if payload.get("flight_id") else None,
-        value=json.dumps(envelope).encode("utf-8"),
-        callback=_delivery_report,
-    )
-    _producer.poll(0)
+    def send() -> None:
+        delivered = []
+        producer.produce(
+            topic=intent.topic, key=intent.entity_key.encode(),
+            value=json.dumps(envelope).encode(),
+            callback=lambda error, message: delivered.append(error),
+        )
+        deadline = time.monotonic() + 10
+        while not delivered and time.monotonic() < deadline:
+            producer.poll(0.1)
+        if not delivered:
+            raise TimeoutError("Command delivery not confirmed; retry uses the same command ID")
+        if delivered[0] is not None:
+            raise RuntimeError(f"Command delivery failed: {delivered[0]}")
+
+    await asyncio.to_thread(send)
 
 
 def emit_anomaly_detected(anomaly: dict, sim_time: datetime) -> None:

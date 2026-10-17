@@ -150,6 +150,7 @@ class TestTransitions:
 
     def test_mark_executed_requires_approved(self):
         p = _propose(requires_human=False)  # APPROVED
+        _aq.mark_dispatched(p.id)
         result = mark_executed(p.id, NOW)
         assert result is p
         assert p.status == EXECUTED
@@ -165,6 +166,7 @@ class TestTransitions:
     def test_full_human_lifecycle(self):
         p = _propose(requires_human=True)
         approve(p.id, NOW, decided_by="alice")
+        _aq.mark_dispatched(p.id)
         mark_executed(p.id, NOW)
         assert p.status == EXECUTED
 
@@ -236,3 +238,9 @@ class TestToFlightCommand:
 
     def test_unmapped_action_is_none(self):
         assert to_flight_command("open_security_lane", {"flight_id": "ART100"}) is None
+
+
+def test_approval_alone_never_proves_execution():
+    p = _propose(requires_human=False)
+    assert mark_executed(p.id, NOW) is None
+    assert p.status == APPROVED

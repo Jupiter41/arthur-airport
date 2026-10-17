@@ -382,3 +382,24 @@ pub struct Flight {
 ```
 
 The SpacetimeDB path is documented as an option but the reference implementation uses Neo4j.
+
+
+## Real LDT persistence additions (2026-10-17)
+
+| Node | Owner | Identity / stored state |
+|---|---|---|
+| `ActionProposal` | analysis-service | unique `id`; JSON `document` includes decision, dispatch, receipt status and actor metadata |
+| `CommandReceipt` | command's owning service | unique `id` = command ID; `event_type`, JSON `payload` for replay |
+| `SecurityCheckpoint` | passenger-service | unique `terminal`; `lanes_open`, `updated_at` in simulation time |
+| `PlanningScenario` | planning-service | unique `id`; complete JSON `document` including progress and resolved seed |
+| `PlanningResult` | planning-service | unique `id` = scenario ID; JSON `document` containing KPIs and financials |
+| `RecommendationLog` | planning-service | unique `id`; JSON `document` containing prediction/application/measurement |
+| `PlanningEvent` | planning-service | unique event `id`; JSON event `document`, removed only after broker confirmation |
+
+Planning associations currently use IDs inside documents. The optional relationship
+projection documented in the planning spec is reserved. All these records leave
+operational Flight/Passenger/Baggage ownership unchanged.
+
+Flight manual hold properties are `manual_hold_reason`, `manual_hold_duration`
+and `manual_held_at`. They are committed with the delayed flight state and cleared
+when the flight leaves `delayed`; the flight cache reloads active holds on restart.

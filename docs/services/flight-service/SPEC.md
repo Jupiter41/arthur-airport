@@ -351,3 +351,18 @@ Maintains a map of `aircraft_registration → (inbound_flight, outbound_flight)`
 | `runway_queue_depth` | Gauge | Flights waiting for runway slot, per runway |
 | `cascade_depth_histogram` | Histogram | Depth of delay cascade chains |
 | `gate_conflicts_resolved_total` | Counter | Gate reassignments performed |
+
+
+### Command execution receipts (Real LDT correction)
+
+Accepted commands emit the existing domain fact plus `CommandExecuted`; rejected
+commands emit `CommandRejected` with a reason. Both receipts carry `command_id`
+and `command_type`, use the current simulation clock, and are stored in Neo4j
+for restart-safe redelivery. See `EVENT_BUS.md`, “Real LDT execution and planning
+corrections”, for the lifecycle and transaction-boundary limitation.
+
+
+Manual holds persist their reason, duration and simulation timestamp on Flight.
+A restart reloads them before ticks resume; only a successful release/status
+transition clears the hold. Gate reassignment must resolve the destination gate
+before deleting the old assignment and must reject unknown/occupied targets.

@@ -156,7 +156,7 @@ async def create_scenario(
         demand_multiplier=body.demand_multiplier,
         new_routes=list(body.new_routes),
     )
-    store_scenario(scenario)
+    (await asyncio.to_thread(store_scenario, scenario))
 
     # Estimate duration using historical timing data
     estimate = planning_metrics.estimate_duration(body.horizon, body.monte_carlo_runs)
@@ -186,7 +186,7 @@ async def list_scenarios(
     """List all planning scenarios."""
     from scenarios.model import list_scenarios as _list
 
-    scenarios, total = _list(status=status, horizon=horizon, limit=limit, offset=offset)
+    scenarios, total = (await asyncio.to_thread(_list, status=status, horizon=horizon, limit=limit, offset=offset))
     return {
         "total": total,
         "scenarios": [s.to_summary() for s in scenarios],
@@ -198,7 +198,7 @@ async def get_scenario(scenario_id: str):
     """Get full scenario detail."""
     from scenarios.model import get_scenario as _get
 
-    scenario = _get(scenario_id)
+    scenario = (await asyncio.to_thread(_get, scenario_id))
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
     return scenario.to_dict()
@@ -209,7 +209,7 @@ async def get_scenario_status(scenario_id: str):
     """Lightweight status poll for running scenarios."""
     from scenarios.model import get_scenario as _get
 
-    scenario = _get(scenario_id)
+    scenario = (await asyncio.to_thread(_get, scenario_id))
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
 
@@ -254,7 +254,7 @@ async def get_scenario_results(scenario_id: str):
     """Full planning results for a completed scenario."""
     from scenarios.model import get_results, get_scenario as _get
 
-    scenario = _get(scenario_id)
+    scenario = (await asyncio.to_thread(_get, scenario_id))
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
     if scenario.status != "completed":
@@ -263,7 +263,7 @@ async def get_scenario_results(scenario_id: str):
             detail=f"Scenario is {scenario.status}, not completed",
         )
 
-    results = get_results(scenario_id)
+    results = (await asyncio.to_thread(get_results, scenario_id))
     if not results:
         raise HTTPException(status_code=404, detail="Results not found")
     return results
@@ -274,7 +274,11 @@ async def delete_scenario_endpoint(scenario_id: str):
     """Delete a scenario and its results."""
     from scenarios.model import delete_scenario
 
-    if not delete_scenario(scenario_id):
+    try:
+        deleted = await asyncio.to_thread(delete_scenario, scenario_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
         raise HTTPException(status_code=404, detail="Scenario not found")
     return {"deleted": scenario_id}
 
@@ -335,13 +339,13 @@ async def get_scenario_investment(scenario_id: str):
     """Get investment analysis results for a completed scenario."""
     from scenarios.model import get_results, get_scenario as _get
 
-    scenario = _get(scenario_id)
+    scenario = (await asyncio.to_thread(_get, scenario_id))
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
     if scenario.status != "completed":
         raise HTTPException(status_code=409, detail=f"Scenario is {scenario.status}")
 
-    results = get_results(scenario_id)
+    results = (await asyncio.to_thread(get_results, scenario_id))
     if not results:
         raise HTTPException(status_code=404, detail="Results not found")
 
@@ -399,7 +403,7 @@ async def create_gate_template(body: GateTemplateRequest, background_tasks: Back
     from scenarios.runner import run_scenario
 
     scenario = create_gate_scenario(body.terminal, body.additional_gates)
-    store_scenario(scenario)
+    (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="add_gate").inc()
     background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
@@ -421,7 +425,7 @@ async def create_runway_template(body: RunwayTemplateRequest, background_tasks: 
     from scenarios.runner import run_scenario
 
     scenario = create_runway_scenario(body.runway_id, body.ils_capable, body.length_m)
-    store_scenario(scenario)
+    (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="add_runway").inc()
     background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
@@ -443,7 +447,7 @@ async def create_route_template(body: RouteTemplateRequest, background_tasks: Ba
     from scenarios.runner import run_scenario
 
     scenario = create_route_scenario(body.destination_iata, body.daily_flights, body.aircraft_type)
-    store_scenario(scenario)
+    (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="new_route").inc()
     background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
@@ -465,7 +469,7 @@ async def create_security_template(body: SecurityTemplateRequest, background_tas
     from scenarios.runner import run_scenario
 
     scenario = create_security_scenario(body.lanes_delta)
-    store_scenario(scenario)
+    (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="security_lanes").inc()
     background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
@@ -498,7 +502,7 @@ async def create_terminal_template(body: TerminalTemplateRequest, background_tas
         body.terminal_letter, body.gates, body.security_lanes,
         body.wide_body_gates, body.international_gates,
     )
-    store_scenario(scenario)
+    (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="add_terminal").inc()
     background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
@@ -685,10 +689,10 @@ async def compare_multiyear(body: MultiYearCompareRequest):
 
     result_set: list[dict] = []
     for sid in body.scenario_ids:
-        scenario = _get(sid)
+        scenario = (await asyncio.to_thread(_get, sid))
         if not scenario or scenario.status != "completed":
             continue
-        results = get_results(sid)
+        results = (await asyncio.to_thread(get_results, sid))
         if not results:
             continue
 
@@ -784,7 +788,7 @@ async def list_audit_recommendations(
     """List recommendation audit trail entries."""
     from audit.audit_trail import get_audit_log
 
-    entries, total = get_audit_log(rec_type=type, limit=limit, offset=offset)
+    entries, total = (await asyncio.to_thread(get_audit_log, rec_type=type, limit=limit, offset=offset))
     return {"total": total, "entries": entries}
 
 
@@ -793,7 +797,7 @@ async def audit_summary():
     """Get recommendation accuracy summary metrics."""
     from audit.audit_trail import get_audit_summary
 
-    return get_audit_summary()
+    return (await asyncio.to_thread(get_audit_summary))
 
 
 @router.post("/audit/log")
@@ -801,7 +805,7 @@ async def log_audit_recommendation(body: dict):
     """Log a recommendation to the audit trail."""
     from audit.audit_trail import log_recommendation
 
-    entry = log_recommendation(
+    entry = (await asyncio.to_thread(log_recommendation,
         recommendation_text=body.get("recommendation_text", ""),
         action_type=body.get("action_type", ""),
         predicted_saving_eur=body.get("predicted_saving_eur", 0.0),
@@ -811,7 +815,7 @@ async def log_audit_recommendation(body: dict):
         sim_time=body.get("sim_time", ""),
         target_type=body.get("target_type", ""),
         target_id=body.get("target_id", ""),
-    )
+    ))
     return entry.to_dict()
 
 
@@ -821,7 +825,7 @@ async def apply_audit_recommendation(rec_id: str, body: dict):
     from audit.audit_trail import mark_applied
 
     applied_at = body.get("applied_at", datetime.utcnow().isoformat())
-    if mark_applied(rec_id, applied_at):
+    if (await asyncio.to_thread(mark_applied, rec_id, applied_at)):
         return {"status": "applied", "rec_id": rec_id}
     raise HTTPException(status_code=404, detail="Recommendation not found")
 
@@ -832,6 +836,6 @@ async def record_audit_outcome(rec_id: str, body: dict):
     from audit.audit_trail import record_outcome
 
     actual = body.get("actual_saving_eur", 0.0)
-    if record_outcome(rec_id, actual):
+    if (await asyncio.to_thread(record_outcome, rec_id, actual)):
         return {"status": "recorded", "rec_id": rec_id}
     raise HTTPException(status_code=404, detail="Recommendation not found")

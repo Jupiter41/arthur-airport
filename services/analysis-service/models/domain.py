@@ -96,6 +96,8 @@ class Recommendation(BaseModel):
         default_factory=dict,
         description="Action-specific parameters (flight_id, lane, terminal, etc.)",
     )
+    executable: bool = False
+    execution_status: str = "advisory"
     applied: bool = False
     applied_at: datetime | None = None
 

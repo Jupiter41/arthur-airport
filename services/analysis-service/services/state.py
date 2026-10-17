@@ -37,6 +37,7 @@ class SecurityState:
     terminal: str
     queue_depth: int = 0
     open_lanes: int = 4
+    observed_wait_minutes: float = 0.0
     forecast_wait_minutes: float = 0.0
     forecast_confidence: float = 0.0
     last_updated: datetime | None = None
@@ -135,8 +136,11 @@ class OperationalState:
         f = self.flights[fid]
         f.status = payload.get("new_status", f.status)
         f.delay_minutes = payload.get("delay_minutes", f.delay_minutes)
-        f.flight_type = payload.get("flight_type", f.flight_type)
+        f.flight_type = payload.get("direction") or payload.get("flight_type", f.flight_type)
         f.terminal = payload.get("terminal", f.terminal)
+        if payload.get("gate_id"):
+            f.gate = payload["gate_id"]
+            f.terminal = f.terminal or f"Terminal {f.gate[0]}"
         f.passenger_count = payload.get("passenger_count", f.passenger_count)
         f.aircraft_type = payload.get("aircraft_type", f.aircraft_type)
 
@@ -146,7 +150,7 @@ class OperationalState:
         if fid not in self.flights:
             self.flights[fid] = FlightState(flight_id=fid)
         self.flights[fid].gate = payload.get("gate_id")
-        self.flights[fid].terminal = payload.get("terminal")
+        self.flights[fid].terminal = payload.get("terminal") or (f"Terminal {payload['gate_id'][0]}" if payload.get("gate_id") else None)
 
     def on_flight_cancelled(self, payload: dict) -> None:
         """Process FlightCancelled."""
@@ -179,14 +183,29 @@ class OperationalState:
             "sim_time": self.sim_time,
         })
         terminal = payload.get("terminal", "")
+        if terminal in {"A", "B", "C"}:
+            terminal = f"Terminal {terminal}"
         if terminal in self.security:
             self.security[terminal].queue_depth = payload.get("queue_depth", 0)
+            self.security[terminal].observed_wait_minutes = payload.get("wait_minutes", 0)
             self.security[terminal].forecast_wait_minutes = payload.get(
                 "forecast_wait_minutes", 0
             )
             self.security[terminal].forecast_confidence = payload.get(
                 "confidence", 0
             )
+
+    def on_security_queue_updated(self, payload: dict) -> None:
+        terminal = payload.get("terminal", "")
+        if terminal in {"A", "B", "C"}:
+            terminal = f"Terminal {terminal}"
+        sec = self.security.get(terminal)
+        if sec is None:
+            return
+        sec.queue_depth = payload["queue_depth"]
+        sec.open_lanes = payload["lanes_open"]
+        sec.observed_wait_minutes = payload["wait_minutes"]
+        sec.last_updated = self.sim_time
 
     def on_baggage_status_changed(self, payload: dict) -> None:
         """Process BaggageStatusChanged — track zone occupancy."""
@@ -283,7 +302,7 @@ class OperationalState:
         """Flights that need a gate but don't have one."""
         return [
             f for f in self.flights.values()
-            if f.status in ("approaching", "holding", "landed") and not f.gate
+            if f.status in ("approach", "approaching", "holding", "landed", "delayed") and not f.gate
         ]
 
     def get_delayed_arrivals(self) -> list[FlightState]:

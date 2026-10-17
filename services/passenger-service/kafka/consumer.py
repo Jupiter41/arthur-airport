@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
 from _common.idempotency import IdempotencyTracker
+from _common.commands import CommandReceipts
 from _common.consumer_health import ConsumerHealthTracker
 from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
 
@@ -36,6 +37,7 @@ from kafka.producer import (
     emit_passenger_status_changed,
     emit_passenger_alert,
     emit_congestion_detected,
+    emit_security_queue_updated,
     emit_bulk_state_snapshot,
     set_tick_batch_mode,
     set_bulk_mode,
@@ -277,6 +279,13 @@ async def rebuild_security_from_neo4j() -> None:
     logger.info("Rebuilt security queues from Neo4j: %d passengers loaded", count)
 
 
+    from db.neo4j import load_security_lanes
+    for terminal, lanes in (await load_security_lanes()).items():
+        checkpoint = _state.security.checkpoints.get(terminal)
+        if checkpoint is not None:
+            checkpoint.lanes_open = lanes
+
+
 async def load_spatial_positions() -> None:
     """Load gate positions and walking zones from Neo4j for walking time computation."""
     from db.neo4j import get_driver
@@ -496,40 +505,62 @@ async def _dispatch(envelope: dict) -> None:
             pass
 
 
+
+_command_receipts = CommandReceipts()
+
+
 async def _handle_command(envelope: dict) -> None:
+    from kafka.producer import _produce_event
+    from db.neo4j import get_driver
+    from _common.command_store import load_receipt, save_receipt
+
+    await _command_receipts.handle(
+        envelope, _state.sim_time, _execute_command,
+        lambda kind, clock, payload, key: _produce_event(kind, clock, payload, key=key),
+        load=lambda key: load_receipt(get_driver(), key),
+        save=lambda key, receipt: save_receipt(get_driver(), key, receipt),
+    )
+
+
+async def _execute_command(envelope: dict) -> str | None:
     """Execute an operator/agent command from ``passengers.commands``.
 
     Dedupes the command, parses/validates it, then executes the in-memory
     mutation. A rejected command produces no side effect.
     """
-    command_id = envelope.get("command_id", "")
-    if command_id and _state.check_idempotency(command_id):
-        return
-
     command_type = envelope.get("command_type")
     cmd, error = parse_command(command_type, envelope.get("payload"))
     if error is not None:
         m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
         logger.warning("Rejected command %s: %s", command_type, error)
-        return
+        return error
 
     if isinstance(cmd, OpenSecurityLane):
         checkpoint = _state.security.checkpoints.get(cmd.terminal)
         if checkpoint is None:
             m_commands.labels(command_type=command_type, outcome="rejected").inc()
             logger.warning("Rejected OpenSecurityLane: unknown terminal %r", cmd.terminal)
-            return
+            return "Unknown terminal"
+        from db.neo4j import save_security_lanes
+        await save_security_lanes(cmd.terminal, cmd.lanes_open, _state.sim_time)
         old_count = checkpoint.lanes_open
         checkpoint.lanes_open = cmd.lanes_open
         # Update Prometheus gauge immediately so the dashboard reflects the change
         # before the next clock tick updates all security metrics.
         m_sec_lanes.labels(terminal=cmd.terminal).set(cmd.lanes_open)
+        from kafka.producer import _produce_event
+        _produce_event("SecurityLanesChanged", _state.sim_time, {
+            "terminal": cmd.terminal, "lanes_open": cmd.lanes_open,
+            "previous_lanes_open": old_count,
+        }, key=cmd.terminal)
         m_commands.labels(command_type=command_type, outcome="accepted").inc()
         logger.info(
             "Executed OpenSecurityLane: terminal %s lanes %d → %d",
             cmd.terminal, old_count, cmd.lanes_open,
         )
 
+
+    return None
 
 _tick_counter: int = 0
 
@@ -710,6 +741,11 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             if cp:
                 m_sec_queue_depth.labels(terminal=terminal).set(cp.queue_depth)
                 m_sec_wait.labels(terminal=terminal).set(round(cp.wait_minutes(0), 1))
+                if not is_bulk or _tick_counter % 20 == 0:
+                    emit_security_queue_updated(
+                        terminal, cp.queue_depth, cp.lanes_open,
+                        cp.wait_minutes(0), sim_time,
+                    )
                 m_sec_lanes.labels(terminal=terminal).set(cp.lanes_open)
 
         # 12. BULK mode: emit periodic BulkStateSnapshot

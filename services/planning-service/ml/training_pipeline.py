@@ -8,6 +8,8 @@ Can be invoked via REST API or CLI.
 from __future__ import annotations
 
 import csv
+import calendar
+from collections import defaultdict
 from pathlib import Path
 
 import structlog
@@ -24,42 +26,51 @@ def build_demand_training_data(bts_path: str = DEFAULT_BTS_PATH) -> list[dict]:
         logger.warning("BTS CSV not found at %s", bts_path)
         return []
 
-    records: list[dict] = []
+    # Aggregate monthly route observations before building features. Current
+    # month passengers are the label; only earlier months may enter history.
+    monthly: dict[tuple[str, str, int, int], dict] = {}
     try:
-        with open(path, newline="", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
+        with open(path, newline="", encoding="utf-8-sig") as stream:
+            reader = csv.DictReader(stream)
+            for raw in reader:
+                row = {key.strip().upper(): value for key, value in raw.items() if key}
                 try:
-                    pax = int(float(row.get("PASSENGERS", "0")))
-                    int(float(row.get("SEATS", "0")))
-                    deps = int(float(row.get("DEPARTURES_PERFORMED", "0")))
-                    distance = float(row.get("DISTANCE", "0"))
-                    month = int(float(row.get("MONTH", "1")))
-
-                    if pax <= 0 or deps <= 0:
+                    year, month = int(row["YEAR"]), int(row["MONTH"])
+                    days = calendar.monthrange(year, month)[1]
+                    pax = float(row["PASSENGERS"])
+                    departures = float(row["DEPARTURES_PERFORMED"])
+                    distance = float(row.get("DISTANCE", 0))
+                    origin, destination = row["ORIGIN"].strip(), row["DEST"].strip()
+                    if pax <= 0 or departures <= 0 or not origin or not destination:
                         continue
-
-                    daily_pax = pax / 30  # Monthly → daily estimate
-                    records.append({
-                        "origin": row.get("ORIGIN", "").strip(),
-                        "destination": row.get("DEST", "").strip(),
-                        "month": month,
-                        "day_of_week": 2,  # Wednesday as average
-                        "is_holiday": 0,
-                        "distance_km": distance * 1.852,  # statute miles → km
-                        "historical_avg_pax": daily_pax,
-                        "growth_trend": 0.034,
-                        "is_hub_connection": 0,
-                        "actual_pax": daily_pax,
-                    })
-                except (ValueError, KeyError):
+                    key = (origin, destination, year, month)
+                    observation = monthly.setdefault(key, {"pax": 0.0, "distance": distance, "days": days})
+                    observation["pax"] += pax
+                except (ValueError, KeyError, TypeError):
                     continue
-
-        logger.info("built %d demand training records from %s", len(records), bts_path)
-    except Exception as e:
-        logger.error("failed to build training data: %s", e)
-
-    return records
+        history: dict[tuple[str, str], list[float]] = defaultdict(list)
+        records: list[dict] = []
+        for (origin, destination, year, month), observation in sorted(
+            monthly.items(), key=lambda item: (item[0][2], item[0][3], item[0][:2]),
+        ):
+            route_history = history[origin, destination]
+            actual = observation["pax"] / observation["days"]
+            if route_history:
+                records.append({
+                    "origin": origin, "destination": destination,
+                    "year": year, "month": month, "day_of_week": 2,
+                    "is_holiday": 0,
+                    "distance_km": observation["distance"] * 1.609344,
+                    "historical_avg_pax": sum(route_history) / len(route_history),
+                    "growth_trend": 0.034, "is_hub_connection": 0,
+                    "actual_pax": actual,
+                })
+            route_history.append(actual)
+        logger.info("built %d lagged demand training records from %s", len(records), bts_path)
+        return records
+    except (OSError, csv.Error) as exc:
+        logger.error("failed to build training data: %s", exc)
+        return []
 
 
 def build_delay_training_data(bts_path: str = DEFAULT_BTS_PATH) -> list[dict]:

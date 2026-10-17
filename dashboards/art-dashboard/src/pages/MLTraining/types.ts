@@ -5,6 +5,7 @@ export interface TrainingRun {
   started_at: string | null;
   completed_at: string | null;
   progress_pct: number;
+  progress_estimated?: boolean;
   total_timesteps: number;
   current_timesteps: number;
   metrics: Record<string, unknown>;

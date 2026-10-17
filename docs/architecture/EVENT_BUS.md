@@ -709,3 +709,48 @@ Failed or unprocessable messages are routed to `{topic}.dlq` (e.g. `flights.even
 1. **Additive changes only** — new optional fields may be added to any payload without a version bump.
 2. **Breaking changes** — removing or renaming fields requires a `schema_version` increment and a migration period where both versions are consumed.
 3. **Consumers must ignore unknown fields** — all consumers use lenient deserialization (no strict schema enforcement in MVP).
+
+
+## Real LDT execution and planning corrections (2026-10-17)
+
+Commands are published only to the owning domain's `*.commands` topic. Manual,
+automatic and human-approved analysis actions use the same concrete mapping.
+A broker acknowledgement proves dispatch; it does not prove execution.
+
+Owning services publish `CommandExecuted` or `CommandRejected` on their existing
+`flights.events`, `passengers.events` or `baggage.events` topic, with payload
+`{command_id, command_type, reason}`. `reason` is null on success. Receipts use
+the owner's current simulation clock. Receipt records are stored in Neo4j;
+redelivery re-emits the saved result without repeating the operation. A crash
+between a domain write and receipt persistence is still a transaction-boundary
+gap; this is not an exactly-once guarantee.
+
+`SecurityLanesChanged` on `passengers.events` carries `terminal`, `lanes_open`
+and `previous_lanes_open`. Passenger-service persists each lane override in
+`SecurityCheckpoint` and restores it before processing ticks.
+
+Analysis proposals progress through `pending → approved → dispatched → executed`
+or `failed`, with `pending → rejected` as the rejection path. Neo4j stores
+`ActionProposal` documents; the in-process queue and confirmed action log are
+rebuilt on startup. Proposals retain the same ID as their command on retry.
+Only owner receipts cause `AutonomousActionApplied`; dispatch emits
+`ActionDispatched`, failure emits `ActionExecutionFailed`, and human decisions
+emit `ActionApproved` / `ActionRejected`. Unsupported actions are advisory.
+
+`planning.events` (planning-service producer, one partition, record ID key,
+7-day retention) carries `PlanningScenarioUpdated`, `PlanningScenarioDeleted`,
+`PlanningResultUpdated`, and `RecommendationLogUpdated/Deleted`. The standard
+envelope contains a payload with `record_id`, `kind`, `status`, `progress_pct`.
+Records and their outbox events commit in one Neo4j transaction. The outbox is
+retained until broker confirmation; retries retain `event_id`. Isolated planning
+uses epoch `2026-01-01T00:00:00+00:00` as simulation time. These events describe
+planning lifecycle changes, never live operational mutations. There is currently
+no operational consumer; planning pages continue reading their REST API.
+
+
+`SecurityQueueUpdated` is an unsampled aggregate on `passengers.events` with
+`terminal`, `queue_depth`, `lanes_open`, `wait_minutes` and `at`. Passenger-service
+publishes it on each normal tick (every 20 ticks in BULK mode). Analysis uses
+these measured snapshots to detect and resolve observed congestion. It does
+not invent forecast confidence from an observed wait. This also avoids trying
+to reconstruct exact queue counts from sampled per-passenger events.

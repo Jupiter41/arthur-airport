@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 _driver: AsyncDriver | None = None
 
 CONSTRAINTS = [
+    "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_tag IF NOT EXISTS FOR (b:Baggage) REQUIRE b.tag IS UNIQUE",
 ]
 

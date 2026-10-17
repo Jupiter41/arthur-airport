@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import os
 from datetime import datetime, timedelta
 
 from neo4j import AsyncDriver
@@ -12,6 +11,7 @@ from _common import neo4j_client
 logger = logging.getLogger(__name__)
 
 CONSTRAINTS = [
+    "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT flight_id IF NOT EXISTS FOR (f:Flight) REQUIRE f.id IS UNIQUE",
     "CREATE CONSTRAINT gate_id IF NOT EXISTS FOR (g:Gate) REQUIRE g.id IS UNIQUE",
     "CREATE CONSTRAINT runway_id IF NOT EXISTS FOR (r:Runway) REQUIRE r.id IS UNIQUE",
@@ -338,6 +338,11 @@ async def update_flight_status(
     driver = get_driver()
 
     set_clauses = ["f.status = $status"]
+    if new_status != "delayed":
+        set_clauses.extend([
+            "f.manual_hold_reason = null", "f.manual_held_at = null",
+            "f.manual_hold_duration = null",
+        ])
     params: dict = {"id": flight_id, "status": new_status}
 
     if delay_minutes is not None:
@@ -417,29 +422,35 @@ async def apply_delay(
 # Gate management
 # ---------------------------------------------------------------------------
 
-async def assign_flight_to_gate(flight_id: str, gate_id: str, sim_time: datetime) -> None:
+async def assign_flight_to_gate(flight_id: str, gate_id: str, sim_time: datetime) -> bool:
     """Create ASSIGNED_TO relationship between flight and gate. Remove old assignment first."""
     driver = get_driver()
     query = """
-    MATCH (f:Flight {id: $flight_id})
+    MATCH (f:Flight {id: $flight_id}), (g:Gate {id: $gate_id})
+    // Acquire the destination gate write lock before checking occupancy.
+    SET g.status = g.status
+    WITH f, g
+    WHERE NOT EXISTS {
+        MATCH (other:Flight)-[:ASSIGNED_TO]->(g)
+        WHERE other.id <> f.id AND other.status IN
+          ['boarding', 'delayed', 'scheduled', 'landed', 'taxiing', 'at_gate']
+    }
     OPTIONAL MATCH (f)-[old:ASSIGNED_TO]->(old_gate:Gate)
     DELETE old
     SET old_gate.status = 'available'
-    WITH f
-    MATCH (g:Gate {id: $gate_id})
     MERGE (f)-[r:ASSIGNED_TO]->(g)
     SET r.assigned_at = $assigned_at,
         g.status = 'occupied',
         g.last_assigned_at = $assigned_at,
         f.gate_id = $gate_id
+    RETURN g.id AS gate_id
     """
     async with driver.session() as session:
-        await session.run(
-            query,
-            flight_id=flight_id,
-            gate_id=gate_id,
+        result = await session.run(
+            query, flight_id=flight_id, gate_id=gate_id,
             assigned_at=sim_time.isoformat(),
         )
+        return await result.single() is not None
 
 
 async def release_gate(flight_id: str) -> str | None:
@@ -793,3 +804,33 @@ async def update_ground_vehicle_status(
     """
     async with driver.session() as session:
         await session.run(query, **params)
+
+
+async def set_manual_hold(
+    flight_id: str, reason: str, duration: int, estimated_time: str,
+    delay_minutes: int, sim_time: datetime,
+) -> dict | None:
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MATCH (f:Flight {id: $id}) "
+            "SET f.status = 'delayed', f.delay_reason = $reason, "
+            "f.delay_minutes = $delay, f.estimated_time = $estimated, "
+            "f.manual_hold_reason = $reason, f.manual_hold_duration = $duration, "
+            "f.manual_held_at = $held_at RETURN f {.*} AS flight",
+            id=flight_id, reason=reason, duration=duration, delay=delay_minutes,
+            estimated=estimated_time, held_at=sim_time.isoformat(),
+        )
+        row = await result.single()
+        return dict(row["flight"]) if row else None
+
+
+async def get_manual_holds() -> dict[str, dict]:
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MATCH (f:Flight) WHERE f.status = 'delayed' AND f.manual_hold_reason IS NOT NULL "
+            "RETURN f.id AS id, f.manual_hold_reason AS reason, "
+            "f.manual_hold_duration AS duration, f.manual_held_at AS held_at"
+        )
+        return {row["id"]: {"reason": row["reason"], "held_at": row["held_at"],
+                            "expected_duration_minutes": row["duration"]}
+                async for row in result}

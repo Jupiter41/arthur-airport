@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import uuid4
 
+from db.store import get_repository
+
 from engine.infrastructure import InfrastructureConfig
 
 logger = logging.getLogger(__name__)
@@ -76,6 +78,7 @@ class PlanningScenario:
             "infrastructure": self.infrastructure.to_dict(),
             "demand_source": self.demand_source,
             "weather_source": self.weather_source,
+            "weather_date": self.weather_date,
             "capex_eur": self.capex_eur,
             "opex_delta_eur": self.opex_delta_eur,
             "years_horizon": self.years_horizon,
@@ -106,18 +109,22 @@ class PlanningScenario:
         }
 
 
-# ── In-memory scenario store ────────────────────────────────
+# The DB is authoritative; no worker-local cache can hide another worker's data.
 
-_scenarios: dict[str, PlanningScenario] = {}
-_results: dict[str, dict] = {}  # scenario_id → ScenarioResults.to_dict()
+
+def _from_dict(document: dict) -> PlanningScenario:
+    values = dict(document)
+    values["infrastructure"] = InfrastructureConfig.from_dict(values["infrastructure"])
+    return PlanningScenario(**values)
 
 
 def store_scenario(scenario: PlanningScenario) -> None:
-    _scenarios[scenario.id] = scenario
+    get_repository().put("PlanningScenario", scenario.id, scenario.to_dict())
 
 
 def get_scenario(scenario_id: str) -> PlanningScenario | None:
-    return _scenarios.get(scenario_id)
+    document = get_repository().get("PlanningScenario", scenario_id)
+    return _from_dict(document) if document else None
 
 
 def list_scenarios(
@@ -126,27 +133,26 @@ def list_scenarios(
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list[PlanningScenario], int]:
-    filtered = list(_scenarios.values())
-    if status:
-        filtered = [s for s in filtered if s.status == status]
-    if horizon:
-        filtered = [s for s in filtered if s.horizon == horizon]
-    total = len(filtered)
-    filtered.sort(key=lambda s: s.created_at, reverse=True)
-    return filtered[offset : offset + limit], total
+    documents = get_repository().list("PlanningScenario")
+    filtered = [_from_dict(d) for d in documents
+                if (not status or d["status"] == status)
+                and (not horizon or d["horizon"] == horizon)]
+    filtered.sort(key=lambda s: (s.created_at, s.id), reverse=True)
+    return filtered[offset:offset + limit], len(filtered)
 
 
 def delete_scenario(scenario_id: str) -> bool:
-    if scenario_id in _scenarios:
-        del _scenarios[scenario_id]
-        _results.pop(scenario_id, None)
-        return True
-    return False
+    scenario = get_scenario(scenario_id)
+    if scenario is None:
+        return False
+    if scenario.status in {"pending", "running"}:
+        raise ValueError("Cannot delete a pending or running scenario")
+    return get_repository().delete("PlanningScenario", scenario_id)
 
 
 def store_results(scenario_id: str, results: dict) -> None:
-    _results[scenario_id] = results
+    get_repository().put("PlanningResult", scenario_id, results)
 
 
 def get_results(scenario_id: str) -> dict | None:
-    return _results.get(scenario_id)
+    return get_repository().get("PlanningResult", scenario_id)

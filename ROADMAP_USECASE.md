@@ -1,5 +1,12 @@
 # Use Case Roadmap — Arthur International Airport
 
+> **Verification update (2026-10-17):** see `ROADMAP_REAL_LDT.md` §10 for
+> delivered behavior, validation boundaries and open gaps. Planning records now
+> persist in Neo4j; owner receipts confirm action execution. Automatic measured
+> savings, full action coverage and a unified effect/recommendation engine remain
+> incomplete. Historical checkmarks below are not full-stack validation.
+
+
 Actionable use cases filtered from `FUTURE_USE_CASES.md`. All items require no paid data,
 extend existing architecture, and produce a visible dashboard feature or published artifact.
 

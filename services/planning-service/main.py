@@ -1,14 +1,16 @@
 """planning-service — Capacity planning simulation engine.
 
 Port: 8009
-No Kafka subscription — reads baseline state from Neo4j, runs isolated
-in-memory simulations, writes results to Neo4j (PlanningScenario, PlanningResult).
+Runs isolated simulations; persists scenarios/results/audit in Neo4j and
+publishes committed lifecycle events through a durable outbox.
 """
 
 from contextlib import asynccontextmanager
+import asyncio
+import os
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from _logging import setup_logging
@@ -27,9 +29,26 @@ logger = structlog.get_logger("planning-service")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from confluent_kafka import Producer
+    from db import store, outbox
+
+    await asyncio.to_thread(store.initialize)
+    producer = Producer({
+        "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
+        "client.id": "planning-service", "acks": "all",
+    })
+    stop = asyncio.Event()
+    task = asyncio.create_task(outbox.run(producer, stop))
+    app.state.producer = producer
     logger.info("planning-service started", port=8009)
-    yield
-    logger.info("planning-service stopped")
+    try:
+        yield
+    finally:
+        stop.set()
+        await task
+        await asyncio.to_thread(producer.flush, 10)
+        await asyncio.to_thread(store.close)
+        logger.info("planning-service stopped")
 
 
 app = FastAPI(
@@ -54,7 +73,19 @@ async def health():
 
 @app.get("/ready")
 async def ready():
-    return {"status": "ready"}
+    from db import store
+    neo4j_ok = await asyncio.to_thread(store.ready)
+    producer = getattr(app.state, "producer", None)
+    kafka_ok = False
+    if producer is not None:
+        try:
+            metadata = await asyncio.to_thread(producer.list_topics, timeout=3)
+            kafka_ok = bool(metadata.brokers)
+        except Exception:
+            pass
+    if not neo4j_ok or not kafka_ok:
+        raise HTTPException(status_code=503, detail={"neo4j": neo4j_ok, "kafka": kafka_ok})
+    return {"status": "ready", "neo4j": True, "kafka": True}
 
 
 @app.get("/api/v1/planning/adapters")
@@ -68,21 +99,21 @@ async def service_status():
     """Overall planning service status including active runs and metrics."""
     from scenarios.model import list_scenarios as _list
 
-    running, _ = _list(status="running")
-    completed, _ = _list(status="completed")
-    failed, _ = _list(status="failed")
-    pending, _ = _list(status="pending")
-    all_scenarios, total = _list()
+    running, running_count = await asyncio.to_thread(_list, status="running", limit=1000)
+    _, completed_count = await asyncio.to_thread(_list, status="completed")
+    _, failed_count = await asyncio.to_thread(_list, status="failed")
+    _, pending_count = await asyncio.to_thread(_list, status="pending")
+    _, total = await asyncio.to_thread(_list)
 
     return {
         "service": "planning-service",
         "status": "ok",
         "scenarios": {
             "total": total,
-            "pending": len(pending),
-            "running": len(running),
-            "completed": len(completed),
-            "failed": len(failed),
+            "pending": pending_count,
+            "running": running_count,
+            "completed": completed_count,
+            "failed": failed_count,
         },
         "active_runs": [
             {

@@ -88,7 +88,7 @@ async def scenario_replay(
     Returns the new child scenario id; poll ``/scenarios/{child_id}/status`` for progress
     and ``/scenarios/{child_id}/results`` once complete to obtain delta vs the parent baseline.
     """
-    parent = get_scenario(scenario_id)
+    parent = (await asyncio.to_thread(get_scenario, scenario_id))
     if not parent:
         raise HTTPException(status_code=404, detail="Scenario not found")
 
@@ -96,7 +96,7 @@ async def scenario_replay(
     disruption = body.disruption.model_dump() if body.disruption else None
 
     label = body.label or f"replay-{len(interventions)}-iv"
-    child = _spawn_replay_scenario(parent, interventions, disruption, label)
+    child = (await asyncio.to_thread(_spawn_replay_scenario, parent, interventions, disruption, label))
 
     estimate = planning_metrics.estimate_duration(child.horizon, child.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="counterfactual").inc()
@@ -138,7 +138,7 @@ async def counterfactual_report(
     Returns the list of child scenario ids and the shift that produced each.
     Use ``GET /scenarios/{child_id}/results`` once complete to compare KPIs.
     """
-    parent = get_scenario(scenario_id)
+    parent = (await asyncio.to_thread(get_scenario, scenario_id))
     if not parent:
         raise HTTPException(status_code=404, detail="Scenario not found")
     if not body.base_interventions:
@@ -157,7 +157,7 @@ async def counterfactual_report(
         target["sim_minute"] = new_minute
         ivs[body.intervention_index] = target
         label = f"shift {shift:+d}m → T={new_minute}"
-        child = _spawn_replay_scenario(parent, ivs, disruption, label)
+        child = (await asyncio.to_thread(_spawn_replay_scenario, parent, ivs, disruption, label))
         background_tasks.add_task(asyncio.to_thread, run_scenario, child)
         children.append({
             "scenario_id": child.id,
@@ -181,7 +181,7 @@ async def causal_graph(scenario_id: str):
     interventions, and headline KPIs from results (when available).
     Edges describe the causal chain.
     """
-    scenario = get_scenario(scenario_id)
+    scenario = (await asyncio.to_thread(get_scenario, scenario_id))
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
 
@@ -217,7 +217,7 @@ async def causal_graph(scenario_id: str):
         else:
             edges.append({"from": "scenario", "to": nid, "kind": "responds_to"})
 
-    results = get_results(scenario_id)
+    results = (await asyncio.to_thread(get_results, scenario_id))
     if results:
         kpis = results.get("kpis", {})
         for kpi_name in ("avg_delay_minutes", "missed_connections", "eu261_liability_eur"):
@@ -248,14 +248,14 @@ async def causal_graph(scenario_id: str):
 @router.get("/scenarios/{scenario_id}/replays")
 async def list_replays(scenario_id: str):
     """List all counterfactual replays spawned from a parent scenario."""
-    parent = get_scenario(scenario_id)
+    parent = (await asyncio.to_thread(get_scenario, scenario_id))
     if not parent:
         raise HTTPException(status_code=404, detail="Scenario not found")
 
-    all_scenarios, _ = list_scenarios(limit=500, offset=0)
+    all_scenarios, _ = (await asyncio.to_thread(list_scenarios, limit=500, offset=0))
     children = [
         s.to_dict() | (
-            {"results": get_results(s.id)} if s.status == "completed" else {"results": None}
+            {"results": (await asyncio.to_thread(get_results, s.id))} if s.status == "completed" else {"results": None}
         )
         for s in all_scenarios
         if s.parent_scenario_id == scenario_id

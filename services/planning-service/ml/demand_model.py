@@ -83,8 +83,9 @@ class DemandModel:
 
         Returns training metrics.
         """
-        if not training_data:
-            return {"error": "no training data", "trained": False}
+        if len(training_data) < 10:
+            return {"error": "at least 10 lagged observations are required", "trained": False}
+        training_data = sorted(training_data, key=lambda row: (row.get("year", 0), row.get("month", 0)))
 
         try:
             import lightgbm as lgb

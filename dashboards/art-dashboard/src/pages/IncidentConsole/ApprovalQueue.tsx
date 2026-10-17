@@ -19,11 +19,13 @@ export function ApprovalQueue() {
 
   const { data } = useQuery({
     queryKey: ["analysis", "approvals"],
-    queryFn: () => analysisApi.approvals(),
+    queryFn: () => analysisApi.approvals(true),
     refetchInterval: 5000,
   });
 
-  const approvals: Approval[] = data?.approvals ?? [];
+  const approvals: Approval[] = (data?.approvals ?? []).filter(
+    p => p.status !== "rejected",
+  ).slice(-20).reverse();
 
   async function act(fn: () => Promise<unknown>, id: string) {
     setBusy(id);
@@ -50,7 +52,7 @@ export function ApprovalQueue() {
   return (
     <div className="space-y-3">
       <h3 className="text-xs text-amber-400 uppercase tracking-wide flex items-center gap-2">
-        <span>⚠ Awaiting Approval</span>
+        <span>Action proposals</span>
         <span className="text-gray-500">({approvals.length})</span>
       </h3>
 
@@ -76,15 +78,19 @@ export function ApprovalQueue() {
           <div className="text-xs text-gray-400 mt-1">
             {p.action_type.replace(/_/g, " ")} · proposed by {p.proposed_by}
           </div>
-          <div className="flex items-center gap-2 mt-2">
+          <div className="text-xs text-gray-300 mt-1">
+            {p.status === "dispatched" ? "Awaiting execution" : p.status}
+            {p.failure_reason ? `: ${p.failure_reason}` : ""}
+          </div>
+          {["pending", "approved"].includes(p.status) && <div className="flex items-center gap-2 mt-2">
             <button
               className="text-xs font-bold px-3 py-1 rounded bg-green-600 text-white hover:bg-green-500 disabled:opacity-50"
               disabled={busy === p.id}
               onClick={() => act(() => analysisApi.approveProposal(p.id), p.id)}
             >
-              {busy === p.id ? "..." : "Approve"}
+              {busy === p.id ? "..." : p.status === "approved" ? "Retry dispatch" : "Approve"}
             </button>
-            <button
+            {p.status === "pending" && <button
               className="text-xs font-bold px-3 py-1 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-50"
               disabled={busy === p.id}
               onClick={() =>
@@ -95,8 +101,8 @@ export function ApprovalQueue() {
               }
             >
               Reject
-            </button>
-          </div>
+            </button>}
+          </div>}
         </div>
       ))}
     </div>

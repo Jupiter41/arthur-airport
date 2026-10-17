@@ -19,16 +19,13 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from uuid import uuid4
 
 from models.domain import (
     ActionType,
-    AnalysisLogEntry,
     AutonomousSettings,
     Recommendation,
 )
 from services import approval_queue
-from services.whatif import _log_entry
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +129,16 @@ def evaluate_and_apply(
             )
             continue
 
-        if rec.expiry_sim_time < sim_time:
+        if rec.expiry_sim_time <= sim_time:
+            continue
+        if any(p.bottleneck_id == rec.bottleneck_id and p.action_type == rec.action_type.value
+               and p.status in {approval_queue.PENDING, approval_queue.APPROVED, approval_queue.DISPATCHED}
+               for p in approval_queue.list_all()):
+            continue
+
+        from _common.commands import action_command
+        if (rec.action_type not in SAFETY_GUARDED_ACTIONS
+                and action_command(rec.action_type.value, rec.parameters) is None):
             continue
 
         # A9: route every candidate through the approval queue. The gating rule
@@ -182,12 +188,9 @@ def evaluate_and_apply(
             )
             continue
 
-        # verdict == AUTO — auto-apply this recommendation
-        rec.applied = True
-        rec.applied_at = sim_time
-
-        # Record an auto-approved+executed proposal for a unified, auditable trail.
-        _proposal = approval_queue.propose(
+        # Approved is an intent, not an executed action. The adapter dispatches
+        # the proposal and only an owning service receipt records application.
+        proposal = approval_queue.propose(
             action_type=rec.action_type.value,
             description=rec.description,
             parameters=dict(rec.parameters),
@@ -198,41 +201,8 @@ def evaluate_and_apply(
             bottleneck_id=rec.bottleneck_id,
             requires_human=False,
         )
-        approval_queue.mark_executed(_proposal.id, sim_time)
-
-        # Record cooldown so we don't re-apply for this bottleneck
         _bottleneck_cooldowns[rec.bottleneck_id] = sim_time
-
-        log_entry = {
-            "id": f"auto-{uuid4().hex[:12]}",
-            "recommendation_id": rec.id,
-            "action_type": rec.action_type.value,
-            "description": rec.description,
-            "confidence_score": rec.confidence_score,
-            "applied_at": sim_time.isoformat(),
-            "expected_impact": rec.expected_impact,
-            "actual_outcome": None,  # Filled in 30 min later
-            "outcome_measured_at": None,
-        }
-        _action_log.append(log_entry)
-        if len(_action_log) > MAX_ACTION_LOG:
-            _action_log.pop(0)
-
-        # Also log to the analysis log
-        _log_entry(AnalysisLogEntry(
-            id=log_entry["id"],
-            timestamp=sim_time,
-            entry_type="autonomous_action",
-            action=None,
-            projected_outcome=None,
-            operator_applied=False,
-        ))
-
-        actions_taken.append(log_entry)
-        logger.info(
-            "Autonomous: applied %s (confidence=%.2f) — %s",
-            rec.action_type, rec.confidence_score, rec.description,
-        )
+        actions_taken.append(proposal.to_dict())
 
         # In rule_based mode, apply all qualifying actions;
         # in threshold mode, apply only the top one per cycle
@@ -250,48 +220,40 @@ def apply_recommendation(
     *,
     initiated_by: str = "operator",
 ) -> dict | None:
-    """Apply a single recommendation by id (manual operator "Apply").
+    """Create an executable proposal by id; execution waits for owner receipt.
 
-    This is the real, non-theatrical replacement for the old client-side
-    what-if projection: it marks the recommendation applied, records it in the
-    action log (tagged with who initiated it), registers the bottleneck
-    cooldown so the autonomous engine won't immediately re-action it, and
-    returns the log entry so the caller can emit the corresponding event.
-
-    Returns the log entry on success, or ``None`` if the recommendation id is
-    unknown or already applied. Pure w.r.t. I/O — no Kafka/Neo4j here; the
-    caller emits the event.
+    Returns None for an unknown/already submitted recommendation and raises
+    ValueError for an expired or advisory action. The adapter persists and sends.
     """
     rec = next((r for r in recommendations if r.id == recommendation_id), None)
     if rec is None or rec.applied:
         return None
 
-    rec.applied = True
-    rec.applied_at = sim_time
-    _bottleneck_cooldowns[rec.bottleneck_id] = sim_time
-
-    log_entry = {
-        "id": f"op-{uuid4().hex[:12]}",
-        "recommendation_id": rec.id,
-        "action_type": rec.action_type.value,
-        "description": rec.description,
-        "confidence_score": rec.confidence_score,
-        "applied_at": sim_time.isoformat(),
-        "expected_impact": rec.expected_impact,
-        "initiated_by": initiated_by,
-        "parameters": dict(rec.parameters),
-        "actual_outcome": None,
-        "outcome_measured_at": None,
-    }
-    _action_log.append(log_entry)
-    if len(_action_log) > MAX_ACTION_LOG:
-        _action_log.pop(0)
-
-    logger.info(
-        "Recommendation %s applied by %s — %s",
-        rec.id, initiated_by, rec.description,
+    if rec.expiry_sim_time <= sim_time:
+        raise ValueError("Recommendation has expired")
+    from _common.commands import action_command
+    if action_command(rec.action_type.value, rec.parameters) is None:
+        raise ValueError("Action is advisory: no executable command with these parameters")
+    if any((p.recommendation_id == rec.id or (
+        p.bottleneck_id == rec.bottleneck_id and p.action_type == rec.action_type.value
+        and p.parameters == rec.parameters
+    )) and p.status not in {
+        approval_queue.FAILED, approval_queue.REJECTED,
+    } for p in approval_queue.list_all()):
+        return None
+    proposal = approval_queue.propose(
+        action_type=rec.action_type.value,
+        description=rec.description,
+        parameters=dict(rec.parameters),
+        confidence_score=rec.confidence_score,
+        proposed_by=initiated_by,
+        proposed_at=sim_time,
+        recommendation_id=rec.id,
+        bottleneck_id=rec.bottleneck_id,
+        requires_human=rec.action_type in SAFETY_GUARDED_ACTIONS,
     )
-    return log_entry
+    _bottleneck_cooldowns[rec.bottleneck_id] = sim_time
+    return proposal.to_dict()
 
 
 def record_proposal_execution(
@@ -307,9 +269,10 @@ def record_proposal_execution(
     Returns the log entry for the caller to emit as an event.
     """
     log_entry = {
-        "id": f"appr-{uuid4().hex[:12]}",
+        "id": f"action-{proposal['id']}",
         "recommendation_id": proposal.get("recommendation_id"),
         "proposal_id": proposal.get("id"),
+        "status": "executed",
         "action_type": proposal.get("action_type"),
         "description": proposal.get("description"),
         "confidence_score": proposal.get("confidence_score"),
@@ -380,26 +343,15 @@ def evaluate_rl_agent(
             )
             return []
 
-        log_entry = {
-            "id": f"rl-{uuid4().hex[:12]}",
-            "action_type": action_name,
-            "action_index": action_idx,
-            "description": f"RL agent selected: {action_name}",
-            "confidence_score": confidence,
-            "applied_at": sim_time.isoformat(),
-            "mode": "rl_agent",
-            "actual_outcome": None,
-            "outcome_measured_at": None,
-        }
-        _action_log.append(log_entry)
-        if len(_action_log) > MAX_ACTION_LOG:
-            _action_log.pop(0)
-
-        logger.info(
-            "RL agent: applied %s (confidence=%.2f)",
-            action_name, confidence,
+        # Policy selection is advisory until it identifies a concrete action.
+        # Reuse the same guarded recommendation path as rule-based control.
+        from services.recommender import generate_recommendations
+        from kafka.consumer import get_active_bottlenecks
+        recommendations = generate_recommendations(
+            state, list(get_active_bottlenecks().values()), max_total=100,
         )
-        return [log_entry]
+        selected = [r for r in recommendations if r.action_type.value == action_name]
+        return evaluate_and_apply(selected[:1], sim_time)
 
     except Exception:
         logger.exception("RL agent evaluation failed")

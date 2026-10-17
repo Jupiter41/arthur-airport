@@ -91,6 +91,17 @@ class TestFlightEvents:
 
 
 class TestSecurityEvents:
+    def test_actual_passenger_snapshot_updates_observed_state(self, state: OperationalState):
+        state.on_security_queue_updated({
+            "terminal": "B", "queue_depth": 150,
+            "lanes_open": 3, "wait_minutes": 25,
+        })
+        sec = state.security["Terminal B"]
+        assert sec.queue_depth == 150
+        assert sec.open_lanes == 3
+        assert sec.observed_wait_minutes == 25
+        assert sec.forecast_confidence == 0
+
     def test_congestion_detected_updates_state(self, state: OperationalState):
         state.on_security_congestion_detected({
             "terminal": "Terminal A",

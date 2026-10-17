@@ -4,12 +4,12 @@ The autonomous engine no longer silently applies (or silently drops) actions.
 Every action it wants to take becomes a **Proposal** in this queue:
 
   - actions that are safe *and* confident are auto-approved (recorded for audit,
-    executed immediately by the engine);
+    dispatched by the adapter and confirmed by the owner);
   - safety-guarded actions (and, optionally, low-confidence ones) are enqueued
     **pending** and require a human Approve/Reject in the dashboard.
 
 This module is pure and in-memory: it stores proposals and enforces the legal
-state transitions (pending → approved → executed, or pending → rejected). The
+state transitions (pending → approved → dispatched → executed/failed, or pending → rejected). The
 gating *rule* (`classify`) and the recommendation→command *mapping*
 (`to_flight_command`) are pure functions so they can be unit-tested without
 Kafka/Neo4j. The Kafka side (emit `ActionProposed`, forward approved
@@ -28,6 +28,8 @@ PENDING = "pending"
 APPROVED = "approved"
 REJECTED = "rejected"
 EXECUTED = "executed"
+DISPATCHED = "dispatched"
+FAILED = "failed"
 
 # ── Gating verdicts (classify) ───────────────────────────────
 AUTO = "auto"      # safe + confident → auto-approve and execute
@@ -54,6 +56,9 @@ class Proposal:
     decided_at: str | None = None
     reject_reason: str | None = None
     executed_at: str | None = None
+    dispatched_at: str | None = None
+    command_id: str | None = None
+    failure_reason: str | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -123,8 +128,12 @@ def propose(
         requires_human=requires_human,
     )
     _queue.append(proposal)
-    if len(_queue) > MAX_QUEUE:
-        _queue.pop(0)
+    # Active commands must never be evicted while waiting for confirmation.
+    while len(_queue) > MAX_QUEUE:
+        terminal = next((p for p in _queue if p.status in {EXECUTED, FAILED, REJECTED}), None)
+        if terminal is None:
+            break
+        _queue.remove(terminal)
     return proposal
 
 
@@ -177,45 +186,46 @@ def reject(
 
 
 def mark_executed(proposal_id: str, sim_time: datetime) -> Proposal | None:
-    """approved → executed. Returns None if unknown or not approved."""
+    """Receipt-confirmed dispatched → executed."""
     p = get(proposal_id)
-    if p is None or p.status != APPROVED:
+    if p is None or p.status != DISPATCHED:
         return None
     p.status = EXECUTED
     p.executed_at = sim_time.isoformat()
     return p
 
 
+def mark_dispatched(proposal_id: str) -> Proposal | None:
+    p = get(proposal_id)
+    if p is None or p.status != APPROVED:
+        return None
+    p.command_id = p.id
+    p.status = DISPATCHED
+    return p
+
+
+def mark_failed(proposal_id: str, reason: str) -> Proposal | None:
+    p = get(proposal_id)
+    if p is None or p.status not in {APPROVED, DISPATCHED}:
+        return None
+    p.status = FAILED
+    p.failure_reason = reason
+    return p
+
+
 def to_flight_command(
     action_type: str, parameters: dict
 ) -> tuple[str, dict] | None:
-    """Map an approved action to a concrete `flights.commands` command.
-
-    Returns ``(command_type, payload)`` when the action targets a concrete
-    flight and carries the required parameters, else ``None`` (the action is
-    recorded as a fact only). This is the honest seam: a real command is formed
-    only when a concrete ``flight_id`` (+ ``gate_id`` / duration) is present —
-    aggregate/terminal-level recommendations map to nothing here.
-    """
-    flight_id = parameters.get("flight_id")
-    if not isinstance(flight_id, str) or not flight_id:
-        return None
-
-    if action_type == "reassign_gate":
-        gate_id = parameters.get("gate_id")
-        if isinstance(gate_id, str) and gate_id:
-            return "ReassignGate", {"flight_id": flight_id, "gate_id": gate_id}
-        return None
-
-    if action_type in ("hold_connecting_flight", "delay_taxi"):
-        duration = parameters.get("duration_min", parameters.get("hold_minutes"))
-        reason = parameters.get("reason") or action_type
-        if isinstance(duration, int) and not isinstance(duration, bool) and duration > 0:
-            return "HoldFlight", {
-                "flight_id": flight_id,
-                "reason": reason,
-                "duration_min": duration,
-            }
-        return None
-
+    """Compatibility shim over the canonical multi-domain command mapper."""
+    from _common.commands import action_command
+    intent = action_command(action_type, parameters)
+    if intent is not None and intent.topic == "flights.commands":
+        return intent.command_type, intent.payload
     return None
+
+
+def restore(documents: list[dict]) -> None:
+    """Rebuild the application cache from Neo4j after a restart."""
+    clear()
+    for document in sorted(documents, key=lambda d: d["proposed_at"]):
+        _queue.append(Proposal(**document))

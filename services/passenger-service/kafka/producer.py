@@ -172,6 +172,18 @@ async def emit_congestion_detected(
     return payload
 
 
+def emit_security_queue_updated(
+    terminal: str, queue_depth: int, lanes_open: int,
+    wait_minutes: float, sim_time: datetime,
+) -> None:
+    """An authoritative aggregate; never sample individual queue snapshots."""
+    _produce_event("SecurityQueueUpdated", sim_time, {
+        "terminal": terminal, "queue_depth": queue_depth,
+        "lanes_open": lanes_open, "wait_minutes": round(wait_minutes, 1),
+        "at": sim_time.isoformat(),
+    }, key=terminal)
+
+
 # ── 1C — Accessibility events ────────────────────────────────────────────
 
 

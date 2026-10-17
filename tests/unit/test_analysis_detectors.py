@@ -50,6 +50,23 @@ def state():
 
 
 class TestSecurityQueueDetector:
+    def test_observed_snapshots_detect_and_resolve_without_forecast_confidence(self, state):
+        state.on_security_queue_updated({
+            "terminal": "B", "queue_depth": 180,
+            "lanes_open": 3, "wait_minutes": 25,
+        })
+        bottlenecks = [b for b in detect_all(state, {}) if b.type == BottleneckType.SECURITY_QUEUE]
+        assert len(bottlenecks) == 1
+        bn = bottlenecks[0]
+        assert bn.metrics["signal_source"] == "observed"
+        assert "Observed" in bn.root_cause
+        assert not check_resolved(state, bn)
+        state.on_security_queue_updated({
+            "terminal": "B", "queue_depth": 20,
+            "lanes_open": 5, "wait_minutes": 3,
+        })
+        assert check_resolved(state, bn)
+
     def test_no_bottleneck_below_threshold(self, state: OperationalState):
         state.security["Terminal A"].forecast_wait_minutes = 10.0
         state.security["Terminal A"].forecast_confidence = 0.9

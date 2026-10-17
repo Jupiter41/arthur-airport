@@ -80,7 +80,7 @@ class TestGateAssignmentConstraints:
             return "A03"
 
         async def mock_assign(flight_id, gate_id, sim_time):
-            pass
+            return True
 
         with patch.object(_gr, "get_available_gate", side_effect=mock_get_available_gate), \
              patch.object(_gr, "assign_flight_to_gate", side_effect=mock_assign):
@@ -110,7 +110,7 @@ class TestGateAssignmentConstraints:
             return "A01"
 
         async def mock_assign(flight_id, gate_id, sim_time):
-            pass
+            return True
 
         with patch.object(_gr, "get_available_gate", side_effect=mock_get_available_gate), \
              patch.object(_gr, "assign_flight_to_gate", side_effect=mock_assign):
@@ -139,7 +139,7 @@ class TestGateAssignmentConstraints:
             return "A02"
 
         async def mock_assign(flight_id, gate_id, sim_time):
-            pass
+            return True
 
         with patch.object(_gr, "get_available_gate", side_effect=mock_get_available_gate), \
              patch.object(_gr, "assign_flight_to_gate", side_effect=mock_assign):
@@ -167,7 +167,7 @@ class TestGateAssignmentConstraints:
             return "C10"
 
         async def mock_assign(flight_id, gate_id, sim_time):
-            pass
+            return True
 
         with patch.object(_gr, "get_available_gate", side_effect=mock_get_available_gate), \
              patch.object(_gr, "assign_flight_to_gate", side_effect=mock_assign):
@@ -213,7 +213,7 @@ class TestGateAssignmentConstraints:
             return "B05"
 
         async def mock_assign(flight_id, gate_id, sim_time):
-            pass
+            return True
 
         with patch.object(_gr, "get_available_gate", side_effect=mock_get_available_gate), \
              patch.object(_gr, "assign_flight_to_gate", side_effect=mock_assign):

@@ -117,6 +117,10 @@ services:
           "incidents.inject:1:1"
           "ground.events:3:1"
           "analysis.events:3:1"
+          "planning.events:1:1"
+          "flights.commands:6:1"
+          "passengers.commands:3:1"
+          "baggage.commands:3:1"
           "cost.events:3:1"
         )
         for entry in "$${topics[@]}"; do
@@ -415,6 +419,10 @@ services:
       - ./data:/app/data:ro
     environment:
       LOG_LEVEL: INFO
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: art-digital-twin
+      KAFKA_BROKERS: kafka:9092
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8009/health"]
       interval: 10s

@@ -52,7 +52,7 @@ def _rec(rec_id: str, *, action_type=ActionType.REASSIGN_GATE, confidence=0.9, p
         confidence_score=confidence,
         expiry_sim_time=NOW + timedelta(minutes=45),
         priority_rank=1,
-        parameters=parameters or {},
+        parameters=parameters if parameters is not None else {"flight_id": "f1", "gate_id": "B12"},
         applied=False,
     )
 
@@ -86,11 +86,11 @@ class TestAutoApply:
         actions = evaluate_and_apply([rec], NOW)
 
         assert len(actions) == 1
-        assert rec.applied is True
+        assert rec.applied is False
         # An auto-approved+executed proposal was recorded for audit.
         props = _aq.list_all()
         assert len(props) == 1
-        assert props[0].status == _aq.EXECUTED
+        assert props[0].status == _aq.APPROVED
         assert props[0].requires_human is False
 
     def test_below_threshold_is_skipped(self):
@@ -166,3 +166,11 @@ class TestRecordProposalExecution:
     def test_parameters_default_to_empty(self):
         entry = record_proposal_execution({"id": "prop-x"}, NOW, decided_by="bob")
         assert entry["parameters"] == {}
+
+
+def test_unsupported_action_is_never_auto_executed():
+    _enable()
+    rec = _rec("advisory", parameters={})
+    assert evaluate_and_apply([rec], NOW) == []
+    assert not rec.applied
+    assert _aq.list_all() == []

@@ -11,11 +11,15 @@ import asyncio
 import logging
 import os
 import subprocess
+import sys
+import shutil
+import zipfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,7 @@ class TrainingRun:
     metrics: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
     output_path: str | None = None
+    progress_estimated: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -45,6 +50,7 @@ class TrainingRun:
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "progress_pct": round(self.progress_pct, 1),
+            "progress_estimated": self.progress_estimated,
             "total_timesteps": self.total_timesteps,
             "current_timesteps": self.current_timesteps,
             "metrics": self.metrics,
@@ -69,6 +75,7 @@ class TrainingManager:
             "active_run": self.active_run.to_dict() if self.active_run else None,
             "history": [r.to_dict() for r in self.runs[-20:]],
             "available_models": models,
+            "available_training_types": ["rl"],
         }
 
     def get_config(self) -> dict[str, Any]:
@@ -128,8 +135,12 @@ class TrainingManager:
         if self.active_run and self.active_run.status == "running":
             raise ValueError("A training run is already in progress")
 
-        run_id = f"train-{model_type}-{int(time.time())}"
-        output_path = str(MODELS_DIR / f"{model_type}_policy.zip")
+        if model_type != "rl":
+            raise ValueError(f"Training {model_type!r} is unavailable; only RL training is implemented")
+        if type(timesteps) is not int or not 1 <= timesteps <= 10_000_000:
+            raise ValueError("timesteps must be an integer between 1 and 10000000")
+        run_id = f"train-{model_type}-{uuid4().hex[:12]}"
+        output_path = str(MODELS_DIR / f"{run_id}.zip")
 
         run = TrainingRun(
             id=run_id,
@@ -147,21 +158,13 @@ class TrainingManager:
         if model_type == "rl":
             script = str(Path(__file__).parent.parent / "training" / "train_rl.py")
             cmd = [
-                "python", script,
+                sys.executable, "-u", script,
                 "--timesteps", str(timesteps),
                 "--output", output_path,
             ]
-        else:
-            # For non-RL types, mark as a simulated quick run
-            run.status = "completed"
-            run.progress_pct = 100.0
-            run.current_timesteps = timesteps
-            run.completed_at = datetime.now(timezone.utc).isoformat()
-            run.metrics = {"note": f"{model_type} training completed (baseline)"}
-            self.active_run = None
-            return run
 
         try:
+            MODELS_DIR.mkdir(parents=True, exist_ok=True)
             env = {**os.environ, "RL_TIMESTEPS": str(timesteps)}
             self._process = subprocess.Popen(
                 cmd,
@@ -186,6 +189,17 @@ class TrainingManager:
         if proc is None:
             return
 
+        async def drain_output() -> str:
+            def read_output() -> str:
+                from collections import deque
+                tail = deque(maxlen=100)
+                if proc.stdout:
+                    for line in iter(proc.stdout.readline, b""):
+                        tail.append(line.decode(errors="replace"))
+                return "".join(tail)
+            return await asyncio.to_thread(read_output)
+
+        output_task = asyncio.create_task(drain_output())
         try:
             while proc.poll() is None:
                 # Estimate progress based on elapsed time (rough heuristic)
@@ -193,41 +207,64 @@ class TrainingManager:
                     elapsed = time.time() - datetime.fromisoformat(run.started_at).timestamp()
                     # Rough estimate: ~1000 timesteps/sec for PPO with MlpPolicy
                     estimated_steps = int(elapsed * 1000)
-                    run.current_timesteps = min(estimated_steps, run.total_timesteps)
+                    run.current_timesteps = min(estimated_steps, max(0, run.total_timesteps - 1))
                     run.progress_pct = (run.current_timesteps / run.total_timesteps) * 100
                 await asyncio.sleep(2)
 
             # Process completed
-            if proc.returncode == 0:
+            output = await output_task
+            if (proc.returncode == 0 and run.output_path
+                    and Path(run.output_path).is_file()
+                    and zipfile.is_zipfile(run.output_path)):
+                # Preserve the previous usable model until a successful job has
+                # produced a new archive. Atomic replacement also survives restart.
+                canonical = Path(os.getenv("RL_MODEL_PATH", str(MODELS_DIR / "rl_policy.zip")))
+                canonical.parent.mkdir(parents=True, exist_ok=True)
+                staged = canonical.with_suffix(".pending")
+                shutil.copyfile(run.output_path, staged)
+                staged.replace(canonical)
                 run.status = "completed"
                 run.progress_pct = 100.0
+                run.progress_estimated = False
                 run.current_timesteps = run.total_timesteps
                 logger.info("Training run %s completed successfully", run.id)
             else:
                 run.status = "failed"
-                output = proc.stdout.read().decode() if proc.stdout else ""
-                run.error = output[-500:] if output else f"Exit code {proc.returncode}"
+                run.error = output[-500:] if output else (
+                    "Training produced no model artifact or invalid archive" if proc.returncode == 0
+                    else f"Exit code {proc.returncode}"
+                )
                 logger.error("Training run %s failed: %s", run.id, run.error)
         except asyncio.CancelledError:
             run.status = "stopped"
             logger.info("Training run %s stopped", run.id)
+        except Exception as exc:
+            run.status = "failed"
+            run.error = str(exc)
+            logger.exception("Training finalization failed")
         finally:
             run.completed_at = datetime.now(timezone.utc).isoformat()
             self.active_run = None
             self._process = None
 
     async def stop_training(self) -> bool:
-        """Stop the active training run."""
-        if self._process and self._process.poll() is None:
-            self._process.terminate()
-            if self._monitor_task:
-                self._monitor_task.cancel()
-            if self.active_run:
-                self.active_run.status = "stopped"
-                self.active_run.completed_at = datetime.now(timezone.utc).isoformat()
-                self.active_run = None
-            return True
-        return False
+        """Terminate and reap the active job before permitting another run."""
+        proc = self._process
+        if proc is None or proc.poll() is not None:
+            return False
+        proc.terminate()
+        try:
+            await asyncio.to_thread(proc.wait, timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            await asyncio.to_thread(proc.wait)
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        return True
 
 
 # Singleton instance

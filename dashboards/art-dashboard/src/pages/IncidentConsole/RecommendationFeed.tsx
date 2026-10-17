@@ -104,7 +104,7 @@ export function RecommendationFeed({
                 {(rec.confidence_score * 100).toFixed(0)}% conf.
               </span>
             </div>
-            {!rec.applied && (
+            {!rec.applied && rec.executable && ["available", "failed", "rejected"].includes(rec.execution_status ?? "available") && (
               <button
                 className="text-xs font-bold px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50"
                 disabled={applying === rec.id}
@@ -112,9 +112,6 @@ export function RecommendationFeed({
                   setApplying(rec.id);
                   setError(null);
                   try {
-                    // Real server-side apply: records the operator action and
-                    // emits an AutonomousActionApplied event (no longer a
-                    // discarded what-if projection).
                     await analysisApi.applyRecommendation(rec.id);
                     await queryClient.invalidateQueries({
                       queryKey: ["analysis", "recommendations"],
@@ -130,6 +127,14 @@ export function RecommendationFeed({
               >
                 {applying === rec.id ? "..." : "Apply"}
               </button>
+            )}
+            {!rec.applied && (
+              <span className="text-xs text-amber-300">
+                {rec.execution_status === "dispatched" ? "Awaiting execution" :
+                  rec.execution_status === "pending" ? "Awaiting approval" :
+                  rec.execution_status === "approved" ? "Awaiting dispatch" :
+                  !rec.executable ? "Advisory" : ""}
+              </span>
             )}
             {rec.applied && (
               <span className="text-xs text-green-400">✓ Applied</span>

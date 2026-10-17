@@ -28,6 +28,7 @@ def generate_recommendations(
     bottlenecks: list[Bottleneck],
     max_total: int = 3,
     applied_bottleneck_ids: set[str] | None = None,
+    proposals: list | None = None,
 ) -> list[Recommendation]:
     """Generate ranked recommendations for active bottlenecks.
 
@@ -44,21 +45,28 @@ def generate_recommendations(
         return []
 
     applied = applied_bottleneck_ids or set()
+    proposals = proposals or []
     all_recs: list[Recommendation] = []
     for bn in bottlenecks:
         if bn.resolved_at is not None:
             continue
         recs = _generate_for_bottleneck(state, bn, now)
-        # Mark recs for already-actioned bottlenecks so UI can distinguish
-        if bn.id in applied:
-            for r in recs:
-                r.applied = True
-                r.applied_at = now
+        from _common.commands import action_command
+        for rec in recs:
+            rec.executable = action_command(rec.action_type.value, rec.parameters) is not None
+            rec.execution_status = "available" if rec.executable else "advisory"
+            proposal = next((p for p in reversed(proposals)
+                             if p.bottleneck_id == bn.id and p.action_type == rec.action_type.value
+                             and p.parameters == rec.parameters), None)
+            if proposal is not None:
+                rec.execution_status = proposal.status
+                rec.applied = proposal.status == "executed"
+                rec.applied_at = proposal.executed_at
         all_recs.extend(recs)
 
     # Sort by confidence * (1 / priority_rank) — higher is better
     # Un-applied recommendations first
-    all_recs.sort(key=lambda r: (not r.applied, r.confidence_score), reverse=True)
+    all_recs.sort(key=lambda r: (r.bottleneck_id not in applied, not r.applied, r.confidence_score), reverse=True)
 
     # Assign priority ranks
     for i, rec in enumerate(all_recs):

@@ -24,6 +24,8 @@ export interface AnalysisRecommendation {
   expiry_sim_time: string;
   priority_rank: number;
   parameters: Record<string, unknown>;
+  executable?: boolean;
+  execution_status?: string;
   applied: boolean;
   applied_at: string | null;
 }

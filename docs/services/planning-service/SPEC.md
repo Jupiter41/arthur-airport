@@ -2,12 +2,12 @@
 
 **Language:** Python 3.11+
 **Framework:** FastAPI
-**Port:** 8008
+**Port:** 8009
 **Responsibility:** Runs isolated multi-scenario, multi-horizon capacity planning
 simulations independent of the live operational twin. Provides infrastructure
 investment analysis, Monte Carlo uncertainty quantification, demand forecasting,
-and a decision audit trail. Never writes to live operational Neo4j nodes or
-produces Kafka events.
+and a decision audit trail. Never writes to live operational Neo4j nodes. Publishes planning lifecycle
+events through its durable outbox.
 
 ---
 
@@ -26,17 +26,23 @@ produces Kafka events.
 
 ## 2. Data model
 
-> **Storage decision (lesson 019, 2026-05-29):** scenarios, results, and
-> recommendation logs live in **process-local in-memory dictionaries**, not
-> Neo4j. Planning is a simulation tool whose outputs are ephemeral by design —
-> they describe hypothetical futures, not operational state. Restart wipes the
-> store; clients must re-create scenarios they want to keep. If durability is
-> ever needed (audit-grade comparisons across deploys), the storage layer
-> behind `scenarios/model.py` is the single seam to migrate.
+**Storage correction (Real LDT roadmap, 2026-10-17):** Neo4j is authoritative
+for scenarios, results and recommendation logs. Each record uses its reserved
+label and an `id` constraint, with a JSON `document` preserving the complete API
+shape. Reads always query Neo4j; workers do not rely on local dictionaries.
+The service fails readiness when storage or Kafka is unavailable.
 
-The schemas below describe the **logical record shape** returned by the API
-and stored in memory; the Neo4j labels remain reserved for a future
-persistence implementation but are not currently written.
+Each write atomically creates a `PlanningEvent` outbox record. A background
+publisher sends it to `planning.events` and deletes it after broker confirmation.
+Delivery is at least once with stable event IDs. Hypothetical simulation steps
+remain isolated; lifecycle/audit changes are observable facts. Their `sim_time`
+is the isolated planning epoch (2026-01-01), not wall-clock execution time.
+`created_at`, job duration and completion timestamps are job metadata.
+
+Pending/running scenarios cannot be deleted while their background job may
+write progress. Completed/failed records and their results can be deleted.
+Interrupted jobs retain their last durable progress; automatic job resumption
+is not implemented. Runtime history counters are per-process metrics.
 
 ### `PlanningScenario`
 
@@ -110,7 +116,8 @@ Reserved for the future Neo4j-backed implementation (see §2 storage note):
 (RecommendationLog)-[:RECOMMENDED_FOR]->(Flight | Terminal | Incident)
 ```
 
-**Constraints (planned, not currently enforced):**
+**ID uniqueness is enforced at startup.** Status remains inside the JSON document;
+status indexes below are reserved for a future denormalized projection:
 
 ```cypher
 CREATE CONSTRAINT planning_scenario_id IF NOT EXISTS
@@ -806,9 +813,10 @@ Prometheus metrics (text format).
 
 ## 4. Kafka
 
-The planning-service **does not subscribe to Kafka**. It reads baseline state
-from Neo4j when starting a scenario. It **does not produce events** during
-scenario runs (the runs are isolated).
+The planning-service does not subscribe to operational Kafka streams. It emits
+planning lifecycle/audit events through the outbox described in §2. Individual
+hypothetical flight/passenger simulation steps are isolated and produce no
+operational events.
 
 The one exception: when a `RecommendationLog` outcome is measured, the service
 produces a `RecommendationOutcomeMeasured` event to `cost.events` so the
@@ -909,3 +917,14 @@ services/planning-service/
 └── background/
     └── outcome_measurer.py  Async task: measures recommendation outcomes 30 min later
 ```
+
+
+### Training fidelity correction (2026-10-17)
+
+Demand features use only earlier calendar months for each route. Current-month
+passenger totals are labels, never historical features. Carrier observations are
+aggregated per route/month; daily labels use the actual number of calendar days.
+Statute miles convert to kilometres with 1.609344. Training requires at least ten
+lagged observations and uses chronological validation. Delay training labels
+remain synthetic approximations, and forecast intervals remain heuristic bands;
+these are not validated operational uncertainty estimates.

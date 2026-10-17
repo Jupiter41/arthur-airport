@@ -33,7 +33,6 @@ from kafka.producer import (
     emit_bottleneck_detected,
     emit_bottleneck_resolved,
     emit_recommendation_generated,
-    emit_autonomous_action,
     emit_action_proposed,
     emit_anomaly_detected,
     emit_narration_generated,
@@ -163,7 +162,7 @@ async def run_consumer() -> None:
                 consumer_lag.labels(topic=topic).inc()
 
                 # Route to state handler
-                _dispatch_event(event_type, payload, topic, envelope)
+                await _dispatch_event(event_type, payload, topic, envelope)
 
                 # On clock ticks, run analysis
                 if event_type == "SimClockTick":
@@ -180,7 +179,7 @@ async def run_consumer() -> None:
             logger.info("Analysis consumer closed")
 
 
-def _dispatch_event(
+async def _dispatch_event(
     event_type: str, payload: dict, topic: str, envelope: dict,
 ) -> None:
     """Route events to the appropriate state handler."""
@@ -191,6 +190,7 @@ def _dispatch_event(
         "FlightCancelled": state.on_flight_cancelled,
         "PassengerStatusChanged": state.on_passenger_status_changed,
         "SecurityCongestionDetected": state.on_security_congestion_detected,
+        "SecurityQueueUpdated": state.on_security_queue_updated,
         "BaggageStatusChanged": state.on_baggage_status_changed,
         "WeatherStateChanged": state.on_weather_state_changed,
         "IncidentCreated": state.on_incident_created,
@@ -198,6 +198,28 @@ def _dispatch_event(
         "GroundVehicleDispatched": state.on_ground_vehicle_dispatched,
         "GroundVehicleReturned": state.on_ground_vehicle_returned,
     }
+
+    if event_type in {"CommandExecuted", "CommandRejected"}:
+        from services.action_execution import receive_result
+        raw_clock = envelope.get("sim_time")
+        if raw_clock:
+            clock = datetime.fromisoformat(raw_clock.replace("Z", "+00:00"))
+            if await receive_result(event_type, payload, clock, topic):
+                proposal = approval_queue.get(payload["command_id"])
+                if event_type == "CommandExecuted":
+                    autonomous_actions_total.labels(action_type=proposal.action_type).inc()
+                for rec in active_recommendations:
+                    if rec.id == proposal.recommendation_id:
+                        rec.execution_status = proposal.status
+                        rec.applied = proposal.status == approval_queue.EXECUTED
+                        rec.applied_at = clock if rec.applied else None
+        return
+
+    if event_type == "SecurityLanesChanged":
+        sec = state.security.get(f"Terminal {payload.get('terminal')}")
+        if sec is not None:
+            sec.open_lanes = payload["lanes_open"]
+        return
 
     handler = handlers.get(event_type)
     if handler:
@@ -326,7 +348,7 @@ async def _on_tick(payload: dict) -> None:
     if active_list:
         # Pass cooldown info so recommender can mark already-actioned bottlenecks
         cooled_bn_ids = set(_bottleneck_cooldowns.keys())
-        recs = generate_recommendations(state, active_list, applied_bottleneck_ids=cooled_bn_ids)
+        recs = generate_recommendations(state, active_list, applied_bottleneck_ids=cooled_bn_ids, proposals=approval_queue.list_all())
         active_recommendations = recs
         for rec in recs:
             emit_recommendation_generated(rec.model_dump(mode="json"), now)
@@ -339,26 +361,37 @@ async def _on_tick(payload: dict) -> None:
     # Autonomous mode evaluation
     if should_evaluate(now):
         auto_settings = get_autonomous_settings()
-        actions = []
 
         if auto_settings.mode.value == "rl_agent":
             # P5-1-5: Use RL agent
-            actions = evaluate_rl_agent(state, now)
+            evaluate_rl_agent(state, now)
         elif active_recommendations:
             # Rule-based / threshold mode
-            actions = evaluate_and_apply(active_recommendations, now)
+            evaluate_and_apply(active_recommendations, now)
 
-        for action in actions:
-            emit_autonomous_action(action, now)
-            autonomous_actions_total.labels(
-                action_type=action.get("action_type", ""),
-            ).inc()
-
-        # A9: emit ActionProposed for any proposals the engine surfaced this
-        # cycle (safety-guarded actions awaiting human approval, plus the
-        # auto-approved audit records). Each proposal is emitted exactly once.
-        for proposal in approval_queue.take_unemitted():
+    from dataclasses import asdict
+    from db.neo4j import save_proposal
+    from services.action_execution import dispatch
+    for proposal in approval_queue.list_all():
+        if not proposal.emitted:
+            await save_proposal(asdict(proposal))
             emit_action_proposed(proposal.to_dict(), now)
+            proposal.emitted = True
+            await save_proposal(asdict(proposal))
+        # A lost receipt is recovered by retrying the same command ID. Owners
+        # reload durable receipts, so redelivery does not repeat the mutation.
+        if proposal.status == approval_queue.DISPATCHED and proposal.dispatched_at:
+            dispatched_at = datetime.fromisoformat(proposal.dispatched_at)
+            if (now - dispatched_at).total_seconds() >= 300:
+                proposal.status = approval_queue.APPROVED
+        if proposal.status == approval_queue.APPROVED:
+            try:
+                await dispatch(proposal, now)
+            except ValueError as exc:
+                approval_queue.mark_failed(proposal.id, str(exc))
+                await save_proposal(asdict(proposal))
+            except Exception:
+                logger.exception("Command dispatch unavailable for %s", proposal.id)
 
     # P5-3-1: Anomaly detection
     anomaly_result = anomaly_detector.on_tick(

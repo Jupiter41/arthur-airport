@@ -71,6 +71,20 @@ async def lifespan(app: FastAPI):
     # 3. Initialize Kafka producer
     init_kafka_producer()
 
+    # Rebuild proposals and confirmed execution audit from Neo4j.
+    from db.neo4j import initialize_action_store, load_proposals
+    from services import approval_queue
+    from services.autonomous import record_proposal_execution
+    from datetime import datetime
+    await initialize_action_store()
+    approval_queue.restore(await load_proposals())
+    for proposal in approval_queue.list_all():
+        if proposal.status == approval_queue.EXECUTED and proposal.executed_at:
+            record_proposal_execution(
+                proposal.to_dict(), datetime.fromisoformat(proposal.executed_at),
+                decided_by=proposal.decided_by or proposal.proposed_by,
+            )
+
     # 4. Register WebSocket broadcast callback
     set_ws_broadcast(ws_broadcast)
 
@@ -81,6 +95,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    from services.training_manager import manager as training_manager
+    await training_manager.stop_training()
     stop_consumer()
     close_kafka_producer()
     await close_neo4j()

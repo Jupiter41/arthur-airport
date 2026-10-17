@@ -1,5 +1,12 @@
 # PLAN — Stabilize architecture & improve business value
 
+> **Verification update (2026-10-17):** see `ROADMAP_REAL_LDT.md` §10 for
+> delivered behavior, validation boundaries and open gaps. Planning records now
+> persist in Neo4j; owner receipts confirm action execution. Automatic measured
+> savings, full action coverage and a unified effect/recommendation engine remain
+> incomplete. Historical checkmarks below are not full-stack validation.
+
+
 Status: living document. Last updated 2026-06-03.
 
 This plan groups work into themes. Each task is independent and can be picked up

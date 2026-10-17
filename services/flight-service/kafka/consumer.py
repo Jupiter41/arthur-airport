@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
 from _common.idempotency import IdempotencyTracker
+from _common.commands import CommandReceipts
 from _common.consumer_health import ConsumerHealthTracker
 from _common.airport_config import load_airport_runtime_config
 
@@ -146,7 +147,9 @@ class FlightConsumerState:
         return self._idempotency.is_duplicate(event_id)
 
     async def rebuild_from_neo4j(self) -> None:
-        """Rebuild in-memory incident impact sets from Neo4j on startup."""
+        """Rebuild manual holds and incident impact sets from Neo4j."""
+        from db.neo4j import get_manual_holds
+        self.held_flights = await get_manual_holds()
         try:
             locations = await get_active_incident_locations()
         except Exception as e:
@@ -416,7 +419,24 @@ async def _dispatch(envelope: dict) -> None:
             pass
 
 
+
+_command_receipts = CommandReceipts()
+
+
 async def _handle_command(envelope: dict) -> None:
+    from kafka.producer import _produce_event
+    from db.neo4j import get_driver
+    from _common.command_store import load_receipt, save_receipt
+
+    await _command_receipts.handle(
+        envelope, _state.sim_time, _execute_command,
+        lambda kind, clock, payload, key: _produce_event(kind, clock, payload, key=key),
+        load=lambda key: load_receipt(get_driver(), key),
+        save=lambda key, receipt: save_receipt(get_driver(), key, receipt),
+    )
+
+
+async def _execute_command(envelope: dict) -> str | None:
     """Execute an operator/agent command from ``flights.commands``.
 
     Validates and dedupes the command, loads the target flight, enforces
@@ -424,37 +444,35 @@ async def _handle_command(envelope: dict) -> None:
     of which emits the normal fact on ``flights.events``. A rejected command
     produces no fact.
     """
-    command_id = envelope.get("command_id", "")
-    if command_id and _state.check_idempotency(command_id):
-        return
-
     command_type = envelope.get("command_type")
     cmd, error = parse_command(command_type, envelope.get("payload"))
     if error is not None:
         m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
         logger.warning("Rejected command %s: %s", command_type, error)
-        return
+        return error
 
     # Commands carry no sim time — stamp resulting facts with the current clock.
     sim_time = _state.sim_time
     if sim_time is None:
         m_commands.labels(command_type=command_type, outcome="rejected").inc()
         logger.warning("Rejected command %s: no sim_time yet (clock not started)", command_type)
-        return
+        return "Simulation clock not available"
 
     flight = await get_flight_by_id(cmd.flight_id)
     if not flight:
         m_commands.labels(command_type=command_type, outcome="rejected").inc()
         logger.warning("Rejected command %s: flight %s not found", command_type, cmd.flight_id)
-        return
+        return "Flight not found"
 
     if isinstance(cmd, HoldFlight):
         precondition_error = validate_hold_precondition(flight.get("status", ""))
         if precondition_error is not None:
             m_commands.labels(command_type=command_type, outcome="rejected").inc()
             logger.warning("Rejected HoldFlight %s: %s", cmd.flight_id, precondition_error)
-            return
-        await hold_flight(cmd.flight_id, cmd.reason, cmd.duration_min, sim_time)
+            return precondition_error
+        updated = await hold_flight(cmd.flight_id, cmd.reason, cmd.duration_min, sim_time)
+        if updated is None:
+            return "Flight hold could not be saved"
         m_commands.labels(command_type=command_type, outcome="accepted").inc()
         logger.info("Executed HoldFlight for %s (%s, %dmin)", cmd.flight_id, cmd.reason, cmd.duration_min)
 
@@ -464,6 +482,10 @@ async def _handle_command(envelope: dict) -> None:
         m_commands.labels(command_type=command_type, outcome=outcome).inc()
         logger.info("ReassignGate for %s → gate %s: %s", cmd.flight_id, cmd.gate_id, outcome)
 
+
+        if not ok:
+            return "Gate reassignment rejected"
+    return None
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Process a SimClockTick — advance all active flights through the FSM."""
@@ -1440,40 +1462,30 @@ async def _on_baggage_flagged(payload: dict, sim_time: datetime) -> None:
 
 async def hold_flight(flight_id: str, reason: str, duration_min: int, sim_time: datetime) -> dict | None:
     """Place a manual hold on a flight."""
-    _state.held_flights[flight_id] = {
-        "reason": reason,
-        "expected_duration_minutes": duration_min,
-        "held_at": sim_time.isoformat(),
-    }
-    from db.neo4j import apply_delay
-    estimated = None
-    from db.neo4j import get_flight_by_id
+    from db.neo4j import get_flight_by_id, set_manual_hold
     flight = await get_flight_by_id(flight_id)
-    if flight:
-        est = flight.get("estimated_time")
-        if est:
-            try:
-                new_est = datetime.fromisoformat(str(est)) + timedelta(minutes=duration_min)
-                estimated = new_est.isoformat()
-            except (ValueError, TypeError):
-                pass
-
-    updated = await apply_delay(
-        flight_id=flight_id,
-        delay_minutes=duration_min,
-        reason=reason,
-        new_estimated_time=estimated or "",
-        sim_time=sim_time,
-    )
-
+    if flight is None:
+        return None
+    est = flight.get("estimated_time") or flight.get("scheduled_time")
+    try:
+        current_estimate = datetime.fromisoformat(str(est)) if est else sim_time
+    except (ValueError, TypeError):
+        return None
+    estimated = (current_estimate + timedelta(minutes=duration_min)).isoformat()
+    delay = int(flight.get("delay_minutes") or 0) + duration_min
+    updated = await set_manual_hold(flight_id, reason, duration_min, estimated, delay, sim_time)
     if updated:
+        _state.held_flights[flight_id] = {
+            "reason": reason, "expected_duration_minutes": duration_min,
+            "held_at": sim_time.isoformat(),
+        }
         emit_flight_status_changed(
             flight_id=flight_id,
             flight_number=updated.get("flight_number", ""),
-            previous_status=updated.get("status", "boarding"),
+            previous_status=flight.get("status", "boarding"),
             new_status="delayed",
             sim_time=sim_time,
-            delay_minutes=duration_min,
+            delay_minutes=delay,
             reason=reason,
             direction=flight.get("direction"),
             destination_iata=flight.get("destination_iata"),
@@ -1498,7 +1510,6 @@ async def hold_flight(flight_id: str, reason: str, duration_min: int, sim_time: 
 
 async def release_flight(flight_id: str, sim_time: datetime) -> dict | None:
     """Release a manual hold on a flight."""
-    _state.held_flights.pop(flight_id, None)
     from db.neo4j import get_flight_by_id, update_flight_status
     flight = await get_flight_by_id(flight_id)
     if not flight:
@@ -1514,6 +1525,7 @@ async def release_flight(flight_id: str, sim_time: datetime) -> dict | None:
     )
 
     if updated:
+        _state.held_flights.pop(flight_id, None)
         emit_flight_status_changed(
             flight_id=flight_id,
             flight_number=flight.get("flight_number", ""),
@@ -1543,7 +1555,8 @@ async def reassign_gate(flight_id: str, gate_id: str, sim_time: datetime) -> dic
         logger.warning("ReassignGate: gate %s occupied — refusing to reassign %s", gate_id, flight_id)
         return None
 
-    await assign_flight_to_gate(flight_id, gate_id, sim_time)
+    if not await assign_flight_to_gate(flight_id, gate_id, sim_time):
+        return None
 
     flight_number = flight.get("flight_number", "")
     emit_flight_gate_assigned(

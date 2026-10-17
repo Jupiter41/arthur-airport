@@ -342,3 +342,12 @@ Filter frame:
 | `dangerous_goods_detected_total` | Counter | DG detections by class |
 | `false_positives_total` | Counter | Screening false positives |
 | `offloaded_due_to_cancellation_total` | Counter | Items offloaded from cancelled flights |
+
+
+### Command execution receipts (Real LDT correction)
+
+Accepted commands emit the existing domain fact plus `CommandExecuted`; rejected
+commands emit `CommandRejected` with a reason. Both receipts carry `command_id`
+and `command_type`, use the current simulation clock, and are stored in Neo4j
+for restart-safe redelivery. See `EVENT_BUS.md`, “Real LDT execution and planning
+corrections”, for the lifecycle and transaction-boundary limitation.

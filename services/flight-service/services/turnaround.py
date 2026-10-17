@@ -11,11 +11,12 @@ from datetime import datetime, timedelta
 
 from db.neo4j import get_paired_flight, apply_delay
 
+from _common.aircraft import WIDE_BODY_TYPES
+from _common.airport_config import load_airport_runtime_config
+
 logger = logging.getLogger(__name__)
 
 # Body-class classification is shared across all services — see _common/aircraft.py.
-from _common.aircraft import WIDE_BODY_TYPES
-from _common.airport_config import load_airport_runtime_config
 
 CASCADE_MAX_DEPTH = load_airport_runtime_config().operations.cascade_max_depth
 TURNAROUND_NARROW_MIN = int(os.getenv("TURNAROUND_NARROW_MIN", "30"))

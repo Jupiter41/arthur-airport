@@ -23,7 +23,7 @@ from finance.benefit_extractor import extract_annual_benefit
 from finance.investment import compute_investment
 from scenarios.metrics import planning_metrics
 
-from .model import PlanningScenario, store_results
+from .model import PlanningScenario, store_results, store_scenario
 
 logger = logging.getLogger(__name__)
 
@@ -262,10 +262,14 @@ def run_scenario(scenario: PlanningScenario) -> None:
     scenario.started_at = datetime.utcnow().isoformat()
     scenario.progress_pct = 0
     scenario.runs_completed = 0
+    store_scenario(scenario)
     t_start = time.monotonic()
     planning_metrics.active_scenarios.inc()
 
     try:
+        base_seed = scenario.random_seed if scenario.random_seed is not None else random.randint(0, 999_999)
+        scenario.random_seed = base_seed
+        store_scenario(scenario)
         schedule_adapter = get_schedule_adapter(scenario.demand_source)
         # If the scenario asks for a different weather source, plug a second
         # adapter; otherwise the engine reuses the schedule adapter.
@@ -280,14 +284,12 @@ def run_scenario(scenario: PlanningScenario) -> None:
                 )
         engine = PlanningSimEngine(
             adapter=schedule_adapter,
-            seed=scenario.random_seed,
+            seed=base_seed,
             weather_adapter=weather_adapter,
         )
 
-        dates = _generate_dates(scenario.horizon, seed=scenario.random_seed)
+        dates = _generate_dates(scenario.horizon, seed=base_seed)
         n_runs = max(1, scenario.monte_carlo_runs)
-        base_seed = scenario.random_seed if scenario.random_seed is not None else random.randint(0, 999_999)
-
         # Total work: baseline runs + scenario runs
         total_runs = n_runs * 2
 
@@ -333,7 +335,7 @@ def run_scenario(scenario: PlanningScenario) -> None:
         if scenario.capex_eur > 0 or scenario.opex_delta_eur > 0:
             inv = compute_investment(
                 capex=scenario.capex_eur,
-                annual_benefit=max(0, annual_benefit),
+                annual_benefit=annual_benefit,
                 annual_opex=scenario.opex_delta_eur,
                 years=scenario.years_horizon,
                 discount_rate=scenario.discount_rate,
@@ -368,7 +370,8 @@ def run_scenario(scenario: PlanningScenario) -> None:
         scenario.status = "completed"
         scenario.completed_at = datetime.utcnow().isoformat()
         scenario.progress_pct = 100
-        scenario.runs_completed = n_runs
+        scenario.runs_completed = total_runs
+        store_scenario(scenario)
         planning_metrics.active_scenarios.dec()
         planning_metrics.record_completion(
             horizon=scenario.horizon,
@@ -387,6 +390,7 @@ def run_scenario(scenario: PlanningScenario) -> None:
         scenario.error = str(e)
         scenario.completed_at = datetime.utcnow().isoformat()
         planning_metrics.active_scenarios.dec()
+        store_scenario(scenario)
         planning_metrics.record_failure()
 
 
@@ -394,3 +398,4 @@ def _update_progress(scenario: PlanningScenario, done: int, total: int) -> None:
     """Update scenario progress percentage."""
     scenario.progress_pct = min(99, int(done / total * 100))
     scenario.runs_completed = done
+    store_scenario(scenario)

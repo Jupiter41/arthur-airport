@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import uuid4
 
+from db.store import get_repository
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -60,10 +62,14 @@ class RecommendationLogEntry:
         }
 
 
-# ── In-memory audit store ────────────────────────────────────
+# ── Durable audit records ────────────────────────────────────
 
-_audit_log: list[RecommendationLogEntry] = []
-MAX_AUDIT_LOG = 500
+
+
+def _entries() -> list[RecommendationLogEntry]:
+    entries = [RecommendationLogEntry(**d) for d in get_repository().list("RecommendationLog")]
+    return sorted(entries, key=lambda e: (e.created_at, e.id))
+
 
 
 def log_recommendation(
@@ -89,18 +95,17 @@ def log_recommendation(
         target_type=target_type,
         target_id=target_id,
     )
-    _audit_log.append(entry)
-    if len(_audit_log) > MAX_AUDIT_LOG:
-        _audit_log.pop(0)
+    get_repository().put("RecommendationLog", entry.id, entry.to_dict())
     return entry
 
 
 def mark_applied(rec_id: str, applied_at: str) -> bool:
     """Mark a recommendation as applied."""
-    for entry in _audit_log:
+    for entry in _entries():
         if entry.id == rec_id:
             entry.was_applied = True
             entry.applied_at = applied_at
+            get_repository().put("RecommendationLog", entry.id, entry.to_dict())
             return True
     return False
 
@@ -110,13 +115,14 @@ def record_outcome(
     actual_saving_eur: float,
 ) -> bool:
     """Record the measured outcome of an applied recommendation."""
-    for entry in _audit_log:
+    for entry in _entries():
         if entry.id == rec_id:
             entry.actual_saving_eur = actual_saving_eur
             if entry.predicted_saving_eur != 0:
                 entry.prediction_error_eur = entry.predicted_saving_eur - actual_saving_eur
             else:
                 entry.prediction_error_eur = -actual_saving_eur
+            get_repository().put("RecommendationLog", entry.id, entry.to_dict())
             return True
     return False
 
@@ -127,9 +133,9 @@ def get_audit_log(
     offset: int = 0,
 ) -> tuple[list[dict], int]:
     """Get paginated audit log entries."""
-    filtered = _audit_log
+    filtered = _entries()
     if rec_type:
-        filtered = [e for e in _audit_log if e.type == rec_type]
+        filtered = [e for e in filtered if e.type == rec_type]
 
     total = len(filtered)
     # Most recent first
@@ -140,7 +146,8 @@ def get_audit_log(
 
 def get_audit_summary() -> dict:
     """Compute audit summary metrics for the dashboard panel."""
-    if not _audit_log:
+    entries = _entries()
+    if not entries:
         return {
             "total_recommendations": 0,
             "applied_count": 0,
@@ -151,17 +158,18 @@ def get_audit_summary() -> dict:
             "avg_confidence": 0.0,
         }
 
-    total = len(_audit_log)
-    applied = [e for e in _audit_log if e.was_applied]
+    total = len(entries)
+    applied = [e for e in entries if e.was_applied]
     measured = [e for e in applied if e.actual_saving_eur is not None]
 
     total_predicted = sum(e.predicted_saving_eur for e in applied)
     total_actual = sum(e.actual_saving_eur for e in measured) if measured else 0.0
-    avg_confidence = sum(e.confidence for e in _audit_log) / total if total else 0.0
+    avg_confidence = sum(e.confidence for e in entries) / total if total else 0.0
 
     accuracy = 0.0
-    if total_predicted > 0 and measured:
-        accuracy = (1.0 - abs(total_predicted - total_actual) / total_predicted) * 100
+    measured_predicted = sum(e.predicted_saving_eur for e in measured)
+    if measured_predicted > 0 and measured:
+        accuracy = max(0.0, (1.0 - abs(measured_predicted - total_actual) / measured_predicted) * 100)
 
     return {
         "total_recommendations": total,
@@ -177,4 +185,5 @@ def get_audit_summary() -> dict:
 
 def clear_audit_log() -> None:
     """Clear the audit log (for testing)."""
-    _audit_log.clear()
+    for entry in _entries():
+        get_repository().delete("RecommendationLog", entry.id)

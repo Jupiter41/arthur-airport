@@ -28,8 +28,8 @@ export function TrainingControl({
             disabled={isRunning}
           >
             <option value="rl">RL Agent (PPO)</option>
-            <option value="anomaly">Anomaly Detector</option>
-            <option value="forecast">Queue Forecaster</option>
+            <option value="anomaly" disabled>Anomaly Detector (automatic)</option>
+            <option value="forecast" disabled>Queue Forecaster (managed by passenger service)</option>
           </select>
         </div>
         <div>
@@ -72,7 +72,7 @@ export function TrainingControl({
               {activeRun.model_type.toUpperCase()} Training
             </span>
             <span className="text-xs text-blue-400 font-mono">
-              {activeRun.progress_pct.toFixed(1)}%
+              {activeRun.progress_estimated ? "~" : ""}{activeRun.progress_pct.toFixed(1)}%
             </span>
           </div>
           <div className="w-full bg-gray-700 rounded-full h-2.5">
