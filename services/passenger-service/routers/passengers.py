@@ -14,15 +14,17 @@ from db.neo4j import (
     get_passenger_by_id,
     search_passengers,
     get_status_counts,
+    get_forecast_departures,
 )
 from kafka.consumer import (
     get_sim_time,
     get_security,
     get_alerts as get_alerts_store,
     get_at_risk_connections,
+    get_forecast_context,
 )
-from ml.features import build_features
-from ml.inference import is_model_trained, predict, get_feature_importance
+from ml.features import build_features, departure_totals
+from ml.inference import is_model_trained, predict_with_source, get_feature_importance
 from services.zones import get_heatmap_zones
 
 logger = logging.getLogger(__name__)
@@ -294,30 +296,34 @@ async def flow_forecast(
 
     security = get_security()
     cp = security.get(terminal)
+    try:
+        departures = await get_forecast_departures(sim_time, window + 90)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Forecast schedule unavailable") from exc
+    context = get_forecast_context(terminal)
 
     for offset_min in range(5, window + 1, 5):
         future_time = sim_time + timedelta(minutes=offset_min)
 
+        flights, passengers = departure_totals(departures, future_time)
         features = build_features(
             terminal=terminal,
             sim_time=future_time,
-            weather_category="CAVOK",
-            flights_next_90={"A": 0, "B": 0, "C": 0, terminal: 5},
-            pax_next_90={"A": 0, "B": 0, "C": 0, terminal: 500},
-            load_factor_today=0.8,
-            incident_active={"A": False, "B": False, "C": False},
-            adjacent_congested={"A": False, "B": False, "C": False},
+            flights_next_90=flights,
+            pax_next_90=passengers,
+            **context,
         )
 
-        pred_depth = predict(terminal, features) or 0
+        pred_depth, source = predict_with_source(terminal, features)
         # Estimate wait from predicted depth
-        throughput = cp.lanes_open * 180.0
-        pred_wait = (pred_depth / throughput) * 60.0 if throughput > 0 else 0
+        throughput = cp.effective_throughput(pred_depth)
+        pred_wait = (pred_depth / throughput) * 60.0 if throughput > 0 else 999.0
 
         forecast_points.append({
             "sim_time": future_time.isoformat(),
             "predicted_queue_depth": pred_depth,
             "predicted_wait_minutes": round(pred_wait, 1),
+            "source": source,
         })
 
         if pred_wait > 20 and not congestion_detected:
@@ -328,7 +334,8 @@ async def flow_forecast(
     congestion_risk = {
         "detected": congestion_detected,
         "estimated_onset_sim_time": congestion_onset,
-        "confidence": 0.81 if trained and congestion_detected else 0.4 if congestion_detected else 0.0,
+        "confidence": None,
+        "confidence_calibrated": False,
     }
 
     fi = get_feature_importance(terminal)
@@ -338,6 +345,7 @@ async def flow_forecast(
         "sim_time": sim_time.isoformat() if sim_time else None,
         "window_minutes": window,
         "model_trained": trained,
+        "assumptions": "Known simulated departures; current weather, lanes and incidents held constant",
         "forecast": forecast_points,
         "congestion_risk": congestion_risk,
         "feature_importance": fi,

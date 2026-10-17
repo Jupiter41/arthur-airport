@@ -104,6 +104,8 @@ async def persist_weather_state(
     phenomena: list[str],
     runway_impact: str,
     previous_category: str | None = None,
+    recommended_arrival_rate: int | None = None,
+    recommended_departure_rate: int | None = None,
 ) -> None:
     """Create a new WeatherState node and update the chain atomically.
 
@@ -128,7 +130,9 @@ async def persist_weather_state(
         dew_point_c: $dew_point_c,
         qnh_hpa: $qnh_hpa,
         phenomena: $phenomena,
-        runway_impact: $runway_impact
+        runway_impact: $runway_impact,
+        recommended_arrival_rate: $recommended_arrival_rate,
+        recommended_departure_rate: $recommended_departure_rate
     })
     // Set ceiling_ft only when not null (Neo4j omits null properties)
     FOREACH (_ IN CASE WHEN $ceiling_ft IS NOT NULL THEN [1] ELSE [] END |
@@ -175,6 +179,8 @@ async def persist_weather_state(
             qnh_hpa=qnh_hpa,
             phenomena=phenomena,
             runway_impact=runway_impact,
+            recommended_arrival_rate=recommended_arrival_rate,
+            recommended_departure_rate=recommended_departure_rate,
         )
     logger.info("Persisted WeatherState %s (%s) at %s", weather_id, category, sim_time)
 

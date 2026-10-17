@@ -18,11 +18,14 @@ async function checkService(baseUrl: string): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3_000);
-    const resp = await fetch(`${baseUrl}/health`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    return resp.ok;
+    try {
+      const resp = await fetch(`${baseUrl}/ready`, {
+        signal: controller.signal,
+      });
+      return resp.ok;
+    } finally {
+      clearTimeout(timer);
+    }
   } catch {
     return false;
   }
@@ -65,22 +68,21 @@ export async function handleReady(_req: Request, res: Response): Promise<void> {
   const kafkaOk = isKafkaConnected();
   const kafkaFresh = isKafkaFresh();
 
-  // Check at least one upstream is reachable
-  let anyUpstreamOk = false;
-  for (const key of Object.values(SERVICE_KEYS)) {
-    const ok = await checkService(UPSTREAM[key]);
-    if (ok) {
-      anyUpstreamOk = true;
-      break;
-    }
-  }
+  const checks = await Promise.all(
+    Object.entries(SERVICE_KEYS).map(async ([name, key]) =>
+      [name, await checkService(UPSTREAM[key])] as const,
+    ),
+  );
+  const services = Object.fromEntries(checks);
+  const allUpstreamsOk = checks.every(([, ok]) => ok);
 
-  if (!kafkaOk || !kafkaFresh || !anyUpstreamOk) {
+  if (!kafkaOk || !kafkaFresh || !allUpstreamsOk) {
     res.status(503).json({
       status: "not ready",
       kafka: kafkaOk,
       kafka_fresh: kafkaFresh,
-      upstream: anyUpstreamOk,
+      upstream: allUpstreamsOk,
+      services,
     });
     return;
   }
@@ -89,6 +91,7 @@ export async function handleReady(_req: Request, res: Response): Promise<void> {
     status: "ready",
     kafka: kafkaOk,
     kafka_fresh: kafkaFresh,
-    upstream: anyUpstreamOk,
+    upstream: allUpstreamsOk,
+    services,
   });
 }

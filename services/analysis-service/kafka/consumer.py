@@ -37,7 +37,7 @@ from kafka.producer import (
     emit_anomaly_detected,
     emit_narration_generated,
 )
-from db.neo4j import query_connection_clusters
+from db.neo4j import query_connection_clusters, load_operational_projection
 from metrics import (
     bottlenecks_active,
     bottlenecks_detected_total,
@@ -192,6 +192,7 @@ async def _dispatch_event(
         "SecurityCongestionDetected": state.on_security_congestion_detected,
         "SecurityQueueUpdated": state.on_security_queue_updated,
         "BaggageStatusChanged": state.on_baggage_status_changed,
+        "BaggageZoneSnapshot": state.on_baggage_zone_snapshot,
         "WeatherStateChanged": state.on_weather_state_changed,
         "IncidentCreated": state.on_incident_created,
         "IncidentStatusChanged": state.on_incident_status_changed,
@@ -308,10 +309,11 @@ async def _on_tick(payload: dict) -> None:
     if _neo4j_tick_counter >= NEO4J_QUERY_INTERVAL:
         _neo4j_tick_counter = 0
         try:
+            state.restore_graph(await load_operational_projection())
             clusters = await query_connection_clusters()
             state.connection_clusters = clusters
         except Exception:
-            logger.debug("Failed to query connection clusters", exc_info=True)
+            logger.warning("Failed to reconcile operational graph projection", exc_info=True)
 
     # Check for resolved bottlenecks
     resolved_ids = []

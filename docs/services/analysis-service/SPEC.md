@@ -44,3 +44,18 @@ publishes it on each normal tick (every 20 ticks in BULK mode). Analysis uses
 these measured snapshots to detect and resolve observed congestion. It does
 not invent forecast confidence from an observed wait. This also avoids trying
 to reconstruct exact queue counts from sampled per-passenger events.
+
+## Projection recovery and input contracts
+
+Before starting its consumer, analysis reads flights, gates, current weather,
+active incidents and the latest baggage aggregate from Neo4j. It reconciles
+these projections every ten ticks. This read-only snapshot does not advance the
+simulation clock; only `SimClockTick` does that. Domain facts update the cache
+between reconciliations. Security and ground-vehicle recovery remain separate
+roadmap work.
+
+Weather facts use the producer's `new_category` and recommended arrival/departure
+rates. Capacity is expressed relative to configured CAVOK rates. Baggage occupancy
+uses unsampled `BaggageZoneSnapshot` facts, including in BULK mode; per-bag
+`scan_zone` transitions cannot be summed into exact occupancy. What-if requests
+require the simulation clock and must not substitute wall-clock time.

@@ -280,3 +280,12 @@ Streams `WeatherStateChanged` and `METARIssued` events. Useful for the flight bo
 | `flights_delayed_by_weather_total` | Counter | Cumulative weather-caused delays |
 | `wind_speed_kt` | Gauge | Current wind speed |
 | `visibility_m` | Gauge | Current visibility |
+
+
+### Projection recovery fields (2026-10-17)
+
+Persist `recommended_arrival_rate` and `recommended_departure_rate` on each new
+WeatherState alongside the weather parameters. Analysis reads these exact rates
+on restart; they include the weather owner's wind reductions. Legacy nodes
+without rates use category defaults until the next weather fact. Kafka uses
+`new_category` as specified, rather than a `category` field in transition facts.

@@ -1222,7 +1222,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
 | G7 / P1 | Planning data now survives restart, but background jobs do not resume and have no durable worker lease/claim. Persisted interrupted runs can remain `running`. Analysis proposals are durable, but not coordinated across replicas. | Durable job scheduling/recovery, ownership and concurrency tests. Persistence is not equivalent to durable execution. |
 | G8 / P1 | `PLANNING.md` promises actual outcomes after 30 sim-minutes. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
-| G9 / P1 | Analysis operational flights/baggage/vehicle projections still start largely from Kafka `latest`, without a complete Neo4j rehydrate. Baggage events use `scan_zone` while parts of analysis expect `new_zone`/`old_zone`; sampled events cannot reconstruct exact occupancy. The queue aggregate and manual hold/lane caches were corrected in A11. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
+| G9 / P1 | Flight/gate/weather/incident projections now rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage occupancy now uses a durable unsampled owner snapshot, including BULK mode. Security/vehicle projections and owner pipeline/vehicle recovery still need a complete restart contract; aggregate publication still has the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
 | G12 / P2 | Compose config validates, but this machine has no running Docker engine. No live DB restart, broker redelivery, full-stack UI or load validation ran. K8s has no planning/cost service manifests. | Exercise the new lifecycle/storage against the full stack, add missing deployment manifests, validate image packaging and readiness. Unit/build success is not deployment certification. |
@@ -1232,3 +1232,87 @@ owner receipts; security commands persist and publish facts; planning records ar
 durable; training stubs no longer claim success; negative investment benefits and
 demand target leakage are fixed. Remaining rows above stay open rather than being
 silently checked off. Existing historical logs are retained for traceability.
+
+
+## 11. A15 — Whole-service recheck (2026-10-17)
+
+**Disposition: keep this roadmap active. Do not archive it as completed.**
+The user's all-service check found additional real defects despite passing
+unit suites. G1–G12 are still completion conditions; this section records the
+verified corrections without converting them into blanket certification.
+
+- Passenger forecast REST used fixed 5-flight/500-passenger inputs and CAVOK
+  weather. It now reads each future schedule window and the real simulated
+  context. Neighbour congestion no longer always maps to false for the target.
+  Closed/frozen lanes no longer predict zero wait. Each point identifies the
+  actual LightGBM/fallback source. Uncalibrated confidence is explicitly null.
+- Queue-model validation previously fit all rows and then evaluated the last
+  20% of those same rows. Training now uses strictly earlier timestamps only.
+  Atomic parquet/model replacement retains previous data on failures; a
+  no-artifact retrain no longer claims success. A real LightGBM synthetic model
+  was trained, saved, reloaded and used for inference in the regression suite.
+- Analysis read `category` instead of the weather producer's `new_category`,
+  leaving category/capacity stale. It now consumes recommended rates and new
+  category; weather persists those rates for restart recovery.
+- Analysis now reads the operational graph at startup and reconciles flights,
+  gates, weather, incidents and baggage aggregates every ten ticks. Gate totals
+  come from actual nodes after recovery. Baggage owner snapshots replace
+  occupancy counts without replay inflation, including with per-bag BULK
+  suppression. What-if requires simulation time instead of wall-clock fallback.
+- Gateway readiness now requires all nine upstream `/ready` endpoints.
+  Topic creation fails instead of claiming success after an error. Config
+  mounts missing from overriding Compose volume lists are restored; default
+  ADS-B fetching is disabled for the synthetic operational stack.
+- Previous GitHub CI failed on an unpinned Ruff upgrade (0.17.1 expanded its
+  default checks). CI now pins the locally validated version and declares the
+  existing E4/E7/E9/F baseline explicitly. Integration CI now builds/starts the
+  complete Compose stack, requires every service ready, runs every integration
+  module and fails on skips. Dashboard tests are included.
+
+A live regression test now exercises a persisted approved proposal through
+analysis dispatch, Kafka, the passenger owner mutation, durable receipt and
+analysis execution confirmation, then restarts the owner and replays the command
+identity. This test is **added but not counted as passed without a live stack**.
+It runs only against a disposable synthetic stack and restores lane capacity.
+
+### Service verification matrix
+
+| Service/capability | Evidence and remaining limit |
+|---|---|
+| flight-service | FSM/gate/runway/hold/receipt unit coverage passes; live restart/crash atomicity still unproved. |
+| passenger-service / prediction | Queue/connection/spatial units and actual synthetic LightGBM artifact test pass; forecasts are conditional estimates, not calibrated operational probability. |
+| baggage-service | Conveyor/screening/command units and actual aggregate producer→analysis contract pass; complete owner pipeline recovery remains open. |
+| weather-service | FSM/capacity/METAR units and actual transition producer→analysis contract pass. |
+| incident-service | Cascade/lifecycle/protocol units pass; full-fleet incident command integration is not implemented. |
+| sim-orchestrator | Clock/schedule/scenario/speed units pass; full-stack execution needs a working engine. |
+| analysis / recommendations | Routing/approval/owner confirmation and projection units pass; many action types remain advisory, G4/G5/G6/G8 remain open. |
+| cost-service | Cost/revenue/calculator units pass; transactional dedup and the accounting/rate-source gaps G1/G2 remain open. |
+| planning-service | Engine/finance/storage/outbox/demand-history units pass; jobs do not automatically resume and model uncertainty remains heuristic. |
+| gateway / dashboard | Gateway regression tests and both builds checked below; browser/full-stack certification remains pending. |
+
+### Validation evidence
+
+Docker Desktop was started for this check but its backend crashed while opening
+the local `dockerInference` socket (`Le système ne peut pas accéder au fichier`).
+The strict readiness probe returned failure for all nine services and gateway.
+No live result is claimed from that failure. The new strict CI gate will supply
+deployment evidence when it completes on a functioning Docker host.
+
+The exact staged tree was exported outside the working checkout, excluding
+the unrelated Raspberry Pi/access-control edits. Dependencies were installed
+from the committed lockfiles (`npm ci`). Local Python was 3.14.3; CI targets 3.11.
+
+| Check | Result |
+|---|---|
+| Python unit suite | **948 passed**, no skips; 14 existing job-metadata deprecation warnings. Includes real LightGBM synthetic training/reload. |
+| Gateway tests | **22 passed**, no skips. |
+| Dashboard tests | **43 passed**, 8 files. |
+| Gateway and dashboard builds | Passed; dashboard retains existing bundle-size/Browserslist warnings. |
+| All nine Python services + common modules + validation scripts: Ruff | Passed with the committed explicit baseline. |
+| Isolated `docker compose config --quiet` | Passed. |
+| `git diff --cached --check` | Passed. |
+| Strict live readiness on this machine | **Failed**: no service reachable after Docker backend startup crash. |
+| Full live integration, restarts and broker redelivery | **Not yet validated**. Added to strict GitHub full-stack gate. |
+
+The roadmap remains active because passing units/builds does not close G1–G12.
+No roadmap file has been moved into the old-roadmap folder.

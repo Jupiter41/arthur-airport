@@ -5,6 +5,7 @@ Before the model is trained (day 1-3), uses a simple fallback formula:
 """
 
 import logging
+import math
 import os
 from pathlib import Path
 
@@ -53,17 +54,24 @@ def is_model_trained(terminal: str) -> bool:
 
 def predict(terminal: str, features: dict) -> int | None:
     """Predict queue depth. Returns None only on error."""
+    return predict_with_source(terminal, features)[0]
+
+
+def predict_with_source(terminal: str, features: dict) -> tuple[int, str]:
+    """Return the actual inference source, including failed-model fallback."""
     model = _models.get(terminal)
     if model is None:
-        return fallback_forecast(features)
+        return fallback_forecast(features), "schedule_ratio"
 
     try:
         X = pd.DataFrame([features])[FEATURE_COLS]
         pred = model.predict(X)[0]
-        return max(0, int(pred))
+        if not math.isfinite(float(pred)):
+            raise ValueError("Model returned a non-finite queue depth")
+        return max(0, int(pred)), "lightgbm"
     except Exception as e:
         logger.error("Prediction error for %s: %s", terminal, e)
-        return fallback_forecast(features)
+        return fallback_forecast(features), "schedule_ratio"
 
 
 def fallback_forecast(features: dict) -> int:

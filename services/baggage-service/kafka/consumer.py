@@ -444,6 +444,13 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         m_segment_load.labels(zone_id=z["zone_id"]).set(z["items"])
     m_transit_queue.set(_state.conveyor.transit_queue_depth)
 
+    if _baggage_tick_n % gauge_interval == 0:
+        from db.neo4j import save_zone_projection
+        from kafka.producer import emit_zone_snapshot
+        snapshot = {"zones": _state.conveyor.get_zone_summary(), "at": sim_time.isoformat()}
+        await save_zone_projection(snapshot)
+        emit_zone_snapshot(snapshot, sim_time)
+
     # 5. GAP-4-5/4-6: Check make-up carousel capacity overflow
     if _baggage_tick_n % 5 == 0:  # check every 5 ticks to avoid spam
         overloaded = _state.conveyor.get_overloaded_makeup_zones()

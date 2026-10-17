@@ -239,6 +239,8 @@ async def what_if_analysis(request: WhatIfRequest) -> WhatIfResponse:
     whatif_queries_total.inc()
     start = time.monotonic()
 
+    if get_state().sim_time is None:
+        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
     result = run_what_if(get_state(), request)
 
     duration = time.monotonic() - start

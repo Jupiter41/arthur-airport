@@ -18,6 +18,16 @@
 - Produce `BaggageStatusChanged` and `BaggageFlagged` events
 - Expose REST endpoints for baggage tracking and flow analytics
 
+### Aggregate projection contract
+
+`BaggageZoneSnapshot` on `baggage.events` contains `zones` (the complete zone
+summary: `zone_id`, `items`, `throughput_per_hour`, `utilisation_pct`, `status`)
+and `at` in simulation time. It is published every normal tick and every twenty
+BULK ticks, independent of per-bag event suppression. The latest payload is
+persisted by baggage-service in `BaggageProjection {id: 'latest', document}` so
+analysis can recover occupancy without replaying sampled events. Persistence
+precedes publication; transactional outbox delivery remains tracked in G1.
+
 ---
 
 ## 2. Baggage state machine

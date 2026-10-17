@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 _driver: AsyncDriver | None = None
 
 CONSTRAINTS = [
+    "CREATE CONSTRAINT baggage_projection_id IF NOT EXISTS FOR (p:BaggageProjection) REQUIRE p.id IS UNIQUE",
     "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_tag IF NOT EXISTS FOR (b:Baggage) REQUIRE b.tag IS UNIQUE",
 ]
@@ -497,3 +498,15 @@ async def get_baggage_in_pipeline() -> list[dict]:
     async with driver.session() as session:
         result = await session.run(query)
         return [dict(record) async for record in result]
+
+
+async def save_zone_projection(payload: dict) -> None:
+    """Persist the owner's aggregate before publishing it to analysis."""
+    import json
+
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MERGE (p:BaggageProjection {id: 'latest'}) SET p.document = $document",
+            document=json.dumps(payload, allow_nan=False),
+        )
+        await result.consume()

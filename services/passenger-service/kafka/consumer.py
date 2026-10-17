@@ -1059,28 +1059,32 @@ def _get_forecast_queues(sim_time: datetime) -> dict[str, int]:
     return forecasts
 
 
+def get_forecast_context(terminal: str) -> dict:
+    """Snapshot current weather, incidents and neighbouring queue conditions."""
+    return {
+        "weather_category": _state.weather_category,
+        "load_factor_today": (
+            _state.load_factor_sum / _state.load_factor_count
+            if _state.load_factor_count else 0.8
+        ),
+        "incident_active": dict(_state.active_incidents),
+        "adjacent_congested": {
+            terminal: any(
+                _state.security.get(other).wait_minutes(0) > 20
+                for other in "ABC" if other != terminal
+            ),
+        },
+    }
+
+
 def _build_context_features(terminal: str, sim_time: datetime) -> dict:
     """Build feature vector for a terminal."""
-    # Compute adjacent congestion from security system
-    adjacent = {}
-    for t in ("A", "B", "C"):
-        if t != terminal:
-            wait = _state.security.get(t).wait_minutes(0)
-            adjacent[t] = wait > 20
-    adjacent[terminal] = False
-
-    # Use cached flight/pax data (updated in _ml_tick on every tick)
-    load_factor = _state.load_factor_sum / _state.load_factor_count if _state.load_factor_count > 0 else 0.8
-
     return build_features(
         terminal=terminal,
         sim_time=sim_time,
-        weather_category=_state.weather_category,
         flights_next_90=_state.cached_flights_next_90,
         pax_next_90=_state.cached_pax_next_90,
-        load_factor_today=load_factor,
-        incident_active=_state.active_incidents,
-        adjacent_congested=adjacent,
+        **get_forecast_context(terminal),
     )
 
 

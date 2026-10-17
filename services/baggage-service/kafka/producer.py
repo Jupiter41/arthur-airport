@@ -144,6 +144,11 @@ async def emit_baggage_flagged(
     return payload
 
 
+def emit_zone_snapshot(payload: dict, sim_time: datetime) -> None:
+    """Aggregate facts are never suppressed by per-bag BULK sampling."""
+    _produce_event("BaggageZoneSnapshot", sim_time, payload, key="zones")
+
+
 async def emit_conveyor_delay(
     zone_id: str,
     terminal: str,

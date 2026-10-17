@@ -88,6 +88,9 @@ class OperationalState:
 
         # Flight state
         self.flights: dict[str, FlightState] = {}
+        self.gates: dict[str, dict] = {}
+        self.graph_loaded: bool = False
+        self.baggage_snapshot_at: datetime | None = None
 
         # Security queues per terminal
         self.security: dict[str, SecurityState] = {
@@ -121,6 +124,46 @@ class OperationalState:
         self.security_congestion_events: deque = deque(maxlen=100)
 
     # ── Event handlers ───────────────────────────────────────
+
+    def restore_graph(self, snapshot: dict) -> None:
+        """Build replacement dictionaries before swapping the visible cache."""
+        import json
+
+        flights = {}
+        for row in snapshot["flights"]:
+            raw = row["flight"]
+            gate = row.get("gate_id")
+            terminal = str(row.get("terminal_id") or "").rsplit("-", 1)[-1]
+            direction = raw.get("direction", "departure")
+            scheduled = _parse_dt(raw.get("scheduled_time"))
+            flights[raw["id"]] = FlightState(
+                flight_id=raw["id"], status=raw["status"], flight_type=direction,
+                gate=gate, terminal=f"Terminal {terminal}" if terminal else None,
+                delay_minutes=raw.get("delay_minutes") or 0,
+                scheduled_departure=scheduled if direction == "departure" else None,
+                scheduled_arrival=scheduled if direction == "arrival" else None,
+                passenger_count=raw.get("pax_count") or 0,
+                aircraft_type=raw.get("aircraft_type") or "",
+            )
+        gates = {}
+        for row in snapshot["gates"]:
+            gate = dict(row["gate"])
+            terminal = str(gate.get("terminal_id") or "").rsplit("-", 1)[-1]
+            gate["terminal"] = f"Terminal {terminal}"
+            gates[gate["id"]] = gate
+        incidents = {row["incident"]["id"]: dict(row["incident"]) for row in snapshot["incidents"]}
+        self.flights, self.gates, self.active_incidents = flights, gates, incidents
+        self.graph_loaded = True
+        if snapshot["weather"]:
+            weather = dict(snapshot["weather"][0]["weather"])
+            if weather.get("recommended_arrival_rate") is None:
+                from _common.airport_config import load_airport_runtime_config
+                base = load_airport_runtime_config().operations.weather_capacity[weather["category"]]
+                weather.update(recommended_arrival_rate=base.arrival, recommended_departure_rate=base.departure)
+            self.on_weather_state_changed(weather)
+            self.weather.updated_at = _parse_dt(weather.get("timestamp"))
+        for row in snapshot["baggage"]:
+            self.on_baggage_zone_snapshot(json.loads(row["document"]))
 
     def on_clock_tick(self, payload: dict) -> None:
         """Process SimClockTick."""
@@ -212,6 +255,11 @@ class OperationalState:
         new_zone = payload.get("new_zone", "")
         old_zone = payload.get("old_zone", "")
 
+        # Owner aggregates supersede incremental estimates. Real producers use
+        # scan_zone and may suppress individual events in BULK mode.
+        if self.baggage_snapshot_at is not None or "scan_zone" in payload:
+            return
+
         # Track make-up carousel utilisation
         if new_zone.startswith("make_up") or new_zone.startswith("MU-"):
             if new_zone not in self.baggage_zones:
@@ -228,15 +276,38 @@ class OperationalState:
                 z.current_count = max(0, z.current_count - 1)
                 z.utilisation_pct = (z.current_count / z.capacity * 100) if z.capacity else 0
 
+    def on_baggage_zone_snapshot(self, payload: dict) -> None:
+        at = _parse_dt(payload.get("at"))
+        if at is None or (self.baggage_snapshot_at and at < self.baggage_snapshot_at):
+            return
+        zones = {}
+        for row in payload["zones"]:
+            zone_id = row["zone_id"]
+            if not zone_id.startswith("make-up-"):
+                continue
+            capacity = max(1, int(row["throughput_per_hour"] * 5 / 60))
+            zones[zone_id] = BaggageZoneState(
+                zone=zone_id, capacity=capacity, current_count=row["items"],
+                utilisation_pct=row["utilisation_pct"],
+            )
+        self.baggage_zones = zones
+        self.baggage_snapshot_at = at
+
     def on_weather_state_changed(self, payload: dict) -> None:
         """Process WeatherStateChanged."""
-        self.weather.category = payload.get("category", self.weather.category)
+        self.weather.category = payload.get("new_category") or payload.get("category", self.weather.category)
         self.weather.visibility_m = payload.get("visibility_m", self.weather.visibility_m)
         self.weather.wind_speed_kt = payload.get("wind_speed_kt", self.weather.wind_speed_kt)
         self.weather.ceiling_ft = payload.get("ceiling_ft", self.weather.ceiling_ft)
         self.weather.runway_capacity_pct = payload.get(
             "runway_capacity_pct", self.weather.runway_capacity_pct
         )
+        if "recommended_arrival_rate" in payload and "recommended_departure_rate" in payload:
+            from _common.airport_config import load_airport_runtime_config
+            base = load_airport_runtime_config().operations.weather_capacity["CAVOK"]
+            self.weather.runway_capacity_pct = 100 * (
+                payload["recommended_arrival_rate"] + payload["recommended_departure_rate"]
+            ) / max(1, base.arrival + base.departure)
         self.weather.updated_at = self.sim_time
 
     def on_incident_created(self, payload: dict) -> None:
@@ -283,6 +354,18 @@ class OperationalState:
 
     def get_free_gates_by_terminal(self) -> dict[str, int]:
         """Count gates not assigned to active flights, per terminal."""
+        if self.graph_loaded:
+            occupied = {
+                f.gate for f in self.flights.values()
+                if f.status in {"boarding", "delayed", "scheduled", "landed", "taxiing", "at_gate"}
+            }
+            counts: dict[str, int] = defaultdict(int)
+            for gate_id, gate in self.gates.items():
+                terminal = gate["terminal"]
+                counts.setdefault(terminal, 0)
+                if gate_id not in occupied and gate.get("status") not in {"closed", "maintenance", "offline"}:
+                    counts[terminal] += 1
+            return dict(counts)
         # Gate counts from known terminal structure
         terminal_gates: dict[str, int] = {
             "Terminal A": 14, "Terminal B": 14, "Terminal C": 14,
@@ -322,6 +405,8 @@ class OperationalState:
                 ("MU-A", "Terminal A"), ("MU-B", "Terminal B"),
                 ("MU-C", "Terminal C"), ("make_up_a", "Terminal A"),
                 ("make_up_b", "Terminal B"), ("make_up_c", "Terminal C"),
+                ("make-up-A", "Terminal A"), ("make-up-B", "Terminal B"),
+                ("make-up-C", "Terminal C"),
             ]:
                 if zone_name.lower().startswith(prefix.lower()):
                     terminal_utils[terminal].append(zone.utilisation_pct)
@@ -337,6 +422,8 @@ def _parse_dt(value: str | datetime | None) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value
+    if hasattr(value, "to_native"):
+        return value.to_native()
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (ValueError, AttributeError):

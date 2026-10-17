@@ -509,6 +509,24 @@ async def get_departure_flights_in_window(sim_time: datetime, window_min: int = 
         return [dict(r) async for r in result]
 
 
+async def get_forecast_departures(sim_time: datetime, horizon_minutes: int) -> list[dict]:
+    """Read the known schedule once for all future forecast windows."""
+    from datetime import timedelta
+
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MATCH (f:Flight)-[:ASSIGNED_TO]->(g:Gate) "
+            "WHERE f.direction = 'departure' "
+            "AND f.status IN ['scheduled', 'boarding', 'delayed'] "
+            "AND f.estimated_time >= $start AND f.estimated_time <= $end "
+            "RETURN DISTINCT f.id AS flight_id, f.estimated_time AS estimated_time, "
+            "g.terminal_id AS terminal_id, f.pax_count AS pax_count",
+            start=sim_time.isoformat(),
+            end=(sim_time + timedelta(minutes=horizon_minutes)).isoformat(),
+        )
+        return [dict(row) async for row in result]
+
+
 async def get_status_counts() -> dict[str, int]:
     """Get passenger counts by status."""
     driver = get_driver()

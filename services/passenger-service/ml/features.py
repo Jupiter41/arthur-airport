@@ -5,7 +5,7 @@ Uses FEATURE_COLS list to enforce column order.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 FEATURE_COLS = [
@@ -24,6 +24,29 @@ FEATURE_COLS = [
 ]
 
 WEATHER_ENCODING = {"CAVOK": 0, "VMC": 1, "IMC": 2, "LIFR": 3}
+
+
+def departure_totals(
+    departures: list[dict], at: datetime, window_minutes: int = 90,
+) -> tuple[dict[str, int], dict[str, float]]:
+    """Aggregate the known simulated schedule for a particular future window."""
+    counts = dict.fromkeys("ABC", 0)
+    passengers = dict.fromkeys("ABC", 0.0)
+    start = at.replace(tzinfo=timezone.utc) if at.tzinfo is None else at
+    end = start + timedelta(minutes=window_minutes)
+    for flight in departures:
+        raw = flight.get("estimated_time")
+        try:
+            departure = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            continue
+        if departure.tzinfo is None:
+            departure = departure.replace(tzinfo=timezone.utc)
+        terminal = str(flight.get("terminal_id") or "").upper().rsplit("-", 1)[-1]
+        if terminal in counts and start <= departure <= end:
+            counts[terminal] += 1
+            passengers[terminal] += max(0.0, float(flight.get("pax_count") or 0))
+    return counts, passengers
 
 # Load special events from fixtures
 _events: list[dict] | None = None

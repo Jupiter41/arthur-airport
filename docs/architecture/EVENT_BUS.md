@@ -754,3 +754,14 @@ publishes it on each normal tick (every 20 ticks in BULK mode). Analysis uses
 these measured snapshots to detect and resolve observed congestion. It does
 not invent forecast confidence from an observed wait. This also avoids trying
 to reconstruct exact queue counts from sampled per-passenger events.
+
+
+### Baggage aggregate projection (2026-10-17)
+
+`BaggageZoneSnapshot` on `baggage.events`, key `zones`, is published every normal
+tick and every twenty BULK ticks. Payload: `{zones: [{zone_id, items, status,
+throughput_per_hour, utilisation_pct}], at}`. It is unsampled even when per-bag
+events are suppressed. Baggage-service persists the latest payload before send
+in `BaggageProjection {id: 'latest', document}` for analysis restart recovery.
+Snapshots replace zone counts; replay does not increment occupancy. Older
+snapshot times are ignored. Transactional delivery remains G1 roadmap work.

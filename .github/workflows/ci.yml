@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install ruff
+      - run: pip install ruff==0.15.9
       - name: Lint all Python services
         run: |
           ruff check services/flight-service/
@@ -50,6 +50,9 @@ jobs:
       - name: Build dashboard (TypeScript + Vite)
         working-directory: dashboards/art-dashboard
         run: npx tsc && npx vite build
+      - name: Run dashboard tests
+        working-directory: dashboards/art-dashboard
+        run: npm test
 
   # ── Gateway tests ──────────────────────────────────────────
   gateway-tests:
@@ -91,108 +94,37 @@ jobs:
       - name: Run unit tests
         run: python -m pytest tests/unit/ -v --tb=short
 
-  # ── Integration tests ──────────────────────────────────────
-  integration-tests:
-    name: Integration tests
+  # The real Compose stack is required. Missing services/skipped tests fail.
+  full-stack:
+    name: Build and validate every service
     runs-on: ubuntu-latest
-    needs: [lint-python, unit-tests]
-    services:
-      neo4j:
-        image: neo4j:5
-        env:
-          NEO4J_AUTH: neo4j/art-digital-twin
-          NEO4J_PLUGINS: '["apoc"]'
-        ports:
-          - 7687:7687
-          - 7474:7474
-        options: >-
-          --health-cmd "wget -qO- http://localhost:7474 || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-      kafka:
-        image: confluentinc/cp-kafka:7.6.0
-        env:
-          KAFKA_BROKER_ID: 1
-          KAFKA_ZOOKEEPER_CONNECT: ""
-          KAFKA_PROCESS_ROLES: broker,controller
-          KAFKA_NODE_ID: 1
-          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-          KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-          CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
-        ports:
-          - 9092:9092
-        options: >-
-          --health-cmd "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"
-          --health-interval 10s
-          --health-timeout 10s
-          --health-retries 15
+    needs: [lint-python, lint-node, gateway-tests, unit-tests]
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install test dependencies
+      - name: Install integration dependencies
+        run: pip install pytest pytest-asyncio httpx requests neo4j
+      - name: Build and start the full synthetic stack
+        run: docker compose up -d --build
+      - name: Require readiness and run all live integration tests
+        run: python scripts/validate_stack.py --timeout 300 --report stack-readiness.json
+        timeout-minutes: 15
+      - name: Collect service status and logs
+        if: always()
         run: |
-          pip install pytest pytest-asyncio httpx requests
-          pip install -r services/flight-service/requirements.txt
-      - name: Run integration tests
-        env:
-          NEO4J_URI: bolt://localhost:7687
-          NEO4J_USER: neo4j
-          NEO4J_PASSWORD: art-digital-twin
-          KAFKA_BROKERS: localhost:9092
-        # No `|| true`: modules skip themselves (skipif on service reachability)
-        # when the app stack isn't up, so a real failure now fails CI honestly.
-        run: python -m pytest tests/integration/ -v --tb=short
-
-  # ── Build ──────────────────────────────────────────────────
-  docker-build:
-    name: Docker Compose build
-    runs-on: ubuntu-latest
-    needs: [lint-python, unit-tests]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build all containers
-        run: docker compose build
-      - name: Verify images created
-        run: docker compose config --services | wc -l
-
-  # ── End-to-end smoke test ──────────────────────────────────
-  e2e-smoke-test:
-    name: End-to-end smoke test
-    runs-on: ubuntu-latest
-    needs: [docker-build]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+          docker compose ps -a > stack-status.txt
+          docker compose logs --no-color --tail=200 > stack-services.log
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          python-version: "3.11"
-      - name: Install test dependencies
-        run: pip install pytest pytest-asyncio httpx requests
-      - name: Start infrastructure + services
-        run: |
-          docker compose up -d neo4j zookeeper kafka cost-service planning-service sim-orchestrator
-          echo "Waiting for services to become healthy..."
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:8008/health > /dev/null 2>&1 && \
-               curl -sf http://localhost:8009/health > /dev/null 2>&1; then
-              echo "Services healthy after ${i}s"
-              break
-            fi
-            sleep 1
-          done
-      - name: Run smoke test
-        run: python -m pytest tests/integration/test_e2e_smoke.py -v --tb=short
-        timeout-minutes: 5
-      - name: Collect logs on failure
-        if: failure()
-        run: docker compose logs --tail=100
-      - name: Tear down
+          name: full-stack-validation
+          path: |
+            stack-readiness.json
+            stack-status.txt
+            stack-services.log
+      - name: Tear down disposable CI stack
         if: always()
         run: docker compose down -v

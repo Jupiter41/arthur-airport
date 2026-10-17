@@ -363,6 +363,8 @@ class WeatherConsumerState:
             phenomena=params.phenomena,
             runway_impact=capacity["runway_impact"],
             previous_category=previous_category,
+            recommended_arrival_rate=capacity["arrival_rate"],
+            recommended_departure_rate=capacity["departure_rate"],
         )
 
         emit_weather_state_changed(
@@ -443,6 +445,8 @@ class WeatherConsumerState:
             phenomena=self.current_params.phenomena,
             runway_impact=capacity["runway_impact"],
             previous_category=None,
+            recommended_arrival_rate=capacity["arrival_rate"],
+            recommended_departure_rate=capacity["departure_rate"],
         )
 
         emit_weather_state_changed(
@@ -486,6 +490,8 @@ class WeatherConsumerState:
             phenomena=self.current_params.phenomena,
             runway_impact=capacity["runway_impact"],
             previous_category=previous_category,
+            recommended_arrival_rate=capacity["arrival_rate"],
+            recommended_departure_rate=capacity["departure_rate"],
         )
 
         emit_weather_state_changed(

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import copy
 import logging
-from datetime import datetime, timezone
 from uuid import uuid4
 
 from models.domain import (
@@ -55,7 +54,9 @@ def run_what_if(
     effects of each action over the requested horizon. No Kafka events
     or Neo4j writes are produced.
     """
-    now = state.sim_time or datetime.now(timezone.utc)
+    now = state.sim_time
+    if now is None:
+        raise ValueError("Simulation clock not available yet")
 
     # 1. Compute baseline KPIs from current state
     baseline = _compute_kpis(state, action_index=-1)
@@ -98,6 +99,8 @@ def _create_shadow(state: OperationalState) -> OperationalState:
     shadow.sim_time = state.sim_time
     shadow.speed_multiplier = state.speed_multiplier
     shadow.tick_number = state.tick_number
+    shadow.gates = copy.deepcopy(state.gates)
+    shadow.graph_loaded = state.graph_loaded
     shadow.weather = copy.copy(state.weather)
 
     # Deep copy flight states

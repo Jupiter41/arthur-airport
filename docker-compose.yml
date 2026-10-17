@@ -131,7 +131,7 @@ services:
             --partitions "$$partitions" \
             --replication-factor "$$replication" \
             && echo "  ✓ $$topic ($$partitions partitions)" \
-            || echo "  ✗ $$topic failed"
+            || exit 1
         done
         echo "All topics created."
 
@@ -163,7 +163,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       OTEL_ENABLED: "${OTEL_ENABLED:-false}"
       OTEL_SERVICE_NAME: flight-service
-      ADSB_ENABLED: "true"
+      ADSB_ENABLED: "false"
       OPENSKY_USERNAME: "${OPENSKY_USERNAME:-}"
       OPENSKY_PASSWORD: "${OPENSKY_PASSWORD:-}"
     depends_on:
@@ -212,6 +212,7 @@ services:
     volumes:
       - ./services/_common:/app/_common:ro
       - ./data/bts:/app/data/bts:ro
+      - ./config:/app/config:ro
 
   baggage-service:
     <<: *python-service
@@ -262,6 +263,7 @@ services:
     volumes:
       - ./services/_common:/app/_common:ro
       - ./data/weather:/app/data/weather:ro
+      - ./config:/app/config:ro
     depends_on:
       neo4j:
         condition: service_healthy
@@ -417,6 +419,7 @@ services:
     volumes:
       - ./services/_common:/app/_common:ro
       - ./data:/app/data:ro
+      - ./config:/app/config:ro
     environment:
       LOG_LEVEL: INFO
       NEO4J_URI: bolt://neo4j:7687

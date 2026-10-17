@@ -403,3 +403,11 @@ operational Flight/Passenger/Baggage ownership unchanged.
 Flight manual hold properties are `manual_hold_reason`, `manual_hold_duration`
 and `manual_held_at`. They are committed with the delayed flight state and cleared
 when the flight leaves `delayed`; the flight cache reloads active holds on restart.
+
+
+### Baggage projection aggregate (2026-10-17)
+
+Baggage-service owns `BaggageProjection` with unique `id` (`latest`) and JSON
+`document` containing the complete zone summary and simulation timestamp.
+Analysis reads it without writing it. New WeatherState records also persist
+the recommended arrival/departure rates for faithful projection recovery.

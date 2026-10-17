@@ -7,6 +7,7 @@ Model saved to /app/models/forecast_{terminal}.lgbm.
 import asyncio
 import logging
 import os
+import tempfile
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -68,19 +69,26 @@ def flush_to_parquet(terminal: str) -> None:
     TRAINING_DIR.mkdir(parents=True, exist_ok=True)
     parquet_path = TRAINING_DIR / f"{terminal}.parquet"
 
-    df_new = pd.DataFrame(list(buf))
-    buf.clear()
+    rows = list(buf)
+    df_new = pd.DataFrame(rows)
 
     if parquet_path.exists():
-        try:
-            df_old = pd.read_parquet(parquet_path)
-            df = pd.concat([df_old, df_new], ignore_index=True)
-        except Exception:
-            df = df_new
+        df_old = pd.read_parquet(parquet_path)
+        df = pd.concat([df_old, df_new], ignore_index=True)
     else:
         df = df_new
 
-    df.to_parquet(parquet_path, index=False)
+    # Keep buffered rows and the previous file intact on failed writes.
+    df = df.drop_duplicates(subset=["sim_time"], keep="last").sort_values("sim_time")
+    with tempfile.NamedTemporaryFile(dir=TRAINING_DIR, suffix=".parquet", delete=False) as tmp:
+        temporary = Path(tmp.name)
+    try:
+        df.to_parquet(temporary, index=False)
+        os.replace(temporary, parquet_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    for _ in rows:
+        buf.popleft()
     logger.debug("Flushed %d rows for terminal %s → %s", len(df_new), terminal, parquet_path)
 
 
@@ -120,21 +128,33 @@ def retrain_sync(terminal: str) -> float | None:
             logger.error("Missing feature column '%s' in training data for %s", col, terminal)
             return None
 
-    X = df[FEATURE_COLS]
-    y = df["target"]
-
-    model = make_model()
-    model.fit(X, y)
-
-    # Temporal split evaluation: last 20%
+    if "sim_time" not in df or "target" not in df:
+        logger.error("Missing target or simulation time for %s", terminal)
+        return None
+    # Equal simulation timestamps must not straddle the holdout boundary.
+    df = df.assign(sim_time=pd.to_datetime(df["sim_time"], utc=True, errors="coerce"))
+    df = df.dropna(subset=["sim_time", "target", *FEATURE_COLS])
+    df = df.sort_values("sim_time").drop_duplicates(subset=["sim_time"], keep="last")
+    if len(df) < MIN_TRAINING_ROWS:
+        return None
     split = int(len(df) * 0.8)
+    model = make_model()
+    model.fit(df[FEATURE_COLS].iloc[:split], df["target"].iloc[:split])
+
+    # The last 20% are future observations, never passed to fit().
     y_pred = model.predict(df[FEATURE_COLS].iloc[split:])
     y_true = df["target"].iloc[split:]
     mae = abs(y_pred - y_true).mean()
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     model_path = MODELS_DIR / f"forecast_{terminal}.lgbm"
-    joblib.dump(model, model_path)
+    with tempfile.NamedTemporaryFile(dir=MODELS_DIR, suffix=".lgbm", delete=False) as tmp:
+        temporary = Path(tmp.name)
+    try:
+        joblib.dump(model, temporary)
+        os.replace(temporary, model_path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
     logger.info(
         "[Forecast] Retrained %s: MAE=%.1f rows=%d → %s",
@@ -160,8 +180,11 @@ async def maybe_retrain(sim_day: int) -> bool:
         flush_to_parquet(terminal)
 
     loop = asyncio.get_event_loop()
+    trained = False
     for terminal in ("A", "B", "C"):
-        await loop.run_in_executor(None, retrain_sync, terminal)
+        mae = await loop.run_in_executor(None, retrain_sync, terminal)
+        trained = trained or mae is not None
 
-    _last_retrain_day = sim_day
-    return True
+    if trained:
+        _last_retrain_day = sim_day
+    return trained

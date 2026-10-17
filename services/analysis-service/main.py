@@ -72,11 +72,13 @@ async def lifespan(app: FastAPI):
     init_kafka_producer()
 
     # Rebuild proposals and confirmed execution audit from Neo4j.
-    from db.neo4j import initialize_action_store, load_proposals
+    from db.neo4j import initialize_action_store, load_proposals, load_operational_projection
+    from kafka.consumer import get_state
     from services import approval_queue
     from services.autonomous import record_proposal_execution
     from datetime import datetime
     await initialize_action_store()
+    get_state().restore_graph(await load_operational_projection())
     approval_queue.restore(await load_proposals())
     for proposal in approval_queue.list_all():
         if proposal.status == approval_queue.EXECUTED and proposal.executed_at:

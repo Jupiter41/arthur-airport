@@ -547,3 +547,22 @@ publishes it on each normal tick (every 20 ticks in BULK mode). Analysis uses
 these measured snapshots to detect and resolve observed congestion. It does
 not invent forecast confidence from an observed wait. This also avoids trying
 to reconstruct exact queue counts from sampled per-passenger events.
+
+
+### Forecast correctness verification (2026-10-17)
+
+The forecast API reads the known simulated departure schedule for each future
+window, using current weather/incident/adjacent-queue context. It no longer
+substitutes five flights and 500 passengers. All future conditions other than
+the known schedule are held constant and identified as assumptions. Frozen or
+closed checkpoints return the documented 999-minute unavailable-service wait.
+Each point labels its actual source (`lightgbm` or `schedule_ratio`), including
+fallback after model failure. Congestion `confidence` is nullable and remains
+null with `confidence_calibrated=false`; no calibrated probability is available.
+
+Training sorts/deduplicates simulation timestamps before fitting the earliest
+80% and evaluates only the later 20%. This corrects the original example's
+training/validation leakage. Model promotion and parquet replacement are atomic;
+failed writes retain the buffer and previous file. Retraining reports success
+only after an artifact is actually written. Synthetic artifact training/reload
+tests demonstrate mechanics, not forecast calibration in operational history.

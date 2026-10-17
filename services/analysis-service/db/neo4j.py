@@ -195,3 +195,30 @@ async def load_proposals() -> list[dict]:
     async with get_driver().session() as session:
         result = await session.run("MATCH (p:ActionProposal) RETURN p.document AS document")
         return [json.loads(row["document"]) async for row in result]
+
+
+async def load_operational_projection() -> dict:
+    """Read owner data through Neo4j, never through service-to-service HTTP."""
+    async def read(tx):
+        queries = {
+            "flights": (
+                "MATCH (f:Flight) WHERE NOT f.status IN ['completed', 'cancelled', 'diverted'] "
+                "OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate) "
+                "RETURN properties(f) AS flight, g.id AS gate_id, g.terminal_id AS terminal_id"
+            ),
+            "gates": "MATCH (g:Gate) RETURN properties(g) AS gate",
+            "incidents": "MATCH (i:Incident) WHERE i.status <> 'resolved' RETURN properties(i) AS incident",
+            "weather": (
+                "MATCH (:Airport)-[:CURRENT_WEATHER]->(w:WeatherState) "
+                "RETURN properties(w) AS weather ORDER BY w.timestamp DESC LIMIT 1"
+            ),
+            "baggage": "MATCH (p:BaggageProjection {id: 'latest'}) RETURN p.document AS document",
+        }
+        snapshot = {}
+        for key, query in queries.items():
+            result = await tx.run(query)
+            snapshot[key] = await result.data()
+        return snapshot
+
+    async with get_driver().session() as session:
+        return await session.execute_read(read)

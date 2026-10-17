@@ -271,7 +271,7 @@ If an upstream service is unavailable, the gateway returns a partial response wi
 | Endpoint | Description |
 |---|---|
 | `GET /health` | Liveness (always `200 ok` if process is alive) |
-| `GET /ready` | Readiness: Kafka connected, at least one upstream reachable |
+| `GET /ready` | Readiness: Kafka connected and fresh; all nine upstream `/ready` checks pass |
 | `GET /metrics` | Prometheus (prom-client) |
 
 ### Key Prometheus metrics
