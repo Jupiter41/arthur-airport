@@ -82,6 +82,7 @@ jobs:
       - name: Install test dependencies
         run: |
           pip install pytest pytest-asyncio
+          pip install "torch==2.13.0+cpu" --extra-index-url https://download.pytorch.org/whl/cpu
           pip install -r services/flight-service/requirements.txt
           pip install -r services/passenger-service/requirements.txt
           pip install -r services/baggage-service/requirements.txt

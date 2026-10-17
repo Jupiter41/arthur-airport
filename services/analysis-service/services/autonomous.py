@@ -326,7 +326,9 @@ def evaluate_rl_agent(
 
     # Convert operational state to RL observation
     try:
-        state_dict = state_from_operational(state)
+        from kafka.consumer import get_active_bottlenecks
+        active = list(get_active_bottlenecks().values())
+        state_dict = state_from_operational(state, active_bottleneck_count=len(active))
         env = AirportOpsEnv(initial_state=state_dict)
         obs, _ = env.reset(options={"state": state_dict})
 
@@ -346,9 +348,8 @@ def evaluate_rl_agent(
         # Policy selection is advisory until it identifies a concrete action.
         # Reuse the same guarded recommendation path as rule-based control.
         from services.recommender import generate_recommendations
-        from kafka.consumer import get_active_bottlenecks
         recommendations = generate_recommendations(
-            state, list(get_active_bottlenecks().values()), max_total=100,
+            state, active, max_total=100,
         )
         selected = [r for r in recommendations if r.action_type.value == action_name]
         return evaluate_and_apply(selected[:1], sim_time)

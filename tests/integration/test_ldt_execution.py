@@ -68,16 +68,41 @@ def test_approved_proposal_executes_and_receipt_survives_restart_and_replay():
         command = {"command_type": "OpenSecurityLane", "command_id": command_id,
                    "issued_at": clock, "issued_by": "integration-test", "schema_version": "1.0",
                    "payload": {"terminal": "B", "lanes_open": lanes}}
-        code = (
-            "import json,sys; from confluent_kafka import Producer; "
-            "p=Producer({'bootstrap.servers':'kafka:9092','acks':'all'}); "
-            "p.produce('passengers.commands',key='B',value=sys.stdin.buffer.read()); "
-            "remaining=p.flush(15); sys.exit(1 if remaining else 0)"
-        )
-        subprocess.run(
+        # Pin the observer to current broker offsets BEFORE publishing. Seeing
+        # an old DB receipt alone would not prove the replay was processed.
+        code = '''import json, sys, time
+from uuid import uuid4
+from confluent_kafka import Consumer, Producer, TopicPartition
+command = json.load(sys.stdin)
+c = Consumer({'bootstrap.servers': 'kafka:9092', 'group.id': str(uuid4()), 'enable.auto.commit': False})
+try:
+    metadata = c.list_topics('passengers.events', timeout=10)
+    partitions = [TopicPartition('passengers.events', number) for number in metadata.topics['passengers.events'].partitions]
+    offsets = [TopicPartition(p.topic, p.partition, c.get_watermark_offsets(p, timeout=10)[1]) for p in partitions]
+    c.assign(offsets)
+    producer = Producer({'bootstrap.servers': 'kafka:9092', 'acks': 'all'})
+    producer.produce('passengers.commands', key='B', value=json.dumps(command))
+    if producer.flush(15):
+        raise RuntimeError('Command not delivered')
+    deadline = time.monotonic() + 45
+    while time.monotonic() < deadline:
+        message = c.poll(0.5)
+        if message is None or message.error():
+            continue
+        event = json.loads(message.value())
+        if event.get('event_type') in ('CommandExecuted', 'CommandRejected') and event['payload'].get('command_id') == command['command_id']:
+            print(json.dumps(event))
+            break
+    else:
+        raise RuntimeError('No owning-service receipt for command')
+finally:
+    c.close()
+'''
+        result = subprocess.run(
             ["docker", "compose", "exec", "-T", "passenger-service", "python", "-c", code],
-            input=json.dumps(command), text=True, cwd=ROOT, check=True, timeout=30,
+            input=json.dumps(command), text=True, capture_output=True, cwd=ROOT, check=True, timeout=90,
         )
+        assert json.loads(result.stdout)["event_type"] == "CommandExecuted", result.stdout
 
     def receipt(command_id):
         with driver.session() as session:
@@ -90,7 +115,8 @@ def test_approved_proposal_executes_and_receipt_survives_restart_and_replay():
     def lanes_are(expected):
         try:
             response = requests.get(f"{PASSENGER}/api/v1/flow/summary", timeout=5)
-            return response.status_code == 200 and response.json()["security"]["B"]["lanes_open"] == expected
+            return (response.status_code == 200 and response.json()["sim_time"] is not None
+                    and response.json()["security"]["B"]["lanes_open"] == expected)
         except requests.RequestException:
             return False
 
@@ -129,7 +155,6 @@ def test_approved_proposal_executes_and_receipt_survives_restart_and_replay():
         # A changed body with the SAME identity must return the saved result,
         # never apply a second mutation after the receipt cache was lost.
         publish(command_id, original)
-        time.sleep(3)
         assert receipt(command_id) == saved
         assert lanes_are(changed)
     finally:

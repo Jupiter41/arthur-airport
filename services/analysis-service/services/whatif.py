@@ -358,9 +358,7 @@ def _compute_kpis(state: OperationalState, action_index: int) -> KPIProjection:
 
     # Gate utilisation
     free_gates = state.get_free_gates_by_terminal()
-    total_gates = sum(
-        14 for _ in free_gates  # 14 gates per terminal default
-    )
+    total_gates = len(state.gates) if state.graph_loaded else 14 * len(free_gates)
     occupied = total_gates - sum(free_gates.values())
     gate_util = (occupied / total_gates * 100) if total_gates else 0
 

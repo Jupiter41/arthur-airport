@@ -41,6 +41,7 @@ class DelayModel:
 
     _model: object | None = None
     _trained: bool = False
+    _target_source: str = "unverified"
 
     @property
     def is_trained(self) -> bool:
@@ -51,8 +52,8 @@ class DelayModel:
 
         Each record needs DELAY_FEATURES + 'was_delayed' (bool).
         """
-        if not training_data:
-            return {"error": "no training data", "trained": False}
+        if len(training_data) < 10:
+            return {"error": "at least 10 observations are required", "trained": False}
 
         try:
             import lightgbm as lgb
@@ -74,6 +75,8 @@ class DelayModel:
         split = int(len(X_arr) * 0.8)
         X_train, X_val = X_arr[:split], X_arr[split:]
         y_train, y_val = y_arr[:split], y_arr[split:]
+        if len(np.unique(y_train)) < 2:
+            return {"error": "training history requires both delay outcomes", "trained": False}
 
         model = lgb.LGBMClassifier(
             n_estimators=200,
@@ -87,16 +90,23 @@ class DelayModel:
 
         self._model = model
         self._trained = True
+        self._target_source = (
+            "synthetic_heuristic" if any(row.get("target_source") == "synthetic_heuristic"
+                                         for row in training_data) else "unverified"
+        )
 
         preds = model.predict_proba(X_val)[:, 1]
         from sklearn.metrics import roc_auc_score
         try:
             auc = float(roc_auc_score(y_val, preds))
         except Exception:
-            auc = 0.0
+            auc = None
+        if auc is not None and not np.isfinite(auc):
+            auc = None
 
-        logger.info("delay model trained: AUC=%.3f", auc)
-        return {"trained": True, "samples": len(X_arr), "auc": round(auc, 3)}
+        logger.info("delay model trained", auc=auc)
+        return {"trained": True, "samples": len(X_arr), "auc": round(auc, 3) if auc is not None else None,
+                "target_source": self._target_source, "calibrated": False}
 
     def predict(
         self,
@@ -133,7 +143,9 @@ class DelayModel:
         exp_delay = p * 35  # Average delay when delayed ~35 min
         return DelayPrediction(
             flight_context=ctx, p_delay_15min=round(p, 3),
-            expected_delay_minutes=round(exp_delay, 1), model_source="lgbm",
+            expected_delay_minutes=round(exp_delay, 1), model_source=(
+                "lgbm_synthetic" if self._target_source == "synthetic_heuristic" else "lgbm"
+            ),
         )
 
     def _predict_heuristic(self, ctx, hour, weather_cat, flights_prev_2h, otp):
@@ -167,7 +179,10 @@ class DelayModel:
     def to_dict(self) -> dict:
         return {
             "trained": self._trained,
-            "model_source": "lgbm" if self._trained else "heuristic",
+            "model_source": ("lgbm_synthetic" if self._target_source == "synthetic_heuristic"
+                             else "lgbm") if self._trained else "heuristic",
+            "target_source": self._target_source,
+            "calibrated": False,
             "features": DELAY_FEATURES,
         }
 

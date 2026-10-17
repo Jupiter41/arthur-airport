@@ -928,3 +928,9 @@ Statute miles convert to kilometres with 1.609344. Training requires at least te
 lagged observations and uses chronological validation. Delay training labels
 remain synthetic approximations, and forecast intervals remain heuristic bands;
 these are not validated operational uncertainty estimates.
+
+Delay training records identify `target_source=synthetic_heuristic`. Their
+`historical_otp` is an explicit 0.8 prior, never a feature derived from the current
+row's delay label. Distance uses statute miles × 1.609344. A model trained from
+these records reports `lgbm_synthetic` and `calibrated=false`; a high synthetic
+holdout score must not be presented as validation against observed delay history.

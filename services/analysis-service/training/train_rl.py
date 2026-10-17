@@ -19,6 +19,7 @@ Environment variables:
 """
 
 import argparse
+import importlib.util
 import logging
 import os
 import sys
@@ -50,7 +51,17 @@ def main() -> None:
         "--eval-episodes", type=int, default=10,
         help="Number of evaluation episodes after training",
     )
+    parser.add_argument(
+        "--threads", type=int, default=int(os.getenv("RL_THREADS", "1")),
+        help="CPU worker threads for PPO (default: 1)",
+    )
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
+    if args.timesteps < 1 or args.eval_episodes < 1 or args.threads < 1:
+        parser.error("timesteps, eval-episodes and threads must be positive")
+
+    import torch
+    torch.set_num_threads(args.threads)
 
     from stable_baselines3 import PPO
     from stable_baselines3.common.callbacks import EvalCallback
@@ -61,7 +72,7 @@ def main() -> None:
     logger.info("Creating training environment...")
 
     # Create vectorised environment (4 parallel envs)
-    env = make_vec_env(AirportOpsEnv, n_envs=4)
+    env = make_vec_env(AirportOpsEnv, n_envs=4, seed=args.seed)
 
     # Create evaluation environment
     eval_env = AirportOpsEnv()
@@ -74,6 +85,11 @@ def main() -> None:
         "Training PPO agent for %d timesteps → %s",
         args.timesteps, output_path,
     )
+    tensorboard_log = None
+    if importlib.util.find_spec("tensorboard") is not None:
+        tensorboard_log = str(output_path.parent / "tb_logs")
+    else:
+        logger.info("TensorBoard is not installed; continuing with console/evaluation logs")
 
     # Evaluation callback — saves best model during training
     eval_callback = EvalCallback(
@@ -98,7 +114,9 @@ def main() -> None:
         clip_range=0.2,
         ent_coef=0.01,
         verbose=1,
-        tensorboard_log=str(output_path.parent / "tb_logs"),
+        tensorboard_log=tensorboard_log,
+        seed=args.seed,
+        device="cpu",
     )
 
     # Train
@@ -109,7 +127,7 @@ def main() -> None:
     )
 
     # Save final model
-    model.save(str(output_path).replace(".zip", ""))
+    model.save(str(output_path))
     logger.info("Model saved to %s", output_path)
 
     # Evaluate

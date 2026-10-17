@@ -31,6 +31,12 @@ RL control requires a usable policy and concrete recommendations; policy output
 alone never counts as an operational action. Forecast and planning heuristic
 outputs must identify their actual source.
 
+The default image supports PPO training without installing the optional
+TensorBoard extras: when TensorBoard is absent, training uses console/evaluation logs.
+Training limits CPU threads with `RL_THREADS` (default 1). A short synthetic
+training smoke test proves artifact creation, reload and action inference; it
+does not validate the policy's operational quality or the separate RL effects.
+
 The pure approval queue is a cache rebuilt from Neo4j `ActionProposal` records.
 Dispatch and receipts persist lifecycle state. Confirmed execution logs are
 rebuilt from executed proposals. Missing receipts trigger retries after five

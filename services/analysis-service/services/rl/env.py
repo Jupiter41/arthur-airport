@@ -65,9 +65,9 @@ FLIGHT_STATUS_GROUPS = {
     "scheduled": ("scheduled",),
     "boarding": ("boarding", "gate_open"),
     "departed": ("departed", "airborne", "taxiing_out"),
-    "approaching": ("approaching", "final_approach"),
+    "approaching": ("approach", "approaching", "final_approach"),
     "holding": ("holding",),
-    "landed": ("landed", "at_gate", "taxiing_in"),
+    "landed": ("landed", "at_gate", "taxiing", "taxiing_in"),
 }
 
 # Episode length in sim-minutes
@@ -265,7 +265,7 @@ class AirportOpsEnv(gym.Env):
 # ── State manipulation helpers ───────────────────────────────
 
 
-def state_from_operational(op_state) -> dict:
+def state_from_operational(op_state, active_bottleneck_count: int = 0) -> dict:
     """Convert an OperationalState to a lightweight dict for the RL env.
 
     This creates a snapshot that can be deep-copied for shadow simulation
@@ -275,7 +275,7 @@ def state_from_operational(op_state) -> dict:
     for t, sec in op_state.security.items():
         security[t] = {
             "queue_depth": sec.queue_depth,
-            "forecast_wait_minutes": sec.forecast_wait_minutes,
+            "forecast_wait_minutes": max(sec.forecast_wait_minutes, sec.observed_wait_minutes),
             "open_lanes": sec.open_lanes,
         }
 
@@ -312,7 +312,7 @@ def state_from_operational(op_state) -> dict:
             "runway_capacity_pct": op_state.weather.runway_capacity_pct,
         },
         "incidents": dict(op_state.active_incidents),
-        "bottleneck_count": 0,  # set by caller
+        "bottleneck_count": active_bottleneck_count,
     }
 
 

@@ -1316,3 +1316,38 @@ from the committed lockfiles (`npm ci`). Local Python was 3.14.3; CI targets 3.1
 
 The roadmap remains active because passing units/builds does not close G1–G12.
 No roadmap file has been moved into the old-roadmap folder.
+
+
+## 12. A16 — Verify actual training and policy inputs (2026-10-17)
+
+The default analysis image omits optional TensorBoard extras, but PPO training
+unconditionally enabled TensorBoard logging. Training now detects that optional
+dependency and continues without it; CPU threads default to one. A real short
+PPO run (1,024 steps) now saves an archive that is reloaded for action inference.
+The policy observation includes actual `approach`/`taxiing` statuses, observed
+security waits and the active bottleneck count instead of dropping those inputs.
+What-if gate utilisation now uses the recovered graph gate count.
+
+Planning delay training had a second leakage bug: `historical_otp` directly
+encoded the current synthetic target. It now uses an explicit fixed prior and
+identifies synthetic labels. Statute-mile conversion is corrected here too.
+Training requires both outcomes in the training arm. Undefined holdout AUC is
+null rather than NaN, preserving JSON validity. Synthetic model output is labelled
+`lgbm_synthetic`, with calibration explicitly false in model/training metadata.
+These fixes do not turn generated labels or the RL toy environment into validated
+operational intelligence; G4/G8 remain open.
+
+The live replay regression was strengthened to observe a **new owning-service
+Kafka receipt** after replay. An unchanged old Neo4j receipt alone is insufficient
+proof that replay was processed. The observer pins broker offsets before send.
+
+**Isolated-tree validation:** **953 Python tests passed**, no skips, including
+actual LightGBM queue/delay training and actual PPO training/reload/inference.
+Both Node builds and their 22 gateway / 43 dashboard tests remain as checked in
+A15; no frontend/gateway code changed in A16. Ruff passes for changed services.
+CI now installs the CPU-only Torch build before the domain requirements.
+
+GitHub run `39016849378` for `625ee09` passed Linux Python units, lint, gateway
+tests and both builds, built all Compose images, and reached the strict live
+readiness/integration stage. Its final deployment result is recorded separately
+when available; reaching that stage is not a full-stack pass.

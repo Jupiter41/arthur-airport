@@ -98,6 +98,13 @@ def test_what_if_requires_sim_clock_and_preserves_live_state():
     assert state.security["Terminal B"].queue_depth == 100
     assert state.security["Terminal B"].open_lanes == 4
 
+    # A graph-backed custom gate count must reach the what-if KPIs too.
+    state.graph_loaded = True
+    state.gates = {key: {"terminal": "Terminal B", "status": "available"}
+                   for key in ["B01", "B02"]}
+    state.flights["f1"] = state_module.FlightState(flight_id="f1", gate="B01", status="at_gate")
+    assert whatif.run_what_if(state, request).baseline.gate_utilisation_pct == 50
+
 
 def test_graph_loader_reads_all_sections_from_one_driver_transaction(monkeypatch):
     module = import_service_module("analysis", "db.neo4j")

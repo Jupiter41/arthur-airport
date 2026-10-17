@@ -110,8 +110,11 @@ def build_delay_training_data(bts_path: str = DEFAULT_BTS_PATH) -> list[dict]:
                             "weather_category": 0,
                             "aircraft_type_code": 0,
                             "flights_prev_2h": 20,
-                            "distance_km": distance * 1.852,
-                            "historical_otp": 1.0 - (0.15 if was_delayed else 0.05),
+                            "distance_km": distance * 1.609344,
+                            # No observed OTP is available in this aggregate.
+                            # In particular, never encode the target in a feature.
+                            "historical_otp": 0.8,
+                            "target_source": "synthetic_heuristic",
                             "was_delayed": was_delayed,
                         })
                 except (ValueError, KeyError):
