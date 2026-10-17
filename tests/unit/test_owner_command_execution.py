@@ -112,11 +112,15 @@ def test_passenger_lane_change_is_saved_emitted_and_rebuilt(monkeypatch):
     async def load_lanes():
         return saved
 
+    async def load_breaches():
+        return {}
+
     async def passengers(status):
         return []
 
     monkeypatch.setattr(db, "save_security_lanes", save_lanes)
     monkeypatch.setattr(db, "load_security_lanes", load_lanes)
+    monkeypatch.setattr(db, "load_security_breaches", load_breaches)
     monkeypatch.setattr(consumer, "get_passengers_by_status", passengers)
     asyncio.run(
         consumer._handle_command(

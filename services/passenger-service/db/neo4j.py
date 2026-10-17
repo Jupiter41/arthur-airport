@@ -619,6 +619,16 @@ async def save_security_lanes(terminal: str, lanes: int, sim_time: datetime) -> 
         await result.consume()
 
 
+async def load_security_breaches() -> dict[str, str]:
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MATCH (i:Incident {type: 'security_breach'}) "
+            "WHERE i.status IN ['active', 'contained'] "
+            "RETURN i.id AS id, i.location AS location"
+        )
+        return {row["id"]: row["location"] async for row in result}
+
+
 async def load_security_lanes() -> dict[str, int]:
     async with get_driver().session() as session:
         result = await session.run(

@@ -526,6 +526,17 @@ async def get_baggage_in_pipeline() -> list[dict]:
         return [dict(record) async for record in result]
 
 
+async def get_active_system_failures() -> dict[str, str]:
+    """Recover failure ownership, including contained incidents still under repair."""
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MATCH (i:Incident {type: 'system_failure'}) "
+            "WHERE i.status IN ['active', 'contained'] "
+            "RETURN i.id AS id, i.location AS location"
+        )
+        return {row["id"]: row["location"] async for row in result}
+
+
 async def save_zone_projection(payload: dict) -> None:
     """Persist the owner's aggregate before publishing it to analysis."""
     import json

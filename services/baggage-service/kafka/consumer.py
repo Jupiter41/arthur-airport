@@ -25,6 +25,7 @@ from db.neo4j import (
     flag_baggage,
     get_baggage_counts_by_status,
     get_baggage_in_pipeline,
+    get_active_system_failures,
     redirect_baggage_to_flight,
     get_baggage_by_id,
 )
@@ -88,6 +89,7 @@ class BaggageConsumerState:
         self.conveyor = ConveyorSystem()
         self._idempotency = IdempotencyTracker(max_size=20_000)
         self.inducted_bag_ids: set[str] = set()
+        self.active_failures: dict[str, str] = {}
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
         # Speed mode tracking (REALTIME / FAST / BULK)
         self.current_mode: str = "REALTIME"
@@ -102,6 +104,10 @@ class BaggageConsumerState:
         bags = await get_baggage_in_pipeline()
         self.conveyor = ConveyorSystem()
         self.inducted_bag_ids.clear()
+        self.active_failures = await get_active_system_failures()
+        for location in self.active_failures.values():
+            for zone_id in FAILURE_IMPACT.get(location, []):
+                self.conveyor.set_zone_status(zone_id, "offline")
         inducted = 0
         for bag in bags:
             tag = bag["id"]
@@ -949,6 +955,10 @@ async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
         return
 
     location = payload.get("location", "")
+    incident_id = payload.get("incident_id")
+    if not incident_id:
+        return
+    _state.active_failures[incident_id] = location
     affected_zones = FAILURE_IMPACT.get(location, [])
     for zone_id in affected_zones:
         _state.conveyor.set_zone_status(zone_id, "offline")
@@ -965,9 +975,16 @@ async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None
     if new_status != "resolved":
         return
 
-    location = payload.get("location", "")
+    incident_id = payload.get("incident_id")
+    if not incident_id:
+        return
+    if payload.get("type") != "system_failure" and incident_id not in _state.active_failures:
+        return
+    location = _state.active_failures.pop(incident_id, payload.get("location", ""))
     affected_zones = FAILURE_IMPACT.get(location, [])
     for zone_id in affected_zones:
+        if any(zone_id in FAILURE_IMPACT.get(other, []) for other in _state.active_failures.values()):
+            continue
         _state.conveyor.set_zone_status(zone_id, "normal")
         m_zone_status.labels(zone_id=zone_id).set(0)  # normal
         logger.info(

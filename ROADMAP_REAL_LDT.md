@@ -1222,7 +1222,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
 | G7 / P1 | Planning data now survives restart, but background jobs do not resume and have no durable worker lease/claim. Persisted interrupted runs can remain `running`. Analysis proposals are durable, but not coordinated across replicas. | Durable job scheduling/recovery, ownership and concurrency tests. Persistence is not equivalent to durable execution. |
 | G8 / P1 | `PLANNING.md` promises actual outcomes after 30 sim-minutes. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
-| G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. Security/vehicle projections, cross-terminal transit, incident impacts and full owner recovery still need a complete restart contract; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
+| G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
 | G12 / P2 | A17 runs the complete local Compose stack, all-service readiness, live integration, full restart, command replay and browser checks. Earlier CI runs reached all-service readiness but exposed five failures corrected in A17. K8s still lacks planning/cost manifests; sustained load, crash-window and replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
@@ -1439,3 +1439,50 @@ and effect/ranking models, unsupported actions, interrupted-job recovery,
 automatic attributed outcomes, complete projections and deployment/load work.
 Neither these test passes nor older plan checkmarks justify saying every planned
 capability is implemented or archiving the roadmap into an old-roadmap folder.
+
+
+## 14. A18 — Preserve incident ownership across cascades and recovery (2026-10-17)
+
+After A17's local pass, GitHub run `39037216847` passed all Python/Node unit,
+lint and build jobs, built the stack and reached all-service readiness. The live
+gate then failed with **36 passed / 1 failed**, stopping at the power-A chain.
+The remaining integration tests did not run in that CI attempt.
+
+The captured facts explain a further correctness defect: baggage set all three
+power-A zones offline at 13:41:17.145, then restored them at 13:41:17.530 when a
+short-lived cascade child resolved. The parent power failure, assigned a
+101-minute repair time, was still active. Location matching alone was allowing
+an unrelated child to release its parent's restriction.
+
+Owners now preserve restriction identity:
+
+- Baggage tracks `system_failure` IDs, ignores unrelated child resolutions and
+  keeps overlapping zones offline until every affecting failure resolves. It
+  rebuilds active/contained failures from Neo4j on startup.
+- Passenger security tracks breach IDs per terminal. Unrelated child resolution
+  and resolution of only one overlapping breach cannot unfreeze security. Queue
+  recovery also restores active/contained breach ownership.
+- Flight restrictions retain incident IDs through containment and restart.
+  Only resolution removes that incident's restriction. Weather has a separate
+  restriction set, so improvement in weather cannot reopen a runway still
+  blocked by an incident, and incident resolution cannot remove a weather block.
+
+Regressions exercise the actual incident producer payload for the failing
+parent/child sequence, overlapping failures/breaches, containment, weather
+isolation and all three owner recovery paths. The existing static location-map
+check now targets the map declaration rather than an earlier reference.
+
+The live conveyor-chain fixture uses **10x only during those three assertions**
+and restores the prior speed afterwards. The shortest random repair is ten
+simulation minutes; at 60x it can legitimately expire before the 30-second
+propagation assertion budget. Controlled lifetimes keep that assertion valid.
+The timeout and all-zone assertions remain unchanged. The rest of the local
+stack runs at its default speed. This does not establish a sustained-load SLO.
+
+**Validation:** **971 Python unit tests passed**, no skips, 18 existing warnings;
+Ruff passes for changed services/tests. The rebuilt local stack passes
+**all 100 live integration tests** with no skips in **115.93 s**, including
+all-service readiness, full restart, planning/replay and command confirmation.
+Dashboard/gateway checks remain as recorded in A17; their code is unchanged here.
+
+The roadmap remains active under the completion conditions in §10/§13.

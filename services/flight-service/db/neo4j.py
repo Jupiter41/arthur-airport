@@ -748,17 +748,17 @@ async def get_cascade_info(flight_id: str) -> dict:
     return cascade
 
 
-async def get_active_incident_locations() -> list[str]:
-    """Return locations of active (non-resolved) incidents for startup rebuild."""
+async def get_active_incident_impacts() -> dict[str, str]:
+    """Return restriction ownership for active/contained incidents on restart."""
     driver = get_driver()
     query = """
     MATCH (i:Incident)
-    WHERE NOT i.status IN ['resolved', 'contained']
-    RETURN i.location AS location
+    WHERE i.status IN ['active', 'contained']
+    RETURN i.id AS id, i.location AS location
     """
     async with driver.session() as session:
         result = await session.run(query)
-        return [r["location"] async for r in result if r["location"]]
+        return {r["id"]: r["location"] async for r in result if r["location"]}
 
 
 # ---------------------------------------------------------------------------

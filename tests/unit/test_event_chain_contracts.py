@@ -346,9 +346,9 @@ class TestBug3SystemFailureLocationAlignment:
         # Extract FAILURE_IMPACT keys from baggage-service
         bag_source = _read_source("baggage-service", "kafka.consumer")
         fi_match = re.search(
-            r'FAILURE_IMPACT.*?{(.*?)}',
+            r'^FAILURE_IMPACT\b[^=]*=\s*\{(.*?)^\}',
             bag_source,
-            re.DOTALL,
+            re.DOTALL | re.MULTILINE,
         )
         assert fi_match, "Could not find FAILURE_IMPACT in baggage consumer"
         fi_str = fi_match.group(1)

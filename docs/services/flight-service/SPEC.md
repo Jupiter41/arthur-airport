@@ -81,6 +81,12 @@ The service writes to and reads from the `Flight` node. See `DATA_MODEL.md` for 
 | `incidents.events` | `IncidentCreated` | If runway/gate affected: hold or reroute flights |
 | `incidents.events` | `IncidentStatusChanged` | If resolved: resume held flights |
 
+Runway/gate restrictions retain every active/contained incident's identity.
+Resolving one incident cannot release another's restriction; containment alone
+does not reopen the resource. Weather restrictions remain separate, so weather
+improvement cannot clear an active incident. Incident identities and locations
+are rebuilt from Neo4j on startup.
+
 ### Produced topics
 
 | Topic | Event type | Trigger |

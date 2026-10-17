@@ -35,7 +35,12 @@ the batch is persisted before its facts or in-memory queue additions are made.
 Restart recovery reads `last_scan_zone` (with a legacy `current_zone` fallback),
 restores queued departure and arrived bags, and retains their tags, dangerous
 goods attributes, passenger link and terminal routing metadata. Cross-terminal
-transit progress and active incident recovery remain tracked in roadmap G9.
+transit progress remains tracked in roadmap G9.
+
+Conveyor failures are tracked by `system_failure` incident identity. A resolved
+cascade child at the same location cannot release its parent's failed zones.
+Overlapping failures keep a zone offline until every affecting failure resolves.
+Active/contained system failures are rebuilt from Neo4j before consuming events.
 
 ---
 

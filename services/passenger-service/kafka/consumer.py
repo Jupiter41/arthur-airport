@@ -113,6 +113,7 @@ class PassengerConsumerState:
         self.security = SecuritySystem()
         self.weather_category: str = "CAVOK"
         self.active_incidents: dict[str, bool] = {"A": False, "B": False, "C": False}
+        self.security_breaches: dict[str, str] = {}
         self.load_factor_sum: float = 0.0
         self.load_factor_count: int = 0
         self.cached_flights_next_90: dict[str, int] = {"A": 0, "B": 0, "C": 0}
@@ -279,11 +280,21 @@ async def rebuild_security_from_neo4j() -> None:
     logger.info("Rebuilt security queues from Neo4j: %d passengers loaded", count)
 
 
-    from db.neo4j import load_security_lanes
+    from db.neo4j import load_security_lanes, load_security_breaches
     for terminal, lanes in (await load_security_lanes()).items():
         checkpoint = _state.security.checkpoints.get(terminal)
         if checkpoint is not None:
             checkpoint.lanes_open = lanes
+    _state.security_breaches = {
+        key: terminal for key, location in (await load_security_breaches()).items()
+        if (terminal := _extract_terminal_from_location(location)) is not None
+    }
+    for terminal, checkpoint in _state.security.checkpoints.items():
+        _state.active_incidents[terminal] = terminal in _state.security_breaches.values()
+        if _state.active_incidents[terminal]:
+            checkpoint.freeze()
+        else:
+            checkpoint.unfreeze()
 
 
 async def load_spatial_positions() -> None:
@@ -1673,11 +1684,15 @@ async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
     incident_type = payload.get("type")
     if incident_type != "security_breach":
         return
+    incident_id = payload.get("incident_id")
+    if not incident_id:
+        return
 
     location = payload.get("location", "")
     terminal = _extract_terminal_from_location(location)
 
     if terminal:
+        _state.security_breaches[incident_id] = terminal
         _state.security.freeze_terminal(terminal)
         _state.active_incidents[terminal] = True
         logger.warning("Security breach — terminal %s frozen", terminal)
@@ -1689,9 +1704,12 @@ async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None
     if new_status != "resolved":
         return
 
+    incident_id = payload.get("incident_id")
+    if not incident_id or (payload.get("type") != "security_breach" and incident_id not in _state.security_breaches):
+        return
     location = payload.get("location", "")
-    terminal = _extract_terminal_from_location(location)
-    if terminal:
+    terminal = _state.security_breaches.pop(incident_id, _extract_terminal_from_location(location))
+    if terminal and terminal not in _state.security_breaches.values():
         _state.security.unfreeze_terminal(terminal)
         _state.active_incidents[terminal] = False
         logger.info("Security resumed — terminal %s unfrozen", terminal)

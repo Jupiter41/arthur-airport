@@ -21,7 +21,7 @@ from confluent_kafka import Consumer
 
 from db.neo4j import (
     get_active_flights,
-    get_active_incident_locations,
+    get_active_incident_impacts,
     update_flight_status,
     get_boarded_percentage,
     assign_flight_to_runway,
@@ -99,6 +99,8 @@ class FlightConsumerState:
         self.held_flights: dict[str, dict] = {}
         self.incident_affected_gates: set[str] = set()
         self.incident_affected_runways: set[str] = set()
+        self.active_incident_locations: dict[str, str] = {}
+        self.weather_affected_runways: set[str] = set()
         self._idempotency = IdempotencyTracker(max_size=10_000)
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
         self.turnaround_plans: dict[str, TurnaroundPlan] = {}  # keyed by aircraft_registration
@@ -151,18 +153,12 @@ class FlightConsumerState:
         from db.neo4j import get_manual_holds
         self.held_flights = await get_manual_holds()
         try:
-            locations = await get_active_incident_locations()
+            self.active_incident_locations = await get_active_incident_impacts()
         except Exception as e:
             logger.error("Failed to rebuild incident impacts: %s", e)
             return
 
-        for location in locations:
-            if "runway" in location.lower():
-                runway_id = location.replace("runway-", "")
-                self.incident_affected_runways.add(runway_id)
-            if "gate" in location.lower():
-                gate_id = location.replace("gate-", "")
-                self.incident_affected_gates.add(gate_id)
+        self.refresh_incident_impacts()
 
         logger.info(
             "Rebuilt flight state from Neo4j: %d affected runways, %d affected gates",
@@ -172,6 +168,17 @@ class FlightConsumerState:
 
         # Load spatial positions for taxi time computation
         await self._load_spatial_positions()
+
+    def refresh_incident_impacts(self) -> None:
+        self.incident_affected_runways = set(self.weather_affected_runways)
+        self.incident_affected_gates.clear()
+        for location in self.active_incident_locations.values():
+            if "runway" in location.lower():
+                runway_id = location.replace("runway-", "")
+                self.incident_affected_runways.add(runway_id)
+            if "gate" in location.lower():
+                gate_id = location.replace("gate-", "")
+                self.incident_affected_gates.add(gate_id)
 
     async def _load_spatial_positions(self) -> None:
         """Load gate and runway positions from Neo4j for taxi time computation."""
@@ -1381,16 +1388,14 @@ async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
 
     # If severe weather, close affected runways
     if runway_impact == "closed":
-        _state.incident_affected_runways.update(["09L", "27R", "09R", "27L"])
+        _state.weather_affected_runways = {"09L", "27R", "09R", "27L"}
     elif runway_impact == "single_runway":
         # Only ILS runways remain open — close non-ILS
-        _state.incident_affected_runways.discard("09L")
-        _state.incident_affected_runways.discard("27R")
-        _state.incident_affected_runways.add("09R")
-        _state.incident_affected_runways.add("27L")
+        _state.weather_affected_runways = {"09R", "27L"}
     else:
         # Clear weather-related runway closures
-        _state.incident_affected_runways.clear()
+        _state.weather_affected_runways.clear()
+    _state.refresh_incident_impacts()
 
     logger.info(
         "Weather updated: %s (arr=%d/hr, dep=%d/hr, impact=%s)",
@@ -1402,6 +1407,11 @@ async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
     """Handle IncidentCreated — hold flights on affected runway or gate."""
     location = payload.get("location", "")
     incident_type = payload.get("type", "")
+    incident_id = payload.get("incident_id")
+    if not incident_id:
+        return
+    _state.active_incident_locations[incident_id] = location
+    _state.refresh_incident_impacts()
 
     # Runway incident
     if "runway" in location.lower():
@@ -1421,15 +1431,10 @@ async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None
     new_status = payload.get("new_status", "")
     location = payload.get("location", "")
 
-    if new_status in ("resolved", "contained"):
-        if "runway" in location.lower():
-            runway_id = location.replace("runway-", "")
-            _state.incident_affected_runways.discard(runway_id)
-            logger.info("Incident resolved: runway %s restored", runway_id)
-        if "gate" in location.lower():
-            gate_id = location.replace("gate-", "")
-            _state.incident_affected_gates.discard(gate_id)
-            logger.info("Incident resolved: gate %s restored", gate_id)
+    if new_status == "resolved":
+        _state.active_incident_locations.pop(payload.get("incident_id"), None)
+        _state.refresh_incident_impacts()
+        logger.info("Incident resolved at %s; remaining restrictions reconciled", location)
 
 
 async def _on_schedule_seeded(payload: dict, sim_time: datetime) -> None:

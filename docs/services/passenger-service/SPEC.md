@@ -566,3 +566,10 @@ training/validation leakage. Model promotion and parquet replacement are atomic;
 failed writes retain the buffer and previous file. Retraining reports success
 only after an artifact is actually written. Synthetic artifact training/reload
 tests demonstrate mechanics, not forecast calibration in operational history.
+
+### Security breach ownership and recovery
+
+Security freezes retain each breach's incident identity. Resolving an unrelated
+cascade child cannot unfreeze the terminal, and overlapping breaches must all
+resolve before security resumes. Active/contained breaches are rebuilt from
+Neo4j alongside queues and lane counts on startup.

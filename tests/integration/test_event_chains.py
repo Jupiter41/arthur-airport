@@ -162,6 +162,20 @@ class TestBug3SystemFailureConveyorChain:
     baggage-service expected 'power-A'. With the fix, the location keys align.
     """
 
+    @pytest.fixture(scope="class", autouse=True)
+    def keep_failure_active_during_propagation(self):
+        # The shortest random repair is ten sim-minutes. At 60x it can finish
+        # before the 30-second propagation deadline, making an offline poll
+        # invalid. Keep that lifecycle window longer than the assertion budget.
+        original = requests.get(f"{SIM_SVC}/api/v1/sim/status", timeout=10).json()["speed_multiplier"]
+        response = requests.patch(f"{SIM_SVC}/api/v1/sim/speed", json={"speed_multiplier": 10}, timeout=10)
+        response.raise_for_status()
+        try:
+            yield
+        finally:
+            response = requests.patch(f"{SIM_SVC}/api/v1/sim/speed", json={"speed_multiplier": original}, timeout=10)
+            response.raise_for_status()
+
     def test_power_failure_halts_baggage_zones(self):
         """Inject a system_failure at 'power-A' and verify baggage zones go offline."""
         # Inject system failure at power-A

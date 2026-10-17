@@ -19,7 +19,9 @@ def context(monkeypatch):
     metrics = ModuleType("metrics")
     metrics.__getattr__ = lambda name: MagicMock()
     monkeypatch.setitem(sys.modules, "metrics", metrics)
-    return importlib.import_module("kafka.consumer")
+    consumer = importlib.import_module("kafka.consumer")
+    monkeypatch.setattr(consumer, "get_active_system_failures", AsyncMock(return_value={}))
+    return consumer
 
 
 def test_induction_persists_batch_before_queues_and_per_bag_events(monkeypatch):
@@ -106,3 +108,52 @@ def test_recovery_preserves_screening_metadata_arrivals_and_repeated_rebuild(mon
     assert (bag.tag, bag.is_dg, bag.dg_class, bag.passenger_id) == ("fake-dg", True, "3", "p1")
     assert (bag.terminal, bag.gate_terminal) == ("B", "C")
     assert state.conveyor.get_zone("arrival-belt-4").items == 1
+
+
+def test_actual_child_resolution_fact_cannot_release_parent_failure(monkeypatch):
+    producer = import_service_module("incident", "kafka.producer")
+    facts = []
+    monkeypatch.setattr(producer, "_produce_event", lambda topic, kind, clock, payload, **kw: facts.append(payload))
+    parent = {"id": "failure-1", "type": "system_failure", "severity": "high",
+              "status": "active", "location": "power-A"}
+    child = {**parent, "id": "cascade-1", "type": "baggage_throughput_reduction"}
+    producer.emit_incident_created(parent, NOW)
+    producer.emit_incident_created(child, NOW)
+    producer.emit_incident_status_changed(child, "resolved", NOW)
+    consumer = context(monkeypatch)
+    consumer._state = consumer.BaggageConsumerState()
+    asyncio.run(consumer._on_incident_created(facts[0], NOW))
+    asyncio.run(consumer._on_incident_created(facts[1], NOW))
+    asyncio.run(consumer._on_incident_status_changed(facts[2], NOW))
+    assert consumer._state.active_failures == {"failure-1": "power-A"}
+    assert all(consumer._state.conveyor.get_zone(zone).status == "offline"
+               for zone in consumer.FAILURE_IMPACT["power-A"])
+
+
+def test_overlapping_failure_remains_offline_until_both_owners_resolve(monkeypatch):
+    consumer = context(monkeypatch)
+    consumer._state = consumer.BaggageConsumerState()
+    failures = [
+        {"incident_id": "power", "type": "system_failure", "location": "power-A"},
+        {"incident_id": "scanner", "type": "system_failure", "location": "screening-unit-1"},
+    ]
+    for fact in failures:
+        asyncio.run(consumer._on_incident_created(fact, NOW))
+    asyncio.run(consumer._on_incident_status_changed({**failures[0], "new_status": "resolved"}, NOW))
+    assert consumer._state.conveyor.get_zone("induction-A").status == "normal"
+    assert consumer._state.conveyor.get_zone("screening-unit-1").status == "offline"
+    asyncio.run(consumer._on_incident_status_changed({**failures[1], "new_status": "resolved"}, NOW))
+    assert consumer._state.conveyor.get_zone("screening-unit-1").status == "normal"
+
+
+def test_recovery_retains_active_failure_ownership_until_its_resolution(monkeypatch):
+    consumer = context(monkeypatch)
+    consumer._state = consumer.BaggageConsumerState()
+    monkeypatch.setattr(consumer, "get_baggage_in_pipeline", AsyncMock(return_value=[]))
+    monkeypatch.setattr(consumer, "get_active_system_failures", AsyncMock(return_value={"power": "power-B"}))
+    asyncio.run(consumer._state.rebuild_from_neo4j())
+    assert consumer._state.conveyor.get_zone("induction-B").status == "offline"
+    asyncio.run(consumer._on_incident_status_changed({
+        "incident_id": "power", "type": "system_failure", "location": "power-B", "new_status": "resolved",
+    }, NOW))
+    assert consumer._state.conveyor.get_zone("induction-B").status == "normal"
