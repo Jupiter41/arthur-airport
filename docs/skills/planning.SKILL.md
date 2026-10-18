@@ -77,15 +77,17 @@ def run_monte_carlo(scenario: PlanningScenario,
                      engine: PlanningSimEngine) -> list[DayResult]:
     all_results = []
     dates = generate_dates(scenario.horizon)
+    base_seed = scenario.random_seed  # persisted by the job claim
+    if base_seed is None:
+        raise RuntimeError("Job claim must persist the actual seed before computing")
 
     for run_idx in range(scenario.monte_carlo_runs):
-        # Deterministic seed per run — reproducible even for "random" scenarios
-        seed = (scenario.random_seed or random.randint(0, 999_999)) + run_idx
-        random.seed(seed)
-
         run_results = []
         for sim_date in dates:
-            result = engine.run_day(sim_date, scenario.infrastructure)
+            result = engine.run_day(
+                sim_date=sim_date, infrastructure=scenario.infrastructure,
+                seed=base_seed + run_idx + sim_date.toordinal(),
+            )
             run_results.append(result)
         all_results.extend(run_results)
 
@@ -240,8 +242,9 @@ reuse partial aggregates from an old attempt or publish after losing its token.
 
 ## Gotchas
 
-- **`numpy_financial.irr()` returns NaN for projects that never pay back.** Always
-  guard with `if np.isnan(irr): irr = 0.0` before returning to the client.
+- **Undefined IRR must not be presented as a measured 0% return.** Reuse
+  `compute_investment().to_dict()`: it emits `irr_pct=null` when
+  `irr_meaningful=false`. Keep JSON outputs finite.
 - **The BTS T-100 CSV has inconsistent column name casing** across download years.
   Always normalise with `df.columns = df.columns.str.strip().str.upper()` on load.
 - **Mesonet CSV has comment lines at the top** (lines starting with `#`). Use
@@ -254,9 +257,9 @@ reuse partial aggregates from an old attempt or publish after losing its token.
       gates_per_terminal={**baseline.gates_per_terminal, "B": 15}
   )
   ```
-- **Monte Carlo with random_seed=None is not reproducible.** Always log the actual
-  seed used in the `PlanningResult` so runs can be replayed. Generate the seed
-  before the run loop: `actual_seed = scenario.random_seed or random.randint(0, 999_999)`.
+- **Persist the actual seed before computing.** The job claim stores it in the
+  scenario; linked results and retries use that same seed. Zero is a valid seed:
+  check `is None`, never use `seed or random_value`.
 - **The planning engine must not import from operational services.** It has its own
   copy of the simulation logic (deliberately simpler — day-resolution, not minute-resolution).
   Do not add `from flight_service.services.state_machine import ...` — that path breaks

@@ -1147,8 +1147,9 @@ serialization now also preserves `weather_date`.
 independent reads, durable progress, deletion, no-memory fallback, atomic
 record/outbox writes, failed broker retry identity, like-for-like audit accuracy,
 runner seed/progress/results, negative benefits and failed result storage.
-These are repository-boundary tests, **not a live Neo4j restart test**. Interrupted
-jobs retain progress but are not automatically resumed (G7).
+These were repository-boundary tests, **not a live Neo4j restart test**. At A12,
+interrupted jobs retained progress without automatic recovery. A21 now replaces
+that execution limitation with durable leases, recovery and live fencing tests.
 
 ### A13 — Honest training availability and demand features ✅
 
@@ -1230,7 +1231,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
-| G12 / P2 | A17–A19 validate the complete local Compose stack, all-service readiness, live integration, full restart, command replay and browser checks. A18/A19 correct additional defects exposed by clean CI; run 39108523313 now passes all jobs and 100 live tests. K8s still lacks planning/cost manifests; sustained load, crash-window and replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
+| G12 / P2 | A17–A21 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39112359217 passes all jobs and 111 live tests, including financial rollback/replay and planning worker contention/fencing/crash recovery. K8s still lacks planning/cost manifests; sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate the remaining load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -1649,12 +1650,23 @@ process exit followed by automatic service recovery using seed 0 and attempt 2.
 The complete isolated Compose gate passes **all 111 live tests**, no skips, in
 **218.50 s**, with all nine services and gateway ready. This retains the existing
 financial, prediction, command, planning/replay and full-restart assertions.
-Staged runtime/tests match the tested export. Remote CI is pending for A21.
+Staged runtime/tests match the tested export. GitHub run
+[39112359217](https://github.com/Jupiter41/arthur-airport/actions/runs/39112359217)
+passes all jobs on final runtime commit `26ff913972441dd8230677ffa168ed17b3ca7f6a`:
+**992 Python units**, **111 live tests** (no skips, **287.72 s**), all-service
+readiness, Python lint, Node builds, **44 dashboard tests** and **22 gateway
+tests**. CI's two unit warnings are the existing ML warnings; its one live warning
+is pytest's existing class-fixture deprecation. The planning commit also passes
+its independent run `39112175576`. Subsequent changes update documentation only.
 
 A follow-up audit corrected `FinancialEventProcessed.sim_day` for late prior-day
 facts: it now matches the records' billing day, rather than the currently selected
 summary day. The existing late-fact regression now checks both records and the
 outbox payload; all twelve ledger regressions pass after this correction.
+
+The documentation follow-up also removes an old `seed or random_value` example
+that discarded seed 0, and describes the actual nullable/meaningfulness-flag IRR
+response. A12's historical no-recovery note now points to this delivered worker.
 
 **Remaining G7 scope:** analysis proposal ownership across replicas and training
 job interruption recovery are not delivered here. One scenario runs per worker;
