@@ -25,6 +25,29 @@ async def run():
     await db._init_driver()
     try:
         await ledger.initialize()
+        if args.get('validate_summary'):
+            from uuid import uuid4
+            from math import isclose
+            from services import cost_engine, carbon_tracker
+            async def no_effects(event):
+                pass
+            # Select a distant day, then return to day one without inventing
+            # new financial effects. Both are durable ledger transactions.
+            for day in (1000, 1):
+                await ledger.process({'event_id': str(uuid4()), 'event_type': 'SimClockTick',
+                    'sim_time': '2026-01-01T12:00:00Z', 'payload': {'day_of_sim': day}}, no_effects)
+            async with db.get_driver().session() as session:
+                row = await (await session.run(
+                    "MATCH (c:CostRecord) WHERE c.sim_day = 1 "
+                    "RETURN sum(CASE WHEN c.is_revenue THEN 0 ELSE c.amount_eur END) AS cost, "
+                    "sum(CASE WHEN c.is_revenue THEN c.amount_eur ELSE 0 END) AS revenue")).single()
+                totals = cost_engine.get_running_totals()
+                assert row['cost'] > 0
+                assert isclose(totals['total_cost_eur'], row['cost'], abs_tol=0.01)
+                assert isclose(totals['total_revenue_eur'], row['revenue'], abs_tol=0.01)
+                carbon = await (await session.run(
+                    "MATCH (c:CarbonRecord) WHERE c.sim_day = 1 RETURN sum(c.co2_kg) AS kg")).single()
+                assert isclose(carbon_tracker.get_carbon_totals()['total_kg'], carbon['kg'], abs_tol=0.01)
         if args.get('patch') is not None:
             committed = await rates.update(args['patch'])
             async with db.get_driver().session() as session:
@@ -166,3 +189,12 @@ def test_competing_rate_updates_and_frozen_planning_recovery(isolated_rates):
     finally:
         response = requests.delete(f"{PLANNING}/api/v1/planning/scenarios/{sid}", timeout=10)
         assert response.status_code in (200, 204), response.text
+
+
+def test_summary_rebuilds_evicted_day_from_authoritative_ledger(isolated_rates):
+    compose("stop", "cost-service", check=True)
+    try:
+        worker("cost-service", COST_WORKER, {"validate_summary": True})
+    finally:
+        compose("up", "-d", "--no-deps", "cost-service", check=True)
+        ready(COST)

@@ -50,6 +50,14 @@ they are not a cross-replica coherent read cache. Kafka redelivery is supported;
 simulation rewinds with new event IDs still require a separate simulation-epoch
 policy. These limits remain distinct from transaction rollback and input dedup.
 
+The bounded checkpoint retains the selected simulation day and seven most recent
+other days. A missing day's financial/carbon totals are rebuilt from the ledger
+inside the same transaction before applying new effects, including when the clock
+selects an evicted day or a late event revisits one. Summary eviction never deletes
+ledger records or resets a day's charges. This preserves projection correctness;
+it does not define a new simulation epoch or deduplicate newly identified rewind
+events against earlier business activity.
+
 Core capabilities:
 
 - **Real-time cost accumulation** — landing fees, gate fees, passenger departure fees, ground

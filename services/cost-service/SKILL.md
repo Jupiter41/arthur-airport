@@ -28,6 +28,11 @@ sim.clock  ───────┘
 In-memory running totals (`_running_totals` dict in `cost_engine.py`) track cumulative costs,
 revenues, and per-category breakdowns. On restart, `ledger.initialize()` restores
 the durable runtime checkpoint, migrating pre-existing Neo4j records once.
+The selected day's totals are always rebuilt from ledger records on startup,
+repairing legacy incomplete projections without requiring a new tick. During
+processing, restore an evicted day before writing new records, then apply the
+event's effects exactly once. Retain the selected day plus seven other summaries;
+evicting a cache entry must never erase charges or produce a partial daily total.
 
 ```python
 _running_totals = {

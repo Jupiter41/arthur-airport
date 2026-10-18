@@ -1235,7 +1235,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
-| G12 / P2 | A17–A21 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39112359217 passes all jobs and 111 live tests, including financial rollback/replay and planning worker contention/fencing/crash recovery. K8s still lacks planning/cost manifests; sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate the remaining load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
+| G12 / P2 | A17–A23 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39149495301 passes all jobs and 112 live tests, including durable rates, financial rollback/replay and planning worker contention/fencing/crash recovery. A23 adds ledger-based summary recovery tests. K8s still lacks planning/cost manifests; sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate the remaining load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -1725,8 +1725,11 @@ routing, shared fee/MTOW use, benefit assumptions and recovered input stability;
 existing replay tests additionally check snapshot copy independence. The final
 optional fuel guard rejects NaN/infinity (39 focused cases pass after this small
 follow-up), and the cost image is rebuilt with all-service readiness rechecked.
-All staged runtime/tests match the tested isolated tree. CI validation will be
-recorded after pushing this implementation.
+All staged runtime/tests match the tested isolated tree. GitHub run
+[39149495301](https://github.com/Jupiter41/arthur-airport/actions/runs/39149495301)
+passes every job on `a9588748c767cf40991fbadea797937b852fbdb5`: **1,007 units**,
+**112 live tests** (no skips, **302.29 s**), Python lint, Node builds and gateway
+tests. CI's two unit warnings and one live warning are existing ML/pytest notices.
 
 **Still open:** airport/airline perspective and mixed P&L migration (G2); separate
 planning/live compensation claim assumptions and action models (G4); schedule,
@@ -1735,3 +1738,34 @@ Monte Carlo resume (G7); all other §10 gaps. This does not certify calibrated
 financial benefits or complete the digital twin. Keep this roadmap active.
 Legacy in-memory overrides cannot be recovered on upgrade, and historical planning
 jobs without a rate snapshot cannot retrospectively recover their original inputs.
+
+
+## 19. A23 — Recover daily financial projections from the ledger (2026-10-18)
+
+**Browser-discovered correction to the A20 checkpoint:** the local rate editor
+saved a temporary passenger fee, retained it after a page reload and restored the
+original value successfully. The surrounding live dashboard nevertheless displayed
+zero cost/revenue while day-one Neo4j P&L contained €19,786,995.27 in charges.
+This was a backend projection defect, not proof that the ledger had no data.
+
+The old retention rule used the largest billing day to drop older summaries,
+including the currently selected day after future/rewind inputs. Returning to an
+evicted day created an empty/partial aggregate instead of rebuilding its existing
+charges. Startup now rebuilds the selected day's financial/carbon aggregates from
+the authoritative records, repairing older incomplete checkpoints. Event processing
+restores any missing affected day before writing that event's records, so existing
+and new effects are counted exactly once. Retention pins the selected day and keeps
+seven other summaries. The full ledger is never deleted by cache eviction.
+
+Three new transaction tests cover selected-day return, legacy damaged-checkpoint
+restart and late input after eviction, including financial/carbon totals and the
+eight-summary bound. A real Neo4j regression selects a distant day, returns to day
+one and compares the rebuilt cache with independently aggregated records. This
+does not define simulation epochs or reverse/re-deduplicate new business events.
+
+**Local validation:** **1,010 Python units pass** (four existing warnings),
+Ruff checks pass, and **all 113 live tests pass**, no skips, in **288.54 s**.
+All nine services and gateway pass readiness. Staged recovery code/tests match the
+isolated tested tree. The browser displays the recovered cost/revenue totals and
+eight categories, replacing its false empty-state message. Proof: `local-cost-recovery-a23.png` in the task
+validation artifact directory; no frontend source was changed.

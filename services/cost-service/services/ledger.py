@@ -125,6 +125,12 @@ async def _write_records(tx: AsyncManagedTransaction, rows: list[dict], kind: st
 
 
 async def _write_effects(tx: AsyncManagedTransaction, batch: LedgerBatch, envelope: dict, revision: int) -> None:
+    # Restore before writing this event's records, so DB aggregates exclude the
+    # effects that add_record will apply below. Cache eviction is not ledger loss.
+    days = {batch.state["sim_day"]}
+    days.update(row["record"]["sim_day"] for row in batch.costs + batch.carbon)
+    for day in days:
+        await _restore_day(tx, batch.state, day)
     events = []
     for kind, rows in (("cost", batch.costs), ("carbon", batch.carbon)):
         for row in rows:
@@ -145,9 +151,8 @@ async def _write_effects(tx: AsyncManagedTransaction, batch: LedgerBatch, envelo
         "cost_record_ids": [r["record"]["id"] for r in batch.costs],
         "carbon_record_ids": [r["record"]["id"] for r in batch.carbon],
     }))
-    # Keep the current and seven previous daily summaries; the full ledger stays.
-    newest = max([int(day) for day in batch.state["days"]] + [batch.state["sim_day"]])
-    batch.state["days"] = {key: val for key, val in batch.state["days"].items() if int(key) >= newest - 7}
+    # Pin the selected day, even when another fact is billed far in the future.
+    _trim_days(batch.state)
     document = json.dumps(batch.state, allow_nan=False)
     result = await tx.run(
         "MATCH (s:CostRuntime {id: 'latest'}) SET s.document = $document "
@@ -162,6 +167,32 @@ async def _write_effects(tx: AsyncManagedTransaction, batch: LedgerBatch, envelo
                 for n, e in enumerate(events)], revision=revision,
     )
     await result.consume()
+
+
+async def _restore_day(tx: AsyncManagedTransaction, state: dict, day: int) -> None:
+    if str(day) in state["days"]:
+        return
+    state["days"][str(day)] = empty_day(day)
+    costs = await tx.run(
+        "MATCH (c:CostRecord) WHERE c.sim_day = $day "
+        "RETURN c.sim_day AS sim_day, c.category AS category, c.is_revenue AS is_revenue, "
+        "sum(c.amount_eur) AS amount_eur, max(c.sim_time) AS sim_time", day=day,
+    )
+    async for record in costs:
+        add_record(state, dict(record), "cost")
+    carbon = await tx.run(
+        "MATCH (c:CarbonRecord) WHERE c.sim_day = $day "
+        "RETURN c.sim_day AS sim_day, c.source AS source, "
+        "sum(c.co2_kg) AS co2_kg, max(c.sim_time) AS sim_time", day=day,
+    )
+    async for record in carbon:
+        add_record(state, dict(record), "carbon")
+
+
+def _trim_days(state: dict) -> None:
+    current = str(state["sim_day"])
+    others = sorted((key for key in state["days"] if key != current), key=int, reverse=True)[:7]
+    state["days"] = {key: state["days"][key] for key in [current, *others]}
 
 
 def publish_state(state: dict) -> None:
@@ -189,6 +220,10 @@ async def initialize() -> None:
 
     async def load(tx: AsyncManagedTransaction) -> dict:
         state, _ = await _locked_state(tx)
+        # Repair older checkpoints too, without waiting for another clock tick.
+        state["days"].pop(str(state["sim_day"]), None)
+        await _restore_day(tx, state, state["sim_day"])
+        _trim_days(state)
         result = await tx.run("MATCH (s:CostRuntime {id: 'latest'}) SET s.document = $document",
                               document=json.dumps(state, allow_nan=False))
         await result.consume()

@@ -102,10 +102,12 @@ class Tx:
             return Result(db["outbox"].values())
         elif "DELETE e" in query:
             db["outbox"].pop(params["id"], None)
-        elif "MATCH (c:CostRecord) RETURN" in query:
-            return Result([row["record"] for row in db["cost"]])
-        elif "MATCH (c:CarbonRecord) RETURN" in query:
-            return Result([row["record"] for row in db["carbon"]])
+        elif "MATCH (c:CostRecord)" in query:
+            return Result([row["record"] for row in db["cost"]
+                           if "day" not in params or row["record"]["sim_day"] == params["day"]])
+        elif "MATCH (c:CarbonRecord)" in query:
+            return Result([row["record"] for row in db["carbon"]
+                           if "day" not in params or row["record"]["sim_day"] == params["day"]])
         else:
             raise AssertionError(query)
         return Result()
@@ -361,3 +363,38 @@ def test_rate_update_has_a_stable_kafka_routing_key(cost_ctx, monkeypatch):
     producer.publish_confirmed(fact)
     assert sent[0]["key"] == b"financial-rates"
     assert json.loads(sent[0]["value"]) == fact
+
+
+@pytest.mark.parametrize("mode", ["restart", "rewind", "late"])
+def test_evicted_days_rebuild_from_ledger_without_losing_or_doubling_charges(cost_ctx, mode):
+    consumer, engine, carbon, driver = cost_ctx
+    asyncio.run(consumer.process_envelope(departed()))
+    original_cost = engine.get_running_totals()["total_cost_eur"]
+    original_carbon = carbon.get_carbon_totals()["total_kg"]
+
+    async def select_day(day):
+        async def no_effects(event):
+            pass
+        await consumer.ledger.process({"event_id": f"synthetic-select-{day}-{mode}",
+            "event_type": "SimClockTick", "sim_time": f"2026-01-{day:02d}T12:00:00Z",
+            "payload": {"day_of_sim": day}}, no_effects)
+
+    for day in range(2, 11):
+        asyncio.run(select_day(day))
+    assert "1" not in json.loads(driver.db["document"])["days"]
+    if mode == "rewind":
+        asyncio.run(select_day(1))
+    elif mode == "restart":
+        state = json.loads(driver.db["document"])
+        state["sim_day"] = 1
+        state["days"]["1"] = consumer.ledger.empty_day(1)  # damaged legacy projection
+        driver.db["document"] = json.dumps(state)
+        asyncio.run(consumer.ledger.initialize())
+    else:
+        late = departed("synthetic-late-after-eviction")
+        asyncio.run(consumer.process_envelope(late))
+        asyncio.run(select_day(1))
+    multiplier = 2 if mode == "late" else 1
+    assert engine.get_running_totals()["total_cost_eur"] == original_cost * multiplier
+    assert carbon.get_carbon_totals()["total_kg"] == original_carbon * multiplier
+    assert len(json.loads(driver.db["document"])["days"]) <= 8
