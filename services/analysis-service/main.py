@@ -72,14 +72,18 @@ async def lifespan(app: FastAPI):
     init_kafka_producer()
 
     # Rebuild proposals and confirmed execution audit from Neo4j.
-    from db.neo4j import initialize_action_store, load_proposals, load_operational_projection
+    from db.neo4j import load_operational_projection
+    from services import proposal_store, action_outbox
     from kafka.consumer import get_state
     from services import approval_queue
     from services.autonomous import record_proposal_execution
     from datetime import datetime
-    await initialize_action_store()
+    await proposal_store.initialize()
     get_state().restore_graph(await load_operational_projection())
-    approval_queue.restore(await load_proposals())
+    approval_queue.restore(await proposal_store.list_documents())
+    clock = await proposal_store.load_clock()
+    if clock:
+        get_state().on_clock_tick(clock)
     for proposal in approval_queue.list_all():
         if proposal.status == approval_queue.EXECUTED and proposal.executed_at:
             record_proposal_execution(
@@ -92,6 +96,9 @@ async def lifespan(app: FastAPI):
 
     # 5. Start Kafka consumer as background task
     consumer_task = asyncio.create_task(run_consumer())
+    outbox_stop = asyncio.Event()
+    outbox_task = asyncio.create_task(action_outbox.run(outbox_stop))
+    app.state.action_outbox_task = outbox_task
 
     logger.info("analysis-service startup complete")
     yield
@@ -100,8 +107,9 @@ async def lifespan(app: FastAPI):
     from services.training_manager import manager as training_manager
     await training_manager.stop_training()
     stop_consumer()
+    outbox_stop.set()
     with suppress(asyncio.TimeoutError):
-        await asyncio.wait_for(asyncio.gather(consumer_task, return_exceptions=True), timeout=5)
+        await asyncio.wait_for(asyncio.gather(consumer_task, outbox_task, return_exceptions=True), timeout=5)
     close_kafka_producer()
     await close_neo4j()
     from _tracing import shutdown_tracing
@@ -171,4 +179,5 @@ async def ready():
         "neo4j": check_neo4j,
         "kafka": check_kafka,
         "consumer": is_consumer_running,
+        "action_outbox": lambda: not app.state.action_outbox_task.done(),
     })

@@ -21,6 +21,8 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
+from datetime import datetime
 
 from kafka.consumer import (
     get_active_bottlenecks,
@@ -110,10 +112,9 @@ async def list_recommendations() -> dict[str, Any]:
 @router.post("/recommendations/{recommendation_id}/apply")
 async def apply_recommendation_endpoint(recommendation_id: str) -> dict[str, Any]:
     """Submit a concrete action; only a domain receipt confirms application."""
-    sim_time = get_state().sim_time
-    if sim_time is None:
-        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
-
+    sim_time = await _action_clock()
+    from services.action_execution import refresh
+    await refresh()
     try:
         entry = apply_recommendation(
             get_active_recommendations(), recommendation_id, sim_time,
@@ -123,108 +124,66 @@ async def apply_recommendation_endpoint(recommendation_id: str) -> dict[str, Any
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if entry is None:
         raise HTTPException(status_code=409, detail="Recommendation missing or already submitted")
-    proposal = approval_queue.get(entry["id"])
-    from dataclasses import asdict
-    from db.neo4j import save_proposal
-    await save_proposal(asdict(proposal))
-    from kafka.producer import emit_action_proposed
-    emit_action_proposed(proposal.to_dict(), sim_time)
-    proposal.emitted = True
-    await save_proposal(asdict(proposal))
-    if proposal.requires_human:
-        return {"applied": False, "executed": False, "status": "pending",
-                "proposal_id": proposal.id}
-    from services.action_execution import dispatch
+    from services.action_execution import persist, dispatch
+    proposal = await persist(approval_queue.get(entry["id"]), sim_time)
+    if proposal.status == approval_queue.PENDING:
+        return {"applied": False, "executed": False, "status": "pending", "proposal_id": proposal.id}
+    return await dispatch(proposal, sim_time)
+
+
+async def _action_clock() -> datetime:
+    from services.action_execution import clock
     try:
-        return await dispatch(proposal, sim_time)
+        value = await clock()
     except Exception as exc:
-        logger.exception("Command dispatch failed for %s", recommendation_id)
-        raise HTTPException(status_code=503, detail="Command dispatch unavailable; proposal retained for retry") from exc
-
-
-# ── A9: Approval queue (human Approve/Reject of proposed actions) ──
+        raise HTTPException(status_code=503, detail="Durable simulation clock unavailable") from exc
+    if value is None:
+        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
+    return value
 
 
 @router.get("/approvals")
-async def list_approvals(
-    all: bool = Query(False, description="Include non-pending proposals"),
-) -> dict[str, Any]:
-    """List proposals awaiting human decision (pending by default).
+async def list_approvals(all: bool = Query(False, description="Include non-pending proposals")) -> dict[str, Any]:
+    """Read committed proposals, including decisions made by another replica."""
+    from services.action_execution import refresh, clock
+    proposals = await refresh()
+    proposals = [p for p in proposals if all or p.status == approval_queue.PENDING]
+    at = await clock()
+    return {"approvals": [p.to_dict() for p in proposals], "count": len(proposals),
+            "sim_time": at.isoformat() if at else None}
 
-    These are actions the autonomous engine surfaced instead of applying —
-    principally SAFETY_GUARDED_ACTIONS (ground delay programs, rebookings).
-    """
-    proposals = approval_queue.list_all() if all else approval_queue.list_pending()
-    return {
-        "approvals": [p.to_dict() for p in proposals],
-        "count": len(proposals),
-        "sim_time": (
-            get_state().sim_time.isoformat() if get_state().sim_time else None
-        ),
-    }
+
+class ProposalDecision(BaseModel):
+    decided_by: str = "operator"
+    reason: str = ""
 
 
 @router.post("/approvals/{proposal_id}/approve")
-async def approve_proposal(
-    proposal_id: str,
-    body: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Authorize and dispatch a proposal, or retry its stable command identity."""
-    sim_time = get_state().sim_time
-    if sim_time is None:
-        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
-
-    decided_by = (body or {}).get("decided_by", "operator")
-    proposal = approval_queue.get(proposal_id)
-    if proposal is None or proposal.status not in {approval_queue.PENDING, approval_queue.APPROVED}:
-        raise HTTPException(status_code=409, detail="Proposal not pending or retryable")
-    from _common.commands import action_command
-    if action_command(proposal.action_type, proposal.parameters) is None:
-        raise HTTPException(status_code=422, detail="Action is advisory: no executable command with these parameters")
-    if proposal.status == approval_queue.PENDING:
-        approval_queue.approve(proposal_id, sim_time, decided_by=decided_by)
-        from dataclasses import asdict
-        from db.neo4j import save_proposal
-        await save_proposal(asdict(proposal))
-        from kafka.producer import emit_action_event
-        emit_action_event("ActionApproved", proposal.to_dict(), sim_time)
-    from services.action_execution import dispatch
+async def approve_proposal(proposal_id: str, body: ProposalDecision | None = None) -> dict[str, Any]:
+    """Atomically authorize and queue a command; active approvals are idempotent."""
+    from services import proposal_store
+    at = await _action_clock()
     try:
-        result = await dispatch(proposal, sim_time)
-    except Exception as exc:
-        logger.exception("Command dispatch failed for %s", proposal_id)
-        raise HTTPException(status_code=503, detail="Command dispatch unavailable; retry this proposal") from exc
-    return {"approved": True, **result}
+        document = await proposal_store.dispatch(proposal_id, at, approve_by=(body or ProposalDecision()).decided_by)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if document is None:
+        raise HTTPException(status_code=409, detail="Proposal not pending or retryable")
+    proposal = approval_queue.cache(document)
+    return {"approved": True, "applied": proposal.status == approval_queue.EXECUTED,
+            "executed": proposal.status == approval_queue.EXECUTED, "status": proposal.status,
+            "proposal_id": proposal.id, "command_id": proposal.id}
 
 
 @router.post("/approvals/{proposal_id}/reject")
-async def reject_proposal(
-    proposal_id: str,
-    body: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Reject a pending proposal — the action is never applied."""
-    sim_time = get_state().sim_time
-    if sim_time is None:
-        raise HTTPException(status_code=503, detail="Simulation clock not available yet")
-
-    decided_by = (body or {}).get("decided_by", "operator")
-    reason = (body or {}).get("reason", "")
-
-    proposal = approval_queue.reject(
-        proposal_id, sim_time, decided_by=decided_by, reason=reason,
-    )
-    if proposal is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Proposal not found or not pending",
-        )
-
-    from kafka.producer import emit_action_event
-    from dataclasses import asdict
-    from db.neo4j import save_proposal
-    await save_proposal(asdict(proposal))
-    emit_action_event("ActionRejected", proposal.to_dict(), sim_time)
-    return {"rejected": True, "proposal": proposal.to_dict()}
+async def reject_proposal(proposal_id: str, body: ProposalDecision | None = None) -> dict[str, Any]:
+    """Reject only a still-pending committed proposal; stale decisions cannot win."""
+    from services import proposal_store
+    decision = body or ProposalDecision()
+    document = await proposal_store.reject(proposal_id, await _action_clock(), decision.decided_by, decision.reason)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Proposal not found or not pending")
+    return {"rejected": True, "proposal": approval_queue.cache(document).to_dict()}
 
 
 # ── P2-3-1: What-if analysis ────────────────────────────────
@@ -306,7 +265,9 @@ async def autonomous_action_log(
     limit: int = Query(50, ge=1, le=200),
 ) -> dict[str, Any]:
     """Return the autonomous action log (most recent first)."""
-    log = get_action_log()
+    from services.action_execution import confirmed_log
+    log = await confirmed_log()
+    log.sort(key=lambda entry: entry["applied_at"])
     return {
         "actions": list(reversed(log))[:limit],
         "total": len(log),

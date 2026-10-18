@@ -8,13 +8,10 @@ Every action it wants to take becomes a **Proposal** in this queue:
   - safety-guarded actions (and, optionally, low-confidence ones) are enqueued
     **pending** and require a human Approve/Reject in the dashboard.
 
-This module is pure and in-memory: it stores proposals and enforces the legal
-state transitions (pending → approved → dispatched → executed/failed, or pending → rejected). The
-gating *rule* (`classify`) and the recommendation→command *mapping*
-(`to_flight_command`) are pure functions so they can be unit-tested without
-Kafka/Neo4j. The Kafka side (emit `ActionProposed`, forward approved
-`HoldFlight`/`ReassignGate` to `flights.commands`) lives in the router/consumer,
-which call into here.
+This module provides pure classification and a versioned local cache. Production
+mutations are serialized by services.proposal_store in Neo4j; action_execution
+adapts callers and action_outbox publishes committed commands and audit facts.
+The local transition helpers remain useful for pure policy evaluation and tests.
 """
 
 from __future__ import annotations
@@ -59,6 +56,8 @@ class Proposal:
     dispatched_at: str | None = None
     command_id: str | None = None
     failure_reason: str | None = None
+    dispatch_attempts: int = 0
+    revision: int = 0
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -141,6 +140,28 @@ def get(proposal_id: str) -> Proposal | None:
     return next((p for p in _queue if p.id == proposal_id), None)
 
 
+def discard(proposal_id: str) -> None:
+    _queue[:] = [p for p in _queue if p.id != proposal_id]
+
+
+def cache(document: dict) -> Proposal:
+    """Merge a committed snapshot without allowing an older callback to regress it."""
+    proposal = get(document["id"])
+    if proposal is not None:
+        if document.get("revision", 0) >= proposal.revision:
+            for key, value in asdict(Proposal(**document)).items():
+                setattr(proposal, key, value)
+        return proposal
+    proposal = Proposal(**document)
+    _queue.append(proposal)
+    while len(_queue) > MAX_QUEUE:
+        terminal = next((p for p in _queue if p.status in {EXECUTED, FAILED, REJECTED}), None)
+        if terminal is None:
+            break
+        _queue.remove(terminal)
+    return proposal
+
+
 def list_all() -> list[Proposal]:
     return list(_queue)
 
@@ -152,7 +173,7 @@ def list_pending() -> list[Proposal]:
 def take_unemitted() -> list[Proposal]:
     """Return proposals whose ActionProposed event hasn't been emitted yet.
 
-    Marks them emitted so a caller (the consumer) emits each exactly once.
+    Marks them emitted so a caller (the consumer) emits each once per local cache entry.
     """
     fresh = [p for p in _queue if not p.emitted]
     for p in fresh:

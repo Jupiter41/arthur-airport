@@ -17,6 +17,12 @@ class Message:
     def __init__(self, event):
         self.event = event
 
+    def partition(self):
+        return 0
+
+    def offset(self):
+        return 1
+
     def error(self):
         return None
 
@@ -83,6 +89,10 @@ def test_analysis_preserves_facts_and_receipts_but_evaluates_latest_tick(monkeyp
     class Broker:
         def __init__(self, config):
             pass
+
+        def commit(self, **kwargs):
+            assert evaluate.await_count == 1
+            assert dispatch.await_count == 4
 
         def subscribe(self, topics):
             pass

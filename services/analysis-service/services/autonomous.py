@@ -268,7 +268,17 @@ def record_proposal_execution(
     ``record_outcome`` can later fill in the measured outcome (30 min later).
     Returns the log entry for the caller to emit as an event.
     """
-    log_entry = {
+    log_entry = execution_entry(proposal, sim_time, decided_by=decided_by)
+    _action_log.append(log_entry)
+    if len(_action_log) > MAX_ACTION_LOG:
+        _action_log.pop(0)
+    logger.info("Approved proposal %s executed", proposal["id"])
+    return log_entry
+
+
+def execution_entry(proposal: dict, sim_time: datetime, *, decided_by: str | None = None) -> dict:
+    """Pure confirmed-log representation shared by persistence and API reads."""
+    return {
         "id": f"action-{proposal['id']}",
         "recommendation_id": proposal.get("recommendation_id"),
         "proposal_id": proposal.get("id"),
@@ -278,19 +288,11 @@ def record_proposal_execution(
         "confidence_score": proposal.get("confidence_score"),
         "applied_at": sim_time.isoformat(),
         "initiated_by": proposal.get("proposed_by"),
-        "approved_by": decided_by,
+        "approved_by": decided_by or proposal.get("decided_by") or proposal["proposed_by"],
         "parameters": dict(proposal.get("parameters") or {}),
         "actual_outcome": None,
         "outcome_measured_at": None,
     }
-    _action_log.append(log_entry)
-    if len(_action_log) > MAX_ACTION_LOG:
-        _action_log.pop(0)
-    logger.info(
-        "Approved proposal %s executed (approved_by=%s) — %s",
-        proposal.get("id"), decided_by, proposal.get("description"),
-    )
-    return log_entry
 
 
 def record_outcome(

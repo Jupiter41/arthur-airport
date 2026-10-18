@@ -411,3 +411,20 @@ Baggage-service owns `BaggageProjection` with unique `id` (`latest`) and JSON
 `document` containing the complete zone summary and simulation timestamp.
 Analysis reads it without writing it. New WeatherState records also persist
 the recommended arrival/departure rates for faithful projection recovery.
+
+
+### Coordinated analysis actions (A24, 2026-10-18)
+
+Analysis owns `AnalysisRuntime` with unique `id = actions`. Its write-locked
+`revision` serializes short proposal transactions; `clock`, `clock_partition` and
+`clock_offset` hold the last validated consumed simulation tick and broker fence.
+`ActionProposal` retains its complete JSON `document` and additionally stores
+`status`, hashed `target_key` (bottleneck/action/parameters) and `recommendation_id`
+for duplicate suppression. Documents include revision and dispatch-attempt count.
+
+`AnalysisOutbox` has unique `id`, `revision`, `position`, `topic`, `key` and JSON
+`document` for a committed event/command envelope. A composite revision/position
+index orders pending publication. Lifecycle/proposal writes and these entries are
+one transaction; the publisher removes entries only after broker confirmation.
+No domain-owner node is written by analysis. Stored event IDs and proposal-based
+command IDs provide stable at-least-once delivery identities.

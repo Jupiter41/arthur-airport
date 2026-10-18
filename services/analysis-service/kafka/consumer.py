@@ -33,7 +33,6 @@ from kafka.producer import (
     emit_bottleneck_detected,
     emit_bottleneck_resolved,
     emit_recommendation_generated,
-    emit_action_proposed,
     emit_anomaly_detected,
     emit_narration_generated,
 )
@@ -128,8 +127,8 @@ async def run_consumer() -> None:
     _consumer = Consumer({
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
         "group.id": "analysis-svc",
-        "auto.offset.reset": "latest",
-        "enable.auto.commit": True,
+        "auto.offset.reset": "earliest",
+        "enable.auto.commit": False,
         "session.timeout.ms": 30000,
         "max.poll.interval.ms": 300000,
     })
@@ -163,17 +162,31 @@ async def run_consumer() -> None:
                 consumer_lag.labels(topic=topic).inc()
 
                 # Route to state handler
-                await _dispatch_event(event_type, payload, topic, envelope)
-
-                # On clock ticks, run analysis
-                if event_type == "SimClockTick":
+                while _running:
+                    try:
+                        accepted = await _dispatch_event(event_type, payload, topic, envelope,
+                            position=(msg.partition(), msg.offset()))
+                        break
+                    except Exception:
+                        logger.exception("Analysis input failed; retrying before offset commit")
+                        await asyncio.sleep(1)
+                if not _running:
+                    break
+                if event_type == "SimClockTick" and accepted is not False:
                     latest_tick = payload
 
             # Evaluate the latest operational view once after catching up facts.
             # Per-entity events and receipts above are never sampled or skipped.
             if latest_tick is not None:
-                await _on_tick(latest_tick)
-
+                while _running:
+                    try:
+                        await _on_tick(latest_tick)
+                        break
+                    except Exception:
+                        logger.exception("Analysis evaluation failed; durable proposals retained")
+                        await asyncio.sleep(1)
+            if _running and msgs:
+                await loop.run_in_executor(None, lambda: _consumer.commit(asynchronous=False))
             _consumer_health.mark_message()
 
     except Exception:
@@ -187,10 +200,24 @@ async def run_consumer() -> None:
 
 async def _dispatch_event(
     event_type: str, payload: dict, topic: str, envelope: dict,
-) -> None:
+    *, position: tuple[int, int] | None = None,
+) -> bool | None:
     """Route events to the appropriate state handler."""
+    if event_type == "SimClockTick":
+        from services import proposal_store
+        from pydantic import ValidationError
+        try:
+            tick = proposal_store.ActionClock.model_validate(payload).model_dump(mode="json")
+        except ValidationError:
+            logger.warning("Invalid simulation tick rejected")
+            return False
+        if topic != "sim.clock" or position is None:
+            return False
+        if not await proposal_store.save_clock(tick, position):
+            return False
+        state.on_clock_tick(tick)
+        return True
     handlers = {
-        "SimClockTick": state.on_clock_tick,
         "FlightStatusChanged": state.on_flight_status_changed,
         "FlightGateAssigned": state.on_flight_gate_assigned,
         "FlightCancelled": state.on_flight_cancelled,
@@ -309,6 +336,8 @@ async def _on_tick(payload: dict) -> None:
     if now is None:
         return
 
+    from services.action_execution import refresh
+    await refresh()
     _neo4j_tick_counter += 1
 
     # Periodically refresh Neo4j data (connection clusters, etc.)
@@ -377,29 +406,17 @@ async def _on_tick(payload: dict) -> None:
             # Rule-based / threshold mode
             evaluate_and_apply(active_recommendations, now)
 
-    from dataclasses import asdict
-    from db.neo4j import save_proposal
-    from services.action_execution import dispatch
+    from services import action_execution, proposal_store
     for proposal in approval_queue.list_all():
         if not proposal.emitted:
-            await save_proposal(asdict(proposal))
-            emit_action_proposed(proposal.to_dict(), now)
-            proposal.emitted = True
-            await save_proposal(asdict(proposal))
-        # A lost receipt is recovered by retrying the same command ID. Owners
-        # reload durable receipts, so redelivery does not repeat the mutation.
-        if proposal.status == approval_queue.DISPATCHED and proposal.dispatched_at:
-            dispatched_at = datetime.fromisoformat(proposal.dispatched_at)
-            if (now - dispatched_at).total_seconds() >= 300:
-                proposal.status = approval_queue.APPROVED
-        if proposal.status == approval_queue.APPROVED:
+            proposal = await action_execution.persist(proposal, now)
+        if proposal.status in {approval_queue.APPROVED, approval_queue.DISPATCHED}:
             try:
-                await dispatch(proposal, now)
+                await action_execution.dispatch(proposal, now)
             except ValueError as exc:
-                approval_queue.mark_failed(proposal.id, str(exc))
-                await save_proposal(asdict(proposal))
-            except Exception:
-                logger.exception("Command dispatch unavailable for %s", proposal.id)
+                document = await proposal_store.fail(proposal.id, now, str(exc))
+                if document:
+                    approval_queue.cache(document)
 
     # P5-3-1: Anomaly detection
     anomaly_result = anomaly_detector.on_tick(

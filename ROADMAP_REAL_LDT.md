@@ -1224,13 +1224,13 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 
 | ID / priority | Remaining gap and evidence | What completion actually requires |
 |---|---|---|
-| G1 / P0 — partial | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. | Extend transactional domain/outbox/inbox boundaries to the remaining owners and receipts. Financial Kafka delivery remains at least once with stable event IDs, not exactly once; simulation epochs and legacy repair are separate work. |
+| G1 / P0 — partial | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. A24 adds atomic analysis proposal decisions/attempts, lifecycle facts and command outbox entries. | Extend transactional domain/outbox/inbox boundaries to the remaining owners and receipts. Financial Kafka delivery remains at least once with stable event IDs, not exactly once; simulation epochs and legacy repair are separate work. |
 | G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
 | G3 / P1 | A5 is a flight pilot. There are still 28 tracked local logging/tracing/profiling files; `_common` does not own all consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Roll out the shared runtime/template and invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 | Cost and analysis still have separate recommenders. Analysis ranking remains largely confidence-based rather than impact × confidence ÷ cost. | Emit cost signals into one recommendation/ranking path with comparable quantified impacts/costs. |
 | G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
-| G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. Analysis proposals remain uncoordinated across replicas; training-job recovery is separate. | Coordinate analysis proposal ownership/retries across replicas; retain planning fencing/crash/concurrency tests and extend interruption recovery to other job types. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
+| G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
@@ -1785,3 +1785,49 @@ After the live tests, the local readiness-only gate again passes all nine servic
 and the gateway. The subsequent commit updates documentation only; runtime/tests
 remain the exact source validated by this run. The roadmap remains active for the
 remaining §10 gaps and is not moved into the old-roadmap archive.
+
+
+## 20. A24 — Coordinate analysis proposals and durable command delivery (2026-10-18)
+
+**Delivered G7 proposal portion and G1 analysis-action portion:** authoritative
+Neo4j transactions serialize creation, human decisions, retry attempts and owner
+receipts across independent analysis workers. Active identical bottleneck/action/
+parameter targets and submitted recommendation identities deduplicate creation.
+Versioned caches cannot overwrite newer committed decisions. Approval/rejection
+and confirmed-log endpoints read committed graph data on every request.
+
+Proposal changes, lifecycle facts and canonical domain commands commit together
+in an analysis-owned outbox. Broker failure or process exit retains the pending
+work. Publication is at least once with stable envelopes/event IDs; all attempts
+use the same command ID. A five-simulation-minute receipt timeout schedules at
+most one retry for the shared clock value. Only a matching owner topic/type
+receipt confirms execution; dispatched means durably queued. No Kafka publication
+occurs inside Neo4j transaction callbacks. Legacy proposals migrate in place.
+
+The last validated consumed clock is shared in Neo4j for REST decisions on any
+replica. Broker offsets fence stale clock writers after reassignment. Consumer
+offsets commit after durable handling/evaluation; new groups replay retained
+inputs. The outbox worker is independent of simulation ticks and included in
+readiness, so a committed command can recover while the clock is paused.
+
+**Local validation:** all **1,022 Python units pass**, with four existing warnings,
+and affected-service Ruff passes. The all-service readiness gate passes all nine
+services plus gateway, and **all 121 live integration tests pass**, no skips, in
+**335.96 s**. Real Neo4j/Kafka cases cover partial transaction rollback (both
+proposal and outbox), independent worker creation/approval/rejection/retry
+contention, broker failure/acknowledged-publication gaps and process exit after
+command commit followed by owner-confirmed recovery.
+
+Final adapter review also found a receipt arriving after the caller's cache read
+but before dispatch: the adapter now reports an already-confirmed database result
+without scheduling another command. A unit regression covers the stale caller;
+the rebuilt final image passes all **eight analysis live cases** in **57.11 s**,
+including a fresh worker resolving that race. Staged runtime/tests match the
+isolated tested tree. Final CI evidence follows after the push.
+
+**Still open:** recommendation/bottleneck discovery and full projections are not
+a shared replicated analysis engine (G9); training recovery, other planning input
+snapshots and partial Monte Carlo resume remain G7. Owner mutation/receipt/outbox
+atomicity remains G1. Epochs, calibrated outcomes/ranking/action effects, mixed
+accounting and the other §10 gaps remain active. This is not completion of every
+service's intended digital-twin behavior; keep this roadmap out of the archive.

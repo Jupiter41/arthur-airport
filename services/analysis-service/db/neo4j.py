@@ -172,31 +172,6 @@ async def query_active_flights_summary() -> dict:
     return {r["status"]: r["cnt"] for r in records}
 
 
-async def initialize_action_store() -> None:
-    async with get_driver().session() as session:
-        result = await session.run(
-            "CREATE CONSTRAINT actionproposal_id IF NOT EXISTS FOR (p:ActionProposal) REQUIRE p.id IS UNIQUE"
-        )
-        await result.consume()
-
-
-async def save_proposal(document: dict) -> None:
-    import json
-    async with get_driver().session() as session:
-        result = await session.run(
-            "MERGE (p:ActionProposal {id: $id}) SET p.document = $document",
-            id=document["id"], document=json.dumps(document),
-        )
-        await result.consume()
-
-
-async def load_proposals() -> list[dict]:
-    import json
-    async with get_driver().session() as session:
-        result = await session.run("MATCH (p:ActionProposal) RETURN p.document AS document")
-        return [json.loads(row["document"]) async for row in result]
-
-
 async def load_operational_projection() -> dict:
     """Read owner data through Neo4j, never through service-to-service HTTP."""
     async def read(tx):

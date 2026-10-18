@@ -6,8 +6,6 @@ import os
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from _common.commands import CommandIntent
-
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient
 
@@ -47,6 +45,22 @@ async def check_kafka() -> bool:
         return metadata is not None
     except Exception:
         return False
+
+
+def publish_confirmed(topic: str, key: str, envelope: dict) -> None:
+    """Only the committed outbox worker publishes action facts/commands."""
+    import time
+
+    if _producer is None:
+        raise RuntimeError("Kafka producer not initialized")
+    delivered = []
+    _producer.produce(topic=topic, key=key.encode(), value=json.dumps(envelope, allow_nan=False).encode(),
+                      callback=lambda error, message: delivered.append(error))
+    deadline = time.monotonic() + 10
+    while not delivered and time.monotonic() < deadline:
+        _producer.poll(0.1)
+    if not delivered or delivered[0] is not None:
+        raise RuntimeError("Action delivery not confirmed; outbox retained")
 
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:
@@ -144,67 +158,6 @@ def emit_recommendation_generated(recommendation: dict, sim_time: datetime) -> N
         recommendation,
         key=recommendation.get("id", ""),
     )
-
-
-def emit_autonomous_action(action: dict, sim_time: datetime) -> None:
-    """Emit AutonomousActionApplied event."""
-    _produce_event(
-        "AutonomousActionApplied",
-        sim_time,
-        action,
-        key=action.get("id", ""),
-    )
-
-
-def emit_action_proposed(proposal: dict, sim_time: datetime) -> None:
-    """Emit ActionProposed — a proposal was enqueued for human approval (A9)."""
-    _produce_event(
-        "ActionProposed",
-        sim_time,
-        proposal,
-        key=proposal.get("id", ""),
-    )
-
-
-def emit_action_event(event_type: str, action: dict, sim_time: datetime) -> None:
-    _produce_event(event_type, sim_time, action, key=action.get("id", ""))
-
-
-async def emit_domain_command(intent: CommandIntent, *, command_id: str, issued_by: str,
-                              issued_at: datetime) -> None:
-    """Return only after the broker acknowledges the command (off the event loop)."""
-    import asyncio
-    import time
-
-    if _producer is None:
-        raise RuntimeError("Kafka producer not initialized")
-    producer = _producer
-    envelope = {
-        "command_type": intent.command_type,
-        "command_id": command_id,
-        "schema_version": "1.0",
-        "issued_by": issued_by,
-        "issued_at": issued_at.isoformat(),
-        "producer": PRODUCER_NAME,
-        "payload": intent.payload,
-    }
-
-    def send() -> None:
-        delivered = []
-        producer.produce(
-            topic=intent.topic, key=intent.entity_key.encode(),
-            value=json.dumps(envelope).encode(),
-            callback=lambda error, message: delivered.append(error),
-        )
-        deadline = time.monotonic() + 10
-        while not delivered and time.monotonic() < deadline:
-            producer.poll(0.1)
-        if not delivered:
-            raise TimeoutError("Command delivery not confirmed; retry uses the same command ID")
-        if delivered[0] is not None:
-            raise RuntimeError(f"Command delivery failed: {delivered[0]}")
-
-    await asyncio.to_thread(send)
 
 
 def emit_anomaly_detected(anomaly: dict, sim_time: datetime) -> None:

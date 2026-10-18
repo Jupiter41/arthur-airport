@@ -806,3 +806,28 @@ Planning's first claim reads and persists the full rate snapshot/version; recove
 attempts and replay children retain it, and completed results expose the version.
 The normal outbox acknowledgement/replay contract applies. Planning does not need
 a service HTTP call or a new rate-event consumer to acquire the committed snapshot.
+
+
+## Analysis proposal transactions and delivery (A24)
+
+`ActionProposal` lifecycle transitions commit in the same Neo4j transaction as
+`AnalysisOutbox` entries for `ActionProposed`, `ActionApproved`, `ActionRejected`,
+`ActionDispatched`, `ActionExecutionFailed`, `AutonomousActionApplied` and any
+canonical domain command. An analysis-owned `AnalysisRuntime` write lock
+serializes decisions/retries across replicas; it never mutates owner entities.
+The outbox publisher waits for broker acknowledgment before deleting each entry.
+Delivery is at least once: retries retain the stored event envelope/event ID;
+command retries retain `command_id = proposal.id`. Owner idempotency is required.
+`dispatched` means durably queued, while only matching owner topic/type receipts
+confirm execution. Five-simulation-minute receipt retries advance the attempt
+count/timestamp atomically. A stale approval or duplicate/contradictory receipt
+cannot overwrite a terminal decision. No command is published inside a retriable
+Neo4j transaction callback.
+
+`AnalysisRuntime` also stores the latest validated consumed `sim.clock` tick and
+its partition-zero broker offset. Offsets fence stale clock writers after
+reassignment; REST decisions read that shared simulation time. Analysis commits
+consumer offsets after durable input handling and proposal evaluation succeed.
+New consumer groups replay retained inputs from the earliest offset. Other
+analysis projections/bottleneck discovery, epochs, training recovery and domain
+owner mutation/receipt/outbox atomicity remain separate roadmap gaps.
