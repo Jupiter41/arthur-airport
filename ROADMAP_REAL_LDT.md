@@ -1235,7 +1235,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
-| G12 / P2 | A17–A23 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39149495301 passes all jobs and 112 live tests, including durable rates, financial rollback/replay and planning worker contention/fencing/crash recovery. A23 adds ledger-based summary recovery tests. K8s still lacks planning/cost manifests; sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate the remaining load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
+| G12 / P2 | A17–A23 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39150644982 passes all jobs and 113 live tests, including durable rates, ledger-based summary recovery, financial rollback/replay and planning worker contention/fencing/crash recovery. K8s still lacks planning/cost manifests; sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate the remaining load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -1738,6 +1738,8 @@ Monte Carlo resume (G7); all other §10 gaps. This does not certify calibrated
 financial benefits or complete the digital twin. Keep this roadmap active.
 Legacy in-memory overrides cannot be recovered on upgrade, and historical planning
 jobs without a rate snapshot cannot retrospectively recover their original inputs.
+Rate selection is at processing/claim time; historical event-time tariff tables
+for late inputs are not reconstructed by this slice.
 
 
 ## 19. A23 — Recover daily financial projections from the ledger (2026-10-18)
@@ -1769,3 +1771,17 @@ All nine services and gateway pass readiness. Staged recovery code/tests match t
 isolated tested tree. The browser displays the recovered cost/revenue totals and
 eight categories, replacing its false empty-state message. Proof: `local-cost-recovery-a23.png` in the task
 validation artifact directory; no frontend source was changed.
+
+
+**Final CI validation for A23:** run
+[39150644982](https://github.com/Jupiter41/arthur-airport/actions/runs/39150644982)
+passes **every job** on runtime commit
+`0770d9896ffab1b4205f7d13fb6621cd9d2526cb`: **1,010 Python units**,
+**113 live tests** (no skips, **342.02 s**), all-service readiness,
+Python lint, Node builds, **44 dashboard tests** and **22 gateway tests**.
+The two CI unit warnings and one live warning are the existing ML/pytest notices.
+Its `full-stack-validation` artifact is saved locally under `ci-0770d98`.
+After the live tests, the local readiness-only gate again passes all nine services
+and the gateway. The subsequent commit updates documentation only; runtime/tests
+remain the exact source validated by this run. The roadmap remains active for the
+remaining §10 gaps and is not moved into the old-roadmap archive.

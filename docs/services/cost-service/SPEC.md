@@ -141,6 +141,8 @@ each financial input uses the table in its transaction, including across replica
 Rate events use the latest consumed simulation clock, or the fixed synthetic
 epoch `2026-01-01T00:00:00Z` before the first tick. Optional fuel refreshes use
 this same persistence path. Existing charges are never repriced.
+Rates are selected at processing/claim time; historical event-time tariff tables
+are not reconstructed for late inputs.
 
 Planning reads this graph snapshot once on first job claim (shared defaults if
 cost has not initialized). It persists the full table and content version in its
