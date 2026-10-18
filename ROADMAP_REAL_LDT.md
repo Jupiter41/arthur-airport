@@ -1235,7 +1235,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
-| G12 / P2 | A17–A23 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39150644982 passes all jobs and 113 live tests, including durable rates, ledger-based summary recovery, financial rollback/replay and planning worker contention/fencing/crash recovery. K8s still lacks planning/cost manifests; sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate the remaining load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
+| G12 / P2 | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. K8s still lacks planning/cost manifests; sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate the remaining load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -1823,7 +1823,7 @@ but before dispatch: the adapter now reports an already-confirmed database resul
 without scheduling another command. A unit regression covers the stale caller;
 the rebuilt final image passes all **eight analysis live cases** in **57.11 s**,
 including a fresh worker resolving that race. Staged runtime/tests match the
-isolated tested tree. Final CI evidence follows after the push.
+isolated tested tree. Final CI evidence is recorded below.
 
 **Still open:** recommendation/bottleneck discovery and full projections are not
 a shared replicated analysis engine (G9); training recovery, other planning input
@@ -1831,3 +1831,25 @@ snapshots and partial Monte Carlo resume remain G7. Owner mutation/receipt/outbo
 atomicity remains G1. Epochs, calibrated outcomes/ranking/action effects, mixed
 accounting and the other §10 gaps remain active. This is not completion of every
 service's intended digital-twin behavior; keep this roadmap out of the archive.
+
+
+**Follow-up plan/implementation audit:** `services/analysis-service/services/training_manager.py` still owns
+process-local `runs`, `active_run` and a subprocess handle, without a shared
+training-job recovery store. `services/analysis-service/services/recommender.py` still sorts largely by
+`confidence_score`, while cost has its own recommendation generator. The current
+`k8s/services` tree still lacks cost/planning service manifests. These concrete
+checks confirm the remaining G7/G5/G12 entries; the A24 proposal tests do not close
+them.
+
+
+**Final CI validation for A24:** run
+[39153728540](https://github.com/Jupiter41/arthur-airport/actions/runs/39153728540)
+passes **every job** on runtime commit
+`4998bd6dde3a0fe87bd20d7a48cb61eacc3dc74e`: **1,022 Python units**, **121 live
+tests** (no skips, **350.26 s**), Python lint, Node builds, **44 dashboard tests**
+and **22 gateway tests**. All nine services plus gateway pass readiness. The two
+unit warnings and one live warning are the existing ML/pytest notices. The
+`full-stack-validation` artifact is saved locally under `ci-4998bd6`. Final local
+post-test readiness also passes every service. This subsequent commit updates
+only roadmap evidence; runtime/tests remain those validated in CI. The §10 gaps
+above remain open, so the roadmap stays active rather than moving to the archive.
