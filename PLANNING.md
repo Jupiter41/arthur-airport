@@ -96,7 +96,9 @@ For each KPI, the engine computes:
 - **Standard deviation** — spread of outcomes
 - **Percentiles** — P5, P25, P50 (median), P75, P95
 
-The P5–P95 range gives you the **90% confidence band** — the range where 90% of outcomes fall.
+The P5–P95 range describes the central **90% of sampled model outcomes** under
+the configured assumptions. It is not a calibrated confidence interval for
+observed airport outcomes.
 
 ### Step 3: Delta Computation
 

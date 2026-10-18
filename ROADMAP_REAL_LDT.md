@@ -1221,11 +1221,11 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G5 / P1 | Cost and analysis still have separate recommenders. Analysis ranking remains largely confidence-based rather than impact × confidence ÷ cost. | Emit cost signals into one recommendation/ranking path with comparable quantified impacts/costs. |
 | G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
 | G7 / P1 | Planning data now survives restart, but background jobs do not resume and have no durable worker lease/claim. Persisted interrupted runs can remain `running`. Analysis proposals are durable, but not coordinated across replicas. | Durable job scheduling/recovery, ownership and concurrency tests. Persistence is not equivalent to durable execution. |
-| G8 / P1 | `PLANNING.md` promises actual outcomes after 30 sim-minutes. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
+| G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
-| G12 / P2 | A17 runs the complete local Compose stack, all-service readiness, live integration, full restart, command replay and browser checks. Earlier CI runs reached all-service readiness but exposed five failures corrected in A17. K8s still lacks planning/cost manifests; sustained load, crash-window and replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
+| G12 / P2 | A17–A19 validate the complete local Compose stack, all-service readiness, live integration, full restart, command replay and browser checks. A18/A19 correct additional defects exposed by clean CI; run 39108523313 now passes all jobs and 100 live tests. K8s still lacks planning/cost manifests; sustained load, crash-window and replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -1524,5 +1524,27 @@ including all-service readiness, command confirmation/replay and full restart.
 Staged runtime/test files match the tested export. Dashboard and gateway source
 are unchanged from the A17/A18 validation; unrelated local work is excluded.
 
-Remote CI is pending for this correction. The roadmap remains active: these
-corrections do not close §10 G1–G12.
+**Remote validation:** GitHub run [39108523313](https://github.com/Jupiter41/arthur-airport/actions/runs/39108523313)
+passes on runtime commit `20da5150a6673f4829d60ae6ee7fb85b2402444a`: all lint,
+unit, Node build/test and full-stack jobs succeed. All nine services plus the
+gateway pass readiness; **100 live tests pass**, no skips, one existing warning,
+in **290.84 s** on the clean CI stack. This includes the formerly failing
+incident chain, command confirmation/replay and restart checks. CI also passes
+**974 Python units**, **44 dashboard tests** and **22 gateway tests**.
+The subsequent guide/validation-record update changes documentation only.
+
+The roadmap remains active: these corrections do not close §10 G1–G12.
+
+### Follow-up documentation audit
+
+The warning at the top of `AUTONOMOUS_OPS.md` had left misleading claims in the
+body. The guide now distinguishes the five action types with concrete mappings
+from the nine advisory types, documents required target IDs and the owner-receipt
+lifecycle, and stops calling skipped candidates a durable decision log. It
+corrects RL from LightGBM/history replay to the actual synthetic-environment PPO
+training path. The NL incident endpoint parses parameters only; it does not inject
+them. Mode/score wording now reflects the actual gates without implying calibrated
+safety or savings. `PLANNING.md` calls P5–P95 a sampled-model range rather than an
+operational confidence guarantee. G8's register now reflects the already-corrected
+manual-outcome documentation. These are corrected claims, not newly implemented
+action handlers or calibrated intelligence.
