@@ -41,8 +41,27 @@ is the isolated planning epoch (2026-01-01), not wall-clock execution time.
 
 Pending/running scenarios cannot be deleted while their background job may
 write progress. Completed/failed records and their results can be deleted.
-Interrupted jobs retain their last durable progress; automatic job resumption
-is not implemented. Runtime history counters are per-process metrics.
+Pending scenarios are durable queue entries. A service worker claims one with a
+Neo4j lease and fencing token before computing. Pending jobs and interrupted jobs
+whose lease expired are automatically picked up by any available worker. A
+recovered attempt restarts both Monte Carlo phases using its persisted seed and
+configuration; it does not combine partial aggregates from different attempts.
+`attempt_count` identifies retries and progress restarts from zero for an attempt.
+Runtime history counters remain per-process metrics.
+
+Lease heartbeats use Neo4j wall-clock timestamps as scheduling metadata, never
+as simulation time. Every progress/result write checks the current unexpired
+token inside a transaction. An expired or replaced worker cannot publish progress,
+failure or results. Results, completed scenario status and both outbox events
+commit atomically. Graceful shutdown releases its job back to pending; hard exit
+leaves it recoverable when the lease expires. Simulation steps stay isolated.
+
+`attempt_count` is included in scenario documents, summaries and status polls.
+Elapsed duration uses UTC job timestamps and stops increasing at completion;
+legacy naive UTC timestamps remain readable. Default lease duration is 30 real
+seconds (`PLANNING_JOB_LEASE_SECONDS`, minimum 2), with heartbeat every third of
+that duration. Each service process runs one scenario at a time. A seed/config
+does not freeze external input files or model versions across recovery.
 
 ### `PlanningScenario`
 
@@ -177,7 +196,7 @@ Response `201`:
 }
 ```
 
-The scenario runs asynchronously as a background task. Poll `/scenarios/{id}/status`
+The scenario runs asynchronously through the durable worker. Poll `/scenarios/{id}/status`
 or subscribe to `GET /scenarios/{id}/stream` (SSE) for progress.
 
 ---

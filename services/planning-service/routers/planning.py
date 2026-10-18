@@ -127,12 +127,10 @@ class CreateScenarioRequest(BaseModel):
 @router.post("/scenarios", status_code=201)
 async def create_scenario(
     body: CreateScenarioRequest,
-    background_tasks: BackgroundTasks,
 ):
     """Create and queue a new planning scenario."""
     from engine.infrastructure import InfrastructureConfig
     from scenarios.model import PlanningScenario, store_scenario
-    from scenarios.runner import run_scenario
 
     infra = (
         InfrastructureConfig.from_dict(body.infrastructure)
@@ -162,10 +160,7 @@ async def create_scenario(
     estimate = planning_metrics.estimate_duration(body.horizon, body.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="custom").inc()
 
-    # Run in background
-    background_tasks.add_task(
-        asyncio.to_thread, run_scenario, scenario
-    )
+    # The persisted pending record is the durable queue entry.
 
     return {
         "scenario_id": scenario.id,
@@ -216,10 +211,15 @@ async def get_scenario_status(scenario_id: str):
     elapsed = 0.0
     estimated_remaining = None
     if scenario.started_at:
-        from datetime import datetime
+        from datetime import datetime, timezone
         try:
             started = datetime.fromisoformat(scenario.started_at)
-            elapsed = (datetime.utcnow() - started).total_seconds()
+            started = started.replace(tzinfo=started.tzinfo or timezone.utc)
+            # Wall-clock duration is job metadata, not planning simulation time.
+            finished = (datetime.fromisoformat(scenario.completed_at) if scenario.completed_at
+                        else datetime.now(timezone.utc))
+            finished = finished.replace(tzinfo=finished.tzinfo or timezone.utc)
+            elapsed = max(0.0, (finished - started).total_seconds())
         except (ValueError, TypeError):
             pass
 
@@ -233,6 +233,7 @@ async def get_scenario_status(scenario_id: str):
         "status": scenario.status,
         "progress_pct": scenario.progress_pct,
         "runs_completed": scenario.runs_completed,
+        "attempt_count": scenario.attempt_count,
         "runs_total": scenario.monte_carlo_runs * 2,  # baseline + scenario
         "elapsed_seconds": round(elapsed, 1),
         "estimated_remaining_seconds": estimated_remaining,
@@ -396,17 +397,15 @@ class SecurityTemplateRequest(BaseModel):
 
 
 @router.post("/templates/add_gate", status_code=201)
-async def create_gate_template(body: GateTemplateRequest, background_tasks: BackgroundTasks):
+async def create_gate_template(body: GateTemplateRequest):
     """Create a gate addition scenario from template and auto-run it."""
     from scenarios.templates import create_gate_scenario
     from scenarios.model import store_scenario
-    from scenarios.runner import run_scenario
 
     scenario = create_gate_scenario(body.terminal, body.additional_gates)
     (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="add_gate").inc()
-    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
     return {
         "scenario_id": scenario.id,
         "status": "pending",
@@ -418,17 +417,15 @@ async def create_gate_template(body: GateTemplateRequest, background_tasks: Back
 
 
 @router.post("/templates/add_runway", status_code=201)
-async def create_runway_template(body: RunwayTemplateRequest, background_tasks: BackgroundTasks):
+async def create_runway_template(body: RunwayTemplateRequest):
     """Create a runway addition scenario from template and auto-run it."""
     from scenarios.templates import create_runway_scenario
     from scenarios.model import store_scenario
-    from scenarios.runner import run_scenario
 
     scenario = create_runway_scenario(body.runway_id, body.ils_capable, body.length_m)
     (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="add_runway").inc()
-    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
     return {
         "scenario_id": scenario.id,
         "status": "pending",
@@ -440,17 +437,15 @@ async def create_runway_template(body: RunwayTemplateRequest, background_tasks: 
 
 
 @router.post("/templates/new_route", status_code=201)
-async def create_route_template(body: RouteTemplateRequest, background_tasks: BackgroundTasks):
+async def create_route_template(body: RouteTemplateRequest):
     """Create a new route scenario from template and auto-run it."""
     from scenarios.templates import create_route_scenario
     from scenarios.model import store_scenario
-    from scenarios.runner import run_scenario
 
     scenario = create_route_scenario(body.destination_iata, body.daily_flights, body.aircraft_type)
     (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="new_route").inc()
-    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
     return {
         "scenario_id": scenario.id,
         "status": "pending",
@@ -462,17 +457,15 @@ async def create_route_template(body: RouteTemplateRequest, background_tasks: Ba
 
 
 @router.post("/templates/security_lanes", status_code=201)
-async def create_security_template(body: SecurityTemplateRequest, background_tasks: BackgroundTasks):
+async def create_security_template(body: SecurityTemplateRequest):
     """Create a security lane adjustment scenario from template and auto-run it."""
     from scenarios.templates import create_security_scenario
     from scenarios.model import store_scenario
-    from scenarios.runner import run_scenario
 
     scenario = create_security_scenario(body.lanes_delta)
     (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="security_lanes").inc()
-    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
     return {
         "scenario_id": scenario.id,
         "status": "pending",
@@ -492,11 +485,10 @@ class TerminalTemplateRequest(BaseModel):
 
 
 @router.post("/templates/add_terminal", status_code=201)
-async def create_terminal_template(body: TerminalTemplateRequest, background_tasks: BackgroundTasks):
+async def create_terminal_template(body: TerminalTemplateRequest):
     """Create a new terminal scenario from template and auto-run it."""
     from scenarios.templates import create_terminal_scenario
     from scenarios.model import store_scenario
-    from scenarios.runner import run_scenario
 
     scenario = create_terminal_scenario(
         body.terminal_letter, body.gates, body.security_lanes,
@@ -505,7 +497,6 @@ async def create_terminal_template(body: TerminalTemplateRequest, background_tas
     (await asyncio.to_thread(store_scenario, scenario))
     estimate = planning_metrics.estimate_duration(scenario.horizon, scenario.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="add_terminal").inc()
-    background_tasks.add_task(asyncio.to_thread, run_scenario, scenario)
     return {
         "scenario_id": scenario.id,
         "status": "pending",

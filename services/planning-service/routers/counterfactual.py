@@ -13,7 +13,7 @@ from copy import deepcopy
 from dataclasses import replace
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from engine.interventions import VALID_ACTIONS
@@ -25,7 +25,6 @@ from scenarios.model import (
     list_scenarios,
     store_scenario,
 )
-from scenarios.runner import run_scenario
 
 logger = structlog.get_logger(__name__)
 
@@ -66,7 +65,7 @@ def _spawn_replay_scenario(
         name=f"{parent.name} — {label}",
         description=f"Counterfactual replay of {parent.id}: {label}",
         status="pending", started_at=None, completed_at=None, error=None,
-        progress_pct=0, runs_completed=0,
+        progress_pct=0, runs_completed=0, attempt_count=0,
         interventions=deepcopy(interventions),
         disruption=deepcopy(disruption if disruption is not None else parent.disruption),
         parent_scenario_id=parent.id,
@@ -79,7 +78,6 @@ def _spawn_replay_scenario(
 async def scenario_replay(
     scenario_id: str,
     body: ReplayRequest,
-    background_tasks: BackgroundTasks,
 ):
     """Re-run a scenario with overridden decision timing (1B).
 
@@ -100,7 +98,6 @@ async def scenario_replay(
 
     estimate = planning_metrics.estimate_duration(child.horizon, child.monte_carlo_runs)
     planning_metrics.scenarios_created.labels(template="counterfactual").inc()
-    background_tasks.add_task(asyncio.to_thread, run_scenario, child)
 
     return {
         "scenario_id": child.id,
@@ -131,7 +128,6 @@ class CounterfactualReportRequest(BaseModel):
 async def counterfactual_report(
     scenario_id: str,
     body: CounterfactualReportRequest,
-    background_tasks: BackgroundTasks,
 ):
     """Spawn N replay scenarios varying the timing of one intervention.
 
@@ -160,7 +156,6 @@ async def counterfactual_report(
         ivs[body.intervention_index] = target
         label = f"shift {shift:+d}m → T={new_minute}"
         child = (await asyncio.to_thread(_spawn_replay_scenario, parent, ivs, disruption, label))
-        background_tasks.add_task(asyncio.to_thread, run_scenario, child)
         children.append({
             "scenario_id": child.id,
             "shift_minutes": shift,

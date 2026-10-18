@@ -1225,7 +1225,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 | Cost and analysis still have separate recommenders. Analysis ranking remains largely confidence-based rather than impact × confidence ÷ cost. | Emit cost signals into one recommendation/ranking path with comparable quantified impacts/costs. |
 | G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
-| G7 / P1 | Planning data now survives restart, but background jobs do not resume and have no durable worker lease/claim. Persisted interrupted runs can remain `running`. Analysis proposals are durable, but not coordinated across replicas. | Durable job scheduling/recovery, ownership and concurrency tests. Persistence is not equivalent to durable execution. |
+| G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. Analysis proposals remain uncoordinated across replicas; training-job recovery is separate. | Coordinate analysis proposal ownership/retries across replicas; retain planning fencing/crash/concurrency tests and extend interruption recovery to other job types. Runtime input/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
@@ -1598,7 +1598,11 @@ counts remain unchanged. These are additional checks, not weakened older tests.
 All **106 live integration tests pass**, no skips, in **183.18 s**, including
 all-service readiness and existing full restart/planning/command checks. The
 final new-group offset setting and type annotations are followed by a rebuilt
-image and rerun of the financial regression suites. Remote CI is pending.
+image and rerun of all twelve unit/six live financial regressions. GitHub run
+[39111013228](https://github.com/Jupiter41/arthur-airport/actions/runs/39111013228)
+passes all jobs on `919faf35bab59b59a1e315bb1c270d2f2bc6b478`: **983 units** and
+**106 live tests**, no skips, live duration **215.78 s**; Node lint/build and
+44 dashboard/22 gateway tests also pass.
 
 **Remaining limits:** this closes the cost-service transaction/dedup portion,
 not all of G1. Flight/passenger/baggage writes, receipts and fact publication
@@ -1608,3 +1612,48 @@ in-memory gate windows cannot be recovered by migration. Simulation rewinds with
 new IDs need an epoch policy. Per-process caches are not a coherent distributed
 read cache. Accounting perspective/rate unification (G2), calibrated financial
 effects/outcomes and the other §10 gaps remain open. Keep this roadmap active.
+
+
+## 17. A21 — Durable planning execution and recovery (2026-10-18)
+
+**Delivered planning portion of G7:** persisted pending scenarios now form the
+job queue. Routers/templates/replay/report no longer schedule an independent
+FastAPI background execution. A lifespan worker claims work before computing,
+using a Neo4j lock, renewable lease and unique fencing token. Claim commits the
+actual seed and increments `attempt_count`. An existing unexpired owner excludes
+competing workers; expired/legacy interrupted runs can be claimed automatically.
+
+Recovered attempts restart both Monte Carlo phases using the persisted seed and
+complete configuration, with attempt progress reset. They do not merge partial
+aggregates from different attempts. Heartbeats use Neo4j wall time solely as
+scheduling metadata; simulated days/seeds remain the engine inputs. Checks
+between simulated days stop interrupted/stale computation. Every progress write
+checks ownership; result, completed status and both outbox facts commit together.
+An expired/replaced worker cannot overwrite progress, results or failure state.
+Graceful shutdown releases its job to pending; abrupt exit leaves a recoverable
+lease. Readiness now includes the worker task.
+
+Public scenario/summary/status data includes `attempt_count`; replay children
+start their own attempt count. Job timestamps use UTC metadata, and the status
+endpoint handles legacy naive timestamps and stops elapsed duration at completion.
+`PLANNING.md` no longer describes lost in-memory records as current behavior.
+The planning skill now documents the durable worker and labels its unimplemented
+outcome measurer as planned G8 work.
+
+**Validation so far:** seven new lease/runner units and two elapsed-time cases
+join the preserved persistence tests. **992 Python units pass**, no skips, four
+remaining warnings (audit timestamp, LightGBM/sklearn). All five new live job
+checks pass against Neo4j: independent competing processes; stale token rejection;
+atomic completion rollback/retry; heartbeats beyond the original expiry; abrupt
+process exit followed by automatic service recovery using seed 0 and attempt 2.
+The complete isolated Compose gate passes **all 111 live tests**, no skips, in
+**218.50 s**, with all nine services and gateway ready. This retains the existing
+financial, prediction, command, planning/replay and full-restart assertions.
+Staged runtime/tests match the tested export. Remote CI is pending for A21.
+
+**Remaining G7 scope:** analysis proposal ownership across replicas and training
+job interruption recovery are not delivered here. One scenario runs per worker;
+there is no partial Monte Carlo checkpoint resume. Persisting a seed/config does
+not freeze changing input files or model versions. The job/financial regressions
+do not certify sustained load or every service's replica behavior. Keep the
+roadmap active under the remaining §10 completion conditions.

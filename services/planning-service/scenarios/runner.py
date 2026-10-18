@@ -12,7 +12,9 @@ from __future__ import annotations
 import logging
 import random
 import time
-from datetime import date, datetime, timedelta
+import threading
+from typing import Callable
+from datetime import date, datetime, timedelta, timezone
 
 from adapters.registry import get_schedule_adapter, get_weather_adapter
 from engine.infrastructure import InfrastructureConfig
@@ -23,7 +25,8 @@ from finance.benefit_extractor import extract_annual_benefit
 from finance.investment import compute_investment
 from scenarios.metrics import planning_metrics
 
-from .model import PlanningScenario, store_results, store_scenario
+from . import jobs
+from .model import PlanningScenario, _from_dict, store_completion, store_scenario
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +125,7 @@ def _run_monte_carlo(
     interventions: list[Intervention] | None = None,
     disruption: Disruption | None = None,
     new_routes: list[dict] | None = None,
+    check_cb: Callable[[], None] | None = None,
 ) -> list[list[DayResult]]:
     """Run N Monte Carlo iterations for a given infrastructure config.
 
@@ -132,6 +136,8 @@ def _run_monte_carlo(
         seed = (base_seed if base_seed is not None else random.randint(0, 999_999)) + run_idx
         run_results: list[DayResult] = []
         for sim_date in dates:
+            if check_cb:
+                check_cb()
             day_seed = seed + sim_date.toordinal()
             result = engine.run_day(
                 sim_date=sim_date,
@@ -250,7 +256,21 @@ def _infra_diff(baseline: InfrastructureConfig, scenario: InfrastructureConfig) 
     return diffs
 
 
-def run_scenario(scenario: PlanningScenario) -> None:
+def run_scenario(scenario: PlanningScenario, *, shutdown: threading.Event | None = None) -> None:
+    claimed = jobs.claim(scenario.id, shutdown=shutdown)
+    if claimed is None:
+        return
+    lease, document = claimed
+    token = jobs.current_lease.set(lease)
+    try:
+        lease.start()
+        _run_claimed(_from_dict(document))
+    finally:
+        lease.close()
+        jobs.current_lease.reset(token)
+
+
+def _run_claimed(scenario: PlanningScenario) -> None:
     """Run a planning scenario with automatic baseline comparison.
 
     1. Run baseline (do-nothing) with the same dates, seeds, adapter
@@ -258,18 +278,16 @@ def run_scenario(scenario: PlanningScenario) -> None:
     3. Compute delta (scenario - baseline) for all KPIs
     4. Run investment analysis using the actual delta
     """
-    scenario.status = "running"
-    scenario.started_at = datetime.utcnow().isoformat()
-    scenario.progress_pct = 0
-    scenario.runs_completed = 0
-    store_scenario(scenario)
+    lease = jobs.current_lease.get()
+    if lease is None:
+        raise RuntimeError("Planning execution requires a worker lease")
     t_start = time.monotonic()
     planning_metrics.active_scenarios.inc()
 
     try:
-        base_seed = scenario.random_seed if scenario.random_seed is not None else random.randint(0, 999_999)
-        scenario.random_seed = base_seed
-        store_scenario(scenario)
+        base_seed = scenario.random_seed
+        if base_seed is None:
+            raise RuntimeError("Job claim did not persist its random seed")
         schedule_adapter = get_schedule_adapter(scenario.demand_source)
         # If the scenario asks for a different weather source, plug a second
         # adapter; otherwise the engine reuses the schedule adapter.
@@ -308,6 +326,7 @@ def run_scenario(scenario: PlanningScenario) -> None:
             progress_cb=lambda done: _update_progress(scenario, done, total_runs),
             interventions=interventions_obj,
             disruption=disruption_obj,
+            check_cb=lease.check,
         )
         baseline_kpis = _collect_kpis(baseline_runs)
 
@@ -320,6 +339,7 @@ def run_scenario(scenario: PlanningScenario) -> None:
             interventions=interventions_obj,
             disruption=disruption_obj,
             new_routes=scenario.new_routes or None,
+            check_cb=lease.check,
         )
         scenario_kpis = _collect_kpis(scenario_runs)
 
@@ -363,16 +383,14 @@ def run_scenario(scenario: PlanningScenario) -> None:
             annual_benefit_breakdown=benefit_breakdown.to_dict(),
             infrastructure_changes=infra_changes,
             run_duration_seconds=elapsed,
-            computed_at=datetime.utcnow().isoformat(),
+            computed_at=datetime.now(timezone.utc).isoformat(),  # job metadata
         )
-        store_results(scenario.id, results.to_dict())
 
         scenario.status = "completed"
-        scenario.completed_at = datetime.utcnow().isoformat()
+        scenario.completed_at = datetime.now(timezone.utc).isoformat()  # job metadata
         scenario.progress_pct = 100
         scenario.runs_completed = total_runs
-        store_scenario(scenario)
-        planning_metrics.active_scenarios.dec()
+        store_completion(scenario, results.to_dict())
         planning_metrics.record_completion(
             horizon=scenario.horizon,
             monte_carlo_runs=n_runs,
@@ -384,14 +402,25 @@ def run_scenario(scenario: PlanningScenario) -> None:
             scenario.id, n_runs, len(dates), elapsed,
         )
 
+    except jobs.JobInterrupted:
+        try:
+            lease.release()
+        except Exception:
+            logger.warning("Interrupted job retained for lease recovery: %s", scenario.id, exc_info=True)
+    except jobs.LeaseLost:
+        logger.warning("Scenario %s lost ownership; stale publication stopped", scenario.id)
     except Exception as e:
         logger.error("Scenario %s failed: %s", scenario.id, e, exc_info=True)
         scenario.status = "failed"
         scenario.error = str(e)
-        scenario.completed_at = datetime.utcnow().isoformat()
-        planning_metrics.active_scenarios.dec()
-        store_scenario(scenario)
+        scenario.completed_at = datetime.now(timezone.utc).isoformat()  # job metadata
+        try:
+            lease.finish(scenario.to_dict())
+        except (jobs.LeaseLost, jobs.JobInterrupted):
+            logger.warning("Cannot publish failure after losing scenario ownership: %s", scenario.id)
         planning_metrics.record_failure()
+    finally:
+        planning_metrics.active_scenarios.dec()
 
 
 def _update_progress(scenario: PlanningScenario, done: int, total: int) -> None:

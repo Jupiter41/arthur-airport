@@ -375,10 +375,13 @@ receipts and planning audit logs are not yet one automatic feedback pipeline.
 
 ### Limitations
 
-- **In-memory storage**: scenarios and results are stored in Python dictionaries. They are lost
-  when the container restarts. This is by design for a simulation — not a production limitation.
-- **Single-threaded runner**: scenarios run sequentially in FastAPI background tasks. A long
-  scenario (year × 200 MC) blocks subsequent runs.
+- **Durable jobs**: Neo4j stores scenarios, results, job ownership and the event
+  outbox. An interrupted attempt restarts from its persisted seed/configuration
+  after lease expiry; it does not resume a partially aggregated Monte Carlo run.
+- **Per-worker capacity**: each service worker runs one scenario at a time.
+  Additional workers claim different jobs through fenced leases. Changing input
+  files or model versions between attempts can change results; the seed alone
+  does not freeze those dependencies.
 - **No real weather data**: weather effects are simulated, not fetched from a real weather API.
 
 For full technical details, see `docs/services/planning-service/SPEC.md`.

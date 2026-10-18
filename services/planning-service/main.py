@@ -8,6 +8,7 @@ publishes committed lifecycle events through a durable outbox.
 from contextlib import asynccontextmanager
 import asyncio
 import os
+import threading
 
 import structlog
 from fastapi import FastAPI, HTTPException
@@ -31,6 +32,7 @@ logger = structlog.get_logger("planning-service")
 async def lifespan(app: FastAPI):
     from confluent_kafka import Producer
     from db import store, outbox
+    from scenarios import jobs
 
     await asyncio.to_thread(store.initialize)
     producer = Producer({
@@ -39,11 +41,16 @@ async def lifespan(app: FastAPI):
     })
     stop = asyncio.Event()
     task = asyncio.create_task(outbox.run(producer, stop))
+    worker_stop = threading.Event()
+    worker = asyncio.create_task(jobs.run(worker_stop))
+    app.state.worker = worker
     app.state.producer = producer
     logger.info("planning-service started", port=8009)
     try:
         yield
     finally:
+        worker_stop.set()
+        await worker
         stop.set()
         await task
         await asyncio.to_thread(producer.flush, 10)
@@ -77,15 +84,17 @@ async def ready():
     neo4j_ok = await asyncio.to_thread(store.ready)
     producer = getattr(app.state, "producer", None)
     kafka_ok = False
+    worker = getattr(app.state, "worker", None)
+    worker_ok = worker is not None and not worker.done()
     if producer is not None:
         try:
             metadata = await asyncio.to_thread(producer.list_topics, timeout=3)
             kafka_ok = bool(metadata.brokers)
         except Exception:
             pass
-    if not neo4j_ok or not kafka_ok:
-        raise HTTPException(status_code=503, detail={"neo4j": neo4j_ok, "kafka": kafka_ok})
-    return {"status": "ready", "neo4j": True, "kafka": True}
+    if not neo4j_ok or not kafka_ok or not worker_ok:
+        raise HTTPException(status_code=503, detail={"neo4j": neo4j_ok, "kafka": kafka_ok, "worker": worker_ok})
+    return {"status": "ready", "neo4j": True, "kafka": True, "worker": True}
 
 
 @app.get("/api/v1/planning/adapters")

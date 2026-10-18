@@ -780,3 +780,15 @@ on retry. Delivery is at least once; consumers must deduplicate event IDs.
 Input offsets are committed only after the fetched batch has been processed.
 Missing source IDs use the broker topic/partition/offset identity. The wider
 domain-command transaction gaps remain open; this contract applies to cost-service.
+
+### Durable planning execution (2026-10-18)
+
+Lease-backed claims/recovery publish existing `PlanningScenarioUpdated` facts
+with status/progress. Scenario documents and status polls include `attempt_count`. A durable pending
+record is the queue entry; a worker commits a claim and seed before computing.
+Progress writes check a current fencing token. `PlanningResultUpdated` and the
+completed `PlanningScenarioUpdated` outbox entries commit with their records in
+one transaction. Lease renewal is scheduling metadata; simulation steps continue
+to use their configured dates/seeds. Graceful release publishes pending status;
+after a hard exit an expired claim can be recovered with the same seed/config.
+This restarts the attempt rather than restoring partially aggregated runs.

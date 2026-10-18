@@ -197,10 +197,11 @@ and cache it. Never re-read the file on each `get_daily_schedule()` call.
 
 ---
 
-## Background task: outcome measurement
+## Planned outcome measurement (G8)
 
-The `outcome_measurer.py` background task runs continuously and checks every
-30 sim-minutes whether any applied recommendations are due for outcome measurement.
+The following is a future design, not a running task. Outcomes currently enter
+through the manual API. Automatic simulation-clock measurement and attributed
+baselines remain G8 work; no completed background measurer is claimed.
 
 ```python
 # In main.py lifespan
@@ -222,32 +223,18 @@ subscribe **only** to `sim.clock` for this purpose — no other topics.
 
 ---
 
-## Scenario run as FastAPI background task
+## Durable scenario worker
 
-```python
-# routers/scenarios.py
-from fastapi import BackgroundTasks
+Creating a scenario persists a pending `PlanningScenario` plus its outbox event.
+The lifespan worker in `scenarios/jobs.py` claims pending or lease-expired jobs;
+routers must not schedule a second FastAPI background execution.
 
-@router.post("/scenarios")
-async def create_scenario(body: ScenarioCreate,
-                           background_tasks: BackgroundTasks):
-    scenario = await create_scenario_in_neo4j(body)
-    background_tasks.add_task(run_scenario_task, scenario.id)
-    return {"scenario_id": scenario.id, "status": "pending"}
-
-async def run_scenario_task(scenario_id: str):
-    try:
-        await update_status(scenario_id, "running")
-        result = await run_scenario(scenario_id)          # blocking MC run
-        await save_result(result)
-        await update_status(scenario_id, "completed")
-    except Exception as e:
-        await update_status(scenario_id, "failed", error=str(e))
-```
-
-For long-running scenarios (year/10year × 500 MC runs), the background task
-may run for several minutes. This is acceptable — the client polls
-`GET /scenarios/{id}/status` or uses the SSE stream.
+`run_scenario()` claims ownership, persists the seed before computing, and binds
+its task-local lease. Progress writes are fenced; results and completed status
+commit together. Check shutdown/ownership between simulated days. Heartbeats use
+real time only for job metadata. Recovery restarts both phases with the same
+seed/config, increments `attempt_count`, and resets attempt progress. Never
+reuse partial aggregates from an old attempt or publish after losing its token.
 
 ---
 

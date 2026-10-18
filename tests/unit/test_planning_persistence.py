@@ -1,6 +1,7 @@
 """Repository-boundary tests for planning durability and outbox delivery."""
 
 import copy
+import asyncio
 import importlib
 from datetime import date
 
@@ -56,6 +57,47 @@ def context(monkeypatch):
     monkeypatch.setattr(store, "_repository", repository)
     model = importlib.import_module("scenarios.model")
     audit = importlib.import_module("audit.audit_trail")
+    jobs = importlib.import_module("scenarios.jobs")
+
+    class Lease:
+        """Injected job adapter for runner calculation tests, without DB threads."""
+
+        def __init__(self, key):
+            self.key = key
+
+        def start(self):
+            pass
+
+        def close(self):
+            pass
+
+        def check(self):
+            pass
+
+        def save(self, document):
+            repository.put("PlanningScenario", self.key, document)
+
+        def finish(self, document, results=None):
+            if results is not None:
+                repository.put("PlanningResult", self.key, results)
+            self.save(document)
+
+        def release(self):
+            document = repository.get("PlanningScenario", self.key)
+            document["status"] = "pending"
+            self.save(document)
+
+    def claim(key, **kwargs):
+        document = repository.get("PlanningScenario", key)
+        if not document or document["status"] != "pending":
+            return None
+        document.update(status="running", attempt_count=document.get("attempt_count", 0) + 1)
+        if document["random_seed"] is None:
+            document["random_seed"] = 42
+        repository.put("PlanningScenario", key, document)
+        return Lease(key), document
+
+    monkeypatch.setattr(jobs, "claim", claim)
     return store, repository, model, audit
 
 
@@ -90,6 +132,20 @@ def test_persisted_progress_is_visible_to_another_reader(context):
     assert model.list_scenarios(status="running")[1] == 1
 
 
+@pytest.mark.parametrize("suffix", ["", "+00:00"])
+def test_completed_job_duration_accepts_legacy_and_aware_utc(context, suffix):
+    _, _, model, _ = context
+    router = importlib.import_module("routers.planning")
+    scenario = model.PlanningScenario(
+        status="completed", started_at=f"2026-01-01T12:00:00{suffix}",
+        completed_at=f"2026-01-01T12:02:00{suffix}", attempt_count=2,
+    )
+    model.store_scenario(scenario)
+    response = asyncio.run(router.get_scenario_status(scenario.id))
+    assert response["elapsed_seconds"] == 120
+    assert response["attempt_count"] == 2
+
+
 def test_replay_keeps_parent_configuration_and_independent_mutable_state(context, monkeypatch):
     _, _, model, _ = context
     router = importlib.import_module("routers.counterfactual")
@@ -98,6 +154,7 @@ def test_replay_keeps_parent_configuration_and_independent_mutable_state(context
         random_seed=42, weather_date="2026-01-02", demand_multiplier=1.25,
         new_routes=[{"destination": "XAA"}], removed_routes=["XBB"],
         disruption={"capacity_pct": 0.5}, completed_at="2026-01-03T00:00:00",
+        attempt_count=3,
     )
     saved = []
     monkeypatch.setattr(router, "store_scenario", saved.append)
@@ -105,6 +162,7 @@ def test_replay_keeps_parent_configuration_and_independent_mutable_state(context
     assert saved == [child]
     assert child.id != parent.id and child.parent_scenario_id == parent.id
     assert (child.status, child.progress_pct, child.runs_completed, child.completed_at) == ("pending", 0, 0, None)
+    assert child.attempt_count == 0
     for key in ("random_seed", "weather_date", "demand_multiplier", "new_routes", "removed_routes", "disruption"):
         assert getattr(child, key) == getattr(parent, key)
     child.infrastructure.gates_per_terminal["A"] = 1

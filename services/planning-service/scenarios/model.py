@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from db.store import get_repository
+from scenarios.jobs import current_lease
 
 from engine.infrastructure import InfrastructureConfig
 
@@ -24,7 +25,7 @@ class PlanningScenario:
     id: str = field(default_factory=lambda: str(uuid4()))
     name: str = ""
     description: str = ""
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())  # job metadata
 
     # Simulation parameters
     horizon: str = "day"  # day | week | month | year | 10year
@@ -65,6 +66,7 @@ class PlanningScenario:
     error: str | None = None
     progress_pct: int = 0
     runs_completed: int = 0
+    attempt_count: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -89,6 +91,7 @@ class PlanningScenario:
             "error": self.error,
             "progress_pct": self.progress_pct,
             "runs_completed": self.runs_completed,
+            "attempt_count": self.attempt_count,
             "interventions": list(self.interventions),
             "disruption": self.disruption,
             "parent_scenario_id": self.parent_scenario_id,
@@ -107,6 +110,7 @@ class PlanningScenario:
             "monte_carlo_runs": self.monte_carlo_runs,
             "created_at": self.created_at,
             "completed_at": self.completed_at,
+            "attempt_count": self.attempt_count,
         }
 
 
@@ -120,7 +124,11 @@ def _from_dict(document: dict) -> PlanningScenario:
 
 
 def store_scenario(scenario: PlanningScenario) -> None:
-    get_repository().put("PlanningScenario", scenario.id, scenario.to_dict())
+    lease = current_lease.get()
+    if lease is not None:
+        lease.save(scenario.to_dict())
+    else:
+        get_repository().put("PlanningScenario", scenario.id, scenario.to_dict())
 
 
 def get_scenario(scenario_id: str) -> PlanningScenario | None:
@@ -152,7 +160,16 @@ def delete_scenario(scenario_id: str) -> bool:
 
 
 def store_results(scenario_id: str, results: dict) -> None:
+    if current_lease.get() is not None:
+        raise RuntimeError("Worker results must commit with completed scenario status")
     get_repository().put("PlanningResult", scenario_id, results)
+
+
+def store_completion(scenario: PlanningScenario, results: dict) -> None:
+    lease = current_lease.get()
+    if lease is None:
+        raise RuntimeError("Planning completion requires an owning lease")
+    lease.finish(scenario.to_dict(), results)
 
 
 def get_results(scenario_id: str) -> dict | None:
