@@ -573,3 +573,13 @@ Security freezes retain each breach's incident identity. Resolving an unrelated
 cascade child cannot unfreeze the terminal, and overlapping breaches must all
 resolve before security resumes. Active/contained breaches are rebuilt from
 Neo4j alongside queues and lane counts on startup.
+
+### Command scheduling under event load
+
+`passengers.commands` has a dedicated consumer (`pax-commands-svc`) in the same
+service process. It executes serially on the service's asyncio loop while the
+fact/tick consumer awaits database I/O, so a fact backlog cannot starve operator
+commands. Commands wait for a validated simulation clock, retain partition order,
+and retry transient failures. Offsets are committed after durable receipt handling;
+receipts remain replayable from Neo4j. This does not close the domain-write/receipt
+transaction gap or provide a transactional Kafka outbox.

@@ -186,9 +186,11 @@ async def perf():
 async def ready():
     """Readiness probe — returns 200 only when Neo4j, Kafka, and the consumer are healthy."""
     from _common.ready import readiness_response
+    from kafka.consumer import get_sim_time
 
     return await readiness_response({
         "neo4j": check_neo4j,
         "kafka": check_kafka,
         "consumer": is_consumer_running,
+        "clock": lambda: get_sim_time() is not None,
     })

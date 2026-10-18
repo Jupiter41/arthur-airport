@@ -38,7 +38,9 @@ async def list_flights(
 ):
     """List all flights for the current simulated day."""
     sim_time = get_sim_time()
-    sim_date_prefix = sim_time.date().isoformat() if sim_time else None
+    if sim_time is None:
+        raise HTTPException(status_code=503, detail="Simulation clock not available")
+    sim_date_prefix = sim_time.date().isoformat()
 
     flights, total = await get_all_flights(
         status=status,

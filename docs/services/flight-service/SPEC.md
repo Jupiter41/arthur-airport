@@ -17,6 +17,11 @@
 - Expose REST endpoints for querying flight data
 - Expose WebSocket endpoint for live flight state streaming
 
+The current-day flight list requires a `SimClockTick` before serving data. Until
+that clock is available after startup/restart, `/flights` and `/ready` return 503;
+the service must not silently expand the list to every seeded day. A paused clock
+must emit a tick or resume before this clock-dependent readiness condition clears.
+
 ---
 
 ## 2. Flight state machine

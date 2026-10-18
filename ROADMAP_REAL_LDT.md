@@ -1486,3 +1486,43 @@ all-service readiness, full restart, planning/replay and command confirmation.
 Dashboard/gateway checks remain as recorded in A17; their code is unchanged here.
 
 The roadmap remains active under the completion conditions in §10/§13.
+
+
+## 15. A19 — Command scheduling and clock-dependent restart readiness (2026-10-18)
+
+GitHub run `39038375527` passed the unit/lint/build jobs and all-service
+readiness, then stopped at **49 passed / 1 failed** in the live gate. The owner
+receipt for the recovered approval did not arrive within 90 seconds; the cleanup
+command also timed out. The passenger logs subsequently show the original lane
+change executing. The fact/tick workload was delaying command consumption, rather
+than a receipt being sufficient proof of timely control.
+
+Passenger commands now use a dedicated Kafka consumer in the same service
+process. The command loop remains serial but can run while the fact/tick loop
+awaits database I/O. It waits for a real simulation clock, retries transient
+handler failures and commits offsets only after receipt handling. A new group
+starts at earliest offsets; persisted receipts make historical redelivery safe
+without repeating completed operations. Both loops shut down before adapters
+close. Broker delivery still lacks a transactional outbox, and the G1 domain
+write/receipt crash window remains open.
+
+The resumed local stack also exposed a separate restart defect: `/flights`
+silently removed its current-day filter before the first clock, returning all
+seven seeded days (2,940 flights) instead of the current 420. The flight list now
+returns 503 until a clock is available, and readiness includes this condition.
+This is an explicit contract correction in the flight spec. A paused simulation
+must emit a tick or resume before a restarted flight service becomes ready.
+
+Regressions cover command execution while a tick is blocked on I/O, waiting for
+clock/retrying before offset commit, and refusing an unbounded current-day query
+before the clock. The live restart assertions and time budgets are retained.
+
+**Local validation:** **974 unit tests passed**, no skips, 18 existing warnings;
+Ruff passes for both changed services and regression files. The isolated Compose
+stack passes **all 100 live integration tests**, no skips, in **160.93 s**,
+including all-service readiness, command confirmation/replay and full restart.
+Staged runtime/test files match the tested export. Dashboard and gateway source
+are unchanged from the A17/A18 validation; unrelated local work is excluded.
+
+Remote CI is pending for this correction. The roadmap remains active: these
+corrections do not close §10 G1–G12.

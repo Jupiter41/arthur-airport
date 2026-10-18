@@ -373,6 +373,57 @@ def _make_consumer() -> Consumer:
     })
 
 
+def _make_command_consumer() -> Consumer:
+    return Consumer({
+        "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
+        "group.id": "pax-commands-svc",
+        "auto.offset.reset": "earliest",
+        "enable.auto.commit": False,
+        "session.timeout.ms": 10000,
+    })
+
+
+async def _run_command_consumer() -> None:
+    """Keep commands responsive while the fact consumer awaits expensive ticks."""
+    global _consumer_running
+    consumer = _make_command_consumer()
+    consumer.subscribe(["passengers.commands"])
+    loop = asyncio.get_running_loop()
+    try:
+        while _consumer_running:
+            message = await loop.run_in_executor(None, consumer.poll, 0.1)
+            if message is None or message.error():
+                continue
+            try:
+                envelope = json.loads(message.value().decode("utf-8"))
+                if (not isinstance(envelope, dict)
+                        or not isinstance(envelope.get("command_id"), str)
+                        or not envelope["command_id"]):
+                    raise ValueError("command_id is required")
+            except (ValueError, UnicodeError):
+                logger.warning("Invalid command envelope", exc_info=True)
+            else:
+                while _consumer_running:
+                    if _state.sim_time is None:
+                        await asyncio.sleep(0.1)
+                        continue
+                    try:
+                        await _handle_command(envelope)
+                    except Exception:
+                        logger.exception("Command handling failed; retrying %s", envelope["command_id"])
+                        await asyncio.sleep(0.1)
+                        continue
+                    break
+                if not _consumer_running:
+                    break  # Never acknowledge an unfinished command on shutdown.
+            await loop.run_in_executor(
+                None, lambda: consumer.commit(message=message, asynchronous=False),
+            )
+    finally:
+        _consumer_running = False
+        consumer.close()
+
+
 async def run_consumer() -> None:
     """Main consumer loop — runs as background asyncio task."""
     global _consumer, _consumer_running
@@ -384,16 +435,16 @@ async def run_consumer() -> None:
         "incidents.events",
         "baggage.events",
         "weather.events",
-        "passengers.commands",
     ])
     _consumer_running = True
 
     loop = asyncio.get_event_loop()
     logger.info(
         "Kafka consumer started (topics: sim.clock, flights.events, incidents.events, "
-        "baggage.events, weather.events, passengers.commands)"
+        "baggage.events, weather.events); dedicated passenger command consumer started"
     )
 
+    command_task = asyncio.create_task(_run_command_consumer())
     deferred_commands: list[dict] = []
     try:
         while _consumer_running:
@@ -451,8 +502,11 @@ async def run_consumer() -> None:
 
             _consumer_health.mark_message()
     finally:
-        _consumer.close()
         _consumer_running = False
+        try:
+            await command_task
+        finally:
+            _consumer.close()
         logger.info("Kafka consumer stopped")
 
 
