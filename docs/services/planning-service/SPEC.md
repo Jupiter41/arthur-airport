@@ -65,6 +65,15 @@ does not freeze external input files or model versions across recovery.
 
 ### `PlanningScenario`
 
+The first job claim snapshots the cost owner's committed rates (or shared
+synthetic defaults before cost startup) into `financial_rates` and
+`financial_rates_version`. Both Monte Carlo phases, investment benefit extraction,
+recovered attempts and replay children use this immutable snapshot. Results expose
+the content version. No service HTTP call or operational write is involved.
+Schedule/weather/model file snapshots remain separate roadmap work.
+Legacy scenarios without a stored rate snapshot acquire one on their next claim;
+their original historical rate inputs cannot be reconstructed retrospectively.
+
 | Property                | Type                 | Description                                                                             |
 | ----------------------- | -------------------- | --------------------------------------------------------------------------------------- |
 | `id`                    | String (UUID)        | Unique                                                                                  |
@@ -104,6 +113,7 @@ One node per scenario, created on completion.
 | `model_versions`           | String (JSON) | demand_model + delay_model versions used |
 | `run_duration_seconds`     | Float         | Wall-clock time for all MC runs          |
 | `computed_at`              | String (ISO)  |                                          |
+| `financial_rates_version`  | String \| null | Content identity of the scenario's frozen financial rates |
 
 ### `RecommendationLog`
 

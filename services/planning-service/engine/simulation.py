@@ -14,17 +14,12 @@ from __future__ import annotations
 import logging
 import random
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, datetime, time as dt_time, timedelta
 
 from adapters.base import AbstractAdapter
-from _common.finance_constants import (
-    DELAY_COST_PER_MINUTE_EUR,
-    EU261_TIERS,
-    GATE_FEE_PER_HOUR_EUR,
-    LANDING_FEE_PER_TONNE_EUR,
-    PAX_DEPARTURE_FEE_EUR,
-)
+from _common.financial_rates import load_default_rates, resolve_rates_for_airline
 
 from .infrastructure import InfrastructureConfig
 from .interventions import Disruption, Intervention, aggregate_capacity_factor
@@ -228,10 +223,12 @@ class PlanningSimEngine:
         seed: int | None = None,
         *,
         weather_adapter: AbstractAdapter | None = None,
+        financial_rates: dict | None = None,
     ):
         self.adapter = adapter
         self.weather_adapter = weather_adapter or adapter
         self._base_seed = seed
+        self.financial_rates = deepcopy(financial_rates if financial_rates is not None else load_default_rates())
 
     def run_day(
         self,
@@ -366,7 +363,10 @@ class PlanningSimEngine:
             state.flights[flight.id] = flight
 
             # Revenue from passenger fees
-            state.revenues["pax_fees"] += flight.pax_count * PAX_DEPARTURE_FEE_EUR
+            rates = resolve_rates_for_airline(self.financial_rates, flight.airline_code)
+            state.revenues["pax_fees"] += (
+                flight.pax_count * rates["airport_fees"]["passenger_departure_fee_eur"]
+            )
 
         return state
 
@@ -447,9 +447,9 @@ class PlanningSimEngine:
                         flight.boarded_at = sim_time
                         state.gate_occupancy[gate] = flight.id
                         # Landing fee (revenue + cost)
-                        seats = SEAT_MAP.get(flight.aircraft_type, 180)
-                        mtow_tonnes = seats * 0.4  # rough estimate
-                        fee = mtow_tonnes * LANDING_FEE_PER_TONNE_EUR
+                        rates = resolve_rates_for_airline(self.financial_rates, flight.airline_code)
+                        mtow_tonnes = rates["mtow_kg"].get(flight.aircraft_type, 78_000) / 1000
+                        fee = round(mtow_tonnes * rates["airport_fees"]["landing_rate_per_tonne_eur"], 2)
                         state.revenues["landing_fees"] += fee
                         state.costs["landing_fees"] += fee * 0.3  # airport cost p + extra_lanesortion
                     else:
@@ -496,8 +496,10 @@ class PlanningSimEngine:
                                 if flight.boarded_at else 1.0
                             )
                             state.gate_hours_used += board_duration_hr
-                            state.costs["gate_fees"] += board_duration_hr * GATE_FEE_PER_HOUR_EUR
-                            state.revenues["gate_fees"] += board_duration_hr * GATE_FEE_PER_HOUR_EUR
+                            rates = resolve_rates_for_airline(self.financial_rates, flight.airline_code)
+                            gate_fee = board_duration_hr * rates["airport_fees"]["gate_rate_per_hour_eur"]
+                            state.costs["gate_fees"] += gate_fee
+                            state.revenues["gate_fees"] += gate_fee
 
                         # Calculate final delay
                         actual_delay = (sim_time - flight.scheduled_departure).total_seconds() / 60
@@ -507,10 +509,15 @@ class PlanningSimEngine:
                             state.max_delay_minutes = max(state.max_delay_minutes, actual_delay)
 
                             # Delay costs
-                            state.costs["delay"] += actual_delay * DELAY_COST_PER_MINUTE_EUR
+                            state.costs["delay"] += (
+                                actual_delay * self.financial_rates["planning_assumptions"]["delay_cost_per_minute_eur"]
+                            )
 
                             # EU261 liability
-                            eu261 = self._compute_eu261(actual_delay, flight.distance_km, flight.pax_count)
+                            rates = resolve_rates_for_airline(self.financial_rates, flight.airline_code)
+                            eu261 = self._compute_eu261(
+                                actual_delay, flight.distance_km, flight.pax_count, rates,
+                            )
                             state.costs["eu261"] += eu261
 
                     else:
@@ -554,12 +561,15 @@ class PlanningSimEngine:
         return None
 
     @staticmethod
-    def _compute_eu261(delay_minutes: float, distance_km: float, pax_count: int) -> float:
+    def _compute_eu261(delay_minutes: float, distance_km: float, pax_count: int, rates: dict | None = None) -> float:
         """Compute EU261 compensation liability for a delayed flight."""
         compensation = 0.0
-        for min_delay, max_dist, amount in EU261_TIERS:
-            if delay_minutes >= min_delay and distance_km <= max_dist:
-                compensation = amount
+        table = rates if rates is not None else load_default_rates()
+        for tier in table["eu261"]:
+            if tier.get("assistance_only"):
+                continue
+            if delay_minutes >= tier["min_delay_minutes"] and distance_km <= tier["max_distance_km"]:
+                compensation = tier["compensation_eur"]
                 break
         if compensation > 0:
             # Assume ~30% of pax claim

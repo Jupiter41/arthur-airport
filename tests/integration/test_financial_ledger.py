@@ -40,7 +40,6 @@ async def counts(tx, source):
 
 async def main():
     await db._init_driver()
-    consumer.set_rates(json.loads(Path('fixtures/cost_rates.json').read_text()))
     consumer.set_carbon_factors(json.loads(Path('fixtures/carbon_factors.json').read_text()))
     await ledger.initialize()
     event = args['event']

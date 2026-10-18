@@ -92,6 +92,8 @@ class Tx:
             db["inbox"].add(params["id"])
         elif "SET s.document" in query:
             db["document"] = params["document"]
+        elif "RETURN s.document AS document" in query:
+            return Result([{"document": db["document"]}])
         elif "UNWIND $rows" in query:
             db["cost" if "CostRecord" in query else "carbon"].extend(params["rows"])
         elif "UNWIND $events" in query:
@@ -122,7 +124,6 @@ def cost_ctx(monkeypatch):
     monkeypatch.setattr(engine, "get_flight_info", AsyncMock(return_value=flight))
     monkeypatch.setattr(db, "get_flight_info", AsyncMock(return_value=flight))
     monkeypatch.setattr(engine, "get_holding_flights", AsyncMock(return_value=[]))
-    consumer.set_rates(json.loads((FIXTURES / "cost_rates.json").read_text()))
     consumer.set_carbon_factors(json.loads((FIXTURES / "carbon_factors.json").read_text()))
     engine.init_running_totals({})
     engine.reset_daily_history()
@@ -311,3 +312,52 @@ def test_consumer_retries_before_batch_commit_and_never_commits_unfinished_batch
     asyncio.run(consumer.run_consumer())
     assert committed == ([] if abort else [True])
     assert len(attempts) == (1 if abort else 3)
+
+
+def test_rate_patch_and_outbox_roll_back_together_and_survive_cache_loss(cost_ctx):
+    consumer, engine, _, driver = cost_ctx
+    rates = importlib.import_module("services.rates")
+    from _common.financial_rates import rates_version
+    before = deepcopy(driver.db)
+    driver.fail_once = "UNWIND $events"
+    with pytest.raises(RuntimeError, match="Injected"):
+        asyncio.run(rates.update({"airport_fees": {"passenger_departure_fee_eur": 31}}))
+    assert driver.db == before
+    committed = asyncio.run(rates.update({"airport_fees": {"passenger_departure_fee_eur": 31}}))
+    assert asyncio.run(rates.read()) == committed
+    fact = json.loads(next(iter(driver.db["outbox"].values()))["document"])
+    assert fact["event_type"] == "CostRatesUpdated"
+    assert fact["payload"]["version"] == rates_version(committed)
+    asyncio.run(consumer.process_envelope(departed()))
+    pax = [r["record"] for r in driver.db["cost"] if r["record"]["category"] == "passenger_fee"]
+    assert len(pax) == 2 and all(r["amount_eur"] == 3100 for r in pax)
+    assert all(r["rates_version"] == rates_version(committed) for r in pax)
+    asyncio.run(consumer.ledger.initialize())
+    assert asyncio.run(rates.read()) == committed
+
+
+def test_invalid_patch_after_valid_field_leaves_durable_state_and_outbox_unchanged(cost_ctx):
+    _, _, _, driver = cost_ctx
+    rates = importlib.import_module("services.rates")
+    asyncio.run(rates.update({"airport_fees": {"passenger_departure_fee_eur": 31}}))
+    before = deepcopy(driver.db)
+    with pytest.raises(ValueError):
+        asyncio.run(rates.update({"airport_fees": {"passenger_departure_fee_eur": 99,
+                                                 "landing_rate_per_tonne_eur": False}}))
+    assert driver.db == before
+
+
+def test_rate_update_has_a_stable_kafka_routing_key(cost_ctx, monkeypatch):
+    producer = importlib.import_module("kafka.producer")
+    sent = []
+
+    class Broker:
+        def produce(self, **message):
+            sent.append(message)
+            message["callback"](None, None)
+
+    monkeypatch.setattr(producer, "_producer", Broker())
+    fact = {"event_type": "CostRatesUpdated", "payload": {"rates": {}, "version": "synthetic"}}
+    producer.publish_confirmed(fact)
+    assert sent[0]["key"] == b"financial-rates"
+    assert json.loads(sent[0]["value"]) == fact

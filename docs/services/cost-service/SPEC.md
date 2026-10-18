@@ -95,6 +95,7 @@ Core capabilities:
 | `sim_day`     | Integer       | Day number in simulation                   |
 | `description` | String        | Human-readable label                       |
 | `is_revenue`  | Boolean       | `true` for revenue records                 |
+| `rates_version` | String (SHA-256) | Effective financial table content identity; absent on legacy records |
 
 ### Relationships
 
@@ -120,8 +121,30 @@ CREATE INDEX cost_record_sim_day IF NOT EXISTS
 
 ## 4. Reference data
 
-All cost rates are loaded from `fixtures/cost_rates.json` and can be overridden at runtime
-via `PATCH /api/v1/costs/rates`. Rate categories:
+### Versioned rate contract (Real LDT G2, 2026-10-18)
+
+`services/_common/data/cost_rates.json` is the sole synthetic default table.
+The cost owner stores the effective table and its SHA-256 content version in
+`CostRuntime.document`. Startup seeds defaults only when no table exists.
+`PATCH /rates` validates the entire candidate before committing it, under the
+same runtime lock as financial processing, together with a `CostRatesUpdated`
+outbox event. Rejected patches have no effects. GET reads the committed table;
+each financial input uses the table in its transaction, including across replicas.
+Rate events use the latest consumed simulation clock, or the fixed synthetic
+epoch `2026-01-01T00:00:00Z` before the first tick. Optional fuel refreshes use
+this same persistence path. Existing charges are never repriced.
+
+Planning reads this graph snapshot once on first job claim (shared defaults if
+cost has not initialized). It persists the full table and content version in its
+scenario before computing. Recovery and replay children retain these rates;
+new independent scenarios select the current committed table. This freezes rate
+inputs, not schedule/weather/model files or accounting perspectives. Default
+reference constants are derived from the same shared table.
+Overrides held only in memory by pre-A22 deployments cannot be recovered on
+upgrade; operators must reapply them. Existing committed charges remain intact.
+
+Effective rates are restored from Neo4j; the shared default table seeds a new
+runtime. `PATCH /api/v1/costs/rates` commits validated overrides. Rate categories:
 
 - **mtow_kg** — per aircraft type maximum takeoff weight
 - **airport_fees** — landing, gate, passenger departure, cargo rates
@@ -131,6 +154,7 @@ via `PATCH /api/v1/costs/rates`. Rate categories:
 - **incident_costs** — direct + response costs per incident type
 - **staffing** — hourly rates per staff type (security, check-in, gate, ground)
 - **revenue** — retail spend per pax, parking, slot fees
+- **planning_assumptions** — delay valuation and annualization used by planning
 
 Aircraft are classified into three families for cost calculations:
 - **wide**: B77W, A333, A332, A359

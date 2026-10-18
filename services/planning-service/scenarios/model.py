@@ -31,6 +31,8 @@ class PlanningScenario:
     horizon: str = "day"  # day | week | month | year | 10year
     monte_carlo_runs: int = 1
     random_seed: int | None = None
+    financial_rates: dict | None = None
+    financial_rates_version: str | None = None
 
     # Infrastructure override
     infrastructure: InfrastructureConfig = field(default_factory=InfrastructureConfig.baseline)
@@ -77,6 +79,8 @@ class PlanningScenario:
             "horizon": self.horizon,
             "monte_carlo_runs": self.monte_carlo_runs,
             "random_seed": self.random_seed,
+            "financial_rates": self.financial_rates,
+            "financial_rates_version": self.financial_rates_version,
             "infrastructure": self.infrastructure.to_dict(),
             "demand_source": self.demand_source,
             "weather_source": self.weather_source,

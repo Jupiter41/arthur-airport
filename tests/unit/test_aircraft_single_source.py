@@ -64,7 +64,7 @@ def test_finance_constants_match_cost_rates_fixture():
     """cost-service fixture fees must not drift from the shared constants."""
     from _common import finance_constants as fc
 
-    rates_path = _SERVICES_DIR / "cost-service" / "fixtures" / "cost_rates.json"
+    rates_path = _SERVICES_DIR / "_common" / "data" / "cost_rates.json"
     fees = json.loads(rates_path.read_text())["airport_fees"]
 
     assert fees["landing_rate_per_tonne_eur"] == fc.LANDING_FEE_PER_TONNE_EUR

@@ -27,6 +27,7 @@ source of truth so the simulator never stalls on a flaky upstream.
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 from typing import Any
 
@@ -53,7 +54,7 @@ def _coerce_price(payload: Any) -> float | None:
         price = float(candidate)
     except (TypeError, ValueError):
         return None
-    if price <= 0 or price > 10:  # sanity guard — jet fuel never trades >€10/kg
+    if not math.isfinite(price) or price <= 0 or price > 10:
         return None
     return price
 

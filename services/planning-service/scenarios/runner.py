@@ -304,6 +304,7 @@ def _run_claimed(scenario: PlanningScenario) -> None:
             adapter=schedule_adapter,
             seed=base_seed,
             weather_adapter=weather_adapter,
+            financial_rates=scenario.financial_rates,
         )
 
         dates = _generate_dates(scenario.horizon, seed=base_seed)
@@ -348,7 +349,9 @@ def _run_claimed(scenario: PlanningScenario) -> None:
         infra_changes = _infra_diff(baseline_infra, scenario.infrastructure)
 
         # ── Phase 4: Financial analysis ─────────────────────
-        benefit_breakdown = extract_annual_benefit(baseline_kpis, scenario_kpis)
+        benefit_breakdown = extract_annual_benefit(
+            baseline_kpis, scenario_kpis, financial_rates=scenario.financial_rates,
+        )
         annual_benefit = benefit_breakdown.total_annual_benefit
 
         financials: dict = {}
@@ -384,6 +387,7 @@ def _run_claimed(scenario: PlanningScenario) -> None:
             infrastructure_changes=infra_changes,
             run_duration_seconds=elapsed,
             computed_at=datetime.now(timezone.utc).isoformat(),  # job metadata
+            financial_rates_version=scenario.financial_rates_version,
         )
 
         scenario.status = "completed"

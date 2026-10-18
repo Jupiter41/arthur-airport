@@ -12,6 +12,8 @@ from uuid import uuid4
 from neo4j import AsyncManagedTransaction
 from pydantic import BaseModel, Field
 
+from _common.financial_rates import load_default_rates, rates_version
+
 
 class FinancialEnvelope(BaseModel):
     event_id: str = Field(min_length=1, strict=True)
@@ -69,10 +71,16 @@ async def _locked_state(tx: AsyncManagedTransaction) -> tuple[dict, int]:
     )
     row = await result.single()
     if row["document"]:
-        return json.loads(row["document"]), row["revision"]
+        state = json.loads(row["document"])
+        if "rates" not in state:
+            state["rates"] = load_default_rates()
+            state["rates_version"] = rates_version(state["rates"])
+        return state, row["revision"]
 
     # One-time migration, under the same lock: preserve existing ledger totals.
     state = {"sim_day": 1, "gate_starts": {}, "last_staffing_hour": None, "days": {}}
+    state["rates"] = load_default_rates()
+    state["rates_version"] = rates_version(state["rates"])
     costs = await tx.run(
         "MATCH (c:CostRecord) RETURN c.sim_day AS sim_day, c.category AS category, "
         "c.is_revenue AS is_revenue, sum(c.amount_eur) AS amount_eur, max(c.sim_time) AS sim_time"
@@ -119,6 +127,8 @@ async def _write_records(tx: AsyncManagedTransaction, rows: list[dict], kind: st
 async def _write_effects(tx: AsyncManagedTransaction, batch: LedgerBatch, envelope: dict, revision: int) -> None:
     events = []
     for kind, rows in (("cost", batch.costs), ("carbon", batch.carbon)):
+        for row in rows:
+            row["record"]["rates_version"] = batch.state["rates_version"]
         if rows:
             await _write_records(tx, rows, kind, envelope["event_id"])
         for row in rows:

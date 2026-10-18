@@ -65,6 +65,8 @@ class Tx:
             self.driver.fail_once = None
             raise RuntimeError("Injected transaction failure")
         key = params.get("id")
+        if "MATCH (s:CostRuntime" in query:
+            return Result([{"document": self.db["cost_runtime"]}] if self.db.get("cost_runtime") else [])
         if "MERGE (n:PlanningScenario" in query:
             self.db["scenarios"].setdefault(key, {"token": None, "until": 0})["document"] = params["document"]
         elif "CREATE (e:PlanningEvent" in query:
@@ -213,3 +215,22 @@ def test_shutdown_guard_precedes_the_next_simulated_day(context):
     with pytest.raises(jobs.JobInterrupted):
         runner._run_monte_carlo(engine, [None], None, 1, 0, "synthetic", check_cb=check)
     engine.run_day.assert_not_called()
+
+
+def test_first_claim_freezes_rates_and_recovery_retains_snapshot(context):
+    jobs, model, driver, _ = context
+    from _common.financial_rates import load_default_rates, rates_version
+    rates = load_default_rates()
+    rates["airport_fees"]["passenger_departure_fee_eur"] = 31
+    driver.db["cost_runtime"] = json.dumps({"rates": rates})
+    scenario = model.PlanningScenario(random_seed=0)
+    model.store_scenario(scenario)
+    lease, first = jobs.claim(scenario.id)
+    assert first["financial_rates"] == rates
+    assert first["financial_rates_version"] == rates_version(rates)
+    driver.db["cost_runtime"] = json.dumps({"rates": load_default_rates()})
+    driver.now += 31_000
+    _, recovered = jobs.claim(scenario.id)
+    assert recovered["attempt_count"] == 2
+    assert recovered["financial_rates"] == rates
+    assert recovered["financial_rates_version"] == first["financial_rates_version"]

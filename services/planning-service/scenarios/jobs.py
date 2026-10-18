@@ -177,6 +177,13 @@ def claim(scenario_id: str, shutdown: threading.Event | None = None,
                         attempt_count=document.get("attempt_count", 0) + 1)
         if document.get("random_seed") is None:
             document["random_seed"] = seed
+        if document.get("financial_rates") is None:
+            from _common.financial_rates import load_default_rates, rates_version
+
+            stored = tx.run("MATCH (s:CostRuntime {id: 'latest'}) RETURN s.document AS document").single()
+            cost_state = json.loads(stored["document"]) if stored and stored["document"] else {}
+            document["financial_rates"] = cost_state.get("rates") or load_default_rates()
+            document["financial_rates_version"] = rates_version(document["financial_rates"])
         _persist(tx, document)
         tx.run("MATCH (s:PlanningScenario {id: $id}) "
                "SET s.lease_token = $token, s.lease_until = timestamp() + $ttl",

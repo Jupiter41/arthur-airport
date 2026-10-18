@@ -49,7 +49,8 @@ def publish_confirmed(envelope: dict) -> None:
         raise RuntimeError("Financial event producer unavailable")
     delivered = []
     payload = envelope["payload"]
-    key = payload.get("cost_record_id") or payload.get("carbon_record_id") or payload["source_event_id"]
+    key = ("financial-rates" if envelope["event_type"] == "CostRatesUpdated" else
+           payload.get("cost_record_id") or payload.get("carbon_record_id") or payload["source_event_id"])
     _producer.produce(
         topic=EVENTS_TOPIC, key=key.encode(), value=json.dumps(envelope, allow_nan=False).encode(),
         callback=lambda error, message: delivered.append(error),

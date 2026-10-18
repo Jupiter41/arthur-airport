@@ -1,4 +1,10 @@
 {
+  "planning_assumptions": {
+    "delay_cost_per_minute_eur": 102.0,
+    "rebooking_cost_per_pax_eur": 285.0,
+    "eu261_average_claim_eur": 400.0,
+    "operating_days_per_year": 365
+  },
   "mtow_kg": {
     "B738": 79016,
     "A320": 78000,

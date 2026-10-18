@@ -290,3 +290,23 @@ class TestPlanningSimEngine:
         # Reduced infrastructure should cause more gate conflicts or delays
         assert r_reduced.gate_conflicts >= r_baseline.gate_conflicts or \
                r_reduced.avg_delay_minutes >= r_baseline.avg_delay_minutes
+
+
+def test_engine_uses_frozen_shared_fee_table_and_carrier_overrides():
+    from _common.financial_rates import load_default_rates, merge_rates
+    rates = merge_rates(load_default_rates(), {"airline_overrides": {"XX": {
+        "airport_fees": {"passenger_departure_fee_eur": 31,
+                         "landing_rate_per_tonne_eur": 20, "gate_rate_per_hour_eur": 0},
+    }}})
+    engine = PlanningSimEngine(StubAdapter(n_flights=1), seed=42, financial_rates=rates)
+    rates["airline_overrides"]["XX"]["airport_fees"]["passenger_departure_fee_eur"] = 99
+    result = engine.run_day(date(2026, 1, 1), InfrastructureConfig.baseline())
+    # One A320: actual shared MTOW=78t, 150 pax, no gate fee.
+    assert result.total_revenue_eur == 150 * 31 + 78 * 20
+
+
+def test_planning_compensation_uses_selected_tiers():
+    from _common.financial_rates import load_default_rates
+    rates = load_default_rates()
+    rates["eu261"][1]["compensation_eur"] = 500
+    assert PlanningSimEngine._compute_eu261(180, 1200, 100, rates) == 30 * 500

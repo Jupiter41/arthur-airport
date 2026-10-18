@@ -52,6 +52,12 @@ has no real-time dependency — it operates on synthetic dates.
 
 ## InfrastructureConfig is immutable per run
 
+Financial rates are also immutable inputs: the first job claim reads the cost
+owner's Neo4j checkpoint (shared defaults before cost initialization) and persists
+`financial_rates` plus its content version. Pass that snapshot to the engine and
+benefit extractor. Recovered jobs and replay children retain it; never reread live
+rates inside a Monte Carlo day. This does not freeze schedule/weather/model files.
+
 ```python
 from dataclasses import replace
 

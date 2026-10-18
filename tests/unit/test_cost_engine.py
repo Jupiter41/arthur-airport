@@ -31,7 +31,7 @@ init_running_totals = _engine.init_running_totals
 _running_totals = _engine._running_totals
 
 # Load the actual cost_rates.json fixture used in production
-FIXTURES_PATH = Path(__file__).parent.parent.parent / "services" / "cost-service" / "fixtures" / "cost_rates.json"
+FIXTURES_PATH = Path(__file__).parent.parent.parent / "services" / "_common" / "data" / "cost_rates.json"
 
 with open(FIXTURES_PATH) as f:
     RATES = json.load(f)

@@ -25,7 +25,7 @@ from db.neo4j import (  # noqa: E402
     rebuild_running_totals,
     wait_for_neo4j,
 )
-from kafka.consumer import run_consumer, set_carbon_factors, set_rates, stop_consumer  # noqa: E402
+from kafka.consumer import run_consumer, set_carbon_factors, stop_consumer  # noqa: E402
 from kafka.producer import (  # noqa: E402
     check_kafka,
     close_kafka_producer,
@@ -33,24 +33,14 @@ from kafka.producer import (  # noqa: E402
     wait_for_kafka,
 )
 from routers.costs import router as costs_router  # noqa: E402
-from routers.costs import set_rates as router_set_rates  # noqa: E402
 from services import carbon_tracker  # noqa: E402
-from services import fuel_price as fuel_price_feed  # noqa: E402
+from services import rates as rate_store  # noqa: E402
 from services.cost_engine import init_running_totals  # noqa: E402
 from services import ledger, outbox  # noqa: E402
 
 logger = structlog.get_logger("cost-service")
 
-FIXTURES_PATH = Path(__file__).parent / "fixtures" / "cost_rates.json"
 CARBON_FIXTURES_PATH = Path(__file__).parent / "fixtures" / "carbon_factors.json"
-
-
-def load_cost_rates() -> dict:
-    """Load cost rate fixtures from JSON file."""
-    with open(FIXTURES_PATH) as f:
-        rates = json.load(f)
-    logger.info("cost rates loaded", keys=list(rates.keys()))
-    return rates
 
 
 def load_carbon_factors() -> dict:
@@ -75,14 +65,6 @@ async def lifespan(app: FastAPI):
     # 4. Create Neo4j constraints and indexes
     await create_constraints_and_indexes()
 
-    # 5. Load cost rates
-    rates = load_cost_rates()
-    # Best-effort live fuel-price refresh before consumers start; failures are
-    # logged but never block startup.
-    await fuel_price_feed.refresh_once(rates)
-    set_rates(rates)
-    router_set_rates(rates)
-
     # 5b. Load carbon factors
     carbon_factors = load_carbon_factors()
     set_carbon_factors(carbon_factors)
@@ -100,6 +82,7 @@ async def lifespan(app: FastAPI):
         )
     await carbon_tracker.restore_totals_from_db()
     await ledger.initialize()
+    await rate_store.refresh_fuel_once()
 
     # 7. Start Kafka consumer
     consumer_task = asyncio.create_task(run_consumer())
@@ -116,7 +99,7 @@ async def lifespan(app: FastAPI):
     outbox_task = asyncio.create_task(outbox.run(outbox_stop))
 
     # Background fuel-price refresh — no-op when FUEL_PRICE_URL is unset.
-    fuel_task = asyncio.create_task(fuel_price_feed.refresh_loop(rates))
+    fuel_task = asyncio.create_task(rate_store.refresh_fuel_loop())
     logger.info("cost-service started")
 
     yield

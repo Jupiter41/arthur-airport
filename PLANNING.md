@@ -382,6 +382,9 @@ receipts and planning audit logs are not yet one automatic feedback pipeline.
   Additional workers claim different jobs through fenced leases. Changing input
   files or model versions between attempts can change results; the seed alone
   does not freeze those dependencies.
+- **Frozen financial rates**: first claim persists the cost owner's effective
+  table and content version. Both phases, recovery and replay use that snapshot;
+  changing live rates affects new independent jobs, never an existing attempt.
 - **No real weather data**: weather effects are simulated, not fetched from a real weather API.
 
 For full technical details, see `docs/services/planning-service/SPEC.md`.

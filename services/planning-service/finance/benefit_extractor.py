@@ -56,13 +56,21 @@ class AnnualBenefitBreakdown:
 def extract_annual_benefit(
     baseline_kpis: dict[str, KPIDistribution],
     scenario_kpis: dict[str, KPIDistribution],
-    operating_days_per_year: int = OPERATING_DAYS_PER_YEAR,
+    operating_days_per_year: int | None = None,
+    *,
+    financial_rates: dict | None = None,
 ) -> AnnualBenefitBreakdown:
     """Translate daily KPI improvements into annual financial value.
 
     Computes the difference (baseline - scenario) for cost-related KPIs,
     since lower costs in the scenario = positive benefit.
     """
+    from _common.financial_rates import load_default_rates
+
+    assumptions = (financial_rates if financial_rates is not None else load_default_rates())["planning_assumptions"]
+    if operating_days_per_year is None:
+        operating_days_per_year = assumptions["operating_days_per_year"]
+
     def _delta_mean(key: str) -> float:
         """Return baseline.mean - scenario.mean (positive = improvement)."""
         b = baseline_kpis.get(key)
@@ -81,7 +89,7 @@ def extract_annual_benefit(
     # KPI was not aggregated upstream (older runs); current runner emits it.
     flights_key = scenario_kpis.get("total_flights")
     avg_flights = flights_key.mean if flights_key and flights_key.mean > 0 else 420.0
-    delay_daily = delay_minutes_saved * avg_flights * DELAY_COST_PER_MINUTE_EUR
+    delay_daily = delay_minutes_saved * avg_flights * assumptions["delay_cost_per_minute_eur"]
     delay_annual = delay_daily * operating_days_per_year
 
     # Missed connections — NOT monetized.

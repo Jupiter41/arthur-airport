@@ -792,3 +792,17 @@ one transaction. Lease renewal is scheduling metadata; simulation steps continue
 to use their configured dates/seeds. Graceful release publishes pending status;
 after a hard exit an expired claim can be recovered with the same seed/config.
 This restarts the attempt rather than restoring partially aggregated runs.
+
+### Versioned financial rates (2026-10-18)
+
+`CostRatesUpdated` on `cost.events` carries `{rates, version}`: the complete
+committed table and its SHA-256 canonical JSON identity. The cost owner commits
+the table in `CostRuntime` and this outbox entry under the same lock as financial
+inputs. Events use the latest consumed simulation clock, or the fixed synthetic
+epoch `2026-01-01T00:00:00Z` before the first tick. Existing charges are not repriced.
+New `CostRecorded`/`CarbonRecorded` payloads and stored records additionally carry
+`rates_version`. Rates persist across restart and are consistent across replicas.
+Planning's first claim reads and persists the full rate snapshot/version; recovered
+attempts and replay children retain it, and completed results expose the version.
+The normal outbox acknowledgement/replay contract applies. Planning does not need
+a service HTTP call or a new rate-event consumer to acquire the committed snapshot.

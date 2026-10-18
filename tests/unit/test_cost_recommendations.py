@@ -14,7 +14,7 @@ _rec = import_service_module("cost", "services.recommendations")
 generate_recommendations = _rec.generate_recommendations
 FinancialRecommendation = _rec.FinancialRecommendation
 
-FIXTURES_PATH = Path(__file__).parent.parent.parent / "services" / "cost-service" / "fixtures" / "cost_rates.json"
+FIXTURES_PATH = Path(__file__).parent.parent.parent / "services" / "_common" / "data" / "cost_rates.json"
 
 with open(FIXTURES_PATH) as f:
     RATES = json.load(f)

@@ -156,6 +156,6 @@ def test_sim_orchestrator_emits_config_capacity():
 def test_peak_hours_match_cost_rates_fixture():
     """cost-service fixture operations.peak_hours must equal simulation.peak_hours."""
     rates = json.loads(
-        (_SERVICES_DIR / "cost-service" / "fixtures" / "cost_rates.json").read_text()
+        (_SERVICES_DIR / "_common" / "data" / "cost_rates.json").read_text()
     )
     assert list(rates["operations"]["peak_hours"]) == _config().simulation.peak_hours

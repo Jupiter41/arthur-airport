@@ -151,6 +151,7 @@ class ScenarioResults:
     infrastructure_changes: list[dict] = field(default_factory=list)
     run_duration_seconds: float = 0.0
     computed_at: str = ""
+    financial_rates_version: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -166,4 +167,5 @@ class ScenarioResults:
             "infrastructure_changes": self.infrastructure_changes,
             "run_duration_seconds": round(self.run_duration_seconds, 2),
             "computed_at": self.computed_at,
+            "financial_rates_version": self.financial_rates_version,
         }

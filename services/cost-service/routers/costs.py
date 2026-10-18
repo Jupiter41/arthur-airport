@@ -21,15 +21,6 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/costs", tags=["costs"])
 
-# Reference to cost rates — set by main.py on startup
-_rates: dict = {}
-
-
-def set_rates(rates: dict) -> None:
-    global _rates
-    _rates = rates
-
-
 def _require_neo4j() -> None:
     """Raise 503 if Neo4j is not connected. Use at the top of any DB-backed handler."""
     if db._driver is None:
@@ -155,51 +146,27 @@ async def get_terminal_costs(terminal_id: str, day: int = Query(1, ge=1)):
 @router.get("/rates")
 async def get_rates():
     """Current cost rate table."""
-    return _rates
+    _require_neo4j()
+    from services import rates
+    return await rates.read()
 
 
 @router.patch("/rates")
 async def update_rates(overrides: dict):
     """Override cost rates at runtime.
 
-    Validates that:
-    - Only top-level keys that already exist in the rate table are accepted.
-    - Nested values keep the same primitive type as the existing entry.
-
-    Unknown or type-incompatible keys are rejected with HTTP 400 so the
-    frontend cannot accidentally invent a new rate category that no calculator
-    would ever read.
+    Unknown nested fields, invalid types and non-finite/negative amounts return
+    HTTP 400 without changing any field. The complete candidate table and its
+    outbox event commit together; independent replica updates serialize.
     """
-    unknown = sorted(k for k in overrides if k not in _rates)
-    if unknown:
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown rate categories: {unknown}",
-        )
-
-    def _deep_merge(base: dict, update: dict, path: str = "") -> None:
-        for k, v in update.items():
-            here = f"{path}.{k}" if path else k
-            existing = base.get(k)
-            if isinstance(v, dict) and isinstance(existing, dict):
-                _deep_merge(existing, v, here)
-            else:
-                # Reject silent type changes on existing scalar fields.
-                if existing is not None and not isinstance(v, type(existing)):
-                    # Allow int→float and float→int for numeric tuning.
-                    if not (isinstance(existing, (int, float)) and isinstance(v, (int, float))):
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"type mismatch for {here}: expected {type(existing).__name__}, got {type(v).__name__}",
-                        )
-                base[k] = v
-
-    _deep_merge(_rates, overrides)
-    # Push updated rates to consumer
-    from kafka.consumer import set_rates
-    set_rates(_rates)
-    logger.info("cost rates updated", keys=list(overrides.keys()))
-    return {"status": "updated", "keys": list(overrides.keys())}
+    _require_neo4j()
+    from services import rates
+    from _common.financial_rates import rates_version
+    try:
+        committed = await rates.update(overrides)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "updated", "keys": list(overrides), "version": rates_version(committed)}
 
 
 @router.get("/recommendations")
@@ -207,7 +174,8 @@ async def get_recommendations():
     """Generate financially-aware recommendations."""
     totals = get_running_totals()
     sim_time = totals.get("last_updated", "")
-    return generate_recommendations(totals, sim_time, _rates)
+    from services import rates
+    return generate_recommendations(totals, sim_time, await rates.read())
 
 
 # ─── Valuation (3B — Airport Valuation Model) ───────────────────

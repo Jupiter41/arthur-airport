@@ -24,16 +24,10 @@ TOPICS = [
 
 _consumer: Consumer | None = None
 _running: bool = False
-_rates: dict = {}
 _carbon_factors: dict = {}
 _consumer_health = ConsumerHealthTracker()
 HANDLED_EVENTS = {"SimClockTick", "FlightStatusChanged", "FlightCancelled",
                   "IncidentCreated", "IncidentStatusChanged"}
-
-
-def set_rates(rates: dict) -> None:
-    global _rates
-    _rates = rates
 
 
 def set_carbon_factors(factors: dict) -> None:
@@ -57,10 +51,11 @@ async def process_envelope(envelope: dict) -> bool:
     decoded = ledger.FinancialEnvelope.model_validate(envelope).model_dump(mode="json")
     if decoded["event_type"] not in HANDLED_EVENTS:
         return True
-    rates, factors = deepcopy(_rates), deepcopy(_carbon_factors)
+    factors = deepcopy(_carbon_factors)
 
     async def dispatch(event: dict) -> None:
-        await _dispatch(event, rates, factors)
+        batch = ledger.current_batch.get()
+        await _dispatch(event, batch.state["rates"], factors)
 
     return await ledger.process(decoded, dispatch)
 

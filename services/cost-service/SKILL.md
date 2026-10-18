@@ -64,9 +64,14 @@ Some costs are computed periodically from `SimClockTick` events:
 
 ### Rate overrides
 
-Cost rates loaded from `fixtures/cost_rates.json` can be overridden at runtime via
-`PATCH /api/v1/costs/rates`. The override uses deep merge, so you can patch individual
-fields without replacing the entire rate table.
+Synthetic defaults live only in `_common/data/cost_rates.json`, loaded through
+`_common.financial_rates`. Effective rates and their content version live in
+`CostRuntime.document`. `services/rates.py` validates a copy and commits updates
+under the ledger lock together with `CostRatesUpdated` in the outbox. Never mutate
+a shared rates dict or publish an update before commit. Each input reads its
+rates inside its ledger transaction; fee/carbon facts retain `rates_version`.
+GET and recommendations read committed rates. Planning snapshots them on first
+claim and retains them through recovery/replay. Existing charges are preserved.
 
 ---
 
@@ -103,7 +108,7 @@ services/cost-service/
 ├── requirements.txt
 ├── Dockerfile
 ├── fixtures/
-│   └── cost_rates.json       # All configurable cost parameters
+│   └── carbon_factors.json   # Carbon defaults; financial defaults are in _common/data/
 ├── db/
 │   ├── neo4j.py              # Driver, CostRecord CRUD, relationship linking
 │   └── queries.py            # Aggregation queries (P&L, hourly, ranking)

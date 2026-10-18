@@ -1,40 +1,21 @@
-"""Single source of truth for cross-service financial constants.
+"""Compatibility exports derived from the shared synthetic default rate table.
 
-Values are sourced from Eurocontrol Standard Inputs (2024) — the European
-reference for ATFM delay costs, EU261 compensation tiers, and average
-rebooking costs. Importing from one place avoids drift between cost-service
-analytics and planning-service simulation.
-
-If you need to tune a value, change it here. Cost-service's runtime rates
-(``cost_rates.json``) override these defaults for live engine calculations;
-the constants exposed here are the **canonical Eurocontrol values** used by
-planning simulations (which do not consume the runtime rate table).
+Live inputs use the committed cost-owner table; planning jobs use their persisted
+snapshot. These names are default references, never an independently editable table.
 """
 
-from __future__ import annotations
+from _common.financial_rates import load_default_rates
 
-# All-in cost per minute of ATFM delay (crew, fuel, pax, recovery).
-DELAY_COST_PER_MINUTE_EUR: float = 102.0
-
-# Average rebooking + accommodation cost per disrupted passenger.
-REBOOKING_COST_PER_PAX_EUR: float = 285.0
-
-# Average EU261 compensation per claiming passenger.
-EU261_AVERAGE_CLAIM_EUR: float = 400.0
-
-# Standard EU261 compensation tiers (delay_minutes, max_distance_km, eur).
-# Sorted so that the first matching row is the applicable compensation.
-EU261_TIERS: tuple[tuple[int, int, int], ...] = (
-    (180, 1500, 250),
-    (180, 3500, 400),
-    (180, 99_999, 600),
-    (240, 99_999, 600),
+_rates = load_default_rates()
+_assumptions = _rates["planning_assumptions"]
+DELAY_COST_PER_MINUTE_EUR: float = _assumptions["delay_cost_per_minute_eur"]
+REBOOKING_COST_PER_PAX_EUR: float = _assumptions["rebooking_cost_per_pax_eur"]
+EU261_AVERAGE_CLAIM_EUR: float = _assumptions["eu261_average_claim_eur"]
+OPERATING_DAYS_PER_YEAR: int = _assumptions["operating_days_per_year"]
+EU261_TIERS: tuple[tuple[int, int, int], ...] = tuple(
+    (row["min_delay_minutes"], row["max_distance_km"], row["compensation_eur"])
+    for row in _rates["eu261"] if not row.get("assistance_only")
 )
-
-# Operating days per year for annualisation of daily KPIs.
-OPERATING_DAYS_PER_YEAR: int = 365
-
-# Airport fees (mid-sized European reference values).
-LANDING_FEE_PER_TONNE_EUR: float = 12.0
-GATE_FEE_PER_HOUR_EUR: float = 150.0
-PAX_DEPARTURE_FEE_EUR: float = 12.0
+LANDING_FEE_PER_TONNE_EUR: float = _rates["airport_fees"]["landing_rate_per_tonne_eur"]
+GATE_FEE_PER_HOUR_EUR: float = _rates["airport_fees"]["gate_rate_per_hour_eur"]
+PAX_DEPARTURE_FEE_EUR: float = _rates["airport_fees"]["passenger_departure_fee_eur"]

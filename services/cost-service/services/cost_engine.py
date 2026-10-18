@@ -5,7 +5,6 @@ Sources: Eurocontrol Standard Inputs, EU Regulation 261/2004, ACI Airport Charge
 """
 
 from collections import defaultdict, deque
-from copy import deepcopy
 from datetime import datetime
 from uuid import uuid4
 
@@ -24,6 +23,7 @@ from kafka.producer import emit_cost_recorded
 
 from _common.aircraft import WIDE_BODY_TYPES, aircraft_family as _aircraft_family
 from services.ledger import current_batch
+from _common.financial_rates import resolve_rates_for_airline
 
 logger = structlog.get_logger(__name__)
 
@@ -142,33 +142,6 @@ def _airline_code_from_flight_number(flight_number: str | None) -> str | None:
         return None
     prefix = "".join(c for c in flight_number[:3] if c.isalpha()).upper()
     return prefix if 2 <= len(prefix) <= 3 else None
-
-
-def resolve_rates_for_airline(rates: dict, airline_code: str | None) -> dict:
-    """Return a rate dict with per-airline overrides applied on top of the base.
-
-    Overrides live under ``rates["airline_overrides"][CODE]`` and are deep-merged
-    so an airline can tune just one leaf field (e.g. only the passenger fee).
-    When no override exists the base ``rates`` dict is returned **unchanged** —
-    callers must not mutate it.
-    """
-    if not airline_code:
-        return rates
-    overrides = rates.get("airline_overrides", {}).get(airline_code)
-    if not overrides:
-        return rates
-
-    merged = deepcopy(rates)
-
-    def _merge(base: dict, patch: dict) -> None:
-        for k, v in patch.items():
-            if isinstance(v, dict) and isinstance(base.get(k), dict):
-                _merge(base[k], v)
-            else:
-                base[k] = v
-
-    _merge(merged, overrides)
-    return merged
 
 
 def compute_landing_fee(aircraft_type: str, rates: dict) -> float:

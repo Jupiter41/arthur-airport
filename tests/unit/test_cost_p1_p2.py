@@ -30,8 +30,8 @@ _fuel = import_service_module("cost", "services.fuel_price")
 FIXTURES_PATH = (
     Path(__file__).parent.parent.parent
     / "services"
-    / "cost-service"
-    / "fixtures"
+    / "_common"
+    / "data"
     / "cost_rates.json"
 )
 with open(FIXTURES_PATH) as f:
@@ -265,6 +265,8 @@ class TestFuelPriceCoercion:
         assert _fuel._coerce_price({"price": -1.0}) is None
         assert _fuel._coerce_price({"price": 99.0}) is None  # sanity guard
         assert _fuel._coerce_price("not a dict") is None
+        assert _fuel._coerce_price({"price": float("nan")}) is None
+        assert _fuel._coerce_price({"price": float("inf")}) is None
 
     def test_apply_to_rates_patches_in_place(self):
         rates = {"delay_costs": {"fuel_price_per_kg_eur": 0.9}}

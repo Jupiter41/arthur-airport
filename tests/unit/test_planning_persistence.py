@@ -155,6 +155,7 @@ def test_replay_keeps_parent_configuration_and_independent_mutable_state(context
         new_routes=[{"destination": "XAA"}], removed_routes=["XBB"],
         disruption={"capacity_pct": 0.5}, completed_at="2026-01-03T00:00:00",
         attempt_count=3,
+        financial_rates={"synthetic": {"fee": 31}}, financial_rates_version="synthetic-version",
     )
     saved = []
     monkeypatch.setattr(router, "store_scenario", saved.append)
@@ -163,14 +164,17 @@ def test_replay_keeps_parent_configuration_and_independent_mutable_state(context
     assert child.id != parent.id and child.parent_scenario_id == parent.id
     assert (child.status, child.progress_pct, child.runs_completed, child.completed_at) == ("pending", 0, 0, None)
     assert child.attempt_count == 0
-    for key in ("random_seed", "weather_date", "demand_multiplier", "new_routes", "removed_routes", "disruption"):
+    for key in ("random_seed", "weather_date", "demand_multiplier", "new_routes", "removed_routes", "disruption",
+                "financial_rates", "financial_rates_version"):
         assert getattr(child, key) == getattr(parent, key)
     child.infrastructure.gates_per_terminal["A"] = 1
     child.new_routes[0]["destination"] = "XCC"
     child.disruption["capacity_pct"] = 0.1
+    child.financial_rates["synthetic"]["fee"] = 99
     assert parent.infrastructure.gates_per_terminal["A"] == 14
     assert parent.new_routes[0]["destination"] == "XAA"
     assert parent.disruption["capacity_pct"] == 0.5
+    assert parent.financial_rates["synthetic"]["fee"] == 31
     assert child.to_summary()["parent_scenario_id"] == parent.id
 
 
@@ -301,7 +305,7 @@ def test_runner_saves_seed_progress_results_and_negative_benefit(context, monkey
     monkeypatch.setattr(
         runner,
         "extract_annual_benefit",
-        lambda *a: benefits.AnnualBenefitBreakdown(
+        lambda *a, **kwargs: benefits.AnnualBenefitBreakdown(
             total_annual_benefit=-500,
         ),
     )

@@ -355,7 +355,7 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
   dual-entry). *Affected:* `cost-service/kafka/consumer.py`, `cost_engine.py`. *(A1)*
 - ✅ Fix planning trust bugs: runway capacity scaling (`simulation.py:392`),
   `missed_connections`/cascade increments or stop monetizing them (`benefit_extractor.py:88`). *(A2)*
-- ✅ Reconcile `WIDE_BODY_TYPES` (D3). **D2 remains partial:** default-value equality tests do not make the runtime rate JSON and Python constants one source. *(A3, §10 G2)*
+- ✅ Reconcile `WIDE_BODY_TYPES` (D3) and financial rate sources (D2). A22 adds one shared loader, durable effective rates and frozen planning snapshots beyond A3's equality guards. **G2 remains partial:** mixed accounting perspectives still require migration. *(A3/A22, §10 G2)*
 - ✅ CI gaps: cost/planning deps missing from `unit-tests`; remove `|| true` on integration; add gateway
   tests; scrape cost/planning `/metrics`. *(A4)*
 - ✅ Delete committed Azurite artifacts; gitignore caches; archive doc sprawl. *(A4)*
@@ -625,6 +625,10 @@ capacity-model enhancement, not a bug fix, and is left for later.
 behaviour-changing fix was unifying the aircraft sets; the new test now *locks* both against future
 drift. `MTOW`/seat/crew-count tables in `cost_rates.json` remain service-local domain data (not
 shared constants) and were intentionally left in place.
+
+**Superseded for financial rates by A22:** the common table/loader now owns the
+defaults, live effective rates persist in Neo4j, and planning freezes them on claim.
+The shared MTOW table replaces planning's seat-based weight approximation.
 
 ### A4 — CI correctness + repo hygiene ✅
 
@@ -1221,12 +1225,12 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | ID / priority | Remaining gap and evidence | What completion actually requires |
 |---|---|---|
 | G1 / P0 — partial | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. | Extend transactional domain/outbox/inbox boundaries to the remaining owners and receipts. Financial Kafka delivery remains at least once with stable event IDs, not exactly once; simulation epochs and legacy repair are separate work. |
-| G2 / P0–P1 | A1 explicitly deferred first-delivery fee cost+revenue accounting. A3's fee-equality tests leave `_common/finance_constants.py` and runtime `cost_rates.json` independently editable. | An agreed airport/airline accounting perspective, migration of affected projections, and one authoritative rate loader for live and planning use. Phase 0 cannot be labelled entirely complete. |
+| G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
 | G3 / P1 | A5 is a flight pilot. There are still 28 tracked local logging/tracing/profiling files; `_common` does not own all consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Roll out the shared runtime/template and invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 | Cost and analysis still have separate recommenders. Analysis ranking remains largely confidence-based rather than impact × confidence ÷ cost. | Emit cost signals into one recommendation/ranking path with comparable quantified impacts/costs. |
 | G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
-| G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. Analysis proposals remain uncoordinated across replicas; training-job recovery is separate. | Coordinate analysis proposal ownership/retries across replicas; retain planning fencing/crash/concurrency tests and extend interruption recovery to other job types. Runtime input/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
+| G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. Analysis proposals remain uncoordinated across replicas; training-job recovery is separate. | Coordinate analysis proposal ownership/retries across replicas; retain planning fencing/crash/concurrency tests and extend interruption recovery to other job types. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
@@ -1674,3 +1678,60 @@ there is no partial Monte Carlo checkpoint resume. Persisting a seed/config does
 not freeze changing input files or model versions. The job/financial regressions
 do not certify sustained load or every service's replica behavior. Keep the
 roadmap active under the remaining §10 completion conditions.
+
+
+## 18. A22 — Shared, durable financial rates and planning snapshots (2026-10-18)
+
+**Delivered rate portion of G2 and rate-input portion of G7:** one synthetic
+reference table now lives at `services/_common/data/cost_rates.json`.
+`_common.financial_rates` loads defaults and supplies shared carrier resolution;
+`finance_constants` derives compatibility exports from that file. There is no
+second editable cost fixture. Planning landing calculations use the shared MTOW
+table rather than estimating weight from seat count.
+
+Cost-service persists effective rates and their SHA-256 content identity in its
+existing Neo4j runtime checkpoint. Financial inputs and rate updates serialize on
+the same lock. PATCH validates a detached candidate before saving; unknown nested
+keys, negative/non-finite amounts and booleans used as money are rejected without
+partial updates. Concurrent workers do not lose each other's changes. The rate
+table and `CostRatesUpdated` outbox fact commit together. GET/recommendations read
+the committed table; financial/carbon records and facts retain `rates_version`.
+Restart preserves overrides, and optional fuel refreshes use the same durable
+update path. Existing charges are not retroactively repriced. Rate-event time is
+the last consumed simulation clock, or the fixed synthetic epoch before a tick.
+
+A first planning job claim reads the cost-owned graph snapshot, or shared defaults
+before cost initialization. It persists the full table and content version before
+computing. Both baseline/scenario phases and benefit extraction use that snapshot,
+including carrier fee overrides, compensation tiers and delay valuation. Expired
+job recovery and replay children retain the original table; new independent jobs
+select current committed rates. Results expose the content version. No operational
+writes or service-to-service HTTP calls are added.
+
+**Audit/correctness corrections:** invalid PATCH previously mutated earlier valid
+fields before raising on a later invalid field. This is now all-or-nothing. The
+full live gate also caught missing Kafka routing for the new rate event; a stable
+`financial-rates` key and direct broker-publication regression cover that path.
+
+**Local validation:** **1,007 Python units pass**, with four existing warnings,
+and affected-service/shared-rate Ruff checks pass. **All 112 live integration tests
+pass**, no skips, in **277.37 s**, on the isolated `art-ldt-validation` Compose
+stack. All nine services plus gateway pass readiness. The new real Neo4j/Kafka
+case checks independent concurrent rate writers, confirmed broker delivery,
+persistence across restart, invalid REST patch rollback, and a recovered planning
+job completing with its original rate snapshot/version after live rates change.
+Fifteen new unit cases cover validation/rollback/version identity, rate-event
+routing, shared fee/MTOW use, benefit assumptions and recovered input stability;
+existing replay tests additionally check snapshot copy independence. The final
+optional fuel guard rejects NaN/infinity (39 focused cases pass after this small
+follow-up), and the cost image is rebuilt with all-service readiness rechecked.
+All staged runtime/tests match the tested isolated tree. CI validation will be
+recorded after pushing this implementation.
+
+**Still open:** airport/airline perspective and mixed P&L migration (G2); separate
+planning/live compensation claim assumptions and action models (G4); schedule,
+weather and model input snapshots, analysis ownership/training recovery and partial
+Monte Carlo resume (G7); all other §10 gaps. This does not certify calibrated
+financial benefits or complete the digital twin. Keep this roadmap active.
+Legacy in-memory overrides cannot be recovered on upgrade, and historical planning
+jobs without a rate snapshot cannot retrospectively recover their original inputs.
