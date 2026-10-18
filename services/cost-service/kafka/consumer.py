@@ -84,6 +84,8 @@ async def _dispatch(envelope: dict, rates: dict, factors: dict) -> None:
         date = datetime.fromisoformat(sim_time).date()
         reference = datetime.fromisoformat(batch.state["clock_date"]).date()
         sim_day += (date - reference).days
+    if batch is not None:
+        batch.billing_day = sim_day
 
     match event_type:
         case "SimClockTick":

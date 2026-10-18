@@ -24,6 +24,7 @@ class FinancialEnvelope(BaseModel):
 class LedgerBatch:
     state: dict
     tx: AsyncManagedTransaction
+    billing_day: int | None = None
     costs: list[dict] = field(default_factory=list)
     carbon: list[dict] = field(default_factory=list)
 
@@ -130,7 +131,7 @@ async def _write_effects(tx: AsyncManagedTransaction, batch: LedgerBatch, envelo
             events.append(event("CostRecorded" if kind == "cost" else "CarbonRecorded", record["sim_time"], payload))
     events.append(event("FinancialEventProcessed", envelope["sim_time"], {
         "source_event_id": envelope["event_id"], "event_type": envelope["event_type"],
-        "sim_day": batch.state["sim_day"],
+        "sim_day": batch.billing_day if batch.billing_day is not None else batch.state["sim_day"],
         "cost_record_ids": [r["record"]["id"] for r in batch.costs],
         "carbon_record_ids": [r["record"]["id"] for r in batch.carbon],
     }))

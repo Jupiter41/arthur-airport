@@ -247,6 +247,10 @@ def test_late_fact_is_charged_to_its_day_without_rewinding_current_summary(cost_
     asyncio.run(consumer.process_envelope(delayed))
     assert all(row["record"]["sim_day"] == 2 for row in driver.db["cost"] if row["flight_id"])
     assert engine.get_running_totals() == current
+    lifecycle = [json.loads(row["document"]) for row in driver.db["outbox"].values()]
+    receipt = next(event for event in lifecycle if event["event_type"] == "FinancialEventProcessed"
+                   and event["payload"]["source_event_id"] == delayed["event_id"])
+    assert receipt["payload"]["sim_day"] == 2
 
 
 @pytest.mark.parametrize("abort", [False, True])

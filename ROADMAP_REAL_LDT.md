@@ -1651,6 +1651,11 @@ The complete isolated Compose gate passes **all 111 live tests**, no skips, in
 financial, prediction, command, planning/replay and full-restart assertions.
 Staged runtime/tests match the tested export. Remote CI is pending for A21.
 
+A follow-up audit corrected `FinancialEventProcessed.sim_day` for late prior-day
+facts: it now matches the records' billing day, rather than the currently selected
+summary day. The existing late-fact regression now checks both records and the
+outbox payload; all twelve ledger regressions pass after this correction.
+
 **Remaining G7 scope:** analysis proposal ownership across replicas and training
 job interruption recovery are not delivered here. One scenario runs per worker;
 there is no partial Monte Carlo checkpoint resume. Persisting a seed/config does

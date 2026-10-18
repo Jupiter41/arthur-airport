@@ -32,8 +32,10 @@ errors retry the same message before later messages are consumed.
 
 An independent outbox worker publishes `CostRecorded`, `CarbonRecorded` and
 `FinancialEventProcessed` to `cost.events`. The last event identifies the source
-event and created record IDs, including checkpoint-only changes. Outbox entries
-are deleted only after broker acknowledgement. A crash after broker delivery
+event and created record IDs, including checkpoint-only changes. Its `sim_day`
+uses the source billing day for late facts, matching their records rather than
+the currently selected summary day. Outbox entries are deleted only after
+broker acknowledgement. A crash after broker delivery
 but before deletion may redeliver the same `event_id`; downstream consumers must
 deduplicate it. This guarantees atomic financial persistence, not exactly-once
 Kafka delivery or atomicity in the other domain services.
