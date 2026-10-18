@@ -23,6 +23,7 @@ from db.neo4j import (
 from kafka.producer import emit_cost_recorded
 
 from _common.aircraft import WIDE_BODY_TYPES, aircraft_family as _aircraft_family
+from services.ledger import current_batch
 
 logger = structlog.get_logger(__name__)
 
@@ -77,6 +78,9 @@ def init_running_totals(totals: dict) -> None:
     _running_totals["total_revenue_eur"] = totals.get("total_revenue_eur", 0.0)
     _running_totals["net_eur"] = totals.get("net_eur", 0.0)
     _running_totals["sim_day"] = totals.get("sim_day", 1)
+    _running_totals["eu261_exposure"] = totals.get("eu261_exposure", 0.0)
+    _running_totals["last_updated"] = totals.get("last_updated")
+    _running_totals["by_category"].clear()
     for cat, val in totals.get("by_category", {}).items():
         _running_totals["by_category"][cat] = val
 
@@ -303,6 +307,11 @@ async def _write_and_emit(
         )
         return
 
+    batch = current_batch.get()
+    if batch is not None:
+        batch.costs.append({"record": dict(record, currency="EUR"), "flight_id": flight_id,
+                            "incident_id": incident_id, "terminal_id": terminal_id})
+        return
     await write_cost_record(record)
     _record_cost(record["amount_eur"], record["category"], record["is_revenue"], sim_time=record.get("sim_time"), sim_day=record.get("sim_day"))
 
@@ -328,6 +337,11 @@ async def _write_and_emit(
     )
 
 
+def _gate_windows() -> dict[str, str]:
+    batch = current_batch.get()
+    return batch.state["gate_starts"] if batch is not None else _gate_occupancy_starts
+
+
 async def on_flight_status_changed(payload: dict, sim_time: str, sim_day: int, rates: dict) -> None:
     """Handle FlightStatusChanged — trigger cost calculations."""
     flight_id = payload.get("flight_id")
@@ -351,15 +365,15 @@ async def on_flight_status_changed(payload: dict, sim_time: str, sim_day: int, r
 
     # Gate occupancy tracking — open window
     if direction == "departure" and new_status == "boarding":
-        _gate_occupancy_starts.setdefault(flight_id, sim_time)
+        _gate_windows().setdefault(flight_id, sim_time)
     elif direction == "arrival" and new_status == "at_gate":
-        _gate_occupancy_starts.setdefault(flight_id, sim_time)
+        _gate_windows().setdefault(flight_id, sim_time)
 
     # Gate occupancy tracking — close window + emit gate fee (dual entry)
     if (direction == "departure" and new_status == "departed") or (
         direction == "arrival" and new_status == "arrived"
     ):
-        start = _gate_occupancy_starts.pop(flight_id, None)
+        start = _gate_windows().pop(flight_id, None)
         if start:
             try:
                 start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
@@ -400,7 +414,7 @@ async def on_flight_status_changed(payload: dict, sim_time: str, sim_day: int, r
 
     # Cancellation drops any pending gate-occupancy window.
     if new_status == "cancelled":
-        _gate_occupancy_starts.pop(flight_id, None)
+        _gate_windows().pop(flight_id, None)
 
     # Landing fee on arrival at gate
     if new_status == "at_gate" and direction == "arrival":
@@ -532,7 +546,7 @@ async def on_flight_cancelled(payload: dict, sim_time: str, sim_day: int, rates:
     eff_rates = resolve_rates_for_airline(rates, airline_code)
 
     # Cancellation also clears any in-flight gate occupancy window.
-    _gate_occupancy_starts.pop(flight_id, None)
+    _gate_windows().pop(flight_id, None)
 
     # Cancellations always trigger EU261 at max tier
     for tier in sorted(eff_rates["eu261"], key=lambda t: t.get("compensation_eur", 0), reverse=True):
@@ -645,8 +659,14 @@ async def on_clock_tick(payload: dict, sim_time: str, sim_day: int, rates: dict)
     peak_cfg = ops.get("peak", {})
     off_cfg = ops.get("off_peak", {})
 
-    if current_hour != _last_staffing_hour and current_hour >= 0:
-        _last_staffing_hour = current_hour
+    batch = current_batch.get()
+    hour_key = st.strftime("%Y-%m-%dT%H") if current_hour >= 0 and batch is not None else current_hour
+    last_hour = batch.state.get("last_staffing_hour") if batch is not None else _last_staffing_hour
+    if hour_key != last_hour and current_hour >= 0:
+        if batch is not None:
+            batch.state["last_staffing_hour"] = hour_key
+        else:
+            _last_staffing_hour = current_hour
         # Estimate open resources based on time of day
         cfg = peak_cfg if current_hour in peak_hours else off_cfg
         security_lanes = cfg.get("security_lanes_open", 3)

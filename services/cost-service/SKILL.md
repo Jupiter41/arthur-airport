@@ -8,7 +8,8 @@ Patterns, gotchas, and implementation notes for the cost-service.
 
 The cost-service is a **passive financial observer**. It subscribes to domain events via Kafka
 and computes costs/revenues without ever calling another service over HTTP or mutating domain
-entities. The only writes are `CostRecord` nodes to Neo4j and `CostRecorded` events to Kafka.
+entities. Its ledger transaction owns `CostRecord`, `CarbonRecord`, `CostInbox`,
+`CostRuntime` and `CostOutbox`. See the spec's durable event accounting contract.
 
 ```
 flights.events  ──┐
@@ -25,8 +26,8 @@ sim.clock  ───────┘
 ### Running totals
 
 In-memory running totals (`_running_totals` dict in `cost_engine.py`) track cumulative costs,
-revenues, and per-category breakdowns. On restart, they are rebuilt from Neo4j via
-`rebuild_running_totals()`.
+revenues, and per-category breakdowns. On restart, `ledger.initialize()` restores
+the durable runtime checkpoint, migrating pre-existing Neo4j records once.
 
 ```python
 _running_totals = {
@@ -79,11 +80,16 @@ fields without replacing the entire rate table.
    `SimClockTick` events but may need to be extracted from the envelope for other event types.
    The consumer extracts it at dispatch time.
 
-3. **Neo4j session management** — Each query opens and closes its own session. Do not hold
-   sessions across async boundaries.
+3. **Neo4j session management** — Financial input processing uses one managed
+   transaction for the entire event. Flight/holding reads use its transaction,
+   not nested sessions. Do not retain a session beyond that event or perform
+   external network calls inside the transaction callback.
 
-4. **Running totals vs Neo4j** — The in-memory totals are the hot path for the `/summary`
-   endpoint. Neo4j is the source of truth. On restart, `rebuild_running_totals()` reconciles.
+4. **Running totals vs Neo4j** — The in-memory totals are the hot path for `/summary`.
+   `ledger.initialize()` restores the committed calculation checkpoint. Event
+   processing publishes caches only after the ledger/inbox/outbox commit. Use
+   `ledger.current_batch` in calculators to collect effects; do not write records
+   or publish Kafka facts individually from the production event path.
 
 ---
 

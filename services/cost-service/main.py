@@ -37,6 +37,7 @@ from routers.costs import set_rates as router_set_rates  # noqa: E402
 from services import carbon_tracker  # noqa: E402
 from services import fuel_price as fuel_price_feed  # noqa: E402
 from services.cost_engine import init_running_totals  # noqa: E402
+from services import ledger, outbox  # noqa: E402
 
 logger = structlog.get_logger("cost-service")
 
@@ -98,6 +99,7 @@ async def lifespan(app: FastAPI):
             revenue=totals.get("total_revenue_eur", 0),
         )
     await carbon_tracker.restore_totals_from_db()
+    await ledger.initialize()
 
     # 7. Start Kafka consumer
     consumer_task = asyncio.create_task(run_consumer())
@@ -110,6 +112,8 @@ async def lifespan(app: FastAPI):
             logger.error("kafka consumer crashed", error=str(exc), exc_info=exc)
 
     consumer_task.add_done_callback(_consumer_done)
+    outbox_stop = asyncio.Event()
+    outbox_task = asyncio.create_task(outbox.run(outbox_stop))
 
     # Background fuel-price refresh — no-op when FUEL_PRICE_URL is unset.
     fuel_task = asyncio.create_task(fuel_price_feed.refresh_loop(rates))
@@ -119,10 +123,16 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     stop_consumer()
+    outbox_stop.set()
+    fuel_task.cancel()
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(consumer_task, outbox_task, fuel_task, return_exceptions=True), timeout=15,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("financial background tasks exceeded shutdown budget")
     close_kafka_producer()
     await close_neo4j()
-    consumer_task.cancel()
-    fuel_task.cancel()
 
 
 app = FastAPI(

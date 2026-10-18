@@ -2,15 +2,51 @@
 
 **Port:** 8008  
 **Language:** Python 3.11 / FastAPI  
-**Status:** Implemented (Phases 1–7 complete, Phases 8–9 pending)
+**Status:** Functional ledger; remaining accounting/intelligence gaps in `ROADMAP_REAL_LDT.md`
 
 ---
 
 ## 1. Domain responsibilities
 
 The cost-service is a **read-only financial layer** that observes domain events via Kafka and
-computes associated costs and revenues. It does not mutate domain entities — it only writes
-`CostRecord` nodes to Neo4j and emits `CostRecorded` events.
+computes associated costs and revenues. It owns financial/carbon records and their
+delivery metadata; it does not mutate operational domain entities.
+
+### Durable event accounting (Real LDT G1)
+
+Each supported input event is processed in one Neo4j managed transaction. That
+transaction commits its `CostRecord`/`CarbonRecord` nodes and relationships,
+`CostInbox` event identity, `CostRuntime` calculation checkpoint and `CostOutbox`
+events together. A locked singleton runtime record serializes competing workers;
+failed transactions leave no partial charges or seen-event marker. Runtime state
+includes gate occupancy starts and staffing hour, and is restored on restart.
+Running summaries are published to the in-process cache only after commit.
+
+Kafka offsets are committed after processing. A new consumer group starts from
+the earliest retained records; an existing group's committed positions are kept.
+Missing input event IDs use the
+stable broker topic/partition/offset identity; direct processing requires an ID.
+Malformed envelopes are rejected without financial effects. Unhandled fact types
+have no financial effect and do not need an inbox entry. Transient processing
+errors retry the same message before later messages are consumed.
+
+An independent outbox worker publishes `CostRecorded`, `CarbonRecorded` and
+`FinancialEventProcessed` to `cost.events`. The last event identifies the source
+event and created record IDs, including checkpoint-only changes. Outbox entries
+are deleted only after broker acknowledgement. A crash after broker delivery
+but before deletion may redeliver the same `event_id`; downstream consumers must
+deduplicate it. This guarantees atomic financial persistence, not exactly-once
+Kafka delivery or atomicity in the other domain services.
+
+Existing ledger records are preserved: the first durable runtime checkpoint
+initializes its summaries from Neo4j. Older in-memory gate starts cannot be
+reconstructed by this migration; new starts survive restart. Fee cost/revenue
+perspectives remain as currently exposed pending the separate G2 accounting work.
+No historical data loss/duplication from the old implementation is repaired
+automatically. Per-process summary caches reflect their latest committed input;
+they are not a cross-replica coherent read cache. Kafka redelivery is supported;
+simulation rewinds with new event IDs still require a separate simulation-epoch
+policy. These limits remain distinct from transaction rollback and input dedup.
 
 Core capabilities:
 

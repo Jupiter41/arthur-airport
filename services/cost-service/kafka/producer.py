@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -41,6 +42,23 @@ def check_kafka() -> bool:
 async def wait_for_kafka(max_attempts: int = 12, delay_s: int = 5) -> None:
     from _common.infra import wait_for_kafka_broker
     await wait_for_kafka_broker(logger=logger, max_attempts=max_attempts, delay_s=delay_s)
+
+
+def publish_confirmed(envelope: dict) -> None:
+    if _producer is None:
+        raise RuntimeError("Financial event producer unavailable")
+    delivered = []
+    payload = envelope["payload"]
+    key = payload.get("cost_record_id") or payload.get("carbon_record_id") or payload["source_event_id"]
+    _producer.produce(
+        topic=EVENTS_TOPIC, key=key.encode(), value=json.dumps(envelope, allow_nan=False).encode(),
+        callback=lambda error, message: delivered.append(error),
+    )
+    deadline = time.monotonic() + 10
+    while not delivered and time.monotonic() < deadline:
+        _producer.poll(0.1)
+    if not delivered or delivered[0] is not None:
+        raise RuntimeError("Financial broker acknowledgement unavailable; outbox retained")
 
 
 def emit_cost_recorded(

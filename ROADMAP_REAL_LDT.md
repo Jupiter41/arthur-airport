@@ -501,6 +501,11 @@ environment (no full Kafka + Neo4j container stack available) is called out expl
 
 **Status:** Done and validated (unit).
 
+**Historical scope:** this process-local guard was not crash-safe. A20 (§16)
+replaces it with an atomic durable financial inbox/ledger/checkpoint/outbox and
+real rollback, competing-worker, process-exit and Kafka replay validation. The
+former empty-ID behavior is replaced by stable broker-position identity.
+
 **Changes**
 - `services/cost-service/kafka/consumer.py`
   - Imported `IdempotencyTracker` from `_common.idempotency`; added a module-level
@@ -1214,7 +1219,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 
 | ID / priority | Remaining gap and evidence | What completion actually requires |
 |---|---|---|
-| G1 / P0 | Owning-service domain writes, receipt writes and fact delivery are separate. Cost `process_envelope` still records dedup before handlers and retains IDs only in memory. | Transactional domain/outbox/inbox boundaries, durable event IDs and crash/retry tests with Kafka + Neo4j. Current tests do not prove crash-window exactly-once behavior. |
+| G1 / P0 — partial | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. | Extend transactional domain/outbox/inbox boundaries to the remaining owners and receipts. Financial Kafka delivery remains at least once with stable event IDs, not exactly once; simulation epochs and legacy repair are separate work. |
 | G2 / P0–P1 | A1 explicitly deferred first-delivery fee cost+revenue accounting. A3's fee-equality tests leave `_common/finance_constants.py` and runtime `cost_rates.json` independently editable. | An agreed airport/airline accounting perspective, migration of affected projections, and one authoritative rate loader for live and planning use. Phase 0 cannot be labelled entirely complete. |
 | G3 / P1 | A5 is a flight pilot. There are still 28 tracked local logging/tracing/profiling files; `_common` does not own all consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Roll out the shared runtime/template and invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
@@ -1548,3 +1553,58 @@ safety or savings. `PLANNING.md` calls P5–P95 a sampled-model range rather tha
 operational confidence guarantee. G8's register now reflects the already-corrected
 manual-outcome documentation. These are corrected claims, not newly implemented
 action handlers or calibrated intelligence.
+
+
+## 16. A20 — Atomic cost/carbon event accounting (2026-10-18)
+
+**Delivered portion of G1:** cost-service no longer marks input IDs seen before
+processing or commits one charge at a time. Each supported event runs in a
+managed Neo4j transaction with a locked `CostRuntime` checkpoint. It commits
+cost/carbon records and relationships, `CostInbox`, checkpoint and `CostOutbox`
+together. The checkpoint also retains gate starts, the dated staffing hour,
+current-day summaries, EU261 exposure and seven previous days of summary history.
+Non-clock facts without an explicit day derive it from the simulation clock,
+including late prior-day facts, rather than silently using day 1.
+
+Calculators collect effects in a task-local batch. Running caches become visible
+only after commit; retries after an ambiguous commit restore the committed
+snapshot rather than charging twice. Independent workers serialize financial
+calculation against the checkpoint and durable inbox. Existing ledger records
+initialize that checkpoint without deleting or rewriting their charges.
+
+The Kafka consumer retries failed processing before later messages, starts a new
+group at earliest retained offsets and commits fetched offsets only after the
+whole batch is safe. Missing IDs use broker topic/partition/offset identity;
+direct calls require a nonempty ID and validated envelope. The outbox publishes
+existing financial/carbon facts plus `FinancialEventProcessed`, retaining stable
+event IDs until broker confirmation. Startup/shutdown now restores the checkpoint
+and waits for financial consumer/outbox tasks before closing adapters.
+
+**Validation:** twelve focused unit cases replace A1's three process-local tests.
+They cover partial-write rollback, ambiguous commit acknowledgement, durable
+dedup/cache repair, gate/staffing checkpoint reload, migration/EU261 exposure,
+late-day attribution, outbox retention and commit ordering/unfinished shutdown.
+The full Python unit suite passes **983 tests**, no skips, 18 existing warnings.
+Ruff passes for cost-service and the new tests.
+
+Six live checks use actual Neo4j and Kafka on the isolated Compose stack. They
+inject failure after ledger writes and after outbox/inbox writes, proving the
+transaction rolls back; run independent competing worker processes; abruptly
+exit after a committed boarding event then recover its gate window; inject a
+publish failure and demonstrate actual duplicate broker delivery with the same
+event ID after the acknowledgement/deletion gap. Fresh Kafka duplicates after a
+real cost-service restart must reach committed consumer offsets while ledger
+counts remain unchanged. These are additional checks, not weakened older tests.
+All **106 live integration tests pass**, no skips, in **183.18 s**, including
+all-service readiness and existing full restart/planning/command checks. The
+final new-group offset setting and type annotations are followed by a rebuilt
+image and rerun of the financial regression suites. Remote CI is pending.
+
+**Remaining limits:** this closes the cost-service transaction/dedup portion,
+not all of G1. Flight/passenger/baggage writes, receipts and fact publication
+still need atomic boundaries. Outbox delivery is at least once, not exactly
+once. Legacy lost/duplicate charges are not retrospectively repaired; old
+in-memory gate windows cannot be recovered by migration. Simulation rewinds with
+new IDs need an epoch policy. Per-process caches are not a coherent distributed
+read cache. Accounting perspective/rate unification (G2), calibrated financial
+effects/outcomes and the other §10 gaps remain open. Keep this roadmap active.

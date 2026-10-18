@@ -28,6 +28,7 @@ from db.neo4j import (
 from kafka.producer import emit_carbon_recorded
 
 from _common.aircraft import aircraft_family as _aircraft_family
+from services.ledger import current_batch
 
 logger = structlog.get_logger(__name__)
 
@@ -53,6 +54,7 @@ def get_carbon_totals() -> dict:
 def init_carbon_totals(totals: dict) -> None:
     _carbon_totals["total_kg"] = totals.get("total_kg", 0.0)
     _carbon_totals["sim_day"] = totals.get("sim_day", 1)
+    _carbon_totals["last_updated"] = totals.get("last_updated")
     _carbon_totals["by_source"] = defaultdict(float)
     for k, v in totals.get("by_source", {}).items():
         _carbon_totals["by_source"][k] = v
@@ -131,6 +133,11 @@ async def _persist(
         "description": description,
         "flight_id": flight_id or "",
     }
+    batch = current_batch.get()
+    if batch is not None:
+        batch.carbon.append({"record": record, "flight_id": flight_id,
+                             "terminal_id": terminal_id, "incident_id": None})
+        return
     await write_carbon_record(record)
     if flight_id:
         await link_carbon_to_flight(record["id"], flight_id)

@@ -1,6 +1,7 @@
 """Neo4j async driver and CostRecord persistence for cost-service."""
 
 import os
+from contextlib import asynccontextmanager
 
 import structlog
 from neo4j import AsyncGraphDatabase, AsyncDriver
@@ -14,14 +15,35 @@ _driver: AsyncDriver | None = None
 CONSTRAINTS = [
     "CREATE CONSTRAINT cost_record_id IF NOT EXISTS FOR (c:CostRecord) REQUIRE c.id IS UNIQUE",
     "CREATE CONSTRAINT carbon_record_id IF NOT EXISTS FOR (c:CarbonRecord) REQUIRE c.id IS UNIQUE",
+    "CREATE CONSTRAINT cost_inbox_id IF NOT EXISTS FOR (c:CostInbox) REQUIRE c.id IS UNIQUE",
+    "CREATE CONSTRAINT cost_outbox_id IF NOT EXISTS FOR (c:CostOutbox) REQUIRE c.id IS UNIQUE",
+    "CREATE CONSTRAINT cost_runtime_id IF NOT EXISTS FOR (c:CostRuntime) REQUIRE c.id IS UNIQUE",
 ]
 
 INDEXES = [
+    "CREATE INDEX cost_outbox_order IF NOT EXISTS FOR (c:CostOutbox) ON (c.revision, c.position)",
     "CREATE INDEX cost_record_category IF NOT EXISTS FOR (c:CostRecord) ON (c.category)",
     "CREATE INDEX cost_record_sim_day IF NOT EXISTS FOR (c:CostRecord) ON (c.sim_day)",
     "CREATE INDEX carbon_record_source IF NOT EXISTS FOR (c:CarbonRecord) ON (c.source)",
     "CREATE INDEX carbon_record_sim_day IF NOT EXISTS FOR (c:CarbonRecord) ON (c.sim_day)",
 ]
+
+
+def get_driver() -> AsyncDriver:
+    if _driver is None:
+        raise RuntimeError("Financial storage is not initialized")
+    return _driver
+
+
+@asynccontextmanager
+async def financial_read():
+    from services.ledger import current_batch
+    batch = current_batch.get()
+    if batch is not None:
+        yield batch.tx
+    else:
+        async with get_driver().session() as session:
+            yield session
 
 
 async def _init_driver() -> None:
@@ -72,7 +94,8 @@ async def create_constraints_and_indexes() -> None:
         return
     async with _driver.session() as session:
         for stmt in CONSTRAINTS + INDEXES:
-            await session.run(stmt)
+            result = await session.run(stmt)
+            await result.consume()
     logger.info("neo4j constraints and indexes created")
 
 
@@ -162,7 +185,7 @@ async def get_flight_info(flight_id: str) -> dict | None:
     """Read flight details needed for cost calculations."""
     if _driver is None:
         return None
-    async with _driver.session() as session:
+    async with financial_read() as session:
         result = await session.run(
             """
             MATCH (f:Flight {id: $id})
@@ -178,6 +201,10 @@ async def get_flight_info(flight_id: str) -> dict | None:
             id=flight_id,
         )
         record = await result.single()
+        if record is None:
+            from services.ledger import current_batch
+            if current_batch.get() is not None:
+                raise RuntimeError(f"Financial event references a missing flight: {flight_id}")
         return dict(record) if record else None
 
 
@@ -185,7 +212,7 @@ async def get_holding_flights() -> list[dict]:
     """Get flights in approach status that may be in holding."""
     if _driver is None:
         return []
-    async with _driver.session() as session:
+    async with financial_read() as session:
         result = await session.run(
             """
             MATCH (f:Flight)

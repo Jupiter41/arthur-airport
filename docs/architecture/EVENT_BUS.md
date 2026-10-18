@@ -765,3 +765,18 @@ events are suppressed. Baggage-service persists the latest payload before send
 in `BaggageProjection {id: 'latest', document}` for analysis restart recovery.
 Snapshots replace zone counts; replay does not increment occupancy. Older
 snapshot times are ignored. Transactional delivery remains G1 roadmap work.
+
+### Atomic financial accounting (2026-10-18)
+
+Cost-service commits its financial/carbon records, relationships, calculation
+checkpoint, `CostInbox` input identity and `CostOutbox` facts together in Neo4j.
+`CostRecorded` and `CarbonRecorded` retain their existing payload fields; records
+also retain `source_event_id` for audit. `FinancialEventProcessed` carries
+`source_event_id`, source `event_type`, `sim_day`, `cost_record_ids` and
+`carbon_record_ids`, including changes that only update a gate/staffing checkpoint.
+All three use `cost.events` and the source simulation clock. The publisher retains
+outbox entries until a broker acknowledgement, reusing each immutable `event_id`
+on retry. Delivery is at least once; consumers must deduplicate event IDs.
+Input offsets are committed only after the fetched batch has been processed.
+Missing source IDs use the broker topic/partition/offset identity. The wider
+domain-command transaction gaps remain open; this contract applies to cost-service.
