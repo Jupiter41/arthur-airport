@@ -397,7 +397,8 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
 - ✅ Harden auth (kill dev backdoor, real secret, RBAC) — prerequisite for real action execution. *(A10)*
 - ✅ `passengers.commands` + passenger-service `OpenSecurityLane` handler.
 - ✅ `baggage.commands` + baggage-service `RedirectBaggage` handler (Neo4j redirect + conveyor eviction + `BaggageStatusChanged` fact).
-- ⚠ `incidents.commands`, concrete GDP/rebooking execution and remaining action coverage are still open. Unsupported/aggregate actions are advisory and cannot claim execution. *(A11, §10 G6)*
+- ✅ `incidents.commands` + incident-service `ContainIncident`/`ResolveIncident` handler (emits the existing `IncidentStatusChanged` fact + durable receipt; live-validated). *(A28)*
+- ⚠ Concrete GDP/rebooking execution, recommender-proposed incident actions and remaining action coverage are still open. Unsupported/aggregate actions are advisory and cannot claim execution. *(A11, §10 G6)*
 
 ---
 
@@ -1229,7 +1230,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G3 / P1 — partial | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies (9 services + `_template`); every service and the template now import them from `_common`. Still duplicated: 8× `db/neo4j.py` and 8× `kafka/producer.py`+`consumer.py` (D1 remainder); `_common` does not own the consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Promote `neo4j_client`/`kafka_runtime` consumer loop to `_common` and delete the remaining transport copies; invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost over a common synthetic impact/cost scale (`analysis/services/ranking.py`), unit- and mutation-tested. Cost and analysis still have **separate recommenders**, and the impact/cost weights are heuristic, not calibrated (G8). | Emit cost signals into the one ranking path and calibrate the impact/cost scale against measured outcomes (needs G8); retire the second (cost-service) recommender. |
-| G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
+| G6 / P1 — partial | A28 adds the `incidents.commands` channel: incident-service executes `ContainIncident`/`ResolveIncident` and emits the existing `IncidentStatusChanged` fact plus a durable `CommandExecuted`/`CommandRejected` receipt (live-validated end-to-end + idempotent redelivery). Still open: GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers; generic gate/taxi/baggage proposals often lack entity IDs; and the analysis recommender does not yet *propose* contain/resolve (no `action_command` mapping / producer), so the incidents channel is operator/agent-publishable but not auto-proposed. | Implement/validate each remaining concrete action and its target selection; wire incident actions into the recommender/approval path; retain advisory UI until then. A8/A9/A28 do not imply full-fleet autonomous control. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
@@ -1978,3 +1979,54 @@ since A5), not baked into images, so the k8s manifests added in A26 would need t
 mount (or an image `COPY`) before those pods could start — a pre-existing latent gap
 this change extends from one service to nine, called out here because k8s remains
 unvalidated under G12.
+
+
+## 24. A28 — `incidents.commands` channel (2026-10-26)
+
+**Delivered the incidents portion of G6.** Incident contain/resolve existed only
+as REST actions (A8 wired the UI buttons); there was no command channel, so the
+async bus couldn't carry incident intent the way it does flights/passengers/baggage
+(A7/A11). `incidents.commands` closes that: incident-service is the sole consumer
+and authority, executes `ContainIncident`/`ResolveIncident` via the **existing**
+`lifecycle.contain_incident`/`resolve_incident` (so the usual `IncidentStatusChanged`
+fact still flows), and emits a durable `CommandExecuted`/`CommandRejected` receipt on
+`incidents.events` keyed on `command_id`.
+
+**Change**
+- Spec first: `EVENT_BUS.md` — `incidents.commands` in both catalogue tables (§2/§3,
+  3 partitions keyed on `incident_id`, group `inc-svc`) and new §4.8f documenting the
+  two commands, effects, rejection semantics, and the receipt.
+- Pure `incident-service/application/commands.py`: typed `ContainIncident`/
+  `ResolveIncident`, `parse_command`, and `validate_contain_precondition`/
+  `validate_resolve_precondition` mirroring `lifecycle.VALID_TRANSITIONS` (contain only
+  from `active`; resolve from `active`/`contained`; already-`resolved` is an idempotent
+  success, not an error).
+- Adapter: consumer subscribes to `incidents.commands`; `_dispatch` routes any
+  `command_type` envelope to `_handle_command`, which uses the shared
+  `_common.commands.CommandReceipts` lifecycle (process cache + persisted
+  `CommandReceipt`) to dedupe, execute via `_execute_command`, persist and re-emit the
+  receipt. New `incident_commands_total{command_type,outcome}` counter (added to the
+  metric-contract allowlist).
+- Infra: `docker-compose.yml` kafka-init now creates `incidents.commands:3:1`.
+
+**Validation**
+- Unit: `tests/unit/test_incident_commands.py` (13) — parse valid/invalid, envelope
+  rejections, and the contain/resolve preconditions. Full suite **1,035 passed** (1,022
+  + 13), same 5 `torch`/ML-env residuals; ruff clean on incident-service.
+- **Live (isolated `art-ldt-g6` Compose stack, all nine services + gateway ready):**
+  `tests/integration/test_incident_commands.py` (2) pass against real Kafka + Neo4j.
+  It injects a real incident, publishes `ContainIncident` on `incidents.commands`
+  (observer pinned to `incidents.events` watermarks before publishing), and asserts a
+  `CommandExecuted` receipt **and** the incident transitioning to `contained`; a repeat
+  with the same `command_id` re-emits the receipt with no second mutation; a command
+  for a missing incident yields `CommandRejected`. This run also live-validated A27
+  (all nine services boot with `_common` imports) and A26's gateway env.
+
+**Honest scope note.** This delivers the **owner-side** channel + receipts, like A7 did
+for flights before producers were wired. The analysis recommender does **not** yet
+*propose* contain/resolve (no `_common.commands.action_command` mapping, no analysis
+producer), so the channel is publishable by an operator/agent but not auto-proposed by
+the autonomy loop — wiring that (and the other concrete action handlers) is the
+remaining G6 work. Receipt delivery is at-least-once with a stable `command_id`, not
+exactly-once; the owner mutation + receipt + fact are not one atomic transaction (the
+G1 crash window applies here too).

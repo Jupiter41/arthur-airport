@@ -121,6 +121,7 @@ services:
           "flights.commands:6:1"
           "passengers.commands:3:1"
           "baggage.commands:3:1"
+          "incidents.commands:3:1"
           "cost.events:3:1"
         )
         for entry in "$${topics[@]}"; do

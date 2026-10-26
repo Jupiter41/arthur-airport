@@ -32,6 +32,7 @@
 | `flights.commands`     | api-gateway, analysis-service | flight-service                                                              | 1h        |
 | `passengers.commands`  | api-gateway, analysis-service | passenger-service                                                           | 1h        |
 | `baggage.commands`     | api-gateway, analysis-service | baggage-service                                                             | 1h        |
+| `incidents.commands`   | api-gateway, analysis-service | incident-service                                                            | 1h        |
 | `cost.events`          | cost-service                 | api-gateway                                                                  | 7 days    |
 | `analysis.events`      | analysis-service             | api-gateway                                                                  | 7 days    |
 
@@ -52,6 +53,7 @@
 | `flights.commands`    | 6          | `flight_id`      | `flight-svc`                                            |
 | `passengers.commands` | 3          | `terminal`       | `pax-svc`                                               |
 | `baggage.commands`    | 6          | `bag_id`         | `bag-svc`                                               |
+| `incidents.commands`  | 3          | `incident_id`    | `inc-svc`                                               |
 | `cost.events`         | 3          | `cost_record_id` | `gateway`                                               |
 | `analysis.events`     | 1          | entity id / —    | `gateway`                                               |
 
@@ -589,6 +591,45 @@ Same envelope contract as `flights.commands` (§4.8b).
   "payload": {
     "bag_id": "bag-uuid-...",
     "target_flight_id": "flight-uuid-..."
+  }
+}
+```
+
+---
+
+### 4.8f `incidents.commands` — incident-service command input
+
+Same envelope contract as `flights.commands` (§4.8b): keyed on `command_type`;
+`command_id` for idempotency; incident-service is the sole consumer and authority.
+Executing a command runs the **existing** `contain`/`resolve` lifecycle — so the
+usual `IncidentStatusChanged` fact still flows on `incidents.events` — and
+incident-service additionally emits a `CommandExecuted`/`CommandRejected` receipt
+on `incidents.events` keyed on `command_id` (durable `CommandReceipt` node;
+redelivery re-emits the receipt without re-mutating).
+
+**Supported commands**
+
+| `command_type`    | Required payload fields | Effect on accept |
+|-------------------|-------------------------|------------------|
+| `ContainIncident` | `incident_id`, `note?`  | Moves an `active` incident to `contained`; emits `IncidentStatusChanged`. |
+| `ResolveIncident` | `incident_id`, `note?`  | Resolves an `active`/`contained` incident (and its children); emits `IncidentStatusChanged`. Already-resolved is an idempotent success. |
+
+**Rejection semantics:** unknown `command_type`, non-object payload,
+missing/empty `incident_id`, non-string `note`, incident not found, illegal
+transition (e.g. contain when not `active`), or no clock tick yet → rejected, no
+status-change fact, `incident_commands_total{outcome="rejected"}` incremented; a
+`CommandRejected` receipt carries the reason.
+
+**Example:**
+```json
+{
+  "command_type": "ContainIncident",
+  "command_id": "cmd-...",
+  "issued_by": "operator",
+  "issued_at": "2024-06-15T14:52:00.000Z",
+  "payload": {
+    "incident_id": "inc-uuid-...",
+    "note": "protocol activated"
   }
 }
 ```

@@ -1,9 +1,9 @@
-# Sprint 54 — LDT roadmap continuation: G5 ranking + G12 manifests + G3 consolidation
+# Sprint 54 — LDT roadmap continuation: G5 ranking, G12 manifests, G3 consolidation, G6 incidents commands
 
 **Date:** 2026-10-26
 **Scope:** `ROADMAP_REAL_LDT.md` §10 gaps G5 (recommender ranking), G12 (k8s
-manifests) and G3 (transport-utility consolidation). Recorded as execution-log
-entries A25, A26 and A27.
+manifests), G3 (transport-utility consolidation) and G6 (incidents command
+channel, live-validated). Recorded as execution-log entries A25–A28.
 
 ## Context
 
@@ -44,6 +44,14 @@ Gaps deliberately *not* taken this sprint, and why:
 - Deleted all 28 local `_logging`/`_tracing`/`_profiler` copies (9 services +
   `_template`); rewired 13 import sites to `_common`. 1,022 unit tests pass,
   all nine `main.py` import cleanly, ruff clean.
+
+### A28 — `incidents.commands` channel (G6, partial) — LIVE-validated
+- incident-service now consumes `ContainIncident`/`ResolveIncident`, runs the
+  existing contain/resolve lifecycle (emits `IncidentStatusChanged`) and emits a
+  durable `CommandExecuted`/`CommandRejected` receipt. Pure parser + preconditions
+  unit-tested (13); end-to-end + idempotent-redelivery + rejection proven against a
+  real Kafka/Neo4j stack (`art-ldt-g6`). Spec in EVENT_BUS §4.8f; topic added to
+  kafka-init.
 
 ## Lessons learned
 
@@ -104,6 +112,23 @@ Gaps deliberately *not* taken this sprint, and why:
    leftover. A passing unit suite is necessary, not sufficient, for an
    import-topology change.
 
+9. **A new command topic needs a kafka-init entry, or the whole channel is dead (A28).**
+   The consumer subscribed to `incidents.commands` and reported "7 topics", the unit
+   tests were green, and the first live test still failed: the topic was never created
+   (kafka-init only pre-made flights/passengers/baggage.commands, and broker
+   auto-create was off), so the producer's message went nowhere and no receipt ever
+   came back. The owner-side code can look perfect while the pipe doesn't exist. For a
+   new topic: add it to kafka-init AND create+restart in any already-running stack, then
+   let the live test — not the unit suite — be the thing that proves the loop closes.
+
+10. **Reuse the shared command lifecycle instead of re-implementing it (A28).** The
+    receipt/dedup/emit dance (`CommandReceipts.handle` + `_common.command_store`) was
+    already built and battle-tested for flights/passengers/baggage. Wiring incidents
+    into it — rather than writing a fourth copy — meant the handler was ~30 lines, the
+    idempotency semantics matched the other owners exactly, and the live idempotent-
+    redelivery assertion passed first try. The earlier G3 lesson (kill duplication) pays
+    off here: because the lifecycle lives in `_common`, adding an owner is cheap.
+
 ## Validation summary
 
 | Check | Result |
@@ -115,10 +140,12 @@ Gaps deliberately *not* taken this sprint, and why:
 | Dashboard `tsc -b` / `npm test` | clean / 44 passed |
 | `kustomize build k8s/` | OK; cost/planning rendered |
 | A27: 28 local transport-util copies deleted | all nine `main.py` import via `_common`; 1,022 units pass; ruff clean |
+| A28: `incidents.commands` | 13 unit tests; full suite 1,035 pass; **2 live tests pass** on real Kafka/Neo4j (`art-ldt-g6`) |
 
 ## Still open
 
 G5 (cost-signal unification + calibration), G12 (live cluster apply + load/crash),
 G3 remainder (8× `db/neo4j.py` + 8× kafka transport still duplicated; consumer loop
-not in `_common`; `application.handle()` inversion), and G1/G4/G6/G8/G9/G10/G11.
+not in `_common`; `application.handle()` inversion), G6 remainder (GDP/rebooking
+handlers, recommender-proposed incident actions), and G1/G4/G8/G9/G10/G11.
 Roadmap stays active.

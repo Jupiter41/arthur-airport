@@ -49,3 +49,9 @@ flights_impacted_by_incidents_total = Counter(
     "Flights affected",
     ["incident_type"],
 )
+
+incident_commands_total = Counter(
+    "incident_commands_total",
+    "Commands consumed from incidents.commands",
+    ["command_type", "outcome"],
+)
