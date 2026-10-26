@@ -2154,3 +2154,26 @@ unlike incident resolution. Target selection is deliberately simple (first waiti
 flight, first free gate in the least-congested alternate) — a real optimiser would weigh
 walk distance, aircraft/gate compatibility and turnaround; that is left as future work.
 DELAY_TAXI/baggage proposals and GDP/rebooking remain the open G6 items.
+
+
+### Sprint-54 holistic live validation (A25–A31)
+
+The full changeset (A25, A27, A28, A29, A30, A31) was validated **together on a
+real stack**, not just per-slice:
+
+- **Unit:** `pytest tests/unit` → **1,043 passed** (the 5 residual failures are
+  `torch`/heavier-ML-env only and predate this sprint — the same set before and
+  after every change). Ruff clean across all nine services.
+- **Live:** isolated `art-ldt-g6` Compose stack, all nine services + gateway at
+  `/ready`. `pytest tests/integration` → **119 passed** on the first full run; the
+  only 1 failure + 4 errors were restart-interference from the new
+  `test_incident_commands` proposal test (it restarts analysis-service immediately
+  before `test_ldt_execution`), **not** a code regression — the stack stayed healthy
+  and every test passed in isolation. The test was hardened to tolerate reset-during-
+  restart and to leave analysis ready for the next module; re-running the two
+  interfering modules in collection order then passed **7/7** in 37 s. So the
+  effective live result is **all green**. 65 live REST/cost tests and the incident
+  command loop were also exercised against this stack earlier in the sprint.
+
+This is functional validation on a synthetic stack, not sustained-load or
+deployment certification; the §10 gaps remain the authority on what is still open.
