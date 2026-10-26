@@ -174,11 +174,24 @@ def test_approved_incident_proposal_executes_through_the_autonomy_loop():
         assert wait_for(lambda: _status(incident_id) == "resolved")
 
         def confirmed():
-            response = requests.get(f"{ANALYSIS}/api/v1/analysis/approvals?all=true", timeout=10)
-            response.raise_for_status()
+            # Tolerate connection resets while analysis is still restarting —
+            # just retry on the next poll rather than failing the test.
+            try:
+                response = requests.get(f"{ANALYSIS}/api/v1/analysis/approvals?all=true", timeout=10)
+                response.raise_for_status()
+            except requests.RequestException:
+                return None
             return next((p for p in response.json()["approvals"]
                          if p["id"] == proposal_id and p["status"] == "executed"), None)
 
         assert wait_for(confirmed)["executed_at"]
     finally:
+        # Leave analysis-service ready for the next test module — this test
+        # restarted it, and the restart must not bleed into the following suite.
+        def analysis_ready():
+            try:
+                return requests.get(f"{ANALYSIS}/ready", timeout=5).status_code == 200
+            except requests.RequestException:
+                return False
+        wait_for(analysis_ready)
         driver.close()
