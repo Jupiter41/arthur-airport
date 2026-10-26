@@ -23,6 +23,7 @@ import requests
 ROOT = Path(__file__).resolve().parents[2]
 INCIDENT = os.getenv("INCIDENT_SVC_URL", "http://localhost:8005")
 SIM = os.getenv("SIM_SVC_URL", "http://localhost:8006")
+ANALYSIS = os.getenv("ANALYSIS_SVC_URL", "http://localhost:8007")
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -126,3 +127,58 @@ def test_command_for_missing_incident_is_rejected():
     )
     assert receipt["event_type"] == "CommandRejected", receipt
     assert receipt["payload"]["reason"]
+
+
+def test_approved_incident_proposal_executes_through_the_autonomy_loop():
+    """A29: an approved resolve_incident proposal dispatches on incidents.commands
+    and is confirmed by the owner receipt — closing the propose→execute loop."""
+    from neo4j import GraphDatabase
+
+    driver = GraphDatabase.driver(
+        os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+        auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "art-digital-twin")),
+    )
+    incident_id = _inject()
+    assert wait_for(lambda: _status(incident_id) == "active")
+    proposal_id = f"test-inc-prop-{uuid4()}"
+
+    def receipt(command_id):
+        with driver.session() as session:
+            row = session.run(
+                "MATCH (r:CommandReceipt {id: $id}) RETURN r.event_type AS event_type",
+                id=command_id,
+            ).single()
+            return dict(row) if row else None
+
+    try:
+        clock = requests.get(f"{SIM}/api/v1/sim/status", timeout=10).json()["sim_time"]
+        proposal = {
+            "id": proposal_id, "action_type": "resolve_incident",
+            "description": "Synthetic integration incident proposal",
+            "parameters": {"incident_id": incident_id, "note": "auto-resolve"},
+            "confidence_score": 0.9, "proposed_by": "integration-test",
+            "proposed_at": clock, "status": "approved", "requires_human": False,
+            "emitted": True,
+        }
+        with driver.session() as session:
+            session.run(
+                "CREATE (p:ActionProposal {id: $id, document: $document})",
+                id=proposal_id, document=json.dumps(proposal),
+            ).consume()
+        # Restart analysis so it recovers the approved proposal AND loads the new
+        # _common.commands incident mapping from the read-only volume mount.
+        subprocess.run(["docker", "compose", "restart", "analysis-service"], cwd=ROOT, check=True, timeout=120)
+
+        saved = wait_for(lambda: receipt(proposal_id))
+        assert saved["event_type"] == "CommandExecuted", saved
+        assert wait_for(lambda: _status(incident_id) == "resolved")
+
+        def confirmed():
+            response = requests.get(f"{ANALYSIS}/api/v1/analysis/approvals?all=true", timeout=10)
+            response.raise_for_status()
+            return next((p for p in response.json()["approvals"]
+                         if p["id"] == proposal_id and p["status"] == "executed"), None)
+
+        assert wait_for(confirmed)["executed_at"]
+    finally:
+        driver.close()

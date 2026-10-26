@@ -53,6 +53,13 @@ Gaps deliberately *not* taken this sprint, and why:
   real Kafka/Neo4j stack (`art-ldt-g6`). Spec in EVENT_BUS §4.8f; topic added to
   kafka-init.
 
+### A29 — incident actions execute through the autonomy loop (G6, partial) — LIVE-validated
+- One mapping in `_common.commands.action_command` (`contain_incident`/
+  `resolve_incident` → `incidents.commands`) closes the propose→execute→confirm loop,
+  because A24's dispatch/outbox/receipt path is generic over `intent.topic`. 4 unit
+  tests; live test: seeded approved proposal → analysis dispatch → owner resolves
+  incident + receipt → proposal `executed`. Suite 1,039 pass.
+
 ## Lessons learned
 
 1. **Establish the local baseline before touching anything.** The `.venv` shows
@@ -129,6 +136,22 @@ Gaps deliberately *not* taken this sprint, and why:
     redelivery assertion passed first try. The earlier G3 lesson (kill duplication) pays
     off here: because the lifecycle lives in `_common`, adding an owner is cheap.
 
+11. **Read the whole pipeline before estimating a slice (A29).** I had budgeted
+    "incident proposal execution" as a sizable change — new producer, receipt routing,
+    topic handling. Reading `proposal_store.dispatch` / `receive_result` first showed
+    the dispatch path is already generic over `intent.topic` (publishes to whatever the
+    intent names; matches receipts on `.commands`→`.events`) and analysis already
+    consumes `incidents.events`. The real change was **one `action_command` branch**.
+    Tracing the existing data flow turned a day-shaped task into a ten-line one — the
+    opposite of the usual "looks trivial, isn't" surprise.
+
+12. **A volume-mounted shared lib needs a process restart to take effect (A29).**
+    `_common` is bind-mounted read-only, so editing `_common/commands.py` on disk does
+    *not* change the running analysis-service — Python imported the module once at
+    boot. The live test already restarts analysis (to recover the seeded proposal),
+    which happens to reload the mount too; but the general rule is: a `_common` edit is
+    only live after the importing service restarts, not when the file changes.
+
 ## Validation summary
 
 | Check | Result |
@@ -141,11 +164,12 @@ Gaps deliberately *not* taken this sprint, and why:
 | `kustomize build k8s/` | OK; cost/planning rendered |
 | A27: 28 local transport-util copies deleted | all nine `main.py` import via `_common`; 1,022 units pass; ruff clean |
 | A28: `incidents.commands` | 13 unit tests; full suite 1,035 pass; **2 live tests pass** on real Kafka/Neo4j (`art-ldt-g6`) |
+| A29: incident autonomy-loop execution | 4 unit tests; full suite 1,039 pass; **3 live tests pass** (incl. approved-proposal→execute→confirm) |
 
 ## Still open
 
 G5 (cost-signal unification + calibration), G12 (live cluster apply + load/crash),
 G3 remainder (8× `db/neo4j.py` + 8× kafka transport still duplicated; consumer loop
 not in `_common`; `application.handle()` inversion), G6 remainder (GDP/rebooking
-handlers, recommender-proposed incident actions), and G1/G4/G8/G9/G10/G11.
-Roadmap stays active.
+handlers, a recommender that *generates* incident recs with a concrete `incident_id`),
+and G1/G4/G8/G9/G10/G11. Roadmap stays active.

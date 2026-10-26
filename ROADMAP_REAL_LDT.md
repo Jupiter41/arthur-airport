@@ -1230,7 +1230,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G3 / P1 — partial | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies (9 services + `_template`); every service and the template now import them from `_common`. Still duplicated: 8× `db/neo4j.py` and 8× `kafka/producer.py`+`consumer.py` (D1 remainder); `_common` does not own the consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Promote `neo4j_client`/`kafka_runtime` consumer loop to `_common` and delete the remaining transport copies; invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost over a common synthetic impact/cost scale (`analysis/services/ranking.py`), unit- and mutation-tested. Cost and analysis still have **separate recommenders**, and the impact/cost weights are heuristic, not calibrated (G8). | Emit cost signals into the one ranking path and calibrate the impact/cost scale against measured outcomes (needs G8); retire the second (cost-service) recommender. |
-| G6 / P1 — partial | A28 adds the `incidents.commands` channel: incident-service executes `ContainIncident`/`ResolveIncident` and emits the existing `IncidentStatusChanged` fact plus a durable `CommandExecuted`/`CommandRejected` receipt (live-validated end-to-end + idempotent redelivery). Still open: GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers; generic gate/taxi/baggage proposals often lack entity IDs; and the analysis recommender does not yet *propose* contain/resolve (no `action_command` mapping / producer), so the incidents channel is operator/agent-publishable but not auto-proposed. | Implement/validate each remaining concrete action and its target selection; wire incident actions into the recommender/approval path; retain advisory UI until then. A8/A9/A28 do not imply full-fleet autonomous control. |
+| G6 / P1 — partial | A28 adds the `incidents.commands` channel (owner execution + durable receipts, live-validated). A29 maps `contain_incident`/`resolve_incident` in `_common.commands.action_command`, so an **approved proposal now dispatches on `incidents.commands` and is confirmed by the owner receipt through the same approval machinery as flights/passengers/baggage** (live-validated propose→execute→confirm). Still open: GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers; generic gate/taxi/baggage proposals often lack entity IDs; and the analysis *recommender* does not yet emit contain/resolve recommendations carrying an `incident_id` (no `ActionType`/rec), so incident actions are executable-when-proposed but not auto-generated. | Implement/validate each remaining concrete action and its target selection; add the recommender rec that carries `incident_id`; retain advisory UI until then. A8/A9/A28/A29 do not imply full-fleet autonomous control. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
@@ -2036,3 +2036,42 @@ the autonomy loop — wiring that (and the other concrete action handlers) is th
 remaining G6 work. Receipt delivery is at-least-once with a stable `command_id`, not
 exactly-once; the owner mutation + receipt + fact are not one atomic transaction (the
 G1 crash window applies here too).
+
+
+## 25. A29 — Incident actions execute through the autonomy loop (2026-10-26)
+
+**Extends G6 from an owner channel to a closed propose→execute→confirm loop.** A28
+gave incident-service a command channel, but nothing on the analysis side could
+*target* it: `_common.commands.action_command` mapped flight/passenger/baggage
+actions only, so an approved incident proposal had no command to dispatch. A29 adds
+the incident mapping — and because the A24 dispatch/outbox/receipt machinery is
+already generic over `intent.topic` (it publishes to whatever topic the intent names
+and matches receipts on `intent.topic.replace(".commands", ".events")`, and analysis
+already consumes `incidents.events`), that one mapping is the whole change.
+
+**Change**
+- `_common/commands.py`: `action_command("contain_incident"|"resolve_incident", {...})`
+  → `CommandIntent("incidents.commands", "ContainIncident"|"ResolveIncident",
+  {incident_id, note?}, incident_id)` when a concrete `incident_id` is present; `None`
+  otherwise (conservative, like every other mapping).
+
+**Validation**
+- Unit: `tests/unit/test_command_receipts.py` +4 — both action types map to the right
+  topic/command/key/payload, note is optional, and a missing/empty `incident_id`
+  yields no command. Full suite **1,039 passed** (same 5 ML-env residuals); ruff clean.
+- **Live (isolated `art-ldt-g6` stack):**
+  `test_incident_commands.py::test_approved_incident_proposal_executes_through_the_autonomy_loop`
+  passes — inject a real incident, seed an **approved** `resolve_incident`
+  `ActionProposal` in Neo4j, restart analysis-service (recovers the proposal *and*
+  loads the new mapping from the read-only `_common` mount); analysis dispatches on
+  `incidents.commands`, incident-service resolves the incident and emits
+  `CommandExecuted`, and analysis marks the proposal `executed`. All three incident
+  live tests pass together.
+
+**Honest scope note.** This makes incident actions *executable when proposed*, reusing
+the existing approval/dispatch/receipt path — it does **not** add a recommender that
+*generates* contain/resolve recommendations with a concrete `incident_id` (that needs
+new `ActionType`s, a `_recs_active_incident` option, and the `ACTIVE_INCIDENT`
+bottleneck to carry the id). So the autonomy loop can now *carry out* an approved
+incident action end-to-end, but won't *originate* one until that recommender work
+lands. Same at-least-once / non-atomic (G1) caveats as A28.

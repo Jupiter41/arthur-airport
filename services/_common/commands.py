@@ -73,6 +73,21 @@ def action_command(action_type: str, parameters: dict) -> CommandIntent | None:
             },
             parameters["bag_id"],
         )
+    incident_id = text("incident_id")
+    if action_type in {"contain_incident", "resolve_incident"} and incident_id:
+        command_type = (
+            "ContainIncident" if action_type == "contain_incident" else "ResolveIncident"
+        )
+        payload = {"incident_id": incident_id}
+        note = text("note")
+        if note:
+            payload["note"] = note
+        return CommandIntent(
+            "incidents.commands",
+            command_type,
+            payload,
+            incident_id,
+        )
     return None
 
 
