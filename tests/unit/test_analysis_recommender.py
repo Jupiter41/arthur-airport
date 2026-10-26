@@ -92,6 +92,41 @@ class TestGateRecommendations:
         reassign = [r for r in recs if r.action_type == ActionType.REASSIGN_GATE]
         assert len(reassign) >= 1
 
+    def test_reassign_gate_is_concrete_and_executable_when_graph_loaded(self, state: OperationalState):
+        from _common.commands import action_command
+        # Graph loaded with 3 free gates in Terminal B and a landed flight in
+        # Terminal A with no gate → a concrete flight+gate reassignment.
+        state.graph_loaded = True
+        state.gates = {
+            "B07": {"terminal": "Terminal B", "status": "available"},
+            "B08": {"terminal": "Terminal B", "status": "available"},
+            "B09": {"terminal": "Terminal B", "status": "available"},
+        }
+        state.flights["arr-1"] = FlightState(
+            flight_id="arr-1", status="landed", gate=None, terminal="Terminal A",
+        )
+        bn = _make_bottleneck(BottleneckType.GATE_UTILISATION, "Terminal A")
+        recs = generate_recommendations(state, [bn], max_total=10)
+        reassign = [r for r in recs if r.action_type == ActionType.REASSIGN_GATE]
+        assert len(reassign) >= 1
+        rec = reassign[0]
+        assert rec.parameters["flight_id"] == "arr-1"
+        assert rec.parameters["gate_id"] in {"B07", "B08", "B09"}
+        assert action_command(rec.action_type.value, rec.parameters) is not None
+        assert rec.executable is True
+
+    def test_reassign_gate_stays_advisory_without_graph(self, state: OperationalState):
+        # No graph → no concrete gate IDs → aggregate advisory rec (not executable).
+        for i in range(14):
+            state.flights[f"f-{i}"] = FlightState(
+                flight_id=f"f-{i}", status="at_gate", gate=f"A{i:02d}", terminal="Terminal A",
+            )
+        bn = _make_bottleneck(BottleneckType.GATE_UTILISATION, "Terminal A")
+        recs = generate_recommendations(state, [bn], max_total=10)
+        reassign = [r for r in recs if r.action_type == ActionType.REASSIGN_GATE]
+        assert reassign and "flight_id" not in reassign[0].parameters
+        assert reassign[0].executable is False
+
     def test_delay_taxi_when_flights_waiting(self, state: OperationalState):
         state.flights["landed-1"] = FlightState(
             flight_id="landed-1", status="landed",

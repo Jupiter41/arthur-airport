@@ -174,6 +174,7 @@ Gaps deliberately *not* taken this sprint, and why:
 | A28: `incidents.commands` | 13 unit tests; full suite 1,035 pass; **2 live tests pass** on real Kafka/Neo4j (`art-ldt-g6`) |
 | A29: incident autonomy-loop execution | 4 unit tests; full suite 1,039 pass; **3 live tests pass** (incl. approved-proposal→execute→confirm) |
 | A30: recommender originates incident recs | 2 unit tests; full suite 1,041 pass; live endpoint serves executable `resolve_incident` rec (manual) |
+| A31: concrete executable gate reassignment | 2 unit tests; full suite 1,043 pass; execution path pre-validated (A11) |
 
 ## Still open
 

@@ -1230,7 +1230,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G3 / P1 — partial | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies (9 services + `_template`); every service and the template now import them from `_common`. Still duplicated: 8× `db/neo4j.py` and 8× `kafka/producer.py`+`consumer.py` (D1 remainder); `_common` does not own the consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Promote `neo4j_client`/`kafka_runtime` consumer loop to `_common` and delete the remaining transport copies; invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost over a common synthetic impact/cost scale (`analysis/services/ranking.py`), unit- and mutation-tested. Cost and analysis still have **separate recommenders**, and the impact/cost weights are heuristic, not calibrated (G8). | Emit cost signals into the one ranking path and calibrate the impact/cost scale against measured outcomes (needs G8); retire the second (cost-service) recommender. |
-| G6 / P1 — partial | A28 adds the `incidents.commands` channel (owner execution + durable receipts, live-validated). A29 maps `contain_incident`/`resolve_incident` in `_common.commands.action_command`, so an **approved proposal now dispatches on `incidents.commands` and is confirmed by the owner receipt through the same approval machinery as flights/passengers/baggage** (live-validated propose→execute→confirm). A30 adds `ActionType.RESOLVE_INCIDENT`/`CONTAIN_INCIDENT` (both safety-guarded → human approval) and a `_recs_active_incident` recommendation that carries the `incident_id`, so the loop now **originates** executable incident recommendations too (live-confirmed: the endpoint serves an `executable` `resolve_incident` rec with a concrete id). Still open: GDP, rebooking and most of the other advertised action types lack concrete owner handlers, and generic gate/taxi/baggage proposals often lack entity IDs. | Implement/validate each remaining concrete action and its target selection; retain advisory UI until then. A8/A9/A28/A29/A30 do not imply full-fleet autonomous control. |
+| G6 / P1 — partial | A28 adds the `incidents.commands` channel (owner execution + durable receipts, live-validated). A29 maps `contain_incident`/`resolve_incident` in `_common.commands.action_command`, so an **approved proposal now dispatches on `incidents.commands` and is confirmed by the owner receipt through the same approval machinery as flights/passengers/baggage** (live-validated propose→execute→confirm). A30 adds `ActionType.RESOLVE_INCIDENT`/`CONTAIN_INCIDENT` (both safety-guarded → human approval) and a `_recs_active_incident` recommendation that carries the `incident_id`, so the loop now **originates** executable incident recommendations too (live-confirmed: the endpoint serves an `executable` `resolve_incident` rec with a concrete id). A31 makes the gate-conflict `REASSIGN_GATE` recommendation concrete — it resolves a specific waiting flight + a specific free gate (via new `get_free_gate_ids_by_terminal`) so it carries `flight_id`+`gate_id` and maps to the existing `flights.commands: ReassignGate` (falls back to the aggregate advisory rec when no concrete pair is resolvable). Still open: GDP and rebooking lack concrete owner handlers, and the taxi/baggage proposals still often lack entity IDs. | Implement/validate the remaining concrete actions and their target selection; retain advisory UI until then. A8/A9/A28–A31 do not imply full-fleet autonomous control. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
@@ -2117,3 +2117,40 @@ but the recommender currently emits `resolve_incident` only (containment is a pa
 mitigation; resolution is the terminal action worth surfacing). The *other* advertised
 actions (GDP, rebooking, gate/taxi/baggage with concrete ids) remain the open G6 work.
 Incident resolution is safety-guarded, so nothing here auto-executes without approval.
+
+
+## 27. A31 — Concrete, executable gate reassignment recommendations (2026-10-26)
+
+**Extends G6 to flight gates.** The gate-conflict recommender emitted a
+`REASSIGN_GATE` rec with only `{original_terminal, alternate_terminal}` — no
+`flight_id`/`gate_id`, so `action_command` returned `None` and it was advisory. The
+`flights.commands: ReassignGate` **executor already exists** (A7/A11); the rec just
+never named a target.
+
+**Change**
+- `state.py`: `get_free_gate_ids_by_terminal()` returns concrete free gate IDs per
+  terminal (graph-loaded only; `{}` otherwise — no gate identities known yet). Reuses
+  the same occupied/closed filter as the existing count helper.
+- `recommender.py` `_recs_gate_conflict`: when a waiting flight (`get_flights_needing_gate`)
+  and a free gate in the best alternate terminal both exist, emit a `REASSIGN_GATE`
+  rec carrying `flight_id`+`gate_id` (→ executable). Falls back to the previous
+  aggregate advisory rec when no concrete pair is resolvable.
+
+**Validation**
+- Unit: `test_analysis_recommender.py` +2 — a graph-loaded state with free Terminal-B
+  gates and a landed gate-less flight yields a concrete, `executable` reassignment
+  (`action_command(...) is not None`, carries the resolved `flight_id`/`gate_id`);
+  with no graph, the rec stays aggregate/advisory (`executable is False`). Full suite
+  **1,043 passed** (same 5 ML-env residuals); ruff clean.
+- Execution path (`flights.commands ReassignGate`) is already live-validated
+  (A11/event-chain suite), so A31's novel surface — concrete rec *generation* — is the
+  part under test here, covered deterministically by the unit tests. No new live test:
+  forcing a live `GATE_UTILISATION` bottleneck **and** a gate-less waiting flight
+  concurrently is sim-state dependent and would be flaky (same reasoning as A30).
+
+**Honest scope note.** `REASSIGN_GATE` is **not** safety-guarded (a routine, reversible
+op), so a confident concrete reassignment *can* be auto-applied by the autonomy engine,
+unlike incident resolution. Target selection is deliberately simple (first waiting
+flight, first free gate in the least-congested alternate) — a real optimiser would weigh
+walk distance, aircraft/gate compatibility and turnaround; that is left as future work.
+DELAY_TAXI/baggage proposals and GDP/rebooking remain the open G6 items.

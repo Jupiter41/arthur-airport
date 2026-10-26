@@ -223,27 +223,61 @@ def _recs_gate_conflict(
     }
     if free_other:
         best_alt = max(free_other, key=free_other.get)
-        recs.append(Recommendation(
-            id=f"rec-{uuid4().hex[:12]}",
-            bottleneck_id=bn.id,
-            action_type=ActionType.REASSIGN_GATE,
-            description=(
-                f"Reassign next arriving flight to {best_alt} "
-                f"({free_other[best_alt]} free gates) instead of {terminal}"
-            ),
-            expected_impact=(
-                f"Free up gate pressure in {terminal}; "
-                f"+5 min walk time for passengers"
-            ),
-            cost="5 min additional passenger walk time",
-            confidence_score=0.80,
-            expiry_sim_time=expiry,
-            priority_rank=1,
-            parameters={
-                "original_terminal": terminal,
-                "alternate_terminal": best_alt,
-            },
-        ))
+        # Prefer a *concrete* reassignment: a specific waiting flight to a
+        # specific free gate in the best alternate terminal. That names real
+        # IDs, so the rec maps to a real flights.commands: ReassignGate (A7/A11)
+        # instead of staying advisory. Fall back to the aggregate suggestion
+        # when no concrete flight/gate pair is resolvable (e.g. graph not loaded).
+        free_ids = state.get_free_gate_ids_by_terminal().get(best_alt, [])
+        waiting = state.get_flights_needing_gate()
+        target_flight = next((f for f in waiting if f.flight_id), None)
+        if free_ids and target_flight is not None:
+            gate_id = free_ids[0]
+            recs.append(Recommendation(
+                id=f"rec-{uuid4().hex[:12]}",
+                bottleneck_id=bn.id,
+                action_type=ActionType.REASSIGN_GATE,
+                description=(
+                    f"Reassign flight {target_flight.flight_id} to gate {gate_id} "
+                    f"in {best_alt} to relieve gate pressure in {terminal}"
+                ),
+                expected_impact=(
+                    f"Give a waiting flight a gate now; free pressure in {terminal} "
+                    f"(+~5 min walk time for passengers)"
+                ),
+                cost="5 min additional passenger walk time",
+                confidence_score=0.80,
+                expiry_sim_time=expiry,
+                priority_rank=1,
+                parameters={
+                    "flight_id": target_flight.flight_id,
+                    "gate_id": gate_id,
+                    "original_terminal": terminal,
+                    "alternate_terminal": best_alt,
+                },
+            ))
+        else:
+            recs.append(Recommendation(
+                id=f"rec-{uuid4().hex[:12]}",
+                bottleneck_id=bn.id,
+                action_type=ActionType.REASSIGN_GATE,
+                description=(
+                    f"Reassign next arriving flight to {best_alt} "
+                    f"({free_other[best_alt]} free gates) instead of {terminal}"
+                ),
+                expected_impact=(
+                    f"Free up gate pressure in {terminal}; "
+                    f"+5 min walk time for passengers"
+                ),
+                cost="5 min additional passenger walk time",
+                confidence_score=0.80,
+                expiry_sim_time=expiry,
+                priority_rank=1,
+                parameters={
+                    "original_terminal": terminal,
+                    "alternate_terminal": best_alt,
+                },
+            ))
 
     # 2. Delay inbound taxi to hold position
     waiting = state.get_flights_needing_gate()
