@@ -92,6 +92,27 @@ class Recommendation(BaseModel):
     priority_rank: int = Field(
         ..., ge=1, description="Rank among all active recommendations"
     )
+    impact_value: float = Field(
+        default=0.0, ge=0.0,
+        description=(
+            "Estimated benefit on a common synthetic scale (passenger-minutes "
+            "saved). Heuristic, not calibrated — see ROADMAP_REAL_LDT.md G8."
+        ),
+    )
+    cost_value: float = Field(
+        default=0.0, ge=0.0,
+        description=(
+            "Estimated cost on a common synthetic scale (disruption-minutes). "
+            "Heuristic, not calibrated — see ROADMAP_REAL_LDT.md G8."
+        ),
+    )
+    priority_score: float = Field(
+        default=0.0, ge=0.0,
+        description=(
+            "Ranking score = impact_value * confidence_score / cost_value. "
+            "Higher is better; used to order recommendations."
+        ),
+    )
     parameters: dict[str, Any] = Field(
         default_factory=dict,
         description="Action-specific parameters (flight_id, lane, terminal, etc.)",

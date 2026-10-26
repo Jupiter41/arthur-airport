@@ -11,5 +11,7 @@ resources:
   - incident-service.yaml
   - sim-orchestrator.yaml
   - analysis-service.yaml
+  - cost-service.yaml
+  - planning-service.yaml
   - api-gateway.yaml
   - dashboard.yaml

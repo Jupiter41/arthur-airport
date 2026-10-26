@@ -1228,14 +1228,14 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
 | G3 / P1 | A5 is a flight pilot. There are still 28 tracked local logging/tracing/profiling files; `_common` does not own all consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Roll out the shared runtime/template and invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
-| G5 / P1 | Cost and analysis still have separate recommenders. Analysis ranking remains largely confidence-based rather than impact × confidence ÷ cost. | Emit cost signals into one recommendation/ranking path with comparable quantified impacts/costs. |
+| G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost over a common synthetic impact/cost scale (`analysis/services/ranking.py`), unit- and mutation-tested. Cost and analysis still have **separate recommenders**, and the impact/cost weights are heuristic, not calibrated (G8). | Emit cost signals into the one ranking path and calibrate the impact/cost scale against measured outcomes (needs G8); retire the second (cost-service) recommender. |
 | G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
-| G12 / P2 | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. K8s still lacks planning/cost manifests; sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate the remaining load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
+| G12 / P2 — partial | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. A26 adds the missing `cost-service`/`planning-service` k8s manifests and the gateway's cost/planning service URLs (`kustomize build` + offline validation; no live apply — cluster RBAC denies it here). Sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate and validate the remaining load/crash/replica behavior on a cluster. Functional integration success is not complete fidelity or deployment certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -1853,3 +1853,84 @@ unit warnings and one live warning are the existing ML/pytest notices. The
 post-test readiness also passes every service. This subsequent commit updates
 only roadmap evidence; runtime/tests remain those validated in CI. The §10 gaps
 above remain open, so the roadmap stays active rather than moving to the archive.
+
+
+## 21. A25 — Impact/cost ranking for the recommender (2026-10-26)
+
+**Delivered ranking portion of G5.** The analysis recommender ranked
+interventions by `confidence_score` alone (`recommender.py:69`), so a
+high-confidence trivial action (an announcement) could outrank a high-impact one
+(saving 40 missed connections). A new pure module
+`analysis-service/services/ranking.py` derives, for every recommendation, a
+benefit and a cost on a **common synthetic scale** — passenger-minutes saved vs.
+"disruption-minutes" — from the recommendation's own `parameters` and the owning
+bottleneck's `metrics`/`affected_entity_count`, then computes
+
+    priority_score = impact_value * confidence_score / cost_value
+
+`generate_recommendations` now scores each recommendation and sorts by
+`priority_score` (un-applied first, then applied), rather than confidence. Three
+fields (`impact_value`, `cost_value`, `priority_score`) were added to the
+`Recommendation` model and the dashboard's `AnalysisRecommendation` type — all
+additive and defaulted, so no existing consumer breaks. Cost is floored
+(`COST_FLOOR = 5.0`) so a "free" action never scores as infinitely good, and
+`bool` values are rejected where a passenger/flight count is expected (int-subclass
+trap, matching the convention established in A9's `to_flight_command`).
+
+**Validation**
+- `.venv` (Python 3.12) `pytest tests/unit` → **1,013 passed**; the 14 failures
+  are pre-existing and solely missing optional ML deps locally (`joblib`, `torch`)
+  — identical set before and after this change, so no regression. CI installs
+  those deps.
+- `tests/unit/test_analysis_ranking.py` (new, 5 tests): cost floor, field
+  population + exact `impact * confidence / cost` identity, impact scaling with
+  `passengers_saved`, `bool`-count rejection, and the headline case —
+  a 0.70-confidence 40-connection hold outranks a 0.99-confidence announcement.
+- `test_analysis_recommender.py`: the old `test_recs_sorted_by_confidence` (an
+  invariant the new sort no longer guarantees) was replaced by
+  `test_recs_sorted_by_priority_score`, asserting monotone `priority_score`
+  ordering and strictly positive scores.
+- Mutation checks (prove teeth): (1) collapsing `priority_score` to
+  `confidence_score` fails the field-identity and override tests; (2) reverting the
+  sort key to `confidence_score` fails `test_recs_sorted_by_priority_score`
+  (confirming confidence-order ≠ score-order on that fixture). Both restored green.
+- Ruff clean on all changed Python; dashboard `tsc -b` clean; `npm test` → **44
+  passed**.
+
+**Honest scope note.** This closes only the **ranking** half of G5. The impact/cost
+weights are heuristic and **not calibrated** against measured outcomes (G8) — they
+exist to make magnitude and cost matter, not to assert true benefit. Analysis and
+cost-service still run **separate** recommenders; emitting cost-service signals into
+this one ranking path, and calibrating the scale, remain open G5 work. Nothing here
+was run against a live stack; the logic is pure and fully unit-tested.
+
+
+## 22. A26 — Kubernetes manifests for cost and planning (2026-10-26)
+
+**Delivered manifest portion of G12.** `k8s/services/` had deployment+service
+manifests for seven domain services plus gateway and dashboard, but **not** for
+`cost-service` (8008) or `planning-service` (8009) — the exact gap the A24
+follow-up audit flagged, meaning a Kustomize deploy silently omitted both.
+
+- New `k8s/services/cost-service.yaml` and `planning-service.yaml`, mirroring the
+  existing service pattern (shared-config/shared-secrets `envFrom`, `/ready`
+  readiness + `/health` liveness probes on the correct port, OTel service name).
+  Both are **single-replica by design** — cost-service owns a durable Neo4j
+  checkpoint (A20) and planning a lease-based Monte Carlo worker (A21), so extra
+  replicas would only add contention; this matches analysis/incident/weather/sim,
+  which also carry no HPA. Planning gets a heavier resource envelope (Monte Carlo +
+  LightGBM + PuLP/CBC): 512Mi/1.5Gi vs. cost's 256Mi/512Mi.
+- Added both to `k8s/services/kustomization.yaml`.
+- Added `COST_SERVICE_URL`/`PLANNING_SERVICE_URL` to the api-gateway manifest —
+  without them the gateway `proxy.ts` would fall back to its in-code defaults, but
+  making them explicit matches every other service URL already declared there.
+
+**Validation**
+- `kustomize build k8s/` succeeds; the two services appear in the rendered output.
+- YAML parses; the manifests are structurally identical to the nine known-good
+  service manifests. `gateway proxy.ts` confirmed to read both env var names.
+- **No live apply:** the kubeconfig on this machine points at a cluster whose RBAC
+  denies this user `get` on `deployments`/`services` in the namespace, so
+  `kubectl apply --dry-run=client` cannot complete (it does a server GET). The
+  server did resolve every Kind/GVK, including the two new resources. Applying to a
+  real cluster and validating load/crash/replica behavior remains open G12 work.

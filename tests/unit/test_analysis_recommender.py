@@ -155,7 +155,7 @@ class TestGenerateRecommendations:
         recs = generate_recommendations(state, [bn1, bn2], max_total=2)
         assert len(recs) <= 2
 
-    def test_recs_sorted_by_confidence(self, state: OperationalState):
+    def test_recs_sorted_by_priority_score(self, state: OperationalState):
         state.security["Terminal A"].open_lanes = 4
         state.security["Terminal A"].queue_depth = 80
         bn = _make_bottleneck(
@@ -167,5 +167,9 @@ class TestGenerateRecommendations:
             flight_type="departure", terminal="Terminal A",
         )
         recs = generate_recommendations(state, [bn], max_total=10)
-        if len(recs) >= 2:
-            assert recs[0].confidence_score >= recs[1].confidence_score
+        # Ranking is now impact * confidence / cost, not confidence alone.
+        assert all(
+            recs[i].priority_score >= recs[i + 1].priority_score
+            for i in range(len(recs) - 1)
+        )
+        assert all(r.priority_score > 0 for r in recs)

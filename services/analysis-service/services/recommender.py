@@ -52,9 +52,14 @@ def generate_recommendations(
             continue
         recs = _generate_for_bottleneck(state, bn, now)
         from _common.commands import action_command
+
+        from services.ranking import score_recommendation
         for rec in recs:
             rec.executable = action_command(rec.action_type.value, rec.parameters) is not None
             rec.execution_status = "available" if rec.executable else "advisory"
+            # Quantify benefit/cost on a common scale so ranking reflects
+            # impact * confidence / cost, not confidence alone (G5).
+            score_recommendation(rec, bn)
             proposal = next((p for p in reversed(proposals)
                              if p.bottleneck_id == bn.id and p.action_type == rec.action_type.value
                              and p.parameters == rec.parameters), None)
@@ -64,9 +69,12 @@ def generate_recommendations(
                 rec.applied_at = proposal.executed_at
         all_recs.extend(recs)
 
-    # Sort by confidence * (1 / priority_rank) — higher is better
-    # Un-applied recommendations first
-    all_recs.sort(key=lambda r: (r.bottleneck_id not in applied, not r.applied, r.confidence_score), reverse=True)
+    # Rank by priority_score = impact * confidence / cost (higher is better),
+    # keeping un-applied recommendations ahead of applied ones.
+    all_recs.sort(
+        key=lambda r: (r.bottleneck_id not in applied, not r.applied, r.priority_score),
+        reverse=True,
+    )
 
     # Assign priority ranks
     for i, rec in enumerate(all_recs):
