@@ -1970,8 +1970,14 @@ the three concerns needed nine edits.
   from `_common`. No remaining `from _logging/_tracing/_profiler import` anywhere
   outside `_common`; no doc/Dockerfile references to the deleted copies.
 
-**Honest scope note.** This matches A5's accepted validation bar (import-smoke +
-symbol identity + unit suite), **not** a live broker/DB run. Two limits remain: (1)
+**Live validation (added during A28's stack bring-up).** The isolated `art-ldt-g6`
+Compose stack — built from the tree *including* this change — brought **all nine
+Python services + gateway to `/ready`**, and 65 existing live REST/cost integration
+tests pass against it (`test_rest_endpoints.py`, `test_cost_endpoints.py`). So the
+nine rewired services genuinely boot and serve under real Kafka/Neo4j with `_common`
+as the only owner of these modules — stronger than A5's import-smoke bar.
+
+**Honest scope note.** Two limits remain: (1)
 the D1 transport remainder — 8× `db/neo4j.py` and 8× `kafka/producer.py`+`consumer.py`
 are still duplicated, and `_common` still does not own the consumer loop, so G3 stays
 partial; (2) `_common` reaches containers via a read-only **volume mount** (as it has
