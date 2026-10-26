@@ -160,6 +160,23 @@ Gaps deliberately *not* taken this sprint, and why:
     which happens to reload the mount too; but the general rule is: a `_common` edit is
     only live after the importing service restarts, not when the file changes.
 
+13. **A swallowed exception in a loop is invisible until you read the logs (A32).** The
+    outcome measurer wrapped its body in `try/except … logger.warning(...)` so it
+    couldn't block the tick — correct for resilience, but it meant a real
+    tz-aware-vs-naive `datetime` compare bug failed *silently every tick*; the live
+    test just timed out with no clue. The container logs showed the `TypeError`
+    immediately. Lesson: when a resilient (exception-swallowing) path "does nothing,"
+    the logs are the first place to look, not the test output — and a unit test with a
+    tz-aware `now` would have caught it before the stack ever ran (now added as a
+    regression guard).
+
+14. **Back-date fixtures to make time-based behaviour deterministic (A32).** The feature
+    fires 30 sim-minutes after execution. Rather than wait ~30 real seconds (60x) and
+    hope the timing lands, the live test seeds an `executed` proposal with `executed_at`
+    already 31 sim-min in the past — so it is due on the very next tick. The test runs
+    in ~2 s and doesn't depend on sim speed. Prefer controlling the clock input over
+    sleeping for emergent timing.
+
 ## Validation summary
 
 | Check | Result |
@@ -175,11 +192,14 @@ Gaps deliberately *not* taken this sprint, and why:
 | A29: incident autonomy-loop execution | 4 unit tests; full suite 1,039 pass; **3 live tests pass** (incl. approved-proposal→execute→confirm) |
 | A30: recommender originates incident recs | 2 unit tests; full suite 1,041 pass; live endpoint serves executable `resolve_incident` rec (manual) |
 | A31: concrete executable gate reassignment | 2 unit tests; full suite 1,043 pass; execution path pre-validated (A11) |
+| A32: automatic sim-clock outcome measurement (G8) | 13 unit tests; full suite 1,055 pass; **live-validated** (backdated executed proposal measured on next tick) |
 
 ## Still open
 
 G5 (cost-signal unification + calibration), G12 (live cluster apply + load/crash),
 G3 remainder (8× `db/neo4j.py` + 8× kafka transport still duplicated; consumer loop
 not in `_common`; `application.handle()` inversion), G6 remainder (GDP/rebooking +
-other advertised actions with concrete owner handlers and entity IDs), and
-G1/G4/G8/G9/G10/G11. Roadmap stays active.
+other advertised actions with concrete owner handlers and entity IDs), G8 remainder
+(counterfactual/baseline attribution + prediction calibration + planning outcomes;
+A32 delivered the observed-condition measurer), and G1/G4/G9/G10/G11. Roadmap stays
+active.

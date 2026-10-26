@@ -129,6 +129,62 @@ def test_command_for_missing_incident_is_rejected():
     assert receipt["payload"]["reason"]
 
 
+def test_executed_proposal_outcome_is_measured_automatically():
+    """G8: the sim-clock tick measures an executed proposal's outcome ~30 sim-min
+    later and persists it — no manual record_outcome call."""
+    from datetime import datetime, timedelta
+
+    from neo4j import GraphDatabase
+
+    driver = GraphDatabase.driver(
+        os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+        auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "art-digital-twin")),
+    )
+    proposal_id = f"test-outcome-{uuid4()}"
+    clock = datetime.fromisoformat(
+        requests.get(f"{SIM}/api/v1/sim/status", timeout=10).json()["sim_time"]
+    )
+    # Executed 31 sim-min ago → immediately due; its incident never existed, so
+    # the observed outcome is "resolved". Backdating keeps the test deterministic
+    # (no waiting for 30 real-time-scaled minutes).
+    proposal = {
+        "id": proposal_id, "action_type": "resolve_incident",
+        "description": "Synthetic outcome-measurement proposal",
+        "parameters": {"incident_id": f"never-{uuid4()}"},
+        "confidence_score": 0.9, "proposed_by": "integration-test",
+        "proposed_at": clock.isoformat(), "status": "executed",
+        "requires_human": False, "emitted": True,
+        "executed_at": (clock - timedelta(minutes=31)).isoformat(),
+        "actual_outcome": None,
+    }
+
+    def outcome():
+        with driver.session() as session:
+            row = session.run(
+                "MATCH (p:ActionProposal {id: $id}) RETURN p.document AS document", id=proposal_id,
+            ).single()
+            if not row:
+                return None
+            doc = json.loads(row["document"])
+            return doc.get("actual_outcome")
+
+    try:
+        with driver.session() as session:
+            session.run(
+                "CREATE (p:ActionProposal {id: $id, document: $document, status: 'executed', "
+                "target_key: $id, recommendation_id: null})",
+                id=proposal_id, document=json.dumps(proposal),
+            ).consume()
+        measured = wait_for(outcome)
+        assert measured["measurable"] is True
+        assert measured["bottleneck_resolved"] is True
+        assert measured["target"] == "incident"
+    finally:
+        with driver.session() as session:
+            session.run("MATCH (p:ActionProposal {id: $id}) DETACH DELETE p", id=proposal_id).consume()
+        driver.close()
+
+
 def test_approved_incident_proposal_executes_through_the_autonomy_loop():
     """A29: an approved resolve_incident proposal dispatches on incidents.commands
     and is confirmed by the owner receipt — closing the propose→execute loop."""

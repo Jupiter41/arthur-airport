@@ -113,6 +113,27 @@ async def get_document(proposal_id: str) -> dict | None:
         return await _get(session, proposal_id)
 
 
+async def record_outcome(proposal_id: str, outcome: dict, clock: datetime) -> dict | None:
+    """Durably attach a measured outcome to an executed proposal (G8).
+
+    Idempotent: only an ``executed`` proposal without an existing
+    ``actual_outcome`` is updated. Returns the updated document, or None if the
+    proposal is missing, not executed, or already measured.
+    """
+    async def apply(tx: AsyncManagedTransaction, revision: int) -> dict | None:
+        document = await _get(tx, proposal_id)
+        if (document is None or document.get("status") != "executed"
+                or document.get("actual_outcome") is not None):
+            return None
+        document["actual_outcome"] = outcome
+        document["outcome_measured_at"] = clock.isoformat()
+        document["revision"] = revision
+        await _save(tx, document)
+        return document
+
+    return await _transaction(apply)
+
+
 async def create(document: dict, clock: datetime) -> dict:
     document = asdict(TypeAdapter(Proposal).validate_python(deepcopy(document)))
     if document["status"] not in {"pending", "approved"}:

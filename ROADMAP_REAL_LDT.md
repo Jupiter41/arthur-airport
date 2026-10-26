@@ -1232,7 +1232,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost over a common synthetic impact/cost scale (`analysis/services/ranking.py`), unit- and mutation-tested. Cost and analysis still have **separate recommenders**, and the impact/cost weights are heuristic, not calibrated (G8). | Emit cost signals into the one ranking path and calibrate the impact/cost scale against measured outcomes (needs G8); retire the second (cost-service) recommender. |
 | G6 / P1 — partial | A28 adds the `incidents.commands` channel (owner execution + durable receipts, live-validated). A29 maps `contain_incident`/`resolve_incident` in `_common.commands.action_command`, so an **approved proposal now dispatches on `incidents.commands` and is confirmed by the owner receipt through the same approval machinery as flights/passengers/baggage** (live-validated propose→execute→confirm). A30 adds `ActionType.RESOLVE_INCIDENT`/`CONTAIN_INCIDENT` (both safety-guarded → human approval) and a `_recs_active_incident` recommendation that carries the `incident_id`, so the loop now **originates** executable incident recommendations too (live-confirmed: the endpoint serves an `executable` `resolve_incident` rec with a concrete id). A31 makes the gate-conflict `REASSIGN_GATE` recommendation concrete — it resolves a specific waiting flight + a specific free gate (via new `get_free_gate_ids_by_terminal`) so it carries `flight_id`+`gate_id` and maps to the existing `flights.commands: ReassignGate` (falls back to the aggregate advisory rec when no concrete pair is resolvable). Still open: GDP and rebooking lack concrete owner handlers, and the taxi/baggage proposals still often lack entity IDs. | Implement/validate the remaining concrete actions and their target selection; retain advisory UI until then. A8/A9/A28–A31 do not imply full-fleet autonomous control. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
-| G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
+| G8 / P1 — partial | A32 adds a **sim-clock-driven** outcome measurer: ~30 sim-min after a proposal executes, `_on_tick` measures the observed condition (e.g. is the targeted incident still active, did the flight get a gate) and persists `actual_outcome` to the Neo4j `ActionProposal` + the action log — so analysis `record_outcome` finally has an automatic caller (live-validated). Still open: this is **observed-condition** measurement, **not counterfactual/baseline attribution** (no no-action arm), predictions remain uncalibrated, and planning outcomes are still manual REST input. | Add baseline/counterfactual attribution and prediction calibration; extend automatic outcomes to planning; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
@@ -2177,3 +2177,45 @@ real stack**, not just per-slice:
 
 This is functional validation on a synthetic stack, not sustained-load or
 deployment certification; the §10 gaps remain the authority on what is still open.
+
+
+## 28. A32 — Automatic sim-clock outcome measurement (2026-10-26)
+
+**Delivers the measurement portion of G8.** `record_outcome` existed but nothing
+called it, so executed actions had no recorded result and predicted-vs-actual could
+not be compared. A32 adds the automatic, sim-clock-driven caller.
+
+**Change**
+- `approval_queue.Proposal`: `actual_outcome` / `outcome_measured_at` (defaulted, so
+  existing persisted documents validate unchanged).
+- New pure `services/outcome.py`: `due_for_outcome(documents, now)` (executed, not yet
+  measured, `OUTCOME_DELAY_MIN=30` sim-min since `executed_at`) and
+  `measure_outcome(action_type, parameters, state)` (observed condition — incident no
+  longer active, flight now gated, security wait/lanes — honestly flagged
+  `measurable: false` for action types with no model yet).
+- `proposal_store.record_outcome(...)`: transactional, idempotent (only an `executed`
+  proposal without an existing outcome is updated), persists to the Neo4j document.
+- `kafka/consumer._on_tick`: calls `_measure_due_outcomes(now)` each tick — lists
+  documents, measures the due ones, persists, mirrors into the in-memory action log.
+  Failures are logged and swallowed so measurement never blocks the pipeline.
+
+**Validation**
+- Unit: `tests/unit/test_analysis_outcome.py` (13) — the due-selector (executed/elapsed,
+  already-measured, non-executed, unparseable/None `executed_at`, **tz-aware `now`**)
+  and per-action measurement (incident resolved/active, contain satisfied by
+  `contained`, gate present/absent, security wait, unknown→not measurable). Full suite
+  **1,055 passed** (same 5 ML-env residuals); ruff clean.
+- **Live (`art-ldt-g6`):** `test_executed_proposal_outcome_is_measured_automatically`
+  — seed an `executed` proposal backdated 31 sim-min with a never-existing incident;
+  the next analysis tick measures it and persists `actual_outcome.bottleneck_resolved
+  = true`. Deterministic (backdated, no real-time wait); all 4 incident live tests pass
+  together. A first run surfaced a real tz-aware/naive compare bug in `due_for_outcome`
+  (the measurer was silently failing every tick) — fixed, regression-tested, and the
+  live test then passed in 1.66 s.
+
+**Honest scope note.** This is **observed-condition** measurement, not a counterfactual
+— it records what the targeted condition looked like 30 sim-min after the action, not
+what *would* have happened without it, and makes no causal/calibration claim (both
+deferred, still G8). It covers the action types with a measurement model
+(incident/gate/security); others persist `measurable: false` rather than a fabricated
+number. Planning-service outcomes remain manual REST input.
