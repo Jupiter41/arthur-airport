@@ -1,8 +1,9 @@
-# Sprint 54 — LDT roadmap continuation: G5 ranking + G12 manifests
+# Sprint 54 — LDT roadmap continuation: G5 ranking + G12 manifests + G3 consolidation
 
 **Date:** 2026-10-26
-**Scope:** `ROADMAP_REAL_LDT.md` §10 gaps G5 (recommender ranking) and G12 (k8s
-manifests). Recorded as execution-log entries A25 and A26.
+**Scope:** `ROADMAP_REAL_LDT.md` §10 gaps G5 (recommender ranking), G12 (k8s
+manifests) and G3 (transport-utility consolidation). Recorded as execution-log
+entries A25, A26 and A27.
 
 ## Context
 
@@ -38,6 +39,11 @@ Gaps deliberately *not* taken this sprint, and why:
 - Added `cost-service.yaml` (8008) and `planning-service.yaml` (8009), single
   replica, correct probes/resources; wired into `kustomization.yaml`; added the
   gateway's cost/planning service URLs.
+
+### A27 — consolidate logging/tracing/profiler into `_common` (G3, partial)
+- Deleted all 28 local `_logging`/`_tracing`/`_profiler` copies (9 services +
+  `_template`); rewired 13 import sites to `_common`. 1,022 unit tests pass,
+  all nine `main.py` import cleanly, ruff clean.
 
 ## Lessons learned
 
@@ -78,6 +84,26 @@ Gaps deliberately *not* taken this sprint, and why:
    so nobody later reads `impact_value` as a real euro/minute figure. This repo's
    whole credibility rests on not overclaiming; new numbers inherit that burden.
 
+7. **Map the dependency-delivery path before deleting a duplicate (A27).** The
+   nine local transport-util copies looked like pure dead weight, but `_common`
+   reaches each service container via a read-only *volume mount* (`./services/_common
+   → /app/_common`), not via the image build context (`./services/<svc>`, which
+   can't see the sibling). So deleting the copies is safe on compose/CI (mount
+   present) but would leave a k8s pod unable to start (no mount, nothing baked in) —
+   a latent gap flight-service already had since A5. Confirm *all nine* services
+   mount `_common` before extending the dependency, and document that the k8s image
+   still needs the mount or a `COPY`. The fix isn't "don't delete" — it's "know what
+   you're spreading, and write it down."
+
+8. **Replicate the runtime import layout, don't just run the unit suite (A27).** The
+   unit suite imports individual modules via conftest and never touches `main.py`'s
+   top-level imports — so it would have stayed green even if every service failed to
+   boot. The decisive check was importing `main` with cwd = service dir and `_common`
+   resolvable exactly as the container sees it; the log line `"logger":
+   "_common._tracing"` then *proves* the shared module is the one loaded, not a
+   leftover. A passing unit suite is necessary, not sufficient, for an
+   import-topology change.
+
 ## Validation summary
 
 | Check | Result |
@@ -88,8 +114,11 @@ Gaps deliberately *not* taken this sprint, and why:
 | Ruff (changed Python) | clean |
 | Dashboard `tsc -b` / `npm test` | clean / 44 passed |
 | `kustomize build k8s/` | OK; cost/planning rendered |
+| A27: 28 local transport-util copies deleted | all nine `main.py` import via `_common`; 1,022 units pass; ruff clean |
 
 ## Still open
 
 G5 (cost-signal unification + calibration), G12 (live cluster apply + load/crash),
-and all of G1/G3/G4/G6/G8/G9/G10/G11 remainders. Roadmap stays active.
+G3 remainder (8× `db/neo4j.py` + 8× kafka transport still duplicated; consumer loop
+not in `_common`; `application.handle()` inversion), and G1/G4/G6/G8/G9/G10/G11.
+Roadmap stays active.

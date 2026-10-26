@@ -1226,7 +1226,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 |---|---|---|
 | G1 / P0 — partial | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. A24 adds atomic analysis proposal decisions/attempts, lifecycle facts and command outbox entries. | Extend transactional domain/outbox/inbox boundaries to the remaining owners and receipts. Financial Kafka delivery remains at least once with stable event IDs, not exactly once; simulation epochs and legacy repair are separate work. |
 | G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
-| G3 / P1 | A5 is a flight pilot. There are still 28 tracked local logging/tracing/profiling files; `_common` does not own all consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Roll out the shared runtime/template and invert flight/passenger application orchestration with real adapter tests. |
+| G3 / P1 — partial | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies (9 services + `_template`); every service and the template now import them from `_common`. Still duplicated: 8× `db/neo4j.py` and 8× `kafka/producer.py`+`consumer.py` (D1 remainder); `_common` does not own the consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Promote `neo4j_client`/`kafka_runtime` consumer loop to `_common` and delete the remaining transport copies; invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost over a common synthetic impact/cost scale (`analysis/services/ranking.py`), unit- and mutation-tested. Cost and analysis still have **separate recommenders**, and the impact/cost weights are heuristic, not calibrated (G8). | Emit cost signals into the one ranking path and calibrate the impact/cost scale against measured outcomes (needs G8); retire the second (cost-service) recommender. |
 | G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
@@ -1934,3 +1934,47 @@ follow-up audit flagged, meaning a Kustomize deploy silently omitted both.
   `kubectl apply --dry-run=client` cannot complete (it does a server GET). The
   server did resolve every Kind/GVK, including the two new resources. Applying to a
   real cluster and validating load/crash/replica behavior remains open G12 work.
+
+
+## 23. A27 — Consolidate logging/tracing/profiler into `_common` (2026-10-26)
+
+**Delivered the transport-utility portion of G3.** A5 promoted `_logging`,
+`_tracing` and `_profiler` into `_common` but converted only flight-service; the
+other eight services and `_template` kept byte-identical local copies — the exact
+**28 tracked files** §10 G3 counted. They were identical to `_common`'s except for
+docstring example import paths, so they were pure drift risk: a change to one of
+the three concerns needed nine edits.
+
+**Change**
+- Rewired every `from _logging/_tracing/_profiler import …` in the eight remaining
+  services' `main.py` and `kafka/producer.py` (13 files) to `from _common._… import
+  …`, matching flight-service's A5 form.
+- `git rm` all 28 local copies (`_logging` ×10, `_tracing` ×9, `_profiler` ×7 across
+  the eight services + `_template`). Only `services/_common/{_logging,_tracing,
+  _profiler}.py` remain.
+
+**Validation**
+- `pytest tests/unit` → **1,022 passed** (the full CI count, once `joblib`/`lightgbm`
+  are present locally); the 5 residual failures are `torch`/heavier-ML-env only and
+  predate this change. Before installing those deps the suite was 1,013 passed / 14
+  dep-failures both before *and* after the change — i.e. zero regression.
+- Ruff clean across all nine services.
+- Container-layout import-smoke (cwd = service dir, `_common` resolvable as the
+  `/app/_common` mount is): **all nine** services `import main` cleanly, and the
+  emitted log line now reads `"logger": "_common._tracing"`, proving the `_common`
+  module is the one in use. (passenger-service needed `joblib` first — same
+  pre-existing dep gap as the unit skips, not an import-wiring failure.)
+- Symbol check: `setup_logging`, `init_tracing`, `shutdown_tracing`,
+  `get_trace_context`, `get_perf_stats`, `tick_timer`, `update_speed` all resolve
+  from `_common`. No remaining `from _logging/_tracing/_profiler import` anywhere
+  outside `_common`; no doc/Dockerfile references to the deleted copies.
+
+**Honest scope note.** This matches A5's accepted validation bar (import-smoke +
+symbol identity + unit suite), **not** a live broker/DB run. Two limits remain: (1)
+the D1 transport remainder — 8× `db/neo4j.py` and 8× `kafka/producer.py`+`consumer.py`
+are still duplicated, and `_common` still does not own the consumer loop, so G3 stays
+partial; (2) `_common` reaches containers via a read-only **volume mount** (as it has
+since A5), not baked into images, so the k8s manifests added in A26 would need the
+mount (or an image `COPY`) before those pods could start — a pre-existing latent gap
+this change extends from one service to nine, called out here because k8s remains
+unvalidated under G12.

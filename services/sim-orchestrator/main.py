@@ -31,7 +31,7 @@ from services.network import get_network_engine, reset_network_engine
 from services.scenario_engine import get_engine
 from services.seeder import emit_initial_weather, seed_day
 
-from _logging import setup_logging
+from _common._logging import setup_logging
 
 setup_logging("sim-orchestrator")
 
@@ -159,14 +159,14 @@ async def lifespan(app: FastAPI):
     close_kafka_producer()
     reset_network_engine()
     await close_neo4j()
-    from _tracing import shutdown_tracing
+    from _common._tracing import shutdown_tracing
     shutdown_tracing()
     logger.info("sim-orchestrator shutdown complete")
 
 
 app = FastAPI(title="sim-orchestrator", lifespan=lifespan)
 
-from _tracing import init_tracing  # noqa: E402
+from _common._tracing import init_tracing  # noqa: E402
 init_tracing(app, "sim-orchestrator")
 
 Instrumentator().instrument(app).expose(app)
@@ -185,7 +185,7 @@ async def health():
 @app.get("/perf")
 async def perf():
     """P6-3: Tick processing performance stats."""
-    from _profiler import get_perf_stats
+    from _common._profiler import get_perf_stats
     return get_perf_stats()
 
 

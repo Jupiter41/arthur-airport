@@ -80,7 +80,7 @@ def _produce_event(
 
     # P6-1: Inject OpenTelemetry trace context into envelope
     try:
-        from _tracing import get_trace_context
+        from _common._tracing import get_trace_context
         ctx = get_trace_context()
         if ctx.get("trace_id"):
             envelope["trace_id"] = ctx["trace_id"]

@@ -27,7 +27,7 @@ from kafka.producer import (
     init_kafka_producer,
     wait_for_kafka,
 )
-from _logging import setup_logging
+from _common._logging import setup_logging
 from _common.airport_config import load_airport_runtime_config
 
 setup_logging("passenger-service")
@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI):
         await asyncio.wait_for(asyncio.gather(consumer_task, return_exceptions=True), timeout=5)
     close_kafka_producer()
     await close_neo4j()
-    from _tracing import shutdown_tracing
+    from _common._tracing import shutdown_tracing
     shutdown_tracing()
     logger.info("passenger-service shutdown complete")
 
@@ -138,7 +138,7 @@ def _configure_accessibility_from_yaml() -> None:
 
 app = FastAPI(title="passenger-service", lifespan=lifespan)
 
-from _tracing import init_tracing  # noqa: E402
+from _common._tracing import init_tracing  # noqa: E402
 init_tracing(app, "passenger-service")
 
 Instrumentator().instrument(app).expose(app)
@@ -187,7 +187,7 @@ async def health():
 @app.get("/perf")
 async def perf():
     """P6-3: Tick processing performance stats."""
-    from _profiler import get_perf_stats
+    from _common._profiler import get_perf_stats
     return get_perf_stats()
 
 

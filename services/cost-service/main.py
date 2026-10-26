@@ -14,7 +14,7 @@ import structlog
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from _logging import setup_logging
+from _common._logging import setup_logging
 
 setup_logging("cost-service")
 
@@ -152,7 +152,7 @@ async def ready():
 
 # Init tracing (no-op if OTEL_ENABLED=false)
 try:
-    from _tracing import init_tracing
+    from _common._tracing import init_tracing
     init_tracing(app, "cost-service")
 except ImportError:
     pass
