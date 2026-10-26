@@ -149,6 +149,12 @@ def estimate_impact_cost(rec: Recommendation, bn: Bottleneck) -> tuple[float, fl
         impact = _affected_pax(bn) * 1.5
         cost = _VEHICLE_REPOSITION_COST
 
+    elif at in (ActionType.RESOLVE_INCIDENT, ActionType.CONTAIN_INCIDENT):
+        # Clearing an incident lifts its restrictions across every affected
+        # flight/zone — high benefit, at the cost of committed response resources.
+        impact = _affected_pax(bn) * 30.0
+        cost = 30.0
+
     impact = max(impact, 0.0)
     cost = max(cost, COST_FLOOR)
     return impact, cost

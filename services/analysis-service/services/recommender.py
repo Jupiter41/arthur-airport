@@ -529,6 +529,33 @@ def _recs_active_incident(
     inc_type = bn.metrics.get("incident_type", "unknown")
     inc_severity = bn.metrics.get("incident_severity", "medium")
     location = bn.metrics.get("location", "unknown")
+    incident_id = bn.metrics.get("incident_id")
+
+    # Executable resolution: unlike the mitigation recs below (which carry only
+    # aggregate parameters), this one names the concrete incident, so it maps to
+    # a real `incidents.commands: ResolveIncident` via `_common.commands`. It is
+    # safety-guarded (see SAFETY_GUARDED_ACTIONS) — surfaced for human approval,
+    # never auto-applied.
+    if incident_id:
+        recs.append(Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.RESOLVE_INCIDENT,
+            description=(
+                f"Expedite resolution of the {inc_type} incident at {location} "
+                f"(allocate response resources to accelerate clearance)"
+            ),
+            expected_impact="Clear the active incident and lift its operational restrictions sooner",
+            cost="Response resources committed until the incident clears",
+            confidence_score=0.80,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={
+                "incident_id": incident_id,
+                "incident_type": inc_type,
+                "location": location,
+            },
+        ))
 
     if inc_type == "runway_incursion":
         recs.append(Recommendation(

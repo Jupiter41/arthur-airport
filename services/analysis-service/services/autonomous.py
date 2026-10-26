@@ -37,6 +37,10 @@ _settings = AutonomousSettings()
 SAFETY_GUARDED_ACTIONS: set[ActionType] = {
     ActionType.GROUND_DELAY_PROGRAM,
     ActionType.REBOOK_PASSENGERS,
+    # Containing/resolving an incident is operationally significant — always
+    # route through human approval rather than auto-execute.
+    ActionType.CONTAIN_INCIDENT,
+    ActionType.RESOLVE_INCIDENT,
 }
 
 # Autonomous action log

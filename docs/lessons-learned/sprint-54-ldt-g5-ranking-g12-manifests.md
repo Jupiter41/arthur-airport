@@ -60,6 +60,14 @@ Gaps deliberately *not* taken this sprint, and why:
   tests; live test: seeded approved proposal → analysis dispatch → owner resolves
   incident + receipt → proposal `executed`. Suite 1,039 pass.
 
+### A30 — recommender originates executable incident actions (G6, partial)
+- New `RESOLVE_INCIDENT`/`CONTAIN_INCIDENT` ActionTypes (safety-guarded → human
+  approval); `_recs_active_incident` emits a `resolve_incident` rec carrying the
+  `incident_id` so it maps to a real command. 2 unit tests; suite 1,041 pass; live
+  endpoint served an `executable` `resolve_incident` rec (manual confirmation — an
+  emergent-rec test would flake, so generation is covered by the deterministic unit
+  tests and execution by A29's committed live test).
+
 ## Lessons learned
 
 1. **Establish the local baseline before touching anything.** The `.venv` shows
@@ -165,11 +173,12 @@ Gaps deliberately *not* taken this sprint, and why:
 | A27: 28 local transport-util copies deleted | all nine `main.py` import via `_common`; 1,022 units pass; ruff clean |
 | A28: `incidents.commands` | 13 unit tests; full suite 1,035 pass; **2 live tests pass** on real Kafka/Neo4j (`art-ldt-g6`) |
 | A29: incident autonomy-loop execution | 4 unit tests; full suite 1,039 pass; **3 live tests pass** (incl. approved-proposal→execute→confirm) |
+| A30: recommender originates incident recs | 2 unit tests; full suite 1,041 pass; live endpoint serves executable `resolve_incident` rec (manual) |
 
 ## Still open
 
 G5 (cost-signal unification + calibration), G12 (live cluster apply + load/crash),
 G3 remainder (8× `db/neo4j.py` + 8× kafka transport still duplicated; consumer loop
-not in `_common`; `application.handle()` inversion), G6 remainder (GDP/rebooking
-handlers, a recommender that *generates* incident recs with a concrete `incident_id`),
-and G1/G4/G8/G9/G10/G11. Roadmap stays active.
+not in `_common`; `application.handle()` inversion), G6 remainder (GDP/rebooking +
+other advertised actions with concrete owner handlers and entity IDs), and
+G1/G4/G8/G9/G10/G11. Roadmap stays active.

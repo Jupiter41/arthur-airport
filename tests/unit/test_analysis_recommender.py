@@ -126,6 +126,32 @@ class TestRunwayCapacityRecommendations:
         assert len(gdp) >= 1
 
 
+class TestActiveIncidentRecommendations:
+    def test_resolve_incident_rec_is_executable_and_carries_id(self, state: OperationalState):
+        from _common.commands import action_command
+        bn = _make_bottleneck(
+            BottleneckType.ACTIVE_INCIDENT, "runway-09L",
+            incident_id="inc-42", incident_type="runway_incursion",
+            incident_severity="high", location="runway-09L",
+        )
+        recs = generate_recommendations(state, [bn], max_total=10)
+        resolve = [r for r in recs if r.action_type == ActionType.RESOLVE_INCIDENT]
+        assert len(resolve) == 1
+        rec = resolve[0]
+        assert rec.parameters["incident_id"] == "inc-42"
+        # Names a concrete target → maps to a real incidents.commands command.
+        assert action_command(rec.action_type.value, rec.parameters) is not None
+        assert rec.executable is True
+
+    def test_no_resolve_rec_without_incident_id(self, state: OperationalState):
+        bn = _make_bottleneck(
+            BottleneckType.ACTIVE_INCIDENT, "unknown",
+            incident_type="system_failure",
+        )
+        recs = generate_recommendations(state, [bn], max_total=10)
+        assert not any(r.action_type == ActionType.RESOLVE_INCIDENT for r in recs)
+
+
 class TestGenerateRecommendations:
     def test_returns_empty_without_sim_time(self, state: OperationalState):
         state.sim_time = None

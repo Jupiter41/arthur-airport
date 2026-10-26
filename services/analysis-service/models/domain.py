@@ -69,6 +69,8 @@ class ActionType(str, Enum):
     DEFER_TASK = "defer_task"
     REDIRECT_BAGGAGE = "redirect_baggage"
     EXPEDITE_LOADING = "expedite_loading"
+    CONTAIN_INCIDENT = "contain_incident"
+    RESOLVE_INCIDENT = "resolve_incident"
 
 
 class Recommendation(BaseModel):
