@@ -5,13 +5,13 @@ On each tick: evaluates all active flights through the FSM, assigns runways, res
 """
 
 import asyncio
-import json
 import logging
 import os
 import random
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
+from _common import kafka_runtime
 from _common.idempotency import IdempotencyTracker
 from _common.commands import CommandReceipts
 from _common.consumer_health import ConsumerHealthTracker
@@ -297,66 +297,30 @@ def _make_consumer() -> Consumer:
     })
 
 
+_TOPICS = [
+    "sim.clock",
+    "weather.events",
+    "incidents.events",
+    "flights.schedule",
+    "baggage.events",
+    "flights.commands",
+]
+
+
 async def run_consumer() -> None:
     """Main consumer loop — runs as background asyncio task."""
     global _consumer, _consumer_running
-
     _consumer = _make_consumer()
-    _consumer.subscribe(["sim.clock", "weather.events", "incidents.events", "flights.schedule", "baggage.events", "flights.commands"])
+    _consumer.subscribe(_TOPICS)
     _consumer_running = True
-
-    loop = asyncio.get_event_loop()
-    logger.info("Kafka consumer started (topics: sim.clock, weather.events, incidents.events, flights.schedule, baggage.events, flights.commands)")
-
+    logger.info("Kafka consumer started (topics: %s)", _TOPICS)
     try:
-        while _consumer_running:
-            # Batch-consume to allow tick skipping when behind
-            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(200, timeout=1.0))
-            if not msgs:
-                continue
-
-            # Separate clock ticks from other events, keeping order
-            latest_tick_envelope = None
-            other_envelopes: list[dict] = []
-            skipped_ticks = 0
-
-            for msg in msgs:
-                if msg is None or msg.error():
-                    continue
-                try:
-                    envelope = json.loads(msg.value().decode("utf-8"))
-                except Exception:
-                    continue
-                if envelope.get("event_type") == "SimClockTick":
-                    if latest_tick_envelope is not None:
-                        skipped_ticks += 1
-                    latest_tick_envelope = envelope
-                else:
-                    other_envelopes.append(envelope)
-
-            if skipped_ticks > 0:
-                logger.debug("Skipped %d stale clock ticks", skipped_ticks)
-
-            # Process non-tick events first (flight status changes, etc.)
-            for envelope in other_envelopes:
-                try:
-                    await _dispatch(envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            # Process only the latest clock tick
-            if latest_tick_envelope is not None:
-                try:
-                    await _dispatch(latest_tick_envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            # Mark health tracker after processing batch
-            _consumer_health.mark_message()
+        await kafka_runtime.run_consumer_loop(
+            _consumer, _dispatch, lambda: _consumer_running, _consumer_health,
+        )
     finally:
-        _consumer.close()
         _consumer_running = False
-        logger.info("Kafka consumer stopped")
+        _consumer = None
 
 
 def _validate_envelope(envelope: dict) -> tuple[str | None, dict, datetime | None]:

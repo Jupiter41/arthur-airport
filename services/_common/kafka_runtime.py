@@ -29,15 +29,18 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Awaitable, Callable
 from uuid import uuid4
 
-from confluent_kafka import Producer
+if TYPE_CHECKING:
+    from confluent_kafka import Consumer, Producer
 
 logger = logging.getLogger(__name__)
 
 
 def init_producer(name: str, brokers: str | None = None) -> Producer:
     """Create a confluent-kafka Producer with the standard delivery guarantees."""
+    from confluent_kafka import Producer  # runtime import — not available in tests
     producer = Producer(
         {
             "bootstrap.servers": brokers or os.getenv("KAFKA_BROKERS", "kafka:9092"),
@@ -143,3 +146,74 @@ async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5, brokers: st
         )
         await asyncio.sleep(wait)
     raise RuntimeError(f"Kafka not reachable after {max_attempts} attempts")
+
+
+async def run_consumer_loop(
+    consumer: Consumer,
+    dispatch: Callable[[dict], Awaitable[None]],
+    should_run: Callable[[], bool],
+    health: object | None = None,
+    *,
+    batch_size: int = 200,
+    timeout: float = 1.0,
+) -> None:
+    """Poll Kafka, dedup clock ticks, and dispatch each batch.
+
+    Implements the canonical Arthur Airport consumer pattern used by services
+    that consume both sim.clock ticks and domain events:
+
+    - Batch-poll ``consumer`` on a thread executor.
+    - Keep only the *latest* SimClockTick in each batch (drop stale ticks).
+    - Dispatch domain events first, then the single clock tick.
+    - Mark ``health`` after each non-empty batch.
+    - Close ``consumer`` in the finally block regardless of exit path.
+
+    The caller owns the running flag: set it to False (via ``stop_consumer()``)
+    to exit the loop after the current poll cycle.
+
+    Not suitable for consumers that need per-message retry, manual offset commit,
+    or a separate command-consumer task (cost-service, analysis-service,
+    passenger-service command consumer).
+    """
+    import asyncio
+    loop = asyncio.get_event_loop()
+    try:
+        while should_run():
+            msgs = await loop.run_in_executor(
+                None, lambda: consumer.consume(batch_size, timeout=timeout)
+            )
+            if not msgs:
+                continue
+            latest_tick: dict | None = None
+            others: list[dict] = []
+            skipped = 0
+            for msg in msgs:
+                if msg is None or msg.error():
+                    continue
+                try:
+                    envelope = json.loads(msg.value().decode("utf-8"))
+                except Exception:
+                    continue
+                if envelope.get("event_type") == "SimClockTick":
+                    if latest_tick is not None:
+                        skipped += 1
+                    latest_tick = envelope
+                else:
+                    others.append(envelope)
+            if skipped:
+                logger.debug("Skipped %d stale SimClockTick(s)", skipped)
+            for envelope in others:
+                try:
+                    await dispatch(envelope)
+                except Exception:
+                    logger.error("Consumer dispatch error", exc_info=True)
+            if latest_tick is not None:
+                try:
+                    await dispatch(latest_tick)
+                except Exception:
+                    logger.error("Consumer dispatch error (SimClockTick)", exc_info=True)
+            if health is not None:
+                health.mark_message()
+    finally:
+        consumer.close()
+        logger.info("Kafka consumer closed")
