@@ -1,13 +1,14 @@
 """Kafka producer for cost-service — events to cost.events."""
 
 import json
-import os
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import structlog
 from confluent_kafka import Producer
+
+from _common import kafka_runtime
 
 logger = structlog.get_logger(__name__)
 
@@ -18,21 +19,11 @@ EVENTS_TOPIC = "cost.events"
 
 def init_kafka_producer() -> None:
     global _producer
-    brokers = os.getenv("KAFKA_BROKERS", "kafka:9092")
-    _producer = Producer({
-        "bootstrap.servers": brokers,
-        "client.id": "cost-service",
-        "acks": "all",
-        "retries": 3,
-    })
-    logger.info("kafka producer initialised", brokers=brokers)
+    _producer = kafka_runtime.init_producer("cost-service")
 
 
 def close_kafka_producer() -> None:
-    global _producer
-    if _producer:
-        _producer.flush(timeout=10)
-        _producer = None
+    kafka_runtime.close_producer(_producer)
 
 
 def check_kafka() -> bool:
@@ -40,8 +31,41 @@ def check_kafka() -> bool:
 
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: int = 5) -> None:
-    from _common.infra import wait_for_kafka_broker
-    await wait_for_kafka_broker(logger=logger, max_attempts=max_attempts, delay_s=delay_s)
+    await kafka_runtime.wait_for_kafka(max_attempts=max_attempts, delay_s=delay_s)
+
+
+def emit_cost_signal_snapshot(
+    sim_time: datetime,
+    eu261_exposure: float,
+    holding_fuel: float,
+    ground_handling: float,
+    total_cost_eur: float,
+) -> None:
+    """Publish CostSignalSnapshot to cost.events for analysis-service to consume."""
+    if _producer is None:
+        return
+    envelope = {
+        "event_id": str(uuid4()),
+        "event_type": "CostSignalSnapshot",
+        "schema_version": "1.0",
+        "produced_at": datetime.now(timezone.utc).isoformat(),
+        "sim_time": sim_time.isoformat(),
+        "producer": "cost-service",
+        "payload": {
+            "eu261_exposure": round(eu261_exposure, 2),
+            "holding_fuel": round(holding_fuel, 2),
+            "ground_handling": round(ground_handling, 2),
+            "total_cost_eur": round(total_cost_eur, 2),
+            "at": sim_time.isoformat(),
+        },
+    }
+    _producer.produce(
+        topic=EVENTS_TOPIC,
+        key=b"cost-signal",
+        value=json.dumps(envelope).encode("utf-8"),
+        callback=lambda err, msg: logger.error("kafka produce error", error=str(err)) if err else None,
+    )
+    _producer.poll(0)
 
 
 def publish_confirmed(envelope: dict) -> None:

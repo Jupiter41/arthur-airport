@@ -38,6 +38,14 @@ VEHICLE_FORECAST_HORIZON_MIN = 15
 RUNWAY_CAPACITY_LOW_PCT = 60.0
 RUNWAY_QUEUE_THRESHOLD = 5
 
+# Financial pressure thresholds (EUR) — sourced from cost-service CostSignalSnapshot
+EU261_PRESSURE_WARNING = 10_000.0
+EU261_PRESSURE_CRITICAL = 30_000.0
+HOLDING_FUEL_WARNING = 5_000.0
+HOLDING_FUEL_CRITICAL = 15_000.0
+GROUND_HANDLING_WARNING = 50_000.0
+TOTAL_COST_CAROUSEL_WARNING = 100_000.0
+
 
 def detect_all(
     state: OperationalState,
@@ -63,6 +71,7 @@ def detect_all(
     results.extend(_detect_ground_vehicle(state, now, active_keys))
     results.extend(_detect_runway_capacity(state, now, active_keys))
     results.extend(_detect_active_incidents(state, now, active_keys))
+    results.extend(_detect_financial_pressure(state, now, active_keys))
 
     return results
 
@@ -307,6 +316,7 @@ def _detect_connection_clusters(
                     "inbound_flight": inbound,
                     "outbound_flight": outbound,
                     "passenger_count": pax_count,
+                    "passenger_ids": cluster.get("passengers", []),
                     "inbound_delay": cluster.get("inbound_delay", 0),
                 },
             ))
@@ -474,4 +484,128 @@ def _detect_active_incidents(
                 "location": zone,
             },
         ))
+    return results
+
+
+# ── Financial pressure detection (G5) ───────────────────────
+
+def _detect_financial_pressure(
+    state: OperationalState,
+    now: datetime,
+    active_keys: set,
+) -> list[Bottleneck]:
+    """Detect financial-pressure bottlenecks from cost-service signals.
+
+    Fires when eu261_exposure, holding_fuel, or ground_handling costs breach
+    thresholds published via CostSignalSnapshot events on cost.events.  Each
+    signal produces at most one bottleneck so the recommender can generate the
+    corresponding action (OPEN_SECURITY_LANE, GROUND_DELAY_PROGRAM,
+    REASSIGN_GATE / OPEN_MAKEUP_CAROUSEL).
+    """
+    if not state.cost_signals:
+        return []
+
+    results = []
+    cs = state.cost_signals
+
+    eu261 = cs.get("eu261_exposure", 0.0)
+    if eu261 >= EU261_PRESSURE_WARNING:
+        key = (BottleneckType.FINANCIAL_PRESSURE, "security-eu261")
+        if key not in active_keys:
+            severity = (
+                BottleneckSeverity.CRITICAL if eu261 >= EU261_PRESSURE_CRITICAL
+                else BottleneckSeverity.WARNING
+            )
+            results.append(Bottleneck(
+                id=f"bn-{uuid4().hex[:12]}",
+                type=BottleneckType.FINANCIAL_PRESSURE,
+                severity=severity,
+                zone="security-eu261",
+                root_cause=(
+                    f"EU261 exposure €{eu261:,.0f} — queuing delays risk "
+                    f"compensation claims"
+                ),
+                estimated_duration_minutes=60,
+                affected_entity_count=0,
+                detected_at=now,
+                metrics={
+                    "signal": "eu261_exposure",
+                    "eu261_exposure": eu261,
+                    "threshold": EU261_PRESSURE_WARNING,
+                },
+            ))
+
+    holding = cs.get("holding_fuel", 0.0)
+    if holding >= HOLDING_FUEL_WARNING:
+        key = (BottleneckType.FINANCIAL_PRESSURE, "airfield-holding-fuel")
+        if key not in active_keys:
+            severity = (
+                BottleneckSeverity.CRITICAL if holding >= HOLDING_FUEL_CRITICAL
+                else BottleneckSeverity.WARNING
+            )
+            results.append(Bottleneck(
+                id=f"bn-{uuid4().hex[:12]}",
+                type=BottleneckType.FINANCIAL_PRESSURE,
+                severity=severity,
+                zone="airfield-holding-fuel",
+                root_cause=(
+                    f"Holding fuel cost €{holding:,.0f} — aircraft burning fuel "
+                    f"in stack instead of landing"
+                ),
+                estimated_duration_minutes=30,
+                affected_entity_count=0,
+                detected_at=now,
+                metrics={
+                    "signal": "holding_fuel",
+                    "holding_fuel": holding,
+                    "threshold": HOLDING_FUEL_WARNING,
+                },
+            ))
+
+    handling = cs.get("ground_handling", 0.0)
+    if handling >= GROUND_HANDLING_WARNING:
+        key = (BottleneckType.FINANCIAL_PRESSURE, "gates-ground-handling")
+        if key not in active_keys:
+            results.append(Bottleneck(
+                id=f"bn-{uuid4().hex[:12]}",
+                type=BottleneckType.FINANCIAL_PRESSURE,
+                severity=BottleneckSeverity.WARNING,
+                zone="gates-ground-handling",
+                root_cause=(
+                    f"Ground handling cost €{handling:,.0f} — gate conflicts "
+                    f"inflating turnaround crew overtime"
+                ),
+                estimated_duration_minutes=45,
+                affected_entity_count=0,
+                detected_at=now,
+                metrics={
+                    "signal": "ground_handling",
+                    "ground_handling": handling,
+                    "threshold": GROUND_HANDLING_WARNING,
+                },
+            ))
+
+    total_cost = cs.get("total_cost_eur", 0.0)
+    if total_cost >= TOTAL_COST_CAROUSEL_WARNING:
+        key = (BottleneckType.FINANCIAL_PRESSURE, "baggage-carousel")
+        if key not in active_keys:
+            results.append(Bottleneck(
+                id=f"bn-{uuid4().hex[:12]}",
+                type=BottleneckType.FINANCIAL_PRESSURE,
+                severity=BottleneckSeverity.WARNING,
+                zone="baggage-carousel",
+                root_cause=(
+                    f"Total cost €{total_cost:,.0f} — opening make-up carousel "
+                    f"can prevent baggage delays cascading into flight delays"
+                ),
+                estimated_duration_minutes=20,
+                affected_entity_count=0,
+                detected_at=now,
+                metrics={
+                    "signal": "total_cost_eur",
+                    "total_cost_eur": total_cost,
+                    "threshold": TOTAL_COST_CAROUSEL_WARNING,
+                },
+            ))
+
     return results

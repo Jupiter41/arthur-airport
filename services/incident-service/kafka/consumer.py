@@ -8,8 +8,6 @@ Consumes:
   - passengers.events  → SecurityCongestionDetected (auto-create security_congestion)
 """
 
-import asyncio
-import json
 import logging
 import os
 import random
@@ -18,6 +16,7 @@ from typing import Callable, Awaitable
 
 from confluent_kafka import Consumer
 
+from _common import kafka_runtime
 from _common.consumer_health import ConsumerHealthTracker
 from _common.airport_config import load_airport_runtime_config
 
@@ -45,7 +44,10 @@ from metrics import (
     cascade_depth_max as m_cascade_depth,
     protocols_activated_total as m_protocols,
     envelope_invalid_total as m_envelope_invalid,
+    incident_commands_total as m_commands,
 )
+
+from _common.commands import CommandReceipts
 
 logger = logging.getLogger(__name__)
 
@@ -234,73 +236,34 @@ def _make_consumer() -> Consumer:
     })
 
 
+_TOPICS = [
+    "sim.clock",
+    "incidents.inject",
+    "weather.events",
+    "baggage.events",
+    "passengers.events",
+    "analysis.events",
+    "incidents.commands",
+]
+
+
 async def run_consumer() -> None:
     global _consumer, _consumer_running
-
-    # Wire lifecycle callbacks
     set_lifecycle_callbacks(
         on_created=_on_incident_created,
         on_status_changed=_on_incident_status_changed,
     )
-
     _consumer = _make_consumer()
-    _consumer.subscribe([
-        "sim.clock",
-        "incidents.inject",
-        "weather.events",
-        "baggage.events",
-        "passengers.events",
-        "analysis.events",
-    ])
+    _consumer.subscribe(_TOPICS)
     _consumer_running = True
-    logger.info("Kafka consumer started — subscribed to 6 topics")
-
-    loop = asyncio.get_event_loop()
+    logger.info("Kafka consumer started (topics: %s)", _TOPICS)
     try:
-        while _consumer_running:
-            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(200, timeout=1.0))
-            if not msgs:
-                continue
-
-            latest_tick_envelope = None
-            other_envelopes: list[dict] = []
-            skipped_ticks = 0
-
-            for msg in msgs:
-                if msg is None or msg.error():
-                    continue
-                try:
-                    envelope = json.loads(msg.value().decode("utf-8"))
-                except Exception:
-                    continue
-                if envelope.get("event_type") == "SimClockTick":
-                    if latest_tick_envelope is not None:
-                        skipped_ticks += 1
-                    latest_tick_envelope = envelope
-                else:
-                    other_envelopes.append(envelope)
-
-            if skipped_ticks > 0:
-                logger.debug("Skipped %d stale clock ticks", skipped_ticks)
-
-            for envelope in other_envelopes:
-                try:
-                    await _dispatch(envelope)
-                except Exception as e:
-                    logger.error("Consumer processing error: %s", e, exc_info=True)
-
-            if latest_tick_envelope is not None:
-                try:
-                    await _dispatch(latest_tick_envelope)
-                except Exception as e:
-                    logger.error("Consumer processing error: %s", e, exc_info=True)
-
-            _consumer_health.mark_message()
+        await kafka_runtime.run_consumer_loop(
+            _consumer, _dispatch, lambda: _consumer_running, _consumer_health,
+        )
     finally:
-        if _consumer:
-            _consumer.close()
         _consumer_running = False
-        logger.info("Kafka consumer stopped")
+        _consumer = None
 
 
 def stop_consumer() -> None:
@@ -342,6 +305,12 @@ def _validate_envelope(envelope: dict) -> tuple[str | None, dict, datetime | Non
 
 
 async def _dispatch(envelope: dict) -> None:
+    # Command envelopes (keyed on command_type, from incidents.commands) are
+    # imperatives, not facts — they take a separate, receipt-producing path.
+    if envelope.get("command_type") is not None:
+        await _handle_command(envelope)
+        return
+
     event_id = envelope.get("event_id", "")
 
     # Idempotency
@@ -367,6 +336,104 @@ async def _dispatch(envelope: dict) -> None:
             await _on_recommendation_applied(payload, sim_time)
         case _:
             pass
+
+
+# ── Commands (incidents.commands) ────────────────────────────
+
+_command_receipts = CommandReceipts()
+
+
+async def _handle_command(envelope: dict) -> None:
+    """Dedupe, execute and acknowledge a command with a durable receipt.
+
+    The shared :class:`CommandReceipts` lifecycle dedupes on ``command_id`` (via
+    the process cache and the persisted ``CommandReceipt`` node), runs
+    :func:`_execute_command`, then emits a ``CommandExecuted``/``CommandRejected``
+    fact on ``incidents.events`` keyed on ``command_id`` so the issuer can confirm
+    execution. Redelivery re-emits the receipt without re-mutating state.
+    """
+    from kafka.producer import EVENTS_TOPIC, _produce_event
+    from db.neo4j import get_driver
+    from _common.command_store import load_receipt, save_receipt
+
+    await _command_receipts.handle(
+        envelope,
+        _state.sim_time,
+        _execute_command,
+        lambda kind, clock, payload, key: _produce_event(
+            EVENTS_TOPIC, kind, clock, payload, key=key
+        ),
+        load=lambda key: load_receipt(get_driver(), key),
+        save=lambda key, receipt: save_receipt(get_driver(), key, receipt),
+    )
+
+
+async def _execute_command(envelope: dict) -> str | None:
+    """Execute an operator/agent command from ``incidents.commands``.
+
+    Returns ``None`` on success (the contain/resolve executor emits the usual
+    ``IncidentStatusChanged`` fact) or a rejection reason string. A rejected
+    command produces no status-change fact — only a ``CommandRejected`` receipt.
+    """
+    from application.commands import (
+        ContainIncident,
+        ResolveIncident,
+        parse_command,
+        validate_contain_precondition,
+        validate_resolve_precondition,
+    )
+    from db.neo4j import get_incident_by_id
+    from services.lifecycle import contain_incident, resolve_incident
+
+    command_type = envelope.get("command_type")
+    cmd, error = parse_command(command_type, envelope.get("payload"))
+    if error is not None:
+        m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
+        logger.warning("Rejected command %s: %s", command_type, error)
+        return error
+
+    sim_time = _state.sim_time
+    if sim_time is None:
+        m_commands.labels(command_type=command_type, outcome="rejected").inc()
+        return "Simulation clock not available"
+
+    incident = await get_incident_by_id(cmd.incident_id)
+    if not incident:
+        m_commands.labels(command_type=command_type, outcome="rejected").inc()
+        logger.warning("Rejected command %s: incident %s not found", command_type, cmd.incident_id)
+        return "Incident not found"
+
+    status = incident.get("status", "")
+
+    if isinstance(cmd, ContainIncident):
+        precondition_error = validate_contain_precondition(status)
+        if precondition_error is not None:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            logger.warning("Rejected ContainIncident %s: %s", cmd.incident_id, precondition_error)
+            return precondition_error
+        updated = await contain_incident(cmd.incident_id, sim_time, cmd.note)
+        if updated is None:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            return "Incident could not be contained"
+        m_commands.labels(command_type=command_type, outcome="accepted").inc()
+        logger.info("Executed ContainIncident for %s", cmd.incident_id)
+        return None
+
+    if isinstance(cmd, ResolveIncident):
+        precondition_error = validate_resolve_precondition(status)
+        if precondition_error is not None:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            logger.warning("Rejected ResolveIncident %s: %s", cmd.incident_id, precondition_error)
+            return precondition_error
+        updated = await resolve_incident(cmd.incident_id, sim_time, cmd.note)
+        if updated is None:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            return "Incident could not be resolved"
+        m_commands.labels(command_type=command_type, outcome="accepted").inc()
+        logger.info("Executed ResolveIncident for %s", cmd.incident_id)
+        return None
+
+    return "unsupported command"
 
 
 # ── Event handlers ───────────────────────────────────────────

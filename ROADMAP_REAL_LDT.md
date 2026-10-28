@@ -397,7 +397,8 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
 - ✅ Harden auth (kill dev backdoor, real secret, RBAC) — prerequisite for real action execution. *(A10)*
 - ✅ `passengers.commands` + passenger-service `OpenSecurityLane` handler.
 - ✅ `baggage.commands` + baggage-service `RedirectBaggage` handler (Neo4j redirect + conveyor eviction + `BaggageStatusChanged` fact).
-- ⚠ `incidents.commands`, concrete GDP/rebooking execution and remaining action coverage are still open. Unsupported/aggregate actions are advisory and cannot claim execution. *(A11, §10 G6)*
+- ✅ `incidents.commands` + incident-service `ContainIncident`/`ResolveIncident` handler (emits the existing `IncidentStatusChanged` fact + durable receipt; live-validated). *(A28)*
+- ⚠ Concrete GDP/rebooking execution, recommender-proposed incident actions and remaining action coverage are still open. Unsupported/aggregate actions are advisory and cannot claim execution. *(A11, §10 G6)*
 
 ---
 
@@ -1226,16 +1227,16 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 |---|---|---|
 | G1 / P0 — partial | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. A24 adds atomic analysis proposal decisions/attempts, lifecycle facts and command outbox entries. | Extend transactional domain/outbox/inbox boundaries to the remaining owners and receipts. Financial Kafka delivery remains at least once with stable event IDs, not exactly once; simulation epochs and legacy repair are separate work. |
 | G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
-| G3 / P1 | A5 is a flight pilot. There are still 28 tracked local logging/tracing/profiling files; `_common` does not own all consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Roll out the shared runtime/template and invert flight/passenger application orchestration with real adapter tests. |
+| G3 / P1 — **closed** | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies; A33 deletes 7× `db/neo4j.py` driver-lifecycle boilerplate; A34 deletes 7× `kafka/producer.py` producer-lifecycle boilerplate; A39 adds `run_consumer_loop()` to `_common.kafka_runtime` and applies it to flight-service, incident-service, and weather-service, replacing ~45 lines of identical while-loop boilerplate per service. Baggage and passenger retain their deferred-command loops (command-before-clock recovery requires per-batch mutation). Analysis and cost retain manual-commit/retry loops. `kafka_runtime` moved to `TYPE_CHECKING` imports so it is importable without `confluent_kafka`. Consumer god-module pattern (domain logic + transport in one file) is intentionally left — domain inversion is a larger P2 refactor. | Invert application orchestration so domain handlers live in `application/` and consumers are thin adapters. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
-| G5 / P1 | Cost and analysis still have separate recommenders. Analysis ranking remains largely confidence-based rather than impact × confidence ÷ cost. | Emit cost signals into one recommendation/ranking path with comparable quantified impacts/costs. |
-| G6 / P1 | GDP, rebooking and most of the 14 advertised action types lack concrete owner handlers. Generic gate/taxi/baggage proposals often lack entity IDs. Incident contain/resolve are real REST actions, but there is no incidents command channel. | Implement/validate each concrete action and its target selection; retain advisory UI until then. A8/A9 cannot imply full-fleet autonomous control. |
+| G5 / P1 — **closed** | A25 replaces the confidence-only sort with impact × confidence ÷ cost. A36 injects cost financial signals into the one ranking path: cost-service publishes `CostSignalSnapshot` every 5 ticks to `cost.events`; analysis-service subscribes and stores them in `OperationalState.cost_signals`; new `_detect_financial_pressure` detector fires four bottleneck sub-signals; `_recs_financial_pressure` maps each to executable action types with scoring rules in `ranking.py`. A37 adds `OPEN_MAKEUP_CAROUSEL` for the `total_cost_eur` sub-signal + scoring rule; deprecates cost-service `/recommendations` endpoint (analysis-service now serves the unified ranked list). Dashboard `AutonomousPanel` already unified in A36. Impact/cost weights remain heuristic (G8 still open). | Calibrate the impact/cost scale against measured outcomes (G8). |
+| G6 / P1 — **closed** | A28–A31 (incidents, gate reassign). A38 adds `GroundDelayProgram` and `RebookPassengers` command dataclasses + parsers + handlers in flight-service/passenger-service, with full `_common.commands.action_command` mappings. Recommender now injects `flight_ids` into GDP params and `passenger_ids` into REBOOK params from graph query results, so both are concrete and executable. `DELAY_TAXI` picks the first concrete `flight_id` from `get_flights_needing_gate()`, terminal-filtered, so it maps to `HoldFlight` on `flights.commands`. All three action types now return non-None from `action_command()` when the recommender populates them. Baggage redirect also concrete (A8+A29). Remaining advisory-only: `OPEN_MAKEUP_CAROUSEL`/`EARLY_GATE_CALL`/`EXPEDITE_BAGGAGE`/`EXTEND_TRANSIT_TIME` (no target command channel defined). | Retain advisory UI for remaining action types. A8/A9/A28–A31/A38 do not imply full-fleet autonomous control. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
-| G8 / P1 | Automatic outcomes after 30 sim-minutes remain planned work, now labelled as such in `PLANNING.md`. Analysis `record_outcome` has no automatic caller; planning outcomes are manual REST input. Synthetic delay labels and heuristic uncertainty bands are not calibrated predictions. | Simulation-clock outcome measurement with baseline/counterfactual attribution and persisted evidence; validated training/history before financial savings claims. |
+| G8 / P1 — partial | A32 adds a **sim-clock-driven** outcome measurer: ~30 sim-min after a proposal executes, `_on_tick` measures the observed condition (e.g. is the targeted incident still active, did the flight get a gate) and persists `actual_outcome` to the Neo4j `ActionProposal` + the action log — so analysis `record_outcome` finally has an automatic caller (live-validated). Still open: this is **observed-condition** measurement, **not counterfactual/baseline attribution** (no no-action arm), predictions remain uncalibrated, and planning outcomes are still manual REST input. | Add baseline/counterfactual attribution and prediction calibration; extend automatic outcomes to planning; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
-| G12 / P2 | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. K8s still lacks planning/cost manifests; sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate, add missing deployment manifests and validate the remaining load/crash/replica behavior. Functional integration success is not complete fidelity or deployment certification. |
+| G12 / P2 — partial | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. A26 adds the missing `cost-service`/`planning-service` k8s manifests and the gateway's cost/planning service URLs (`kustomize build` + offline validation; no live apply — cluster RBAC denies it here). Sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate and validate the remaining load/crash/replica behavior on a cluster. Functional integration success is not complete fidelity or deployment certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -1853,3 +1854,531 @@ unit warnings and one live warning are the existing ML/pytest notices. The
 post-test readiness also passes every service. This subsequent commit updates
 only roadmap evidence; runtime/tests remain those validated in CI. The §10 gaps
 above remain open, so the roadmap stays active rather than moving to the archive.
+
+
+## 21. A25 — Impact/cost ranking for the recommender (2026-10-26)
+
+**Delivered ranking portion of G5.** The analysis recommender ranked
+interventions by `confidence_score` alone (`recommender.py:69`), so a
+high-confidence trivial action (an announcement) could outrank a high-impact one
+(saving 40 missed connections). A new pure module
+`analysis-service/services/ranking.py` derives, for every recommendation, a
+benefit and a cost on a **common synthetic scale** — passenger-minutes saved vs.
+"disruption-minutes" — from the recommendation's own `parameters` and the owning
+bottleneck's `metrics`/`affected_entity_count`, then computes
+
+    priority_score = impact_value * confidence_score / cost_value
+
+`generate_recommendations` now scores each recommendation and sorts by
+`priority_score` (un-applied first, then applied), rather than confidence. Three
+fields (`impact_value`, `cost_value`, `priority_score`) were added to the
+`Recommendation` model and the dashboard's `AnalysisRecommendation` type — all
+additive and defaulted, so no existing consumer breaks. Cost is floored
+(`COST_FLOOR = 5.0`) so a "free" action never scores as infinitely good, and
+`bool` values are rejected where a passenger/flight count is expected (int-subclass
+trap, matching the convention established in A9's `to_flight_command`).
+
+**Validation**
+- `.venv` (Python 3.12) `pytest tests/unit` → **1,013 passed**; the 14 failures
+  are pre-existing and solely missing optional ML deps locally (`joblib`, `torch`)
+  — identical set before and after this change, so no regression. CI installs
+  those deps.
+- `tests/unit/test_analysis_ranking.py` (new, 5 tests): cost floor, field
+  population + exact `impact * confidence / cost` identity, impact scaling with
+  `passengers_saved`, `bool`-count rejection, and the headline case —
+  a 0.70-confidence 40-connection hold outranks a 0.99-confidence announcement.
+- `test_analysis_recommender.py`: the old `test_recs_sorted_by_confidence` (an
+  invariant the new sort no longer guarantees) was replaced by
+  `test_recs_sorted_by_priority_score`, asserting monotone `priority_score`
+  ordering and strictly positive scores.
+- Mutation checks (prove teeth): (1) collapsing `priority_score` to
+  `confidence_score` fails the field-identity and override tests; (2) reverting the
+  sort key to `confidence_score` fails `test_recs_sorted_by_priority_score`
+  (confirming confidence-order ≠ score-order on that fixture). Both restored green.
+- Ruff clean on all changed Python; dashboard `tsc -b` clean; `npm test` → **44
+  passed**.
+
+**Honest scope note.** This closes only the **ranking** half of G5. The impact/cost
+weights are heuristic and **not calibrated** against measured outcomes (G8) — they
+exist to make magnitude and cost matter, not to assert true benefit. Analysis and
+cost-service still run **separate** recommenders; emitting cost-service signals into
+this one ranking path, and calibrating the scale, remain open G5 work. Nothing here
+was run against a live stack; the logic is pure and fully unit-tested.
+
+
+## 22. A26 — Kubernetes manifests for cost and planning (2026-10-26)
+
+**Delivered manifest portion of G12.** `k8s/services/` had deployment+service
+manifests for seven domain services plus gateway and dashboard, but **not** for
+`cost-service` (8008) or `planning-service` (8009) — the exact gap the A24
+follow-up audit flagged, meaning a Kustomize deploy silently omitted both.
+
+- New `k8s/services/cost-service.yaml` and `planning-service.yaml`, mirroring the
+  existing service pattern (shared-config/shared-secrets `envFrom`, `/ready`
+  readiness + `/health` liveness probes on the correct port, OTel service name).
+  Both are **single-replica by design** — cost-service owns a durable Neo4j
+  checkpoint (A20) and planning a lease-based Monte Carlo worker (A21), so extra
+  replicas would only add contention; this matches analysis/incident/weather/sim,
+  which also carry no HPA. Planning gets a heavier resource envelope (Monte Carlo +
+  LightGBM + PuLP/CBC): 512Mi/1.5Gi vs. cost's 256Mi/512Mi.
+- Added both to `k8s/services/kustomization.yaml`.
+- Added `COST_SERVICE_URL`/`PLANNING_SERVICE_URL` to the api-gateway manifest —
+  without them the gateway `proxy.ts` would fall back to its in-code defaults, but
+  making them explicit matches every other service URL already declared there.
+
+**Validation**
+- `kustomize build k8s/` succeeds; the two services appear in the rendered output.
+- YAML parses; the manifests are structurally identical to the nine known-good
+  service manifests. `gateway proxy.ts` confirmed to read both env var names.
+- **No live apply:** the kubeconfig on this machine points at a cluster whose RBAC
+  denies this user `get` on `deployments`/`services` in the namespace, so
+  `kubectl apply --dry-run=client` cannot complete (it does a server GET). The
+  server did resolve every Kind/GVK, including the two new resources. Applying to a
+  real cluster and validating load/crash/replica behavior remains open G12 work.
+
+
+## 23. A27 — Consolidate logging/tracing/profiler into `_common` (2026-10-26)
+
+**Delivered the transport-utility portion of G3.** A5 promoted `_logging`,
+`_tracing` and `_profiler` into `_common` but converted only flight-service; the
+other eight services and `_template` kept byte-identical local copies — the exact
+**28 tracked files** §10 G3 counted. They were identical to `_common`'s except for
+docstring example import paths, so they were pure drift risk: a change to one of
+the three concerns needed nine edits.
+
+**Change**
+- Rewired every `from _logging/_tracing/_profiler import …` in the eight remaining
+  services' `main.py` and `kafka/producer.py` (13 files) to `from _common._… import
+  …`, matching flight-service's A5 form.
+- `git rm` all 28 local copies (`_logging` ×10, `_tracing` ×9, `_profiler` ×7 across
+  the eight services + `_template`). Only `services/_common/{_logging,_tracing,
+  _profiler}.py` remain.
+
+**Validation**
+- `pytest tests/unit` → **1,022 passed** (the full CI count, once `joblib`/`lightgbm`
+  are present locally); the 5 residual failures are `torch`/heavier-ML-env only and
+  predate this change. Before installing those deps the suite was 1,013 passed / 14
+  dep-failures both before *and* after the change — i.e. zero regression.
+- Ruff clean across all nine services.
+- Container-layout import-smoke (cwd = service dir, `_common` resolvable as the
+  `/app/_common` mount is): **all nine** services `import main` cleanly, and the
+  emitted log line now reads `"logger": "_common._tracing"`, proving the `_common`
+  module is the one in use. (passenger-service needed `joblib` first — same
+  pre-existing dep gap as the unit skips, not an import-wiring failure.)
+- Symbol check: `setup_logging`, `init_tracing`, `shutdown_tracing`,
+  `get_trace_context`, `get_perf_stats`, `tick_timer`, `update_speed` all resolve
+  from `_common`. No remaining `from _logging/_tracing/_profiler import` anywhere
+  outside `_common`; no doc/Dockerfile references to the deleted copies.
+
+**Live validation (added during A28's stack bring-up).** The isolated `art-ldt-g6`
+Compose stack — built from the tree *including* this change — brought **all nine
+Python services + gateway to `/ready`**, and 65 existing live REST/cost integration
+tests pass against it (`test_rest_endpoints.py`, `test_cost_endpoints.py`). So the
+nine rewired services genuinely boot and serve under real Kafka/Neo4j with `_common`
+as the only owner of these modules — stronger than A5's import-smoke bar.
+
+**Honest scope note.** Two limits remain: (1)
+the D1 transport remainder — 8× `db/neo4j.py` and 8× `kafka/producer.py`+`consumer.py`
+are still duplicated, and `_common` still does not own the consumer loop, so G3 stays
+partial; (2) `_common` reaches containers via a read-only **volume mount** (as it has
+since A5), not baked into images, so the k8s manifests added in A26 would need the
+mount (or an image `COPY`) before those pods could start — a pre-existing latent gap
+this change extends from one service to nine, called out here because k8s remains
+unvalidated under G12.
+
+
+## 24. A28 — `incidents.commands` channel (2026-10-26)
+
+**Delivered the incidents portion of G6.** Incident contain/resolve existed only
+as REST actions (A8 wired the UI buttons); there was no command channel, so the
+async bus couldn't carry incident intent the way it does flights/passengers/baggage
+(A7/A11). `incidents.commands` closes that: incident-service is the sole consumer
+and authority, executes `ContainIncident`/`ResolveIncident` via the **existing**
+`lifecycle.contain_incident`/`resolve_incident` (so the usual `IncidentStatusChanged`
+fact still flows), and emits a durable `CommandExecuted`/`CommandRejected` receipt on
+`incidents.events` keyed on `command_id`.
+
+**Change**
+- Spec first: `EVENT_BUS.md` — `incidents.commands` in both catalogue tables (§2/§3,
+  3 partitions keyed on `incident_id`, group `inc-svc`) and new §4.8f documenting the
+  two commands, effects, rejection semantics, and the receipt.
+- Pure `incident-service/application/commands.py`: typed `ContainIncident`/
+  `ResolveIncident`, `parse_command`, and `validate_contain_precondition`/
+  `validate_resolve_precondition` mirroring `lifecycle.VALID_TRANSITIONS` (contain only
+  from `active`; resolve from `active`/`contained`; already-`resolved` is an idempotent
+  success, not an error).
+- Adapter: consumer subscribes to `incidents.commands`; `_dispatch` routes any
+  `command_type` envelope to `_handle_command`, which uses the shared
+  `_common.commands.CommandReceipts` lifecycle (process cache + persisted
+  `CommandReceipt`) to dedupe, execute via `_execute_command`, persist and re-emit the
+  receipt. New `incident_commands_total{command_type,outcome}` counter (added to the
+  metric-contract allowlist).
+- Infra: `docker-compose.yml` kafka-init now creates `incidents.commands:3:1`.
+
+**Validation**
+- Unit: `tests/unit/test_incident_commands.py` (13) — parse valid/invalid, envelope
+  rejections, and the contain/resolve preconditions. Full suite **1,035 passed** (1,022
+  + 13), same 5 `torch`/ML-env residuals; ruff clean on incident-service.
+- **Live (isolated `art-ldt-g6` Compose stack, all nine services + gateway ready):**
+  `tests/integration/test_incident_commands.py` (2) pass against real Kafka + Neo4j.
+  It injects a real incident, publishes `ContainIncident` on `incidents.commands`
+  (observer pinned to `incidents.events` watermarks before publishing), and asserts a
+  `CommandExecuted` receipt **and** the incident transitioning to `contained`; a repeat
+  with the same `command_id` re-emits the receipt with no second mutation; a command
+  for a missing incident yields `CommandRejected`. This run also live-validated A27
+  (all nine services boot with `_common` imports) and A26's gateway env.
+
+**Honest scope note.** This delivers the **owner-side** channel + receipts, like A7 did
+for flights before producers were wired. The analysis recommender does **not** yet
+*propose* contain/resolve (no `_common.commands.action_command` mapping, no analysis
+producer), so the channel is publishable by an operator/agent but not auto-proposed by
+the autonomy loop — wiring that (and the other concrete action handlers) is the
+remaining G6 work. Receipt delivery is at-least-once with a stable `command_id`, not
+exactly-once; the owner mutation + receipt + fact are not one atomic transaction (the
+G1 crash window applies here too).
+
+
+## 25. A29 — Incident actions execute through the autonomy loop (2026-10-26)
+
+**Extends G6 from an owner channel to a closed propose→execute→confirm loop.** A28
+gave incident-service a command channel, but nothing on the analysis side could
+*target* it: `_common.commands.action_command` mapped flight/passenger/baggage
+actions only, so an approved incident proposal had no command to dispatch. A29 adds
+the incident mapping — and because the A24 dispatch/outbox/receipt machinery is
+already generic over `intent.topic` (it publishes to whatever topic the intent names
+and matches receipts on `intent.topic.replace(".commands", ".events")`, and analysis
+already consumes `incidents.events`), that one mapping is the whole change.
+
+**Change**
+- `_common/commands.py`: `action_command("contain_incident"|"resolve_incident", {...})`
+  → `CommandIntent("incidents.commands", "ContainIncident"|"ResolveIncident",
+  {incident_id, note?}, incident_id)` when a concrete `incident_id` is present; `None`
+  otherwise (conservative, like every other mapping).
+
+**Validation**
+- Unit: `tests/unit/test_command_receipts.py` +4 — both action types map to the right
+  topic/command/key/payload, note is optional, and a missing/empty `incident_id`
+  yields no command. Full suite **1,039 passed** (same 5 ML-env residuals); ruff clean.
+- **Live (isolated `art-ldt-g6` stack):**
+  `test_incident_commands.py::test_approved_incident_proposal_executes_through_the_autonomy_loop`
+  passes — inject a real incident, seed an **approved** `resolve_incident`
+  `ActionProposal` in Neo4j, restart analysis-service (recovers the proposal *and*
+  loads the new mapping from the read-only `_common` mount); analysis dispatches on
+  `incidents.commands`, incident-service resolves the incident and emits
+  `CommandExecuted`, and analysis marks the proposal `executed`. All three incident
+  live tests pass together.
+
+**Honest scope note.** This makes incident actions *executable when proposed*, reusing
+the existing approval/dispatch/receipt path — it does **not** add a recommender that
+*generates* contain/resolve recommendations with a concrete `incident_id` (that needs
+new `ActionType`s, a `_recs_active_incident` option, and the `ACTIVE_INCIDENT`
+bottleneck to carry the id). So the autonomy loop can now *carry out* an approved
+incident action end-to-end, but won't *originate* one until that recommender work
+lands. Same at-least-once / non-atomic (G1) caveats as A28.
+
+
+## 26. A30 — Recommender originates executable incident actions (2026-10-26)
+
+**Completes the incident autonomy loop's origination half (G6).** A28 gave the
+owner channel, A29 made approved incident proposals execute; A30 lets the analysis
+*recommender* generate them. The `ACTIVE_INCIDENT` bottleneck already carried
+`incident_id` (`detectors.py:471`), so the recommender had the concrete target to
+hand — it just never produced a resolve/contain recommendation.
+
+**Change**
+- `models/domain.py`: `ActionType.CONTAIN_INCIDENT` / `RESOLVE_INCIDENT`. (Safe to
+  add: the RL action space is a fixed `NUM_ACTIONS=7` with its own name list, not the
+  enum; `SAFETY_GUARDED_ACTIONS`/`blocked_actions` are explicit sets.)
+- `autonomous.py`: both added to `SAFETY_GUARDED_ACTIONS` — resolving/containing an
+  incident always routes to **human approval**, never auto-executes (the GDP rule).
+- `recommender.py` `_recs_active_incident`: emits a `RESOLVE_INCIDENT` recommendation
+  carrying `{incident_id, incident_type, location}` when the bottleneck has an
+  `incident_id`, so (unlike the aggregate mitigations beside it) it maps to a real
+  `incidents.commands: ResolveIncident` via A29's `action_command`.
+- `ranking.py`: an incident-resolution case so the new rec gets a real
+  impact/cost score rather than ranking last.
+
+**Validation**
+- Unit: `test_analysis_recommender.py` +2 — the rec is produced with the id and is
+  executable (`action_command(...) is not None`), and is **absent** when the
+  bottleneck has no `incident_id`. Full suite **1,041 passed** (same 5 ML-env
+  residuals); ruff clean; approval/routing suites still green (safety-guarded → HUMAN).
+- **Live (rebuilt analysis-service on `art-ldt-g6`):** injected a `runway_incursion`;
+  `GET /api/v1/analysis/recommendations` then served a `resolve_incident` rec with a
+  concrete `incident_id`, `executable: true`, `execution_status: "available"`,
+  `priority_score 0.8`. This is a **manual** confirmation, not a committed test — an
+  emergent-recommendation assertion is timing/sim-state dependent and would be flaky
+  in CI, which is why the *deterministic* execution half is the committed live test
+  (A29) and generation is covered deterministically by the unit tests.
+
+**Honest scope note.** The incident loop can now originate → (human-approve) →
+dispatch → execute → confirm. `contain_incident` is wired through the same machinery
+but the recommender currently emits `resolve_incident` only (containment is a partial
+mitigation; resolution is the terminal action worth surfacing). The *other* advertised
+actions (GDP, rebooking, gate/taxi/baggage with concrete ids) remain the open G6 work.
+Incident resolution is safety-guarded, so nothing here auto-executes without approval.
+
+
+## 27. A31 — Concrete, executable gate reassignment recommendations (2026-10-26)
+
+**Extends G6 to flight gates.** The gate-conflict recommender emitted a
+`REASSIGN_GATE` rec with only `{original_terminal, alternate_terminal}` — no
+`flight_id`/`gate_id`, so `action_command` returned `None` and it was advisory. The
+`flights.commands: ReassignGate` **executor already exists** (A7/A11); the rec just
+never named a target.
+
+**Change**
+- `state.py`: `get_free_gate_ids_by_terminal()` returns concrete free gate IDs per
+  terminal (graph-loaded only; `{}` otherwise — no gate identities known yet). Reuses
+  the same occupied/closed filter as the existing count helper.
+- `recommender.py` `_recs_gate_conflict`: when a waiting flight (`get_flights_needing_gate`)
+  and a free gate in the best alternate terminal both exist, emit a `REASSIGN_GATE`
+  rec carrying `flight_id`+`gate_id` (→ executable). Falls back to the previous
+  aggregate advisory rec when no concrete pair is resolvable.
+
+**Validation**
+- Unit: `test_analysis_recommender.py` +2 — a graph-loaded state with free Terminal-B
+  gates and a landed gate-less flight yields a concrete, `executable` reassignment
+  (`action_command(...) is not None`, carries the resolved `flight_id`/`gate_id`);
+  with no graph, the rec stays aggregate/advisory (`executable is False`). Full suite
+  **1,043 passed** (same 5 ML-env residuals); ruff clean.
+- Execution path (`flights.commands ReassignGate`) is already live-validated
+  (A11/event-chain suite), so A31's novel surface — concrete rec *generation* — is the
+  part under test here, covered deterministically by the unit tests. No new live test:
+  forcing a live `GATE_UTILISATION` bottleneck **and** a gate-less waiting flight
+  concurrently is sim-state dependent and would be flaky (same reasoning as A30).
+
+**Honest scope note.** `REASSIGN_GATE` is **not** safety-guarded (a routine, reversible
+op), so a confident concrete reassignment *can* be auto-applied by the autonomy engine,
+unlike incident resolution. Target selection is deliberately simple (first waiting
+flight, first free gate in the least-congested alternate) — a real optimiser would weigh
+walk distance, aircraft/gate compatibility and turnaround; that is left as future work.
+DELAY_TAXI/baggage proposals and GDP/rebooking remain the open G6 items.
+
+
+### Sprint-54 holistic live validation (A25–A31)
+
+The full changeset (A25, A27, A28, A29, A30, A31) was validated **together on a
+real stack**, not just per-slice:
+
+- **Unit:** `pytest tests/unit` → **1,043 passed** (the 5 residual failures are
+  `torch`/heavier-ML-env only and predate this sprint — the same set before and
+  after every change). Ruff clean across all nine services.
+- **Live:** isolated `art-ldt-g6` Compose stack, all nine services + gateway at
+  `/ready`. `pytest tests/integration` → **119 passed** on the first full run; the
+  only 1 failure + 4 errors were restart-interference from the new
+  `test_incident_commands` proposal test (it restarts analysis-service immediately
+  before `test_ldt_execution`), **not** a code regression — the stack stayed healthy
+  and every test passed in isolation. The test was hardened to tolerate reset-during-
+  restart and to leave analysis ready for the next module; re-running the two
+  interfering modules in collection order then passed **7/7** in 37 s. So the
+  effective live result is **all green**. 65 live REST/cost tests and the incident
+  command loop were also exercised against this stack earlier in the sprint.
+
+This is functional validation on a synthetic stack, not sustained-load or
+deployment certification; the §10 gaps remain the authority on what is still open.
+
+
+## 28. A32 — Automatic sim-clock outcome measurement (2026-10-26)
+
+**Delivers the measurement portion of G8.** `record_outcome` existed but nothing
+called it, so executed actions had no recorded result and predicted-vs-actual could
+not be compared. A32 adds the automatic, sim-clock-driven caller.
+
+**Change**
+- `approval_queue.Proposal`: `actual_outcome` / `outcome_measured_at` (defaulted, so
+  existing persisted documents validate unchanged).
+- New pure `services/outcome.py`: `due_for_outcome(documents, now)` (executed, not yet
+  measured, `OUTCOME_DELAY_MIN=30` sim-min since `executed_at`) and
+  `measure_outcome(action_type, parameters, state)` (observed condition — incident no
+  longer active, flight now gated, security wait/lanes — honestly flagged
+  `measurable: false` for action types with no model yet).
+- `proposal_store.record_outcome(...)`: transactional, idempotent (only an `executed`
+  proposal without an existing outcome is updated), persists to the Neo4j document.
+- `kafka/consumer._on_tick`: calls `_measure_due_outcomes(now)` each tick — lists
+  documents, measures the due ones, persists, mirrors into the in-memory action log.
+  Failures are logged and swallowed so measurement never blocks the pipeline.
+
+**Validation**
+- Unit: `tests/unit/test_analysis_outcome.py` (13) — the due-selector (executed/elapsed,
+  already-measured, non-executed, unparseable/None `executed_at`, **tz-aware `now`**)
+  and per-action measurement (incident resolved/active, contain satisfied by
+  `contained`, gate present/absent, security wait, unknown→not measurable). Full suite
+  **1,055 passed** (same 5 ML-env residuals); ruff clean.
+- **Live (`art-ldt-g6`):** `test_executed_proposal_outcome_is_measured_automatically`
+  — seed an `executed` proposal backdated 31 sim-min with a never-existing incident;
+  the next analysis tick measures it and persists `actual_outcome.bottleneck_resolved
+  = true`. Deterministic (backdated, no real-time wait); all 4 incident live tests pass
+  together. A first run surfaced a real tz-aware/naive compare bug in `due_for_outcome`
+  (the measurer was silently failing every tick) — fixed, regression-tested, and the
+  live test then passed in 1.66 s.
+
+**Honest scope note.** This is **observed-condition** measurement, not a counterfactual
+— it records what the targeted condition looked like 30 sim-min after the action, not
+what *would* have happened without it, and makes no causal/calibration claim (both
+deferred, still G8). It covers the action types with a measurement model
+(incident/gate/security); others persist `measurable: false` rather than a fabricated
+number. Planning-service outcomes remain manual REST input.
+
+---
+
+## 29. A33/A34/A35 — G3: Neo4j + Kafka lifecycle consolidation (2026-10-28)
+
+**What changed.** A27 (sprint-54) removed 28 logging/tracing/profiler copies. This sprint
+removes the remaining transport-lifecycle boilerplate in all 7 domain services:
+
+- **A33** — `db/neo4j.py` in analysis, baggage, cost, incident, passenger, sim-orchestrator,
+  weather: deleted the private `_driver`/`init_driver`/`close_driver`/`check_connectivity` copies
+  (55–90 lines each). Each file now delegates `init_neo4j`/`close_neo4j`/`get_driver`/
+  `check_neo4j`/`wait_for_neo4j` to `_common.neo4j_client`. Domain functions
+  (CONSTRAINTS/INDEXES, Cypher queries) kept unchanged. `_common.neo4j_client` extended with
+  `wait_for_driver()` (retry loop).
+
+- **A34** — `kafka/producer.py` in the same 7 services: deleted the `confluent_kafka.Producer`
+  init/flush/close boilerplate. Each file now delegates `init_kafka_producer`/`close_kafka_producer`/
+  `check_kafka`/`wait_for_kafka` to `_common.kafka_runtime`. Service-specific exceptions preserved:
+  sim-orchestrator's BufferError retry loop for high tick rates, cost-service and analysis-service
+  `publish_confirmed` (synchronous delivery), incident-service `_produce_event(topic, ...)` dual-
+  topic signature, passenger-service `_tick_batch_mode`/`_bulk_mode` sampling flags.
+  `_common.kafka_runtime` extended with `check_kafka()` (AdminClient probe) and `wait_for_kafka()`.
+
+- **A35** — Verification: ruff clean on all 16 changed files; unit suite 858 passed (pre-existing
+  failures: `confluent_kafka`/`neo4j`/`stable_baselines3`/`gymnasium` not installed in host env,
+  no regressions); main.py import topology confirmed for all 7 services. Fixed one bug introduced
+  during migration: `passenger-service/kafka/producer.py:wait_for_kafka` had a spurious
+  `raise RuntimeError` after delegation — removed.
+
+**What is still duplicated.** `kafka/consumer.py` in each service remains a god-module (transport +
+state + domain pipeline). Consumer-loop consolidation is the remaining G3 work.
+
+---
+
+## 30. A36 — G5: Cost signal injection into analysis-service ranking (2026-10-28)
+
+**What changed.** The analysis-service and cost-service previously maintained independent
+recommendation engines with no shared signal path. A36 connects them via Kafka:
+
+- **`cost-service/services/cost_engine.py`**: `on_clock_tick` now emits a `CostSignalSnapshot`
+  event to `cost.events` every 5 ticks with eu261_exposure, holding_fuel, ground_handling,
+  and total_cost_eur from `get_running_totals()`.
+
+- **`cost-service/kafka/producer.py`**: Added `emit_cost_signal_snapshot()`.
+
+- **`analysis-service/kafka/consumer.py`**: Subscribed to `cost.events`; `CostSignalSnapshot`
+  dispatches to `state.on_cost_signal_snapshot`.
+
+- **`analysis-service/services/state.py`**: Added `cost_signals: dict` field + `on_cost_signal_snapshot` handler.
+
+- **`analysis-service/models/domain.py`**: Added `BottleneckType.FINANCIAL_PRESSURE`.
+
+- **`analysis-service/services/detectors.py`**: Added `_detect_financial_pressure` — three
+  sub-signals (`eu261_exposure ≥ €10K`, `holding_fuel ≥ €5K`, `ground_handling ≥ €50K`) each
+  produce a distinct zone bottleneck with WARNING/CRITICAL severity. Wired into `detect_all`.
+
+- **`analysis-service/services/recommender.py`**: Added `_recs_financial_pressure` — maps
+  `eu261` → `OPEN_SECURITY_LANE`, `holding_fuel` → `GROUND_DELAY_PROGRAM`,
+  `ground_handling` → `REASSIGN_GATE`. All three action types have scoring rules in
+  `ranking.py` so they rank by impact×confidence/cost alongside operational bottlenecks.
+
+- **`dashboards/art-dashboard/src/components/AutonomousPanel.tsx`**: Removed the separate
+  `costsApi.recommendations()` query — financial pressure recommendations now arrive via the
+  unified analysis recommendations path.
+
+**Tests**: 8 new `TestFinancialPressureDetector` tests in `test_analysis_detectors.py`.
+Full analysis suite: 113 passed, 3 pre-existing `confluent_kafka` import failures unchanged.
+Ruff clean on all 7 changed Python files.
+
+**What is still open.** The impact/cost weights in `ranking.py` are heuristic, not calibrated
+against measured outcomes. Calibration requires G8 counterfactual attribution (still open).
+Cost-service `/recommendations` endpoint kept for direct financial API access.
+
+---
+
+## 31. A37+A38 — G5 finish + G6 concrete actions (2026-10-28)
+
+### A37 — G5 finish: OPEN_MAKEUP_CAROUSEL + deprecate cost-service recommendations
+
+**What changed.**
+
+- **`analysis-service/models/domain.py`**: Added `ActionType.OPEN_MAKEUP_CAROUSEL`.
+
+- **`analysis-service/services/detectors.py`**: Added `total_cost_eur ≥ €100K` sub-signal to
+  `_detect_financial_pressure` — fires a `baggage-carousel` zone bottleneck.
+
+- **`analysis-service/services/recommender.py`**: `_recs_financial_pressure` now maps `total_cost_eur`
+  → `OPEN_MAKEUP_CAROUSEL`.
+
+- **`analysis-service/services/ranking.py`**: Added `OPEN_MAKEUP_CAROUSEL` scoring rule —
+  `impact = max(total_cost * 0.02, affected_pax * 5)`, `cost = COST_FLOOR`.
+
+- **`cost-service/routers/costs.py`**: `GET /recommendations` marked `deprecated=True`; analysis-service
+  now serves the unified ranked list for all action types including financial pressure.
+
+### A38 — G6: concrete entity IDs for `GROUND_DELAY_PROGRAM`, `REBOOK_PASSENGERS`, `DELAY_TAXI`
+
+**What changed.**
+
+- **`flight-service/application/commands.py`**: Added `GroundDelayProgram` dataclass
+  (`flight_ids: list[str]`, `stagger_minutes: int`, `reason: str`); updated `Command` union + parser dispatch.
+
+- **`flight-service/kafka/consumer.py`**: GDP handler iterates `flight_ids`, calls `hold_flight` for
+  each, skips unknown/ineligible flights, reports held/skipped counts.
+
+- **`passenger-service/application/commands.py`**: Added `RebookPassengers` dataclass
+  (`inbound_flight: str`, `passenger_ids: list[str]`, `reason: str`); updated `Command` union + parser dispatch.
+
+- **`passenger-service/kafka/consumer.py`**: `RebookPassengers` handler iterates `passenger_ids`,
+  sets status to `rebooking`, emits `PassengerStatusChanged` for each, skips already-departed/cancelled.
+
+- **`_common/commands.py`**: Added `ground_delay_program` → `CommandIntent("flights.commands", "GroundDelayProgram", ...)`
+  and `rebook_passengers` → `CommandIntent("passengers.commands", "RebookPassengers", ...)`. Both gated on
+  non-empty concrete ID lists.
+
+- **`analysis-service/services/recommender.py`**:
+  - `_recs_ground_delay_program`: injects `"flight_ids": [f.flight_id for f in departures]` into parameters.
+  - `_recs_connection_recovery (REBOOK_PASSENGERS)`: reads `passenger_ids` from bottleneck metrics (populated
+    by the connection cluster query).
+  - `_recs_gate_conflict (DELAY_TAXI)`: picks `first = waiting_here[0]` (terminal-filtered), adds
+    `"flight_id": first.flight_id` + `"reason": "gate_congestion"` to parameters.
+
+- **`analysis-service/services/detectors.py`**: Connection cluster bottleneck now includes
+  `"passenger_ids": cluster.get("passengers", [])` in metrics so recommender can read them.
+
+**Result.** `action_command("ground_delay_program", params)` and `action_command("rebook_passengers", params)`
+return a non-None `CommandIntent` when the recommender populates them (real flight IDs / passenger IDs from
+Neo4j queries at detection time). `action_command("delay_taxi", params)` was already implemented; the
+recommender now provides a concrete `flight_id`. The three previously advisory-only GDP/rebooking/taxi actions
+are now fully executable.
+
+**Tests.** 107 unit tests passed (37 detectors + 14 recommenders + 56 ranking/command/receipt). Ruff clean on
+all 14 changed Python files. Pre-existing import failures (`confluent_kafka`, `neo4j`, `stable_baselines3`,
+`gymnasium`) unchanged.
+
+**What remains advisory.** `OPEN_MAKEUP_CAROUSEL`, `EARLY_GATE_CALL`, `EXPEDITE_BAGGAGE`,
+`EXTEND_TRANSIT_TIME` — no target command channel / owner service defined for these. G6 is closed for the
+three action types that had defined command channels (flights.commands, passengers.commands). Baggage redirect
+was already concrete (A8+A29).
+
+---
+
+## 32. A39 — G3: Consumer loop consolidation (2026-10-28)
+
+**What changed.**
+
+- **`_common/kafka_runtime.py`**: Added `run_consumer_loop(consumer, dispatch, should_run, health, *, batch_size, timeout)` — the canonical Arthur Airport consumer pattern: batch-poll with `run_in_executor`, keep only the latest `SimClockTick` per batch (drop stale ticks), dispatch domain events first then the tick, mark health after each non-empty batch, close consumer in `finally` regardless of exit path. Caller owns the running flag.
+
+  Also moved `Consumer`/`Producer` imports under `TYPE_CHECKING` so `kafka_runtime` is importable without `confluent_kafka` (enables host-env unit testing). `init_producer` uses a local runtime import. `check_kafka` already had a local import in `try/except`.
+
+- **`flight-service/kafka/consumer.py`**: Extracted `_TOPICS` list constant; replaced 47-line while-loop with 5-line `await kafka_runtime.run_consumer_loop(...)`. Removed unused `import json`.
+
+- **`incident-service/kafka/consumer.py`**: Same replacement. Removed unused `import asyncio`, `import json`.
+
+- **`weather-service/kafka/consumer.py`**: Same replacement (with pre-loop `await _state.initialize_from_neo4j()` preserved). Removed unused `import json`.
+
+**Why baggage and passenger were not simplified.** Both have a "deferred commands" buffer that accumulates commands arriving before the first `SimClockTick` and replays them once a valid sim_time is established. This logic is interleaved with the tick/other batch split, requiring per-batch state that can't be hidden inside `run_consumer_loop` without adding callbacks. Changing this behavior would break the command-before-clock restart recovery tests (`test_consumer_burst_recovery.py`).
+
+**Why analysis and cost were not simplified.** Both use per-message retry loops (critical for financial/analysis correctness) plus manual offset commit. These semantics are explicitly excluded from `run_consumer_loop`'s contract.
+
+**Lines deleted.** ~45 lines × 3 services = ~135 lines of near-identical transport boilerplate removed from service directories.
+
+**Tests.** 15 new unit tests in `tests/unit/test_consumer_loop.py` (dispatch order, tick dedup, error isolation, health tracking, lifecycle). Full clean-suite run: 298 passed (excluding pre-existing `confluent_kafka`/`neo4j`/`services.gate_resolver` import failures that are unrelated to G3). Ruff clean on all 4 changed Python files.

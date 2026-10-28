@@ -1,0 +1,205 @@
+# Sprint 54 — LDT roadmap continuation: G5 ranking, G12 manifests, G3 consolidation, G6 incidents commands
+
+**Date:** 2026-10-26
+**Scope:** `ROADMAP_REAL_LDT.md` §10 gaps G5 (recommender ranking), G12 (k8s
+manifests), G3 (transport-utility consolidation) and G6 (incidents command
+channel, live-validated). Recorded as execution-log entries A25–A28.
+
+## Context
+
+The roadmap tracks twelve open gaps (G1–G12). A20–A24 closed transactional/durable
+slices of G1/G2/G7. This sprint picked the two gaps that were (a) explicitly named
+in the A24 follow-up audit as still-open and (b) **fully validatable in this
+environment** without the heavy ML deps or the full live Compose stack:
+
+- **G5** — `recommender.py` still sorted by `confidence_score` alone.
+- **G12** — `k8s/services/` had no `cost-service`/`planning-service` manifests.
+
+Gaps deliberately *not* taken this sprint, and why:
+- **G1 remainder, G9** — need atomic domain write + receipt + fact boundaries and
+  live producer→consumer contract tests; only meaningful with a running broker/DB.
+- **G3** — mechanical `_common` rollout across 9 services; low value per unit risk,
+  and import breakage is only fully provable against a live stack.
+- **G4, G8** — one calibrated effect library and automatic outcome measurement are
+  large and interdependent (and G5's ranking weights can't be calibrated until G8).
+- **G6** — concrete action handlers (GDP, rebooking) + incidents command channel
+  need live owner validation for the adapter path.
+
+## What was done
+
+### A25 — impact × confidence ÷ cost ranking (G5, partial)
+- New pure `analysis-service/services/ranking.py`: per-recommendation
+  `impact_value` (passenger-minutes saved) and `cost_value` (disruption-minutes),
+  both on a common synthetic scale, from `rec.parameters` + `bn.metrics`.
+- `priority_score = impact * confidence / cost`; recommender sorts by it.
+- Added 3 additive, defaulted fields to the `Recommendation` model and the
+  dashboard type.
+
+### A26 — k8s manifests (G12, partial)
+- Added `cost-service.yaml` (8008) and `planning-service.yaml` (8009), single
+  replica, correct probes/resources; wired into `kustomization.yaml`; added the
+  gateway's cost/planning service URLs.
+
+### A27 — consolidate logging/tracing/profiler into `_common` (G3, partial)
+- Deleted all 28 local `_logging`/`_tracing`/`_profiler` copies (9 services +
+  `_template`); rewired 13 import sites to `_common`. 1,022 unit tests pass,
+  all nine `main.py` import cleanly, ruff clean.
+
+### A28 — `incidents.commands` channel (G6, partial) — LIVE-validated
+- incident-service now consumes `ContainIncident`/`ResolveIncident`, runs the
+  existing contain/resolve lifecycle (emits `IncidentStatusChanged`) and emits a
+  durable `CommandExecuted`/`CommandRejected` receipt. Pure parser + preconditions
+  unit-tested (13); end-to-end + idempotent-redelivery + rejection proven against a
+  real Kafka/Neo4j stack (`art-ldt-g6`). Spec in EVENT_BUS §4.8f; topic added to
+  kafka-init.
+
+### A29 — incident actions execute through the autonomy loop (G6, partial) — LIVE-validated
+- One mapping in `_common.commands.action_command` (`contain_incident`/
+  `resolve_incident` → `incidents.commands`) closes the propose→execute→confirm loop,
+  because A24's dispatch/outbox/receipt path is generic over `intent.topic`. 4 unit
+  tests; live test: seeded approved proposal → analysis dispatch → owner resolves
+  incident + receipt → proposal `executed`. Suite 1,039 pass.
+
+### A30 — recommender originates executable incident actions (G6, partial)
+- New `RESOLVE_INCIDENT`/`CONTAIN_INCIDENT` ActionTypes (safety-guarded → human
+  approval); `_recs_active_incident` emits a `resolve_incident` rec carrying the
+  `incident_id` so it maps to a real command. 2 unit tests; suite 1,041 pass; live
+  endpoint served an `executable` `resolve_incident` rec (manual confirmation — an
+  emergent-rec test would flake, so generation is covered by the deterministic unit
+  tests and execution by A29's committed live test).
+
+## Lessons learned
+
+1. **Establish the local baseline before touching anything.** The `.venv` shows
+   14 unit failures that look alarming but are *entirely* missing optional ML deps
+   (`joblib`, `torch`) — CI installs them and gets 1,022 green. Confirming this up
+   front meant every later run was read as "1008 → 1013, same 14 dep-fails = no
+   regression" instead of chasing phantom breakage. **Always diff the failure set,
+   not the pass count.**
+
+2. **Replace misleading tests, don't delete them.** `test_recs_sorted_by_confidence`
+   asserted an invariant the new sort no longer guarantees — and it still *passed*
+   by luck on its fixture. Renaming it to `test_recs_sorted_by_priority_score` and
+   asserting the real new invariant keeps coverage honest. A test that passes for
+   the wrong reason is worse than no test.
+
+3. **Mutation-check the sort key separately from the formula.** Two independent
+   mutations were needed: collapsing `priority_score` to confidence (catches the
+   scoring module) and reverting the sort key (catches the recommender wiring). The
+   second only has teeth because the fixture genuinely has confidence-order ≠
+   score-order — worth verifying rather than assuming.
+
+4. **Guard the int/bool trap consistently.** `bool` is an `int` subclass, so
+   `float(True) == 1.0` silently poisons a passenger count. A9 already established
+   rejecting bools in `to_flight_command`; `ranking._num` follows the same rule.
+   Keeping such conventions uniform across the service avoids one-off surprises.
+
+5. **`kubectl --dry-run=client` is not offline.** `apply` does a server-side GET
+   for the current config, so against a cluster where RBAC denies `get`, it fails
+   with `Forbidden` regardless of manifest validity. For true offline validation
+   use `kustomize build` (structure) + a schema validator like `kubeconform`
+   (absent here) — or compare against known-good siblings. Don't mistake an RBAC
+   denial for a broken manifest.
+
+6. **Heuristic ≠ calibrated — say so in the code.** The ranking weights make
+   magnitude and cost matter, but they are not measured benefits. The module
+   docstring, the model field descriptions, and the roadmap entry all point at G8
+   so nobody later reads `impact_value` as a real euro/minute figure. This repo's
+   whole credibility rests on not overclaiming; new numbers inherit that burden.
+
+7. **Map the dependency-delivery path before deleting a duplicate (A27).** The
+   nine local transport-util copies looked like pure dead weight, but `_common`
+   reaches each service container via a read-only *volume mount* (`./services/_common
+   → /app/_common`), not via the image build context (`./services/<svc>`, which
+   can't see the sibling). So deleting the copies is safe on compose/CI (mount
+   present) but would leave a k8s pod unable to start (no mount, nothing baked in) —
+   a latent gap flight-service already had since A5. Confirm *all nine* services
+   mount `_common` before extending the dependency, and document that the k8s image
+   still needs the mount or a `COPY`. The fix isn't "don't delete" — it's "know what
+   you're spreading, and write it down."
+
+8. **Replicate the runtime import layout, don't just run the unit suite (A27).** The
+   unit suite imports individual modules via conftest and never touches `main.py`'s
+   top-level imports — so it would have stayed green even if every service failed to
+   boot. The decisive check was importing `main` with cwd = service dir and `_common`
+   resolvable exactly as the container sees it; the log line `"logger":
+   "_common._tracing"` then *proves* the shared module is the one loaded, not a
+   leftover. A passing unit suite is necessary, not sufficient, for an
+   import-topology change.
+
+9. **A new command topic needs a kafka-init entry, or the whole channel is dead (A28).**
+   The consumer subscribed to `incidents.commands` and reported "7 topics", the unit
+   tests were green, and the first live test still failed: the topic was never created
+   (kafka-init only pre-made flights/passengers/baggage.commands, and broker
+   auto-create was off), so the producer's message went nowhere and no receipt ever
+   came back. The owner-side code can look perfect while the pipe doesn't exist. For a
+   new topic: add it to kafka-init AND create+restart in any already-running stack, then
+   let the live test — not the unit suite — be the thing that proves the loop closes.
+
+10. **Reuse the shared command lifecycle instead of re-implementing it (A28).** The
+    receipt/dedup/emit dance (`CommandReceipts.handle` + `_common.command_store`) was
+    already built and battle-tested for flights/passengers/baggage. Wiring incidents
+    into it — rather than writing a fourth copy — meant the handler was ~30 lines, the
+    idempotency semantics matched the other owners exactly, and the live idempotent-
+    redelivery assertion passed first try. The earlier G3 lesson (kill duplication) pays
+    off here: because the lifecycle lives in `_common`, adding an owner is cheap.
+
+11. **Read the whole pipeline before estimating a slice (A29).** I had budgeted
+    "incident proposal execution" as a sizable change — new producer, receipt routing,
+    topic handling. Reading `proposal_store.dispatch` / `receive_result` first showed
+    the dispatch path is already generic over `intent.topic` (publishes to whatever the
+    intent names; matches receipts on `.commands`→`.events`) and analysis already
+    consumes `incidents.events`. The real change was **one `action_command` branch**.
+    Tracing the existing data flow turned a day-shaped task into a ten-line one — the
+    opposite of the usual "looks trivial, isn't" surprise.
+
+12. **A volume-mounted shared lib needs a process restart to take effect (A29).**
+    `_common` is bind-mounted read-only, so editing `_common/commands.py` on disk does
+    *not* change the running analysis-service — Python imported the module once at
+    boot. The live test already restarts analysis (to recover the seeded proposal),
+    which happens to reload the mount too; but the general rule is: a `_common` edit is
+    only live after the importing service restarts, not when the file changes.
+
+13. **A swallowed exception in a loop is invisible until you read the logs (A32).** The
+    outcome measurer wrapped its body in `try/except … logger.warning(...)` so it
+    couldn't block the tick — correct for resilience, but it meant a real
+    tz-aware-vs-naive `datetime` compare bug failed *silently every tick*; the live
+    test just timed out with no clue. The container logs showed the `TypeError`
+    immediately. Lesson: when a resilient (exception-swallowing) path "does nothing,"
+    the logs are the first place to look, not the test output — and a unit test with a
+    tz-aware `now` would have caught it before the stack ever ran (now added as a
+    regression guard).
+
+14. **Back-date fixtures to make time-based behaviour deterministic (A32).** The feature
+    fires 30 sim-minutes after execution. Rather than wait ~30 real seconds (60x) and
+    hope the timing lands, the live test seeds an `executed` proposal with `executed_at`
+    already 31 sim-min in the past — so it is due on the very next tick. The test runs
+    in ~2 s and doesn't depend on sim speed. Prefer controlling the clock input over
+    sleeping for emergent timing.
+
+## Validation summary
+
+| Check | Result |
+|---|---|
+| `.venv` `pytest tests/unit` | 1,013 passed; 14 pre-existing dep-only failures (joblib/torch), unchanged set |
+| `test_analysis_ranking.py` (new) | 5 passed |
+| Mutation checks (formula + sort key) | both fail as expected, restored green |
+| Ruff (changed Python) | clean |
+| Dashboard `tsc -b` / `npm test` | clean / 44 passed |
+| `kustomize build k8s/` | OK; cost/planning rendered |
+| A27: 28 local transport-util copies deleted | all nine `main.py` import via `_common`; 1,022 units pass; ruff clean |
+| A28: `incidents.commands` | 13 unit tests; full suite 1,035 pass; **2 live tests pass** on real Kafka/Neo4j (`art-ldt-g6`) |
+| A29: incident autonomy-loop execution | 4 unit tests; full suite 1,039 pass; **3 live tests pass** (incl. approved-proposal→execute→confirm) |
+| A30: recommender originates incident recs | 2 unit tests; full suite 1,041 pass; live endpoint serves executable `resolve_incident` rec (manual) |
+| A31: concrete executable gate reassignment | 2 unit tests; full suite 1,043 pass; execution path pre-validated (A11) |
+| A32: automatic sim-clock outcome measurement (G8) | 13 unit tests; full suite 1,055 pass; **live-validated** (backdated executed proposal measured on next tick) |
+
+## Still open
+
+G5 (cost-signal unification + calibration), G12 (live cluster apply + load/crash),
+G3 remainder (8× `db/neo4j.py` + 8× kafka transport still duplicated; consumer loop
+not in `_common`; `application.handle()` inversion), G6 remainder (GDP/rebooking +
+other advertised actions with concrete owner handlers and entity IDs), G8 remainder
+(counterfactual/baseline attribution + prediction calibration + planning outcomes;
+A32 delivered the observed-condition measurer), and G1/G4/G9/G10/G11. Roadmap stays
+active.

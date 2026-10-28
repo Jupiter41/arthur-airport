@@ -50,6 +50,10 @@ spec:
               value: "http://sim-orchestrator:8006"
             - name: ANALYSIS_SERVICE_URL
               value: "http://analysis-service:8007"
+            - name: COST_SERVICE_URL
+              value: "http://cost-service:8008"
+            - name: PLANNING_SERVICE_URL
+              value: "http://planning-service:8009"
           readinessProbe:
             httpGet:
               path: /ready

@@ -117,6 +117,7 @@ TOPICS = [
     "weather.events",
     "incidents.events",
     "ground.events",
+    "cost.events",
 ]
 
 
@@ -231,6 +232,7 @@ async def _dispatch_event(
         "IncidentStatusChanged": state.on_incident_status_changed,
         "GroundVehicleDispatched": state.on_ground_vehicle_dispatched,
         "GroundVehicleReturned": state.on_ground_vehicle_returned,
+        "CostSignalSnapshot": state.on_cost_signal_snapshot,
     }
 
     if event_type in {"CommandExecuted", "CommandRejected"}:
@@ -328,6 +330,28 @@ def _event_significance(event_type: str, payload: dict) -> int:
     return 0
 
 
+async def _measure_due_outcomes(now: datetime) -> None:
+    """G8: for executed proposals whose outcome is due, measure and persist it.
+
+    Observed-condition measurement (not counterfactual). Failures are logged and
+    swallowed so outcome measurement never blocks the tick pipeline.
+    """
+    from services import outcome, proposal_store
+    from services.autonomous import record_outcome
+    try:
+        documents = await proposal_store.list_documents()
+        for doc in outcome.due_for_outcome(documents, now):
+            measured = outcome.measure_outcome(
+                doc.get("action_type", ""), doc.get("parameters") or {}, state,
+            )
+            saved = await proposal_store.record_outcome(doc["id"], measured, now)
+            if saved is not None:
+                record_outcome(f"action-{doc['id']}", measured, now)
+                logger.info("Measured outcome for proposal %s: %s", doc["id"], measured)
+    except Exception:
+        logger.warning("Outcome measurement failed this tick", exc_info=True)
+
+
 async def _on_tick(payload: dict) -> None:
     """Run bottleneck detection and recommendation generation on each tick."""
     global _neo4j_tick_counter, active_recommendations
@@ -339,6 +363,9 @@ async def _on_tick(payload: dict) -> None:
     from services.action_execution import refresh
     await refresh()
     _neo4j_tick_counter += 1
+
+    # G8: measure outcomes of actions executed ~30 sim-min ago.
+    await _measure_due_outcomes(now)
 
     # Periodically refresh Neo4j data (connection clusters, etc.)
     if _neo4j_tick_counter >= NEO4J_QUERY_INTERVAL:

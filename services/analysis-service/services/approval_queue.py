@@ -58,6 +58,9 @@ class Proposal:
     failure_reason: str | None = None
     dispatch_attempts: int = 0
     revision: int = 0
+    # G8: automatic outcome measurement, filled ~30 sim-min after execution.
+    actual_outcome: dict | None = None
+    outcome_measured_at: str | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)

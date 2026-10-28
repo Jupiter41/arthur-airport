@@ -28,7 +28,7 @@ from kafka.producer import (
     init_kafka_producer,
     wait_for_kafka,
 )
-from _logging import setup_logging
+from _common._logging import setup_logging
 
 setup_logging("analysis-service")
 
@@ -112,14 +112,14 @@ async def lifespan(app: FastAPI):
         await asyncio.wait_for(asyncio.gather(consumer_task, outbox_task, return_exceptions=True), timeout=5)
     close_kafka_producer()
     await close_neo4j()
-    from _tracing import shutdown_tracing
+    from _common._tracing import shutdown_tracing
     shutdown_tracing()
     logger.info("analysis-service shutdown complete")
 
 
 app = FastAPI(title="analysis-service", lifespan=lifespan)
 
-from _tracing import init_tracing  # noqa: E402
+from _common._tracing import init_tracing  # noqa: E402
 init_tracing(app, "analysis-service")
 
 Instrumentator().instrument(app).expose(app)
@@ -167,7 +167,7 @@ async def health():
 @app.get("/perf")
 async def perf():
     """P6-3: Tick processing performance stats."""
-    from _profiler import get_perf_stats
+    from _common._profiler import get_perf_stats
     return get_perf_stats()
 
 

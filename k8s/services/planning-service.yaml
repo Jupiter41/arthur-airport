@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: planning-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: planning-service
+    app.kubernetes.io/part-of: arthur-airport
+    app.kubernetes.io/component: domain
+spec:
+  # Single replica: the durable Monte Carlo worker (A21) claims jobs with a
+  # Neo4j lease, so extra replicas would only add idle lease contention.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: planning-service
+  template:
+    metadata:
+      labels:
+        app: planning-service
+        app.kubernetes.io/name: planning-service
+        app.kubernetes.io/part-of: arthur-airport
+    spec:
+      containers:
+        - name: planning-service
+          image: arthur-airport/planning-service:latest
+          ports:
+            - containerPort: 8009
+          envFrom:
+            - configMapRef:
+                name: shared-config
+            - secretRef:
+                name: shared-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: "planning-service"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8009
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8009
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            # Heavier than other domains: Monte Carlo + LightGBM + PuLP/CBC.
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1500m
+              memory: 1536Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: planning-service
+  namespace: arthur-airport
+  labels:
+    app.kubernetes.io/name: planning-service
+    app.kubernetes.io/part-of: arthur-airport
+spec:
+  selector:
+    app: planning-service
+  ports:
+    - port: 8009
+      targetPort: 8009

@@ -395,3 +395,107 @@ class TestDetectAll:
         types = {b.type for b in bns}
         assert BottleneckType.SECURITY_QUEUE in types
         assert BottleneckType.RUNWAY_CAPACITY in types
+
+
+# ── Financial pressure detection tests ───────────────────────
+
+EU261_PRESSURE_WARNING = _det_mod.EU261_PRESSURE_WARNING
+EU261_PRESSURE_CRITICAL = _det_mod.EU261_PRESSURE_CRITICAL
+HOLDING_FUEL_WARNING = _det_mod.HOLDING_FUEL_WARNING
+HOLDING_FUEL_CRITICAL = _det_mod.HOLDING_FUEL_CRITICAL
+GROUND_HANDLING_WARNING = _det_mod.GROUND_HANDLING_WARNING
+
+
+class TestFinancialPressureDetector:
+    def test_no_detection_without_cost_signals(self, state: OperationalState):
+        state.cost_signals = {}
+        bns = detect_all(state, {})
+        fp = [b for b in bns if b.type == BottleneckType.FINANCIAL_PRESSURE]
+        assert len(fp) == 0
+
+    def test_no_detection_below_thresholds(self, state: OperationalState):
+        state.cost_signals = {
+            "eu261_exposure": EU261_PRESSURE_WARNING - 1,
+            "holding_fuel": HOLDING_FUEL_WARNING - 1,
+            "ground_handling": GROUND_HANDLING_WARNING - 1,
+            "total_cost_eur": 0.0,
+        }
+        bns = detect_all(state, {})
+        fp = [b for b in bns if b.type == BottleneckType.FINANCIAL_PRESSURE]
+        assert len(fp) == 0
+
+    def test_detects_eu261_warning(self, state: OperationalState):
+        state.cost_signals = {"eu261_exposure": EU261_PRESSURE_WARNING + 1}
+        bns = detect_all(state, {})
+        fp = [b for b in bns if b.type == BottleneckType.FINANCIAL_PRESSURE]
+        assert any(b.metrics.get("signal") == "eu261_exposure" for b in fp)
+        eu_bn = next(b for b in fp if b.metrics.get("signal") == "eu261_exposure")
+        assert eu_bn.severity == BottleneckSeverity.WARNING
+
+    def test_eu261_critical_above_threshold(self, state: OperationalState):
+        state.cost_signals = {"eu261_exposure": EU261_PRESSURE_CRITICAL + 1}
+        bns = detect_all(state, {})
+        fp = [b for b in bns if b.type == BottleneckType.FINANCIAL_PRESSURE]
+        eu_bn = next(b for b in fp if b.metrics.get("signal") == "eu261_exposure")
+        assert eu_bn.severity == BottleneckSeverity.CRITICAL
+
+    def test_detects_holding_fuel_warning(self, state: OperationalState):
+        state.cost_signals = {"holding_fuel": HOLDING_FUEL_WARNING + 1}
+        bns = detect_all(state, {})
+        fp = [b for b in bns if b.type == BottleneckType.FINANCIAL_PRESSURE]
+        assert any(b.metrics.get("signal") == "holding_fuel" for b in fp)
+
+    def test_holding_fuel_critical_above_threshold(self, state: OperationalState):
+        state.cost_signals = {"holding_fuel": HOLDING_FUEL_CRITICAL + 1}
+        bns = detect_all(state, {})
+        fp = [b for b in bns if b.type == BottleneckType.FINANCIAL_PRESSURE]
+        hf_bn = next(b for b in fp if b.metrics.get("signal") == "holding_fuel")
+        assert hf_bn.severity == BottleneckSeverity.CRITICAL
+
+    def test_detects_ground_handling_warning(self, state: OperationalState):
+        state.cost_signals = {"ground_handling": GROUND_HANDLING_WARNING + 1}
+        bns = detect_all(state, {})
+        fp = [b for b in bns if b.type == BottleneckType.FINANCIAL_PRESSURE]
+        assert any(b.metrics.get("signal") == "ground_handling" for b in fp)
+
+    def test_three_signals_produce_three_bottlenecks(self, state: OperationalState):
+        state.cost_signals = {
+            "eu261_exposure": EU261_PRESSURE_WARNING + 1,
+            "holding_fuel": HOLDING_FUEL_WARNING + 1,
+            "ground_handling": GROUND_HANDLING_WARNING + 1,
+        }
+        bns = detect_all(state, {})
+        fp = [b for b in bns if b.type == BottleneckType.FINANCIAL_PRESSURE]
+        signals = {b.metrics.get("signal") for b in fp}
+        assert signals == {"eu261_exposure", "holding_fuel", "ground_handling"}
+
+    def test_dedup_active_key_suppresses_redetection(self, state: OperationalState):
+        state.cost_signals = {"eu261_exposure": EU261_PRESSURE_WARNING + 1}
+        existing = {
+            "bn-x": Bottleneck(
+                id="bn-x",
+                type=BottleneckType.FINANCIAL_PRESSURE,
+                severity=BottleneckSeverity.WARNING,
+                zone="security-eu261",
+                root_cause="existing",
+                estimated_duration_minutes=60,
+                affected_entity_count=0,
+                detected_at=NOW,
+            )
+        }
+        bns = detect_all(state, existing)
+        fp = [b for b in bns if b.type == BottleneckType.FINANCIAL_PRESSURE]
+        assert len(fp) == 0
+
+    def test_on_cost_signal_snapshot_updates_state(self, state: OperationalState):
+        state.on_cost_signal_snapshot({
+            "eu261_exposure": 15000,
+            "holding_fuel": 6000,
+            "ground_handling": 55000,
+            "total_cost_eur": 200000,
+            "at": "2024-06-15T14:30:00",
+        })
+        assert state.cost_signals["eu261_exposure"] == 15000.0
+        assert state.cost_signals["holding_fuel"] == 6000.0
+        assert state.cost_signals["ground_handling"] == 55000.0
+        assert state.cost_signals["total_cost_eur"] == 200000.0

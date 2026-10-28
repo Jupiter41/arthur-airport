@@ -14,7 +14,7 @@ import structlog
 from fastapi import FastAPI, HTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from _logging import setup_logging
+from _common._logging import setup_logging
 
 setup_logging("planning-service")
 

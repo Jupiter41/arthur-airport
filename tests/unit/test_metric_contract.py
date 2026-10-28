@@ -84,6 +84,7 @@ EXPECTED_METRICS: dict[str, list[tuple[str, str, frozenset[str]]]] = {
         ("protocols_activated_total", "Counter", frozenset({"protocol"})),
         ("flights_impacted_by_incidents_total", "Counter", frozenset({"incident_type"})),
         ("envelope_invalid_total", "Counter", frozenset({"reason"})),
+        ("incident_commands_total", "Counter", frozenset({"command_type", "outcome"})),
     ],
     "sim-orchestrator": [
         ("sim_tick_total", "Counter", frozenset()),

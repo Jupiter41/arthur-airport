@@ -663,6 +663,23 @@ async def on_clock_tick(payload: dict, sim_time: str, sim_day: int, rates: dict)
                     },
                 )
 
+    # Cost signal snapshot — publish key financial signals for analysis-service ranking
+    if tick_number % 5 == 0:
+        from kafka.producer import emit_cost_signal_snapshot
+        from datetime import datetime as _dt
+        try:
+            st_dt = _dt.fromisoformat(sim_time.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            st_dt = _dt.utcnow()
+        totals = get_running_totals()
+        emit_cost_signal_snapshot(
+            sim_time=st_dt,
+            eu261_exposure=totals.get("eu261_exposure", 0.0),
+            holding_fuel=totals.get("by_category", {}).get("holding_fuel", 0.0),
+            ground_handling=totals.get("by_category", {}).get("ground_handling", 0.0),
+            total_cost_eur=totals.get("total_cost_eur", 0.0),
+        )
+
     # Retail revenue — accumulate every 10 sim-minutes
     if tick_number % 10 == 0:
         # Estimate airside pax from time of day

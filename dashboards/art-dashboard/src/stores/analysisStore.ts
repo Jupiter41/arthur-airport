@@ -23,6 +23,10 @@ export interface AnalysisRecommendation {
   confidence_score: number;
   expiry_sim_time: string;
   priority_rank: number;
+  // Heuristic ranking signals (impact * confidence / cost) — not calibrated.
+  impact_value?: number;
+  cost_value?: number;
+  priority_score?: number;
   parameters: Record<string, unknown>;
   executable?: boolean;
   execution_status?: string;

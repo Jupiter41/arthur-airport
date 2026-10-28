@@ -1,15 +1,13 @@
 """Kafka producer for sim-orchestrator — SimClockTick + event emission."""
 
-import asyncio
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from confluent_kafka import Producer
-from confluent_kafka.admin import AdminClient
+from confluent_kafka import Producer, BufferError
 
+from _common import kafka_runtime
 from services.airport_config import load_airport_runtime_config
 
 logger = logging.getLogger(__name__)
@@ -20,22 +18,12 @@ PRODUCER_NAME = "sim-orchestrator"
 
 
 def init_kafka_producer() -> None:
-    """Initialize the Kafka producer."""
     global _producer
-    _producer = Producer({
-        "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
-        "client.id": PRODUCER_NAME,
-        "acks": "all",
-        "retries": 3,
-    })
-    logger.info("Kafka producer initialized")
+    _producer = kafka_runtime.init_producer(PRODUCER_NAME)
 
 
 def close_kafka_producer() -> None:
-    """Flush and close the Kafka producer."""
-    if _producer:
-        _producer.flush(timeout=10)
-        logger.info("Kafka producer flushed and closed")
+    kafka_runtime.close_producer(_producer)
 
 
 def _delivery_report(err, msg):
@@ -66,7 +54,7 @@ def produce_event(
 
     # P6-1: Inject OpenTelemetry trace context into envelope
     try:
-        from _tracing import get_trace_context
+        from _common._tracing import get_trace_context
         ctx = get_trace_context()
         if ctx.get("trace_id"):
             envelope["trace_id"] = ctx["trace_id"]
@@ -200,39 +188,8 @@ def emit_weather_state_changed(
 
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:
-    """Wait for Kafka to become available with exponential backoff."""
-    for attempt in range(1, max_attempts + 1):
-        try:
-            admin = AdminClient({
-                "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
-            })
-            loop = asyncio.get_event_loop()
-            meta = await loop.run_in_executor(
-                None, lambda: admin.list_topics(timeout=5)
-            )
-            if meta is not None:
-                logger.info("Kafka is ready")
-                return
-        except Exception as e:
-            wait = delay_s * min(attempt, 6)
-            logger.warning(
-                "Kafka not ready (attempt %d/%d): %s — retrying in %.0fs",
-                attempt, max_attempts, e, wait,
-            )
-            await asyncio.sleep(wait)
-    raise RuntimeError(f"Kafka not reachable after {max_attempts} attempts")
+    await kafka_runtime.wait_for_kafka(max_attempts=max_attempts, delay_s=delay_s)
 
 
 async def check_kafka() -> bool:
-    """Health check: verify Kafka connectivity."""
-    try:
-        admin = AdminClient({
-            "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
-        })
-        loop = asyncio.get_event_loop()
-        meta = await loop.run_in_executor(
-            None, lambda: admin.list_topics(timeout=3)
-        )
-        return meta is not None
-    except Exception:
-        return False
+    return kafka_runtime.check_kafka()

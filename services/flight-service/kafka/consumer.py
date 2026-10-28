@@ -5,13 +5,13 @@ On each tick: evaluates all active flights through the FSM, assigns runways, res
 """
 
 import asyncio
-import json
 import logging
 import os
 import random
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
+from _common import kafka_runtime
 from _common.idempotency import IdempotencyTracker
 from _common.commands import CommandReceipts
 from _common.consumer_health import ConsumerHealthTracker
@@ -53,6 +53,7 @@ from application.decisions import (
     suppress_transition_for_turnaround,
 )
 from application.commands import (
+    GroundDelayProgram,
     HoldFlight,
     ReassignGate,
     parse_command,
@@ -296,66 +297,30 @@ def _make_consumer() -> Consumer:
     })
 
 
+_TOPICS = [
+    "sim.clock",
+    "weather.events",
+    "incidents.events",
+    "flights.schedule",
+    "baggage.events",
+    "flights.commands",
+]
+
+
 async def run_consumer() -> None:
     """Main consumer loop — runs as background asyncio task."""
     global _consumer, _consumer_running
-
     _consumer = _make_consumer()
-    _consumer.subscribe(["sim.clock", "weather.events", "incidents.events", "flights.schedule", "baggage.events", "flights.commands"])
+    _consumer.subscribe(_TOPICS)
     _consumer_running = True
-
-    loop = asyncio.get_event_loop()
-    logger.info("Kafka consumer started (topics: sim.clock, weather.events, incidents.events, flights.schedule, baggage.events, flights.commands)")
-
+    logger.info("Kafka consumer started (topics: %s)", _TOPICS)
     try:
-        while _consumer_running:
-            # Batch-consume to allow tick skipping when behind
-            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(200, timeout=1.0))
-            if not msgs:
-                continue
-
-            # Separate clock ticks from other events, keeping order
-            latest_tick_envelope = None
-            other_envelopes: list[dict] = []
-            skipped_ticks = 0
-
-            for msg in msgs:
-                if msg is None or msg.error():
-                    continue
-                try:
-                    envelope = json.loads(msg.value().decode("utf-8"))
-                except Exception:
-                    continue
-                if envelope.get("event_type") == "SimClockTick":
-                    if latest_tick_envelope is not None:
-                        skipped_ticks += 1
-                    latest_tick_envelope = envelope
-                else:
-                    other_envelopes.append(envelope)
-
-            if skipped_ticks > 0:
-                logger.debug("Skipped %d stale clock ticks", skipped_ticks)
-
-            # Process non-tick events first (flight status changes, etc.)
-            for envelope in other_envelopes:
-                try:
-                    await _dispatch(envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            # Process only the latest clock tick
-            if latest_tick_envelope is not None:
-                try:
-                    await _dispatch(latest_tick_envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            # Mark health tracker after processing batch
-            _consumer_health.mark_message()
+        await kafka_runtime.run_consumer_loop(
+            _consumer, _dispatch, lambda: _consumer_running, _consumer_health,
+        )
     finally:
-        _consumer.close()
         _consumer_running = False
-        logger.info("Kafka consumer stopped")
+        _consumer = None
 
 
 def _validate_envelope(envelope: dict) -> tuple[str | None, dict, datetime | None]:
@@ -488,10 +453,34 @@ async def _execute_command(envelope: dict) -> str | None:
         outcome = "accepted" if ok else "rejected"
         m_commands.labels(command_type=command_type, outcome=outcome).inc()
         logger.info("ReassignGate for %s → gate %s: %s", cmd.flight_id, cmd.gate_id, outcome)
-
-
         if not ok:
             return "Gate reassignment rejected"
+
+    elif isinstance(cmd, GroundDelayProgram):
+        held, skipped = 0, 0
+        for fid in cmd.flight_ids:
+            flight = await get_flight_by_id(fid)
+            if flight is None:
+                skipped += 1
+                continue
+            precondition_error = validate_hold_precondition(flight.get("status", ""))
+            if precondition_error:
+                skipped += 1
+                continue
+            updated = await hold_flight(fid, cmd.reason, cmd.stagger_minutes, sim_time)
+            if updated is not None:
+                held += 1
+            else:
+                skipped += 1
+        if held == 0:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            return f"GroundDelayProgram: no flights held ({skipped} skipped)"
+        m_commands.labels(command_type=command_type, outcome="accepted").inc()
+        logger.info(
+            "GroundDelayProgram: held %d flights, skipped %d (stagger=%dmin)",
+            held, skipped, cmd.stagger_minutes,
+        )
+
     return None
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:

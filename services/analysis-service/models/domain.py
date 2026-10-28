@@ -28,6 +28,7 @@ class BottleneckType(str, Enum):
     GROUND_VEHICLE = "ground_vehicle"
     RUNWAY_CAPACITY = "runway_capacity"
     ACTIVE_INCIDENT = "active_incident"
+    FINANCIAL_PRESSURE = "financial_pressure"
 
 
 class Bottleneck(BaseModel):
@@ -69,6 +70,9 @@ class ActionType(str, Enum):
     DEFER_TASK = "defer_task"
     REDIRECT_BAGGAGE = "redirect_baggage"
     EXPEDITE_LOADING = "expedite_loading"
+    CONTAIN_INCIDENT = "contain_incident"
+    RESOLVE_INCIDENT = "resolve_incident"
+    OPEN_MAKEUP_CAROUSEL = "open_makeup_carousel"
 
 
 class Recommendation(BaseModel):
@@ -91,6 +95,27 @@ class Recommendation(BaseModel):
     )
     priority_rank: int = Field(
         ..., ge=1, description="Rank among all active recommendations"
+    )
+    impact_value: float = Field(
+        default=0.0, ge=0.0,
+        description=(
+            "Estimated benefit on a common synthetic scale (passenger-minutes "
+            "saved). Heuristic, not calibrated — see ROADMAP_REAL_LDT.md G8."
+        ),
+    )
+    cost_value: float = Field(
+        default=0.0, ge=0.0,
+        description=(
+            "Estimated cost on a common synthetic scale (disruption-minutes). "
+            "Heuristic, not calibrated — see ROADMAP_REAL_LDT.md G8."
+        ),
+    )
+    priority_score: float = Field(
+        default=0.0, ge=0.0,
+        description=(
+            "Ranking score = impact_value * confidence_score / cost_value. "
+            "Higher is better; used to order recommendations."
+        ),
     )
     parameters: dict[str, Any] = Field(
         default_factory=dict,

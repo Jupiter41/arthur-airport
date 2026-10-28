@@ -105,3 +105,26 @@ def test_restart_reloads_receipt_without_repeating_mutation():
 )
 def test_invalid_lane_count_has_no_command(parameters):
     assert action_command("open_security_lane", parameters) is None
+
+
+@pytest.mark.parametrize(
+    "action_type,command_type",
+    [("contain_incident", "ContainIncident"), ("resolve_incident", "ResolveIncident")],
+)
+def test_incident_action_maps_to_incidents_command(action_type, command_type):
+    intent = action_command(action_type, {"incident_id": "inc-1", "note": "n"})
+    assert intent is not None
+    assert intent.topic == "incidents.commands"
+    assert intent.command_type == command_type
+    assert intent.entity_key == "inc-1"
+    assert intent.payload == {"incident_id": "inc-1", "note": "n"}
+
+
+def test_incident_action_note_optional():
+    intent = action_command("resolve_incident", {"incident_id": "inc-9"})
+    assert intent is not None and intent.payload == {"incident_id": "inc-9"}
+
+
+def test_incident_action_without_id_has_no_command():
+    assert action_command("resolve_incident", {"note": "n"}) is None
+    assert action_command("contain_incident", {"incident_id": ""}) is None

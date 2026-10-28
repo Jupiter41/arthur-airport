@@ -52,9 +52,14 @@ def generate_recommendations(
             continue
         recs = _generate_for_bottleneck(state, bn, now)
         from _common.commands import action_command
+
+        from services.ranking import score_recommendation
         for rec in recs:
             rec.executable = action_command(rec.action_type.value, rec.parameters) is not None
             rec.execution_status = "available" if rec.executable else "advisory"
+            # Quantify benefit/cost on a common scale so ranking reflects
+            # impact * confidence / cost, not confidence alone (G5).
+            score_recommendation(rec, bn)
             proposal = next((p for p in reversed(proposals)
                              if p.bottleneck_id == bn.id and p.action_type == rec.action_type.value
                              and p.parameters == rec.parameters), None)
@@ -64,9 +69,12 @@ def generate_recommendations(
                 rec.applied_at = proposal.executed_at
         all_recs.extend(recs)
 
-    # Sort by confidence * (1 / priority_rank) — higher is better
-    # Un-applied recommendations first
-    all_recs.sort(key=lambda r: (r.bottleneck_id not in applied, not r.applied, r.confidence_score), reverse=True)
+    # Rank by priority_score = impact * confidence / cost (higher is better),
+    # keeping un-applied recommendations ahead of applied ones.
+    all_recs.sort(
+        key=lambda r: (r.bottleneck_id not in applied, not r.applied, r.priority_score),
+        reverse=True,
+    )
 
     # Assign priority ranks
     for i, rec in enumerate(all_recs):
@@ -89,6 +97,7 @@ def _generate_for_bottleneck(
         BottleneckType.BAGGAGE_THROUGHPUT: _recs_baggage_throughput,
         BottleneckType.GROUND_VEHICLE: _recs_ground_vehicle,
         BottleneckType.ACTIVE_INCIDENT: _recs_active_incident,
+        BottleneckType.FINANCIAL_PRESSURE: _recs_financial_pressure,
     }
     handler = handlers.get(bn.type)
     if handler is None:
@@ -215,47 +224,87 @@ def _recs_gate_conflict(
     }
     if free_other:
         best_alt = max(free_other, key=free_other.get)
-        recs.append(Recommendation(
-            id=f"rec-{uuid4().hex[:12]}",
-            bottleneck_id=bn.id,
-            action_type=ActionType.REASSIGN_GATE,
-            description=(
-                f"Reassign next arriving flight to {best_alt} "
-                f"({free_other[best_alt]} free gates) instead of {terminal}"
-            ),
-            expected_impact=(
-                f"Free up gate pressure in {terminal}; "
-                f"+5 min walk time for passengers"
-            ),
-            cost="5 min additional passenger walk time",
-            confidence_score=0.80,
-            expiry_sim_time=expiry,
-            priority_rank=1,
-            parameters={
-                "original_terminal": terminal,
-                "alternate_terminal": best_alt,
-            },
-        ))
+        # Prefer a *concrete* reassignment: a specific waiting flight to a
+        # specific free gate in the best alternate terminal. That names real
+        # IDs, so the rec maps to a real flights.commands: ReassignGate (A7/A11)
+        # instead of staying advisory. Fall back to the aggregate suggestion
+        # when no concrete flight/gate pair is resolvable (e.g. graph not loaded).
+        free_ids = state.get_free_gate_ids_by_terminal().get(best_alt, [])
+        waiting = state.get_flights_needing_gate()
+        target_flight = next((f for f in waiting if f.flight_id), None)
+        if free_ids and target_flight is not None:
+            gate_id = free_ids[0]
+            recs.append(Recommendation(
+                id=f"rec-{uuid4().hex[:12]}",
+                bottleneck_id=bn.id,
+                action_type=ActionType.REASSIGN_GATE,
+                description=(
+                    f"Reassign flight {target_flight.flight_id} to gate {gate_id} "
+                    f"in {best_alt} to relieve gate pressure in {terminal}"
+                ),
+                expected_impact=(
+                    f"Give a waiting flight a gate now; free pressure in {terminal} "
+                    f"(+~5 min walk time for passengers)"
+                ),
+                cost="5 min additional passenger walk time",
+                confidence_score=0.80,
+                expiry_sim_time=expiry,
+                priority_rank=1,
+                parameters={
+                    "flight_id": target_flight.flight_id,
+                    "gate_id": gate_id,
+                    "original_terminal": terminal,
+                    "alternate_terminal": best_alt,
+                },
+            ))
+        else:
+            recs.append(Recommendation(
+                id=f"rec-{uuid4().hex[:12]}",
+                bottleneck_id=bn.id,
+                action_type=ActionType.REASSIGN_GATE,
+                description=(
+                    f"Reassign next arriving flight to {best_alt} "
+                    f"({free_other[best_alt]} free gates) instead of {terminal}"
+                ),
+                expected_impact=(
+                    f"Free up gate pressure in {terminal}; "
+                    f"+5 min walk time for passengers"
+                ),
+                cost="5 min additional passenger walk time",
+                confidence_score=0.80,
+                expiry_sim_time=expiry,
+                priority_rank=1,
+                parameters={
+                    "original_terminal": terminal,
+                    "alternate_terminal": best_alt,
+                },
+            ))
 
-    # 2. Delay inbound taxi to hold position
+    # 2. Delay inbound taxi to hold position — use the first concrete flight ID
     waiting = state.get_flights_needing_gate()
-    if waiting:
+    # Filter to flights whose terminal matches this bottleneck when possible.
+    waiting_here = [f for f in waiting if getattr(f, "terminal", None) == terminal] or waiting
+    if waiting_here:
+        first = waiting_here[0]
         recs.append(Recommendation(
             id=f"rec-{uuid4().hex[:12]}",
             bottleneck_id=bn.id,
             action_type=ActionType.DELAY_TAXI,
             description=(
-                f"Hold {len(waiting)} inbound flight(s) at taxi position "
+                f"Hold {len(waiting_here)} inbound flight(s) at taxi position "
                 f"to allow gates to vacate in {terminal}"
             ),
             expected_impact="Buy 10-15 min for current turnarounds to complete",
-            cost=f"{len(waiting)} flight(s) delayed 10-15 min on ground",
+            cost=f"{len(waiting_here)} flight(s) delayed 10-15 min on ground",
             confidence_score=0.75,
             expiry_sim_time=expiry,
             priority_rank=2,
             parameters={
+                "flight_id": first.flight_id,
                 "terminal": terminal,
                 "hold_minutes": 10,
+                "duration_min": 10,
+                "reason": "gate_congestion",
             },
         ))
 
@@ -298,6 +347,7 @@ def _recs_connection_recovery(
     inbound = bn.metrics.get("inbound_flight", "")
     outbound = bn.metrics.get("outbound_flight", "")
     pax_count = bn.metrics.get("passenger_count", 0)
+    passenger_ids = bn.metrics.get("passenger_ids", [])
     delay = bn.metrics.get("inbound_delay", 0)
 
     # 1. Hold connecting flight
@@ -361,6 +411,8 @@ def _recs_connection_recovery(
                 "inbound_flight": inbound,
                 "outbound_flight": outbound,
                 "passenger_count": pax_count,
+                "passenger_ids": passenger_ids,
+                "reason": "missed_connection",
             },
         ))
 
@@ -387,6 +439,9 @@ def _recs_ground_delay_program(
         and f.status in ("scheduled", "boarding", "ready_for_departure")
     ]
     holdable = len(departures)
+    stagger = max(5, (100 - int(cap)) // 10)
+    # Provide concrete flight IDs so the command is dispatchable.
+    flight_ids = [f.flight_id for f in departures]
 
     recs.append(Recommendation(
         id=f"rec-{uuid4().hex[:12]}",
@@ -394,7 +449,7 @@ def _recs_ground_delay_program(
         action_type=ActionType.GROUND_DELAY_PROGRAM,
         description=(
             f"Initiate Ground Delay Program: hold {holdable} departures at "
-            f"gate, stagger by {max(5, (100 - cap) // 10)} min intervals "
+            f"gate, stagger by {stagger} min intervals "
             f"to avoid airborne holding"
         ),
         expected_impact=(
@@ -406,8 +461,9 @@ def _recs_ground_delay_program(
         expiry_sim_time=expiry,
         priority_rank=1,
         parameters={
+            "flight_ids": flight_ids,
             "holdable_flights": holdable,
-            "stagger_minutes": max(5, (100 - int(cap)) // 10),
+            "stagger_minutes": stagger,
             "weather_category": state.weather.category,
         },
     ))
@@ -521,6 +577,33 @@ def _recs_active_incident(
     inc_type = bn.metrics.get("incident_type", "unknown")
     inc_severity = bn.metrics.get("incident_severity", "medium")
     location = bn.metrics.get("location", "unknown")
+    incident_id = bn.metrics.get("incident_id")
+
+    # Executable resolution: unlike the mitigation recs below (which carry only
+    # aggregate parameters), this one names the concrete incident, so it maps to
+    # a real `incidents.commands: ResolveIncident` via `_common.commands`. It is
+    # safety-guarded (see SAFETY_GUARDED_ACTIONS) — surfaced for human approval,
+    # never auto-applied.
+    if incident_id:
+        recs.append(Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.RESOLVE_INCIDENT,
+            description=(
+                f"Expedite resolution of the {inc_type} incident at {location} "
+                f"(allocate response resources to accelerate clearance)"
+            ),
+            expected_impact="Clear the active incident and lift its operational restrictions sooner",
+            cost="Response resources committed until the incident clears",
+            confidence_score=0.80,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={
+                "incident_id": incident_id,
+                "incident_type": inc_type,
+                "location": location,
+            },
+        ))
 
     if inc_type == "runway_incursion":
         recs.append(Recommendation(
@@ -593,3 +676,100 @@ def _recs_active_incident(
         ))
 
     return recs
+
+
+# ── Financial pressure recommendations (G5) ─────────────────
+
+
+def _recs_financial_pressure(
+    state: OperationalState,
+    bn: Bottleneck,
+    now: datetime,
+) -> list[Recommendation]:
+    """Generate recommendations for financial-pressure bottlenecks.
+
+    Signal → action mapping mirrors cost-service/services/recommendations.py but
+    the recommendations pass through the unified impact×confidence/cost ranking in
+    ranking.py (OPEN_SECURITY_LANE, GROUND_DELAY_PROGRAM, REASSIGN_GATE all have
+    scoring rules there).
+    """
+    signal = bn.metrics.get("signal", "")
+    expiry = now + timedelta(minutes=60)
+
+    if signal == "eu261_exposure":
+        eu261 = bn.metrics.get("eu261_exposure", 0.0)
+        return [Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.OPEN_SECURITY_LANE,
+            description=(
+                f"Open additional security lane — EU261 exposure €{eu261:,.0f} "
+                f"at risk; reducing queue wait prevents compensation claims"
+            ),
+            expected_impact="Reduce EU261 exposure by ~30% (€{:,.0f})".format(eu261 * 0.3),
+            cost="2-hour security officer shift",
+            confidence_score=0.70,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"new_lane_count": 5, "financial_signal": "eu261_exposure"},
+        )]
+
+    if signal == "holding_fuel":
+        holding = bn.metrics.get("holding_fuel", 0.0)
+        return [Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.GROUND_DELAY_PROGRAM,
+            description=(
+                f"Initiate Ground Delay Program — holding fuel cost €{holding:,.0f}; "
+                f"hold departures at gate to reduce airborne stack"
+            ),
+            expected_impact="Eliminate ~50% holding fuel burn (€{:,.0f})".format(holding * 0.5),
+            cost="~500 EUR admin + distributed departure delays",
+            confidence_score=0.80,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={
+                "holdable_flights": 0,
+                "stagger_minutes": 10,
+                "financial_signal": "holding_fuel",
+            },
+        )]
+
+    if signal == "ground_handling":
+        handling = bn.metrics.get("ground_handling", 0.0)
+        return [Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.REASSIGN_GATE,
+            description=(
+                f"Reassign gates to reduce turnaround conflicts — "
+                f"ground handling cost €{handling:,.0f} inflated by overtime"
+            ),
+            expected_impact="Reduce ground handling cost by ~10% (€{:,.0f})".format(handling * 0.1),
+            cost="~200 EUR pax walk-time cost",
+            confidence_score=0.60,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"financial_signal": "ground_handling"},
+        )]
+
+    if signal == "total_cost_eur":
+        total = bn.metrics.get("total_cost_eur", 0.0)
+        return [Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.OPEN_MAKEUP_CAROUSEL,
+            description=(
+                f"Open additional make-up carousel — total cost €{total:,.0f}; "
+                f"prevents baggage delays from cascading into flight delays"
+            ),
+            expected_impact="Reduce cascading delay risk by ~2% of total cost (€{:,.0f})".format(total * 0.02),
+            cost="Minimal — carousel staff ramp-up only",
+            confidence_score=0.50,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"financial_signal": "total_cost_eur"},
+        )]
+
+    return []

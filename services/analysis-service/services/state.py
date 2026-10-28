@@ -123,6 +123,9 @@ class OperationalState:
         # Recent security congestion events
         self.security_congestion_events: deque = deque(maxlen=100)
 
+        # Latest financial signals from cost-service (via CostSignalSnapshot)
+        self.cost_signals: dict = {}
+
     # ── Event handlers ───────────────────────────────────────
 
     def restore_graph(self, snapshot: dict) -> None:
@@ -328,6 +331,16 @@ class OperationalState:
             "created_at": self.sim_time,
         }
 
+    def on_cost_signal_snapshot(self, payload: dict) -> None:
+        """Process CostSignalSnapshot — update latest financial signals."""
+        self.cost_signals = {
+            "eu261_exposure": float(payload.get("eu261_exposure", 0.0)),
+            "holding_fuel": float(payload.get("holding_fuel", 0.0)),
+            "ground_handling": float(payload.get("ground_handling", 0.0)),
+            "total_cost_eur": float(payload.get("total_cost_eur", 0.0)),
+            "updated_at": payload.get("at", ""),
+        }
+
     def on_incident_status_changed(self, payload: dict) -> None:
         """Process IncidentStatusChanged."""
         iid = payload.get("incident_id", "")
@@ -386,6 +399,26 @@ class OperationalState:
             t: max(0, total - occupied.get(t, 0))
             for t, total in terminal_gates.items()
         }
+
+    def get_free_gate_ids_by_terminal(self) -> dict[str, list[str]]:
+        """Actual free gate IDs per terminal (only when the graph is loaded).
+
+        Unlike :meth:`get_free_gates_by_terminal` (counts), this returns concrete
+        gate IDs so a recommendation can name a real reassignment target. Returns
+        ``{}`` before the operational graph has been loaded (no gate identities
+        are known yet).
+        """
+        if not self.graph_loaded:
+            return {}
+        occupied = {
+            f.gate for f in self.flights.values()
+            if f.status in {"boarding", "delayed", "scheduled", "landed", "taxiing", "at_gate"}
+        }
+        free: dict[str, list[str]] = defaultdict(list)
+        for gate_id, gate in self.gates.items():
+            if gate_id not in occupied and gate.get("status") not in {"closed", "maintenance", "offline"}:
+                free[gate["terminal"]].append(gate_id)
+        return {t: sorted(ids) for t, ids in free.items()}
 
     def get_flights_needing_gate(self) -> list[FlightState]:
         """Flights that need a gate but don't have one."""

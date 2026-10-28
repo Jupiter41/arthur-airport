@@ -7,7 +7,6 @@ Supports three weather source modes via WEATHER_SOURCE env var:
 """
 
 import asyncio
-import json
 import logging
 import os
 import random
@@ -17,6 +16,7 @@ from uuid import uuid4
 
 from confluent_kafka import Consumer
 
+from _common import kafka_runtime
 from _common.consumer_health import ConsumerHealthTracker
 from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
 from _common.airport_config import load_airport_runtime_config
@@ -668,63 +668,24 @@ async def _dispatch(envelope: dict) -> None:
             pass  # ignore unknown events
 
 
+_TOPICS = ["sim.clock"]
+
+
 async def run_consumer() -> None:
     """Main consumer loop — runs as a background asyncio task."""
     global _consumer, _consumer_running
-
     await _state.initialize_from_neo4j()
-
     _consumer = _make_consumer()
-    _consumer.subscribe(["sim.clock"])
+    _consumer.subscribe(_TOPICS)
     _consumer_running = True
-
-    loop = asyncio.get_event_loop()
-    logger.info("Kafka consumer started — listening on sim.clock")
-
+    logger.info("Kafka consumer started (topics: %s)", _TOPICS)
     try:
-        while _consumer_running:
-            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(200, timeout=1.0))
-            if not msgs:
-                continue
-
-            latest_tick_envelope = None
-            other_envelopes: list[dict] = []
-            skipped_ticks = 0
-
-            for msg in msgs:
-                if msg is None or msg.error():
-                    continue
-                try:
-                    envelope = json.loads(msg.value().decode("utf-8"))
-                except Exception:
-                    continue
-                if envelope.get("event_type") == "SimClockTick":
-                    if latest_tick_envelope is not None:
-                        skipped_ticks += 1
-                    latest_tick_envelope = envelope
-                else:
-                    other_envelopes.append(envelope)
-
-            if skipped_ticks > 0:
-                logger.debug("Skipped %d stale clock ticks", skipped_ticks)
-
-            for envelope in other_envelopes:
-                try:
-                    await _dispatch(envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            if latest_tick_envelope is not None:
-                try:
-                    await _dispatch(latest_tick_envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            _consumer_health.mark_message()
+        await kafka_runtime.run_consumer_loop(
+            _consumer, _dispatch, lambda: _consumer_running, _consumer_health,
+        )
     finally:
-        _consumer.close()
         _consumer_running = False
-        logger.info("Kafka consumer stopped")
+        _consumer = None
 
 
 def stop_consumer() -> None:

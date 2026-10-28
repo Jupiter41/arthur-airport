@@ -1,16 +1,11 @@
 """Neo4j async driver and CostRecord persistence for cost-service."""
 
-import os
 from contextlib import asynccontextmanager
 
 import structlog
-from neo4j import AsyncGraphDatabase, AsyncDriver
-
-from _common.infra import wait_for_neo4j_ready
+from _common import neo4j_client
 
 logger = structlog.get_logger(__name__)
-
-_driver: AsyncDriver | None = None
 
 CONSTRAINTS = [
     "CREATE CONSTRAINT cost_record_id IF NOT EXISTS FOR (c:CostRecord) REQUIRE c.id IS UNIQUE",
@@ -29,10 +24,8 @@ INDEXES = [
 ]
 
 
-def get_driver() -> AsyncDriver:
-    if _driver is None:
-        raise RuntimeError("Financial storage is not initialized")
-    return _driver
+def get_driver():
+    return neo4j_client.get_driver()
 
 
 @asynccontextmanager
@@ -46,53 +39,20 @@ async def financial_read():
             yield session
 
 
-async def _init_driver() -> None:
-    global _driver
-    uri = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
-    user = os.getenv("NEO4J_USER", "neo4j")
-    password = os.getenv("NEO4J_PASSWORD", "art-digital-twin")
-    _driver = AsyncGraphDatabase.driver(uri, auth=(user, password))
-    await _driver.verify_connectivity()
-
-
-async def _close_driver() -> None:
-    global _driver
-    if _driver:
-        await _driver.close()
-        _driver = None
-
-
 async def wait_for_neo4j(max_attempts: int = 12, delay_s: int = 5) -> None:
-    await wait_for_neo4j_ready(
-        init_fn=_init_driver,
-        close_driver_fn=_close_driver,
-        logger=logger,
-        max_attempts=max_attempts,
-        delay_s=delay_s,
-    )
+    await neo4j_client.wait_for_driver(max_attempts=max_attempts, delay_s=delay_s)
 
 
 async def check_neo4j() -> bool:
-    if _driver is None:
-        return False
-    try:
-        await _driver.verify_connectivity()
-        return True
-    except Exception:
-        return False
+    return await neo4j_client.check_connectivity()
 
 
 async def close_neo4j() -> None:
-    global _driver
-    if _driver:
-        await _driver.close()
-        _driver = None
+    await neo4j_client.close_driver()
 
 
 async def create_constraints_and_indexes() -> None:
-    if _driver is None:
-        return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         for stmt in CONSTRAINTS + INDEXES:
             result = await session.run(stmt)
             await result.consume()
@@ -101,9 +61,7 @@ async def create_constraints_and_indexes() -> None:
 
 async def write_cost_record(record: dict) -> None:
     """Write a single CostRecord node to Neo4j."""
-    if _driver is None:
-        return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         await session.run(
             """
             CREATE (c:CostRecord {
@@ -122,9 +80,7 @@ async def write_cost_record(record: dict) -> None:
 
 
 async def link_cost_to_flight(cost_id: str, flight_id: str) -> None:
-    if _driver is None:
-        return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         await session.run(
             """
             MATCH (c:CostRecord {id: $cost_id})
@@ -137,9 +93,7 @@ async def link_cost_to_flight(cost_id: str, flight_id: str) -> None:
 
 
 async def link_cost_to_incident(cost_id: str, incident_id: str) -> None:
-    if _driver is None:
-        return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         await session.run(
             """
             MATCH (c:CostRecord {id: $cost_id})
@@ -152,9 +106,7 @@ async def link_cost_to_incident(cost_id: str, incident_id: str) -> None:
 
 
 async def link_cost_to_terminal(cost_id: str, terminal_id: str) -> None:
-    if _driver is None:
-        return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         await session.run(
             """
             MATCH (c:CostRecord {id: $cost_id})
@@ -167,9 +119,7 @@ async def link_cost_to_terminal(cost_id: str, terminal_id: str) -> None:
 
 
 async def link_cost_to_airport_day(cost_id: str, day: int) -> None:
-    if _driver is None:
-        return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         await session.run(
             """
             MATCH (c:CostRecord {id: $cost_id})
@@ -183,8 +133,6 @@ async def link_cost_to_airport_day(cost_id: str, day: int) -> None:
 
 async def get_flight_info(flight_id: str) -> dict | None:
     """Read flight details needed for cost calculations."""
-    if _driver is None:
-        return None
     async with financial_read() as session:
         result = await session.run(
             """
@@ -210,8 +158,6 @@ async def get_flight_info(flight_id: str) -> dict | None:
 
 async def get_holding_flights() -> list[dict]:
     """Get flights in approach status that may be in holding."""
-    if _driver is None:
-        return []
     async with financial_read() as session:
         result = await session.run(
             """
@@ -226,9 +172,7 @@ async def get_holding_flights() -> list[dict]:
 
 async def rebuild_running_totals() -> dict:
     """Rebuild running totals from Neo4j on restart — only for the latest sim day."""
-    if _driver is None:
-        return {}
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         # First, determine the latest sim_day in the database
         day_result = await session.run(
             "MATCH (c:CostRecord) RETURN max(c.sim_day) AS latest_day"
@@ -267,9 +211,7 @@ async def rebuild_running_totals() -> dict:
 
 async def write_carbon_record(record: dict) -> None:
     """Persist a CarbonRecord node."""
-    if _driver is None:
-        return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         await session.run(
             """
             MERGE (c:CarbonRecord {id: $id})
@@ -281,9 +223,9 @@ async def write_carbon_record(record: dict) -> None:
 
 
 async def link_carbon_to_flight(carbon_id: str, flight_id: str) -> None:
-    if _driver is None or not flight_id:
+    if not flight_id:
         return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         await session.run(
             """
             MATCH (c:CarbonRecord {id: $cid})
@@ -296,9 +238,9 @@ async def link_carbon_to_flight(carbon_id: str, flight_id: str) -> None:
 
 
 async def link_carbon_to_terminal(carbon_id: str, terminal_id: str) -> None:
-    if _driver is None or not terminal_id:
+    if not terminal_id:
         return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         await session.run(
             """
             MATCH (c:CarbonRecord {id: $cid})
@@ -311,9 +253,7 @@ async def link_carbon_to_terminal(carbon_id: str, terminal_id: str) -> None:
 
 
 async def link_carbon_to_airport_day(carbon_id: str, day: int) -> None:
-    if _driver is None:
-        return
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         await session.run(
             """
             MATCH (c:CarbonRecord {id: $cid})
@@ -327,9 +267,7 @@ async def link_carbon_to_airport_day(carbon_id: str, day: int) -> None:
 
 async def rebuild_carbon_totals() -> dict:
     """Rebuild running carbon totals from Neo4j on restart (latest sim day only)."""
-    if _driver is None:
-        return {}
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         day_result = await session.run(
             "MATCH (c:CarbonRecord) RETURN max(c.sim_day) AS latest_day"
         )
@@ -357,9 +295,7 @@ async def carbon_summary_by_source(sim_day: int | None = None) -> list[dict]:
 
     Each row: ``{"source": str, "total_kg": float, "records": int}``.
     """
-    if _driver is None:
-        return []
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         if sim_day is None:
             day_record = await (await session.run(
                 "MATCH (c:CarbonRecord) RETURN max(c.sim_day) AS latest_day"
@@ -387,9 +323,7 @@ async def carbon_summary_by_source(sim_day: int | None = None) -> list[dict]:
 
 async def carbon_hourly_timeline(sim_day: int | None = None) -> list[dict]:
     """Return per-hour CO₂ totals for the given (or latest) sim day."""
-    if _driver is None:
-        return []
-    async with _driver.session() as session:
+    async with get_driver().session() as session:
         if sim_day is None:
             day_record = await (await session.run(
                 "MATCH (c:CarbonRecord) RETURN max(c.sim_day) AS latest_day"
