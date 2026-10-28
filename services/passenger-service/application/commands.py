@@ -24,9 +24,22 @@ class OpenSecurityLane:
     lanes_open: int
 
 
-Command = OpenSecurityLane
+@dataclass(frozen=True)
+class RebookPassengers:
+    """Rebook a batch of passengers from a missed/cancelled connection."""
 
-_KNOWN_COMMANDS = {"OpenSecurityLane"}
+    inbound_flight: str
+    passenger_ids: list[str]
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.passenger_ids:
+            raise ValueError("RebookPassengers: passenger_ids must not be empty")
+
+
+Command = OpenSecurityLane | RebookPassengers
+
+_KNOWN_COMMANDS = {"OpenSecurityLane", "RebookPassengers"}
 
 
 def parse_command(
@@ -42,7 +55,31 @@ def parse_command(
     if not isinstance(payload, dict):
         return None, "payload is not an object"
 
+    if command_type == "RebookPassengers":
+        return _parse_rebook(payload)
     return _parse_open_lane(payload)
+
+
+def _parse_rebook(payload: dict) -> tuple[Command | None, str | None]:
+    inbound = payload.get("inbound_flight")
+    if not isinstance(inbound, str) or not inbound:
+        return None, "RebookPassengers: missing inbound_flight"
+
+    passenger_ids = payload.get("passenger_ids")
+    if not isinstance(passenger_ids, list) or not passenger_ids:
+        return None, "RebookPassengers: passenger_ids must be a non-empty list"
+    if not all(isinstance(pid, str) and pid for pid in passenger_ids):
+        return None, "RebookPassengers: all passenger_ids must be non-empty strings"
+
+    reason = payload.get("reason", "missed_connection")
+    if not isinstance(reason, str) or not reason:
+        return None, "RebookPassengers: reason must be a non-empty string"
+
+    return RebookPassengers(
+        inbound_flight=inbound,
+        passenger_ids=list(passenger_ids),
+        reason=reason,
+    ), None
 
 
 def _parse_open_lane(payload: dict) -> tuple[Command | None, str | None]:

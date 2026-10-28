@@ -169,9 +169,15 @@ async def update_rates(overrides: dict):
     return {"status": "updated", "keys": list(overrides), "version": rates_version(committed)}
 
 
-@router.get("/recommendations")
+@router.get("/recommendations", deprecated=True)
 async def get_recommendations():
-    """Generate financially-aware recommendations."""
+    """[DEPRECATED] Financial recommendations — now served by analysis-service.
+
+    analysis-service subscribes to CostSignalSnapshot events from cost.events
+    and generates unified recommendations via its bottleneck detection pipeline.
+    This endpoint is kept for direct financial API access but the dashboard
+    uses analysis-service recommendations exclusively.
+    """
     totals = get_running_totals()
     sim_time = totals.get("last_updated", "")
     from services import rates

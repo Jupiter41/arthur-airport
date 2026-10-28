@@ -46,6 +46,21 @@ def action_command(action_type: str, parameters: dict) -> CommandIntent | None:
                 },
                 flight_id,
             )
+    if action_type == "ground_delay_program":
+        flight_ids = parameters.get("flight_ids")
+        if isinstance(flight_ids, list) and flight_ids:
+            stagger = parameters.get("stagger_minutes", 10)
+            if type(stagger) is int and stagger > 0:
+                return CommandIntent(
+                    "flights.commands",
+                    "GroundDelayProgram",
+                    {
+                        "flight_ids": flight_ids,
+                        "stagger_minutes": stagger,
+                        "reason": "ground_delay_program",
+                    },
+                    "gdp",
+                )
     if action_type == "open_security_lane" and text("terminal"):
         lanes = parameters.get("lanes_open", parameters.get("new_lane_count"))
         terminal = parameters["terminal"].removeprefix("Terminal ")
@@ -58,6 +73,20 @@ def action_command(action_type: str, parameters: dict) -> CommandIntent | None:
                     "lanes_open": lanes,
                 },
                 terminal,
+            )
+    if action_type == "rebook_passengers":
+        inbound = text("inbound_flight")
+        passenger_ids = parameters.get("passenger_ids")
+        if inbound and isinstance(passenger_ids, list) and passenger_ids:
+            return CommandIntent(
+                "passengers.commands",
+                "RebookPassengers",
+                {
+                    "inbound_flight": inbound,
+                    "passenger_ids": passenger_ids,
+                    "reason": text("reason") or "missed_connection",
+                },
+                inbound,
             )
     if (
         action_type == "redirect_baggage"

@@ -53,6 +53,7 @@ from application.decisions import (
     suppress_transition_for_turnaround,
 )
 from application.commands import (
+    GroundDelayProgram,
     HoldFlight,
     ReassignGate,
     parse_command,
@@ -488,10 +489,34 @@ async def _execute_command(envelope: dict) -> str | None:
         outcome = "accepted" if ok else "rejected"
         m_commands.labels(command_type=command_type, outcome=outcome).inc()
         logger.info("ReassignGate for %s → gate %s: %s", cmd.flight_id, cmd.gate_id, outcome)
-
-
         if not ok:
             return "Gate reassignment rejected"
+
+    elif isinstance(cmd, GroundDelayProgram):
+        held, skipped = 0, 0
+        for fid in cmd.flight_ids:
+            flight = await get_flight_by_id(fid)
+            if flight is None:
+                skipped += 1
+                continue
+            precondition_error = validate_hold_precondition(flight.get("status", ""))
+            if precondition_error:
+                skipped += 1
+                continue
+            updated = await hold_flight(fid, cmd.reason, cmd.stagger_minutes, sim_time)
+            if updated is not None:
+                held += 1
+            else:
+                skipped += 1
+        if held == 0:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            return f"GroundDelayProgram: no flights held ({skipped} skipped)"
+        m_commands.labels(command_type=command_type, outcome="accepted").inc()
+        logger.info(
+            "GroundDelayProgram: held %d flights, skipped %d (stagger=%dmin)",
+            held, skipped, cmd.stagger_minutes,
+        )
+
     return None
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:

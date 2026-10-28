@@ -280,25 +280,31 @@ def _recs_gate_conflict(
                 },
             ))
 
-    # 2. Delay inbound taxi to hold position
+    # 2. Delay inbound taxi to hold position — use the first concrete flight ID
     waiting = state.get_flights_needing_gate()
-    if waiting:
+    # Filter to flights whose terminal matches this bottleneck when possible.
+    waiting_here = [f for f in waiting if getattr(f, "terminal", None) == terminal] or waiting
+    if waiting_here:
+        first = waiting_here[0]
         recs.append(Recommendation(
             id=f"rec-{uuid4().hex[:12]}",
             bottleneck_id=bn.id,
             action_type=ActionType.DELAY_TAXI,
             description=(
-                f"Hold {len(waiting)} inbound flight(s) at taxi position "
+                f"Hold {len(waiting_here)} inbound flight(s) at taxi position "
                 f"to allow gates to vacate in {terminal}"
             ),
             expected_impact="Buy 10-15 min for current turnarounds to complete",
-            cost=f"{len(waiting)} flight(s) delayed 10-15 min on ground",
+            cost=f"{len(waiting_here)} flight(s) delayed 10-15 min on ground",
             confidence_score=0.75,
             expiry_sim_time=expiry,
             priority_rank=2,
             parameters={
+                "flight_id": first.flight_id,
                 "terminal": terminal,
                 "hold_minutes": 10,
+                "duration_min": 10,
+                "reason": "gate_congestion",
             },
         ))
 
@@ -341,6 +347,7 @@ def _recs_connection_recovery(
     inbound = bn.metrics.get("inbound_flight", "")
     outbound = bn.metrics.get("outbound_flight", "")
     pax_count = bn.metrics.get("passenger_count", 0)
+    passenger_ids = bn.metrics.get("passenger_ids", [])
     delay = bn.metrics.get("inbound_delay", 0)
 
     # 1. Hold connecting flight
@@ -404,6 +411,8 @@ def _recs_connection_recovery(
                 "inbound_flight": inbound,
                 "outbound_flight": outbound,
                 "passenger_count": pax_count,
+                "passenger_ids": passenger_ids,
+                "reason": "missed_connection",
             },
         ))
 
@@ -430,6 +439,9 @@ def _recs_ground_delay_program(
         and f.status in ("scheduled", "boarding", "ready_for_departure")
     ]
     holdable = len(departures)
+    stagger = max(5, (100 - int(cap)) // 10)
+    # Provide concrete flight IDs so the command is dispatchable.
+    flight_ids = [f.flight_id for f in departures]
 
     recs.append(Recommendation(
         id=f"rec-{uuid4().hex[:12]}",
@@ -437,7 +449,7 @@ def _recs_ground_delay_program(
         action_type=ActionType.GROUND_DELAY_PROGRAM,
         description=(
             f"Initiate Ground Delay Program: hold {holdable} departures at "
-            f"gate, stagger by {max(5, (100 - cap) // 10)} min intervals "
+            f"gate, stagger by {stagger} min intervals "
             f"to avoid airborne holding"
         ),
         expected_impact=(
@@ -449,8 +461,9 @@ def _recs_ground_delay_program(
         expiry_sim_time=expiry,
         priority_rank=1,
         parameters={
+            "flight_ids": flight_ids,
             "holdable_flights": holdable,
-            "stagger_minutes": max(5, (100 - int(cap)) // 10),
+            "stagger_minutes": stagger,
             "weather_category": state.weather.category,
         },
     ))
@@ -739,6 +752,24 @@ def _recs_financial_pressure(
             expiry_sim_time=expiry,
             priority_rank=1,
             parameters={"financial_signal": "ground_handling"},
+        )]
+
+    if signal == "total_cost_eur":
+        total = bn.metrics.get("total_cost_eur", 0.0)
+        return [Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.OPEN_MAKEUP_CAROUSEL,
+            description=(
+                f"Open additional make-up carousel — total cost €{total:,.0f}; "
+                f"prevents baggage delays from cascading into flight delays"
+            ),
+            expected_impact="Reduce cascading delay risk by ~2% of total cost (€{:,.0f})".format(total * 0.02),
+            cost="Minimal — carousel staff ramp-up only",
+            confidence_score=0.50,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"financial_signal": "total_cost_eur"},
         )]
 
     return []

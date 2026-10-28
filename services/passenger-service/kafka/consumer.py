@@ -75,7 +75,7 @@ from metrics import (
     envelope_invalid_total as m_envelope_invalid,
     pax_commands_total as m_commands,
 )
-from application.commands import parse_command, OpenSecurityLane
+from application.commands import parse_command, OpenSecurityLane, RebookPassengers
 
 logger = logging.getLogger(__name__)
 
@@ -636,6 +636,41 @@ async def _execute_command(envelope: dict) -> str | None:
             cmd.terminal, old_count, cmd.lanes_open,
         )
 
+    elif isinstance(cmd, RebookPassengers):
+        from db.neo4j import get_passenger_by_id, update_passenger_status
+        reboooked, skipped = 0, 0
+        for pid in cmd.passenger_ids:
+            pax = await get_passenger_by_id(pid)
+            if pax is None:
+                skipped += 1
+                continue
+            if pax.get("status") in ("departed", "arrived", "cancelled"):
+                skipped += 1
+                continue
+            updated = await update_passenger_status(pid, "rebooking", _state.sim_time)
+            if updated:
+                from kafka.producer import emit_passenger_status_changed
+                await emit_passenger_status_changed(
+                    passenger_id=pid,
+                    name=pax.get("name", ""),
+                    previous_status=pax.get("status", ""),
+                    new_status="rebooking",
+                    location_zone=pax.get("location_zone", ""),
+                    sim_time=_state.sim_time,
+                    flight_id=pax.get("flight_id"),
+                    flight_number=pax.get("flight_number"),
+                )
+                reboooked += 1
+            else:
+                skipped += 1
+        if reboooked == 0:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            return f"RebookPassengers: no passengers rebooked ({skipped} skipped)"
+        m_commands.labels(command_type=command_type, outcome="accepted").inc()
+        logger.info(
+            "RebookPassengers: %d rebooked, %d skipped (inbound=%s)",
+            reboooked, skipped, cmd.inbound_flight,
+        )
 
     return None
 

@@ -38,9 +38,22 @@ class ReassignGate:
     gate_id: str
 
 
-Command = HoldFlight | ReassignGate
+@dataclass(frozen=True)
+class GroundDelayProgram:
+    """Hold a batch of departures at gate for a staggered GDP."""
 
-_KNOWN_COMMANDS = {"HoldFlight", "ReassignGate"}
+    flight_ids: list[str]
+    stagger_minutes: int
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.flight_ids:
+            raise ValueError("GroundDelayProgram: flight_ids must not be empty")
+
+
+Command = HoldFlight | ReassignGate | GroundDelayProgram
+
+_KNOWN_COMMANDS = {"HoldFlight", "ReassignGate", "GroundDelayProgram"}
 
 
 def parse_command(
@@ -58,6 +71,8 @@ def parse_command(
 
     if command_type == "HoldFlight":
         return _parse_hold(payload)
+    if command_type == "GroundDelayProgram":
+        return _parse_gdp(payload)
     return _parse_reassign(payload)
 
 
@@ -89,6 +104,24 @@ def _parse_reassign(payload: dict) -> tuple[Command | None, str | None]:
         return None, "ReassignGate: missing gate_id"
 
     return ReassignGate(flight_id=flight_id, gate_id=gate_id), None
+
+
+def _parse_gdp(payload: dict) -> tuple[Command | None, str | None]:
+    flight_ids = payload.get("flight_ids")
+    if not isinstance(flight_ids, list) or not flight_ids:
+        return None, "GroundDelayProgram: flight_ids must be a non-empty list"
+    if not all(isinstance(fid, str) and fid for fid in flight_ids):
+        return None, "GroundDelayProgram: all flight_ids must be non-empty strings"
+
+    stagger = _coerce_positive_int(payload.get("stagger_minutes", 10))
+    if stagger is None:
+        return None, "GroundDelayProgram: stagger_minutes must be a positive integer"
+
+    reason = payload.get("reason", "ground_delay_program")
+    if not isinstance(reason, str) or not reason:
+        return None, "GroundDelayProgram: reason must be a non-empty string"
+
+    return GroundDelayProgram(flight_ids=list(flight_ids), stagger_minutes=stagger, reason=reason), None
 
 
 def validate_hold_precondition(status: str) -> str | None:

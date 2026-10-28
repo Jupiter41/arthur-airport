@@ -44,6 +44,7 @@ EU261_PRESSURE_CRITICAL = 30_000.0
 HOLDING_FUEL_WARNING = 5_000.0
 HOLDING_FUEL_CRITICAL = 15_000.0
 GROUND_HANDLING_WARNING = 50_000.0
+TOTAL_COST_CAROUSEL_WARNING = 100_000.0
 
 
 def detect_all(
@@ -315,6 +316,7 @@ def _detect_connection_clusters(
                     "inbound_flight": inbound,
                     "outbound_flight": outbound,
                     "passenger_count": pax_count,
+                    "passenger_ids": cluster.get("passengers", []),
                     "inbound_delay": cluster.get("inbound_delay", 0),
                 },
             ))
@@ -580,6 +582,29 @@ def _detect_financial_pressure(
                     "signal": "ground_handling",
                     "ground_handling": handling,
                     "threshold": GROUND_HANDLING_WARNING,
+                },
+            ))
+
+    total_cost = cs.get("total_cost_eur", 0.0)
+    if total_cost >= TOTAL_COST_CAROUSEL_WARNING:
+        key = (BottleneckType.FINANCIAL_PRESSURE, "baggage-carousel")
+        if key not in active_keys:
+            results.append(Bottleneck(
+                id=f"bn-{uuid4().hex[:12]}",
+                type=BottleneckType.FINANCIAL_PRESSURE,
+                severity=BottleneckSeverity.WARNING,
+                zone="baggage-carousel",
+                root_cause=(
+                    f"Total cost €{total_cost:,.0f} — opening make-up carousel "
+                    f"can prevent baggage delays cascading into flight delays"
+                ),
+                estimated_duration_minutes=20,
+                affected_entity_count=0,
+                detected_at=now,
+                metrics={
+                    "signal": "total_cost_eur",
+                    "total_cost_eur": total_cost,
+                    "threshold": TOTAL_COST_CAROUSEL_WARNING,
                 },
             ))
 

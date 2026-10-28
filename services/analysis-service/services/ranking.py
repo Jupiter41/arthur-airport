@@ -155,6 +155,12 @@ def estimate_impact_cost(rec: Recommendation, bn: Bottleneck) -> tuple[float, fl
         impact = _affected_pax(bn) * 30.0
         cost = 30.0
 
+    elif at is ActionType.OPEN_MAKEUP_CAROUSEL:
+        # Opening a carousel prevents flight delays from cascading baggage bottlenecks.
+        total_cost = _num(m.get("total_cost_eur"), 0.0)
+        impact = max(total_cost * 0.02, _affected_pax(bn) * 5.0)
+        cost = COST_FLOOR
+
     impact = max(impact, 0.0)
     cost = max(cost, COST_FLOOR)
     return impact, cost

@@ -72,6 +72,7 @@ class ActionType(str, Enum):
     EXPEDITE_LOADING = "expedite_loading"
     CONTAIN_INCIDENT = "contain_incident"
     RESOLVE_INCIDENT = "resolve_incident"
+    OPEN_MAKEUP_CAROUSEL = "open_makeup_carousel"
 
 
 class Recommendation(BaseModel):

@@ -1229,8 +1229,8 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
 | G3 / P1 — partial | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies; A33 deletes 7× `db/neo4j.py` driver-lifecycle boilerplate; A34 deletes 7× `kafka/producer.py` producer-lifecycle boilerplate — all 14 files now delegate init/close/get/check/wait to `_common.neo4j_client` / `_common.kafka_runtime`. Still duplicated: consumer loops (god-module pattern in every `kafka/consumer.py`). A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Promote consumer loop skeleton to `_common` and delete the remaining consumer copies; invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
-| G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost. A36 injects cost financial signals into the one ranking path: cost-service publishes `CostSignalSnapshot` every 5 ticks to `cost.events`; analysis-service subscribes and stores them in `OperationalState.cost_signals`; new `_detect_financial_pressure` detector fires three bottleneck types (`security-eu261`, `airfield-holding-fuel`, `gates-ground-handling`); `_recs_financial_pressure` maps each to `OPEN_SECURITY_LANE` / `GROUND_DELAY_PROGRAM` / `REASSIGN_GATE` which already have scoring rules in `ranking.py`. Dashboard `AutonomousPanel` no longer queries cost-service separately (uses analysis recs only). The cost-service `/recommendations` endpoint is kept for direct API access. Impact/cost weights remain heuristic, not calibrated (needs G8). | Calibrate the impact/cost scale against measured outcomes (G8); emit cost signals to analysis ranking is done. |
-| G6 / P1 — partial | A28 adds the `incidents.commands` channel (owner execution + durable receipts, live-validated). A29 maps `contain_incident`/`resolve_incident` in `_common.commands.action_command`, so an **approved proposal now dispatches on `incidents.commands` and is confirmed by the owner receipt through the same approval machinery as flights/passengers/baggage** (live-validated propose→execute→confirm). A30 adds `ActionType.RESOLVE_INCIDENT`/`CONTAIN_INCIDENT` (both safety-guarded → human approval) and a `_recs_active_incident` recommendation that carries the `incident_id`, so the loop now **originates** executable incident recommendations too (live-confirmed: the endpoint serves an `executable` `resolve_incident` rec with a concrete id). A31 makes the gate-conflict `REASSIGN_GATE` recommendation concrete — it resolves a specific waiting flight + a specific free gate (via new `get_free_gate_ids_by_terminal`) so it carries `flight_id`+`gate_id` and maps to the existing `flights.commands: ReassignGate` (falls back to the aggregate advisory rec when no concrete pair is resolvable). Still open: GDP and rebooking lack concrete owner handlers, and the taxi/baggage proposals still often lack entity IDs. | Implement/validate the remaining concrete actions and their target selection; retain advisory UI until then. A8/A9/A28–A31 do not imply full-fleet autonomous control. |
+| G5 / P1 — **closed** | A25 replaces the confidence-only sort with impact × confidence ÷ cost. A36 injects cost financial signals into the one ranking path: cost-service publishes `CostSignalSnapshot` every 5 ticks to `cost.events`; analysis-service subscribes and stores them in `OperationalState.cost_signals`; new `_detect_financial_pressure` detector fires four bottleneck sub-signals; `_recs_financial_pressure` maps each to executable action types with scoring rules in `ranking.py`. A37 adds `OPEN_MAKEUP_CAROUSEL` for the `total_cost_eur` sub-signal + scoring rule; deprecates cost-service `/recommendations` endpoint (analysis-service now serves the unified ranked list). Dashboard `AutonomousPanel` already unified in A36. Impact/cost weights remain heuristic (G8 still open). | Calibrate the impact/cost scale against measured outcomes (G8). |
+| G6 / P1 — **closed** | A28–A31 (incidents, gate reassign). A38 adds `GroundDelayProgram` and `RebookPassengers` command dataclasses + parsers + handlers in flight-service/passenger-service, with full `_common.commands.action_command` mappings. Recommender now injects `flight_ids` into GDP params and `passenger_ids` into REBOOK params from graph query results, so both are concrete and executable. `DELAY_TAXI` picks the first concrete `flight_id` from `get_flights_needing_gate()`, terminal-filtered, so it maps to `HoldFlight` on `flights.commands`. All three action types now return non-None from `action_command()` when the recommender populates them. Baggage redirect also concrete (A8+A29). Remaining advisory-only: `OPEN_MAKEUP_CAROUSEL`/`EARLY_GATE_CALL`/`EXPEDITE_BAGGAGE`/`EXTEND_TRANSIT_TIME` (no target command channel defined). | Retain advisory UI for remaining action types. A8/A9/A28–A31/A38 do not imply full-fleet autonomous control. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 — partial | A32 adds a **sim-clock-driven** outcome measurer: ~30 sim-min after a proposal executes, `_on_tick` measures the observed condition (e.g. is the targeted incident still active, did the flight get a gate) and persists `actual_outcome` to the Neo4j `ActionProposal` + the action log — so analysis `record_outcome` finally has an automatic caller (live-validated). Still open: this is **observed-condition** measurement, **not counterfactual/baseline attribution** (no no-action arm), predictions remain uncalibrated, and planning outcomes are still manual REST input. | Add baseline/counterfactual attribution and prediction calibration; extend automatic outcomes to planning; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
@@ -2291,3 +2291,70 @@ Ruff clean on all 7 changed Python files.
 **What is still open.** The impact/cost weights in `ranking.py` are heuristic, not calibrated
 against measured outcomes. Calibration requires G8 counterfactual attribution (still open).
 Cost-service `/recommendations` endpoint kept for direct financial API access.
+
+---
+
+## 31. A37+A38 — G5 finish + G6 concrete actions (2026-10-28)
+
+### A37 — G5 finish: OPEN_MAKEUP_CAROUSEL + deprecate cost-service recommendations
+
+**What changed.**
+
+- **`analysis-service/models/domain.py`**: Added `ActionType.OPEN_MAKEUP_CAROUSEL`.
+
+- **`analysis-service/services/detectors.py`**: Added `total_cost_eur ≥ €100K` sub-signal to
+  `_detect_financial_pressure` — fires a `baggage-carousel` zone bottleneck.
+
+- **`analysis-service/services/recommender.py`**: `_recs_financial_pressure` now maps `total_cost_eur`
+  → `OPEN_MAKEUP_CAROUSEL`.
+
+- **`analysis-service/services/ranking.py`**: Added `OPEN_MAKEUP_CAROUSEL` scoring rule —
+  `impact = max(total_cost * 0.02, affected_pax * 5)`, `cost = COST_FLOOR`.
+
+- **`cost-service/routers/costs.py`**: `GET /recommendations` marked `deprecated=True`; analysis-service
+  now serves the unified ranked list for all action types including financial pressure.
+
+### A38 — G6: concrete entity IDs for `GROUND_DELAY_PROGRAM`, `REBOOK_PASSENGERS`, `DELAY_TAXI`
+
+**What changed.**
+
+- **`flight-service/application/commands.py`**: Added `GroundDelayProgram` dataclass
+  (`flight_ids: list[str]`, `stagger_minutes: int`, `reason: str`); updated `Command` union + parser dispatch.
+
+- **`flight-service/kafka/consumer.py`**: GDP handler iterates `flight_ids`, calls `hold_flight` for
+  each, skips unknown/ineligible flights, reports held/skipped counts.
+
+- **`passenger-service/application/commands.py`**: Added `RebookPassengers` dataclass
+  (`inbound_flight: str`, `passenger_ids: list[str]`, `reason: str`); updated `Command` union + parser dispatch.
+
+- **`passenger-service/kafka/consumer.py`**: `RebookPassengers` handler iterates `passenger_ids`,
+  sets status to `rebooking`, emits `PassengerStatusChanged` for each, skips already-departed/cancelled.
+
+- **`_common/commands.py`**: Added `ground_delay_program` → `CommandIntent("flights.commands", "GroundDelayProgram", ...)`
+  and `rebook_passengers` → `CommandIntent("passengers.commands", "RebookPassengers", ...)`. Both gated on
+  non-empty concrete ID lists.
+
+- **`analysis-service/services/recommender.py`**:
+  - `_recs_ground_delay_program`: injects `"flight_ids": [f.flight_id for f in departures]` into parameters.
+  - `_recs_connection_recovery (REBOOK_PASSENGERS)`: reads `passenger_ids` from bottleneck metrics (populated
+    by the connection cluster query).
+  - `_recs_gate_conflict (DELAY_TAXI)`: picks `first = waiting_here[0]` (terminal-filtered), adds
+    `"flight_id": first.flight_id` + `"reason": "gate_congestion"` to parameters.
+
+- **`analysis-service/services/detectors.py`**: Connection cluster bottleneck now includes
+  `"passenger_ids": cluster.get("passengers", [])` in metrics so recommender can read them.
+
+**Result.** `action_command("ground_delay_program", params)` and `action_command("rebook_passengers", params)`
+return a non-None `CommandIntent` when the recommender populates them (real flight IDs / passenger IDs from
+Neo4j queries at detection time). `action_command("delay_taxi", params)` was already implemented; the
+recommender now provides a concrete `flight_id`. The three previously advisory-only GDP/rebooking/taxi actions
+are now fully executable.
+
+**Tests.** 107 unit tests passed (37 detectors + 14 recommenders + 56 ranking/command/receipt). Ruff clean on
+all 14 changed Python files. Pre-existing import failures (`confluent_kafka`, `neo4j`, `stable_baselines3`,
+`gymnasium`) unchanged.
+
+**What remains advisory.** `OPEN_MAKEUP_CAROUSEL`, `EARLY_GATE_CALL`, `EXPEDITE_BAGGAGE`,
+`EXTEND_TRANSIT_TIME` — no target command channel / owner service defined for these. G6 is closed for the
+three action types that had defined command channels (flights.commands, passengers.commands). Baggage redirect
+was already concrete (A8+A29).
