@@ -1,14 +1,11 @@
 """Kafka producer for weather-service — WeatherStateChanged + METARIssued."""
 
-import asyncio
-import json
 import logging
-import os
-from datetime import datetime, timezone
-from uuid import uuid4
+from datetime import datetime
 
 from confluent_kafka import Producer
-from confluent_kafka.admin import AdminClient
+
+from _common import kafka_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -19,24 +16,11 @@ PRODUCER_NAME = "weather-service"
 
 def init_kafka_producer() -> None:
     global _producer
-    _producer = Producer({
-        "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
-        "client.id": PRODUCER_NAME,
-        "acks": "all",
-        "retries": 3,
-    })
-    logger.info("Kafka producer initialized")
+    _producer = kafka_runtime.init_producer(PRODUCER_NAME)
 
 
 def close_kafka_producer() -> None:
-    if _producer:
-        _producer.flush(timeout=10)
-        logger.info("Kafka producer flushed and closed")
-
-
-def _delivery_report(err, msg):
-    if err:
-        logger.error("Kafka delivery failed: %s", err)
+    kafka_runtime.close_producer(_producer)
 
 
 def produce_event(
@@ -46,26 +30,10 @@ def produce_event(
     payload: dict,
     key: str | None = None,
 ) -> None:
-    if _producer is None:
-        raise RuntimeError("Kafka producer not initialized")
-
-    envelope = {
-        "event_id": str(uuid4()),
-        "event_type": event_type,
-        "schema_version": "1.0",
-        "produced_at": datetime.now(timezone.utc).isoformat(),
-        "sim_time": sim_time.isoformat(),
-        "producer": PRODUCER_NAME,
-        "payload": payload,
-    }
-
-    _producer.produce(
-        topic=topic,
-        key=key.encode("utf-8") if key else None,
-        value=json.dumps(envelope).encode("utf-8"),
-        callback=_delivery_report,
+    kafka_runtime.produce_event(
+        _producer, event_type, sim_time, payload,
+        producer_name=PRODUCER_NAME, topic=topic, key=key,
     )
-    _producer.poll(0)
 
 
 def emit_weather_state_changed(
@@ -118,28 +86,8 @@ def emit_metar_issued(sim_time: datetime, metar_raw: str) -> None:
 
 
 async def check_kafka() -> bool:
-    try:
-        admin = AdminClient({
-            "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
-        })
-        loop = asyncio.get_event_loop()
-        meta = await loop.run_in_executor(
-            None, lambda: admin.list_topics(timeout=3)
-        )
-        return meta is not None
-    except Exception:
-        return False
+    return kafka_runtime.check_kafka()
 
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:
-    for attempt in range(1, max_attempts + 1):
-        if await check_kafka():
-            logger.info("Kafka is ready")
-            return
-        wait = delay_s * min(attempt, 6)
-        logger.warning(
-            "Kafka not ready (attempt %d/%d) — retrying in %.0fs",
-            attempt, max_attempts, wait,
-        )
-        await asyncio.sleep(wait)
-    raise RuntimeError(f"Kafka not reachable after {max_attempts} attempts")
+    await kafka_runtime.wait_for_kafka(max_attempts=max_attempts, delay_s=delay_s)

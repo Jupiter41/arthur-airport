@@ -1,13 +1,11 @@
 """Kafka producer for baggage-service — baggage events to baggage.events topic."""
 
-import json
 import logging
-import os
-from datetime import datetime, timezone
-from uuid import uuid4
+from datetime import datetime
 
 from confluent_kafka import Producer
-from confluent_kafka.admin import AdminClient
+
+from _common import kafka_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -20,19 +18,11 @@ TOPIC = "baggage.events"
 
 def init_kafka_producer() -> None:
     global _producer
-    _producer = Producer({
-        "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
-        "client.id": PRODUCER_NAME,
-        "acks": "all",
-        "retries": 3,
-    })
-    logger.info("Kafka producer initialized")
+    _producer = kafka_runtime.init_producer(PRODUCER_NAME)
 
 
 def close_kafka_producer() -> None:
-    if _producer:
-        _producer.flush(timeout=10)
-        logger.info("Kafka producer flushed and closed")
+    kafka_runtime.close_producer(_producer)
 
 
 def set_bulk_mode(enabled: bool) -> None:
@@ -41,47 +31,16 @@ def set_bulk_mode(enabled: bool) -> None:
     _bulk_mode = enabled
 
 
-def _delivery_report(err, msg):
-    if err:
-        logger.error("Kafka delivery failed: %s", err)
-
-
 def _produce_event(
     event_type: str,
     sim_time: datetime,
     payload: dict,
     key: str | None = None,
 ) -> None:
-    if _producer is None:
-        raise RuntimeError("Kafka producer not initialized")
-
-    envelope = {
-        "event_id": str(uuid4()),
-        "event_type": event_type,
-        "schema_version": "1.0",
-        "produced_at": datetime.now(timezone.utc).isoformat(),
-        "sim_time": sim_time.isoformat(),
-        "producer": PRODUCER_NAME,
-        "payload": payload,
-    }
-
-    # P6-1: Inject OpenTelemetry trace context into envelope
-    try:
-        from _common._tracing import get_trace_context
-        ctx = get_trace_context()
-        if ctx.get("trace_id"):
-            envelope["trace_id"] = ctx["trace_id"]
-            envelope["span_id"] = ctx["span_id"]
-    except Exception:
-        pass
-
-    _producer.produce(
-        topic=TOPIC,
-        key=key.encode("utf-8") if key else None,
-        value=json.dumps(envelope).encode("utf-8"),
-        callback=_delivery_report,
+    kafka_runtime.produce_event(
+        _producer, event_type, sim_time, payload,
+        producer_name=PRODUCER_NAME, topic=TOPIC, key=key,
     )
-    _producer.poll(0)
 
 
 async def emit_baggage_status_changed(
@@ -177,14 +136,7 @@ async def emit_conveyor_delay(
 
 
 async def check_kafka() -> bool:
-    try:
-        admin = AdminClient({
-            "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092")
-        })
-        meta = admin.list_topics(timeout=3)
-        return meta is not None
-    except Exception:
-        return False
+    return kafka_runtime.check_kafka()
 
 
 def emit_bulk_state_snapshot(
@@ -201,15 +153,4 @@ def emit_bulk_state_snapshot(
 
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:
-    import asyncio
-    for attempt in range(1, max_attempts + 1):
-        ok = await check_kafka()
-        if ok:
-            return
-        wait = delay_s * min(attempt, 6)
-        logger.warning(
-            "Kafka not ready (attempt %d/%d) — retrying in %.0fs",
-            attempt, max_attempts, wait,
-        )
-        await asyncio.sleep(wait)
-    raise RuntimeError(f"Kafka not reachable after {max_attempts} attempts")
+    await kafka_runtime.wait_for_kafka(max_attempts=max_attempts, delay_s=delay_s)

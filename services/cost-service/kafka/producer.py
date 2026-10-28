@@ -1,13 +1,14 @@
 """Kafka producer for cost-service — events to cost.events."""
 
 import json
-import os
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import structlog
 from confluent_kafka import Producer
+
+from _common import kafka_runtime
 
 logger = structlog.get_logger(__name__)
 
@@ -18,21 +19,11 @@ EVENTS_TOPIC = "cost.events"
 
 def init_kafka_producer() -> None:
     global _producer
-    brokers = os.getenv("KAFKA_BROKERS", "kafka:9092")
-    _producer = Producer({
-        "bootstrap.servers": brokers,
-        "client.id": "cost-service",
-        "acks": "all",
-        "retries": 3,
-    })
-    logger.info("kafka producer initialised", brokers=brokers)
+    _producer = kafka_runtime.init_producer("cost-service")
 
 
 def close_kafka_producer() -> None:
-    global _producer
-    if _producer:
-        _producer.flush(timeout=10)
-        _producer = None
+    kafka_runtime.close_producer(_producer)
 
 
 def check_kafka() -> bool:
@@ -40,8 +31,7 @@ def check_kafka() -> bool:
 
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: int = 5) -> None:
-    from _common.infra import wait_for_kafka_broker
-    await wait_for_kafka_broker(logger=logger, max_attempts=max_attempts, delay_s=delay_s)
+    await kafka_runtime.wait_for_kafka(max_attempts=max_attempts, delay_s=delay_s)
 
 
 def publish_confirmed(envelope: dict) -> None:

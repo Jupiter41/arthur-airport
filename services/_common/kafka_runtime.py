@@ -117,3 +117,29 @@ def produce_event(
         callback=on_delivery or _default_delivery_report,
     )
     producer.poll(0)
+
+
+def check_kafka(brokers: str | None = None) -> bool:
+    """Return True if the Kafka broker is reachable via AdminClient."""
+    try:
+        from confluent_kafka.admin import AdminClient
+        admin = AdminClient({"bootstrap.servers": brokers or os.getenv("KAFKA_BROKERS", "kafka:9092")})
+        return admin.list_topics(timeout=3) is not None
+    except Exception:
+        return False
+
+
+async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5, brokers: str | None = None) -> None:
+    """Retry until the Kafka broker is reachable or attempts are exhausted."""
+    import asyncio
+    for attempt in range(1, max_attempts + 1):
+        if check_kafka(brokers):
+            logger.info("Kafka broker reachable")
+            return
+        wait = delay_s * min(attempt, 6)
+        logger.warning(
+            "Kafka not ready (attempt %d/%d) — retrying in %.0fs",
+            attempt, max_attempts, wait,
+        )
+        await asyncio.sleep(wait)
+    raise RuntimeError(f"Kafka not reachable after {max_attempts} attempts")

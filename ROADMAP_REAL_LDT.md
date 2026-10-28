@@ -1227,7 +1227,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 |---|---|---|
 | G1 / P0 — partial | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. A24 adds atomic analysis proposal decisions/attempts, lifecycle facts and command outbox entries. | Extend transactional domain/outbox/inbox boundaries to the remaining owners and receipts. Financial Kafka delivery remains at least once with stable event IDs, not exactly once; simulation epochs and legacy repair are separate work. |
 | G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
-| G3 / P1 — partial | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies (9 services + `_template`); every service and the template now import them from `_common`. Still duplicated: 8× `db/neo4j.py` and 8× `kafka/producer.py`+`consumer.py` (D1 remainder); `_common` does not own the consumer loops. A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Promote `neo4j_client`/`kafka_runtime` consumer loop to `_common` and delete the remaining transport copies; invert flight/passenger application orchestration with real adapter tests. |
+| G3 / P1 — partial | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies; A33 deletes 7× `db/neo4j.py` driver-lifecycle boilerplate; A34 deletes 7× `kafka/producer.py` producer-lifecycle boilerplate — all 14 files now delegate init/close/get/check/wait to `_common.neo4j_client` / `_common.kafka_runtime`. Still duplicated: consumer loops (god-module pattern in every `kafka/consumer.py`). A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Promote consumer loop skeleton to `_common` and delete the remaining consumer copies; invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost over a common synthetic impact/cost scale (`analysis/services/ranking.py`), unit- and mutation-tested. Cost and analysis still have **separate recommenders**, and the impact/cost weights are heuristic, not calibrated (G8). | Emit cost signals into the one ranking path and calibrate the impact/cost scale against measured outcomes (needs G8); retire the second (cost-service) recommender. |
 | G6 / P1 — partial | A28 adds the `incidents.commands` channel (owner execution + durable receipts, live-validated). A29 maps `contain_incident`/`resolve_incident` in `_common.commands.action_command`, so an **approved proposal now dispatches on `incidents.commands` and is confirmed by the owner receipt through the same approval machinery as flights/passengers/baggage** (live-validated propose→execute→confirm). A30 adds `ActionType.RESOLVE_INCIDENT`/`CONTAIN_INCIDENT` (both safety-guarded → human approval) and a `_recs_active_incident` recommendation that carries the `incident_id`, so the loop now **originates** executable incident recommendations too (live-confirmed: the endpoint serves an `executable` `resolve_incident` rec with a concrete id). A31 makes the gate-conflict `REASSIGN_GATE` recommendation concrete — it resolves a specific waiting flight + a specific free gate (via new `get_free_gate_ids_by_terminal`) so it carries `flight_id`+`gate_id` and maps to the existing `flights.commands: ReassignGate` (falls back to the aggregate advisory rec when no concrete pair is resolvable). Still open: GDP and rebooking lack concrete owner handlers, and the taxi/baggage proposals still often lack entity IDs. | Implement/validate the remaining concrete actions and their target selection; retain advisory UI until then. A8/A9/A28–A31 do not imply full-fleet autonomous control. |
@@ -2219,3 +2219,34 @@ what *would* have happened without it, and makes no causal/calibration claim (bo
 deferred, still G8). It covers the action types with a measurement model
 (incident/gate/security); others persist `measurable: false` rather than a fabricated
 number. Planning-service outcomes remain manual REST input.
+
+---
+
+## 29. A33/A34/A35 — G3: Neo4j + Kafka lifecycle consolidation (2026-10-28)
+
+**What changed.** A27 (sprint-54) removed 28 logging/tracing/profiler copies. This sprint
+removes the remaining transport-lifecycle boilerplate in all 7 domain services:
+
+- **A33** — `db/neo4j.py` in analysis, baggage, cost, incident, passenger, sim-orchestrator,
+  weather: deleted the private `_driver`/`init_driver`/`close_driver`/`check_connectivity` copies
+  (55–90 lines each). Each file now delegates `init_neo4j`/`close_neo4j`/`get_driver`/
+  `check_neo4j`/`wait_for_neo4j` to `_common.neo4j_client`. Domain functions
+  (CONSTRAINTS/INDEXES, Cypher queries) kept unchanged. `_common.neo4j_client` extended with
+  `wait_for_driver()` (retry loop).
+
+- **A34** — `kafka/producer.py` in the same 7 services: deleted the `confluent_kafka.Producer`
+  init/flush/close boilerplate. Each file now delegates `init_kafka_producer`/`close_kafka_producer`/
+  `check_kafka`/`wait_for_kafka` to `_common.kafka_runtime`. Service-specific exceptions preserved:
+  sim-orchestrator's BufferError retry loop for high tick rates, cost-service and analysis-service
+  `publish_confirmed` (synchronous delivery), incident-service `_produce_event(topic, ...)` dual-
+  topic signature, passenger-service `_tick_batch_mode`/`_bulk_mode` sampling flags.
+  `_common.kafka_runtime` extended with `check_kafka()` (AdminClient probe) and `wait_for_kafka()`.
+
+- **A35** — Verification: ruff clean on all 16 changed files; unit suite 858 passed (pre-existing
+  failures: `confluent_kafka`/`neo4j`/`stable_baselines3`/`gymnasium` not installed in host env,
+  no regressions); main.py import topology confirmed for all 7 services. Fixed one bug introduced
+  during migration: `passenger-service/kafka/producer.py:wait_for_kafka` had a spurious
+  `raise RuntimeError` after delegation — removed.
+
+**What is still duplicated.** `kafka/consumer.py` in each service remains a god-module (transport +
+state + domain pipeline). Consumer-loop consolidation is the remaining G3 work.

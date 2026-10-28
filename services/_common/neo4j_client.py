@@ -18,6 +18,9 @@ Usage (in a service's ``db/neo4j.py``):
 
     async def close_neo4j() -> None:
         await neo4j_client.close_driver()
+
+    async def wait_for_neo4j(max_attempts: int = 12, delay_s: float = 5) -> None:
+        await neo4j_client.wait_for_driver(max_attempts=max_attempts, delay_s=delay_s)
 """
 
 from __future__ import annotations
@@ -95,3 +98,27 @@ async def check_connectivity() -> bool:
         return True
     except Exception:
         return False
+
+
+async def wait_for_driver(max_attempts: int = 12, delay_s: float = 5) -> None:
+    """Retry ``init_driver()`` until Neo4j is reachable or attempts are exhausted."""
+    import asyncio
+    global _driver
+    for attempt in range(1, max_attempts + 1):
+        try:
+            await init_driver()
+            return
+        except Exception as exc:
+            wait = delay_s * min(attempt, 6)
+            logger.warning(
+                "Neo4j not ready (attempt %d/%d): %s — retrying in %.0fs",
+                attempt, max_attempts, exc, wait,
+            )
+            if _driver:
+                try:
+                    await _driver.close()
+                except Exception:
+                    pass
+                _driver = None
+            await asyncio.sleep(wait)
+    raise RuntimeError(f"Neo4j not reachable after {max_attempts} attempts")
