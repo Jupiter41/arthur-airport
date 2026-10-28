@@ -34,6 +34,40 @@ async def wait_for_kafka(max_attempts: int = 12, delay_s: int = 5) -> None:
     await kafka_runtime.wait_for_kafka(max_attempts=max_attempts, delay_s=delay_s)
 
 
+def emit_cost_signal_snapshot(
+    sim_time: datetime,
+    eu261_exposure: float,
+    holding_fuel: float,
+    ground_handling: float,
+    total_cost_eur: float,
+) -> None:
+    """Publish CostSignalSnapshot to cost.events for analysis-service to consume."""
+    if _producer is None:
+        return
+    envelope = {
+        "event_id": str(uuid4()),
+        "event_type": "CostSignalSnapshot",
+        "schema_version": "1.0",
+        "produced_at": datetime.now(timezone.utc).isoformat(),
+        "sim_time": sim_time.isoformat(),
+        "producer": "cost-service",
+        "payload": {
+            "eu261_exposure": round(eu261_exposure, 2),
+            "holding_fuel": round(holding_fuel, 2),
+            "ground_handling": round(ground_handling, 2),
+            "total_cost_eur": round(total_cost_eur, 2),
+            "at": sim_time.isoformat(),
+        },
+    }
+    _producer.produce(
+        topic=EVENTS_TOPIC,
+        key=b"cost-signal",
+        value=json.dumps(envelope).encode("utf-8"),
+        callback=lambda err, msg: logger.error("kafka produce error", error=str(err)) if err else None,
+    )
+    _producer.poll(0)
+
+
 def publish_confirmed(envelope: dict) -> None:
     if _producer is None:
         raise RuntimeError("Financial event producer unavailable")

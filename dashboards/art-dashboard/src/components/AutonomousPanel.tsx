@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { analysisApi, costsApi, incidentsApi } from "../hooks/useApi";
+import { analysisApi, incidentsApi } from "../hooks/useApi";
 
 interface RecommendationItem {
   id: string;
@@ -92,18 +92,6 @@ export function AutonomousPanel() {
       );
     } catch {
       /* analysis-service may be unavailable */
-    }
-    // Also query cost-service recommendations (always available)
-    try {
-      const costRecs = await costsApi.recommendations();
-      const costRecsArr = Array.isArray(costRecs)
-        ? costRecs
-        : ((costRecs as Record<string, unknown>)?.recommendations as unknown[]) ?? [];
-      if (costRecsArr.length > recsCount) {
-        recsCount = costRecsArr.length;
-      }
-    } catch {
-      /* cost-service may be unavailable */
     }
     setDiagnostics({
       bottlenecks: bnCount,

@@ -28,6 +28,7 @@ class BottleneckType(str, Enum):
     GROUND_VEHICLE = "ground_vehicle"
     RUNWAY_CAPACITY = "runway_capacity"
     ACTIVE_INCIDENT = "active_incident"
+    FINANCIAL_PRESSURE = "financial_pressure"
 
 
 class Bottleneck(BaseModel):

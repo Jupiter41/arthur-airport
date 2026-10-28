@@ -1229,7 +1229,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
 | G3 / P1 — partial | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies; A33 deletes 7× `db/neo4j.py` driver-lifecycle boilerplate; A34 deletes 7× `kafka/producer.py` producer-lifecycle boilerplate — all 14 files now delegate init/close/get/check/wait to `_common.neo4j_client` / `_common.kafka_runtime`. Still duplicated: consumer loops (god-module pattern in every `kafka/consumer.py`). A6 extracted decisions, not a complete `application.handle()` flow; passenger orchestration is still in its consumer. | Promote consumer loop skeleton to `_common` and delete the remaining consumer copies; invert flight/passenger application orchestration with real adapter tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
-| G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost over a common synthetic impact/cost scale (`analysis/services/ranking.py`), unit- and mutation-tested. Cost and analysis still have **separate recommenders**, and the impact/cost weights are heuristic, not calibrated (G8). | Emit cost signals into the one ranking path and calibrate the impact/cost scale against measured outcomes (needs G8); retire the second (cost-service) recommender. |
+| G5 / P1 — partial | A25 replaces the confidence-only sort with impact × confidence ÷ cost. A36 injects cost financial signals into the one ranking path: cost-service publishes `CostSignalSnapshot` every 5 ticks to `cost.events`; analysis-service subscribes and stores them in `OperationalState.cost_signals`; new `_detect_financial_pressure` detector fires three bottleneck types (`security-eu261`, `airfield-holding-fuel`, `gates-ground-handling`); `_recs_financial_pressure` maps each to `OPEN_SECURITY_LANE` / `GROUND_DELAY_PROGRAM` / `REASSIGN_GATE` which already have scoring rules in `ranking.py`. Dashboard `AutonomousPanel` no longer queries cost-service separately (uses analysis recs only). The cost-service `/recommendations` endpoint is kept for direct API access. Impact/cost weights remain heuristic, not calibrated (needs G8). | Calibrate the impact/cost scale against measured outcomes (G8); emit cost signals to analysis ranking is done. |
 | G6 / P1 — partial | A28 adds the `incidents.commands` channel (owner execution + durable receipts, live-validated). A29 maps `contain_incident`/`resolve_incident` in `_common.commands.action_command`, so an **approved proposal now dispatches on `incidents.commands` and is confirmed by the owner receipt through the same approval machinery as flights/passengers/baggage** (live-validated propose→execute→confirm). A30 adds `ActionType.RESOLVE_INCIDENT`/`CONTAIN_INCIDENT` (both safety-guarded → human approval) and a `_recs_active_incident` recommendation that carries the `incident_id`, so the loop now **originates** executable incident recommendations too (live-confirmed: the endpoint serves an `executable` `resolve_incident` rec with a concrete id). A31 makes the gate-conflict `REASSIGN_GATE` recommendation concrete — it resolves a specific waiting flight + a specific free gate (via new `get_free_gate_ids_by_terminal`) so it carries `flight_id`+`gate_id` and maps to the existing `flights.commands: ReassignGate` (falls back to the aggregate advisory rec when no concrete pair is resolvable). Still open: GDP and rebooking lack concrete owner handlers, and the taxi/baggage proposals still often lack entity IDs. | Implement/validate the remaining concrete actions and their target selection; retain advisory UI until then. A8/A9/A28–A31 do not imply full-fleet autonomous control. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 — partial | A32 adds a **sim-clock-driven** outcome measurer: ~30 sim-min after a proposal executes, `_on_tick` measures the observed condition (e.g. is the targeted incident still active, did the flight get a gate) and persists `actual_outcome` to the Neo4j `ActionProposal` + the action log — so analysis `record_outcome` finally has an automatic caller (live-validated). Still open: this is **observed-condition** measurement, **not counterfactual/baseline attribution** (no no-action arm), predictions remain uncalibrated, and planning outcomes are still manual REST input. | Add baseline/counterfactual attribution and prediction calibration; extend automatic outcomes to planning; validated training/history before financial savings claims. |
@@ -2250,3 +2250,44 @@ removes the remaining transport-lifecycle boilerplate in all 7 domain services:
 
 **What is still duplicated.** `kafka/consumer.py` in each service remains a god-module (transport +
 state + domain pipeline). Consumer-loop consolidation is the remaining G3 work.
+
+---
+
+## 30. A36 — G5: Cost signal injection into analysis-service ranking (2026-10-28)
+
+**What changed.** The analysis-service and cost-service previously maintained independent
+recommendation engines with no shared signal path. A36 connects them via Kafka:
+
+- **`cost-service/services/cost_engine.py`**: `on_clock_tick` now emits a `CostSignalSnapshot`
+  event to `cost.events` every 5 ticks with eu261_exposure, holding_fuel, ground_handling,
+  and total_cost_eur from `get_running_totals()`.
+
+- **`cost-service/kafka/producer.py`**: Added `emit_cost_signal_snapshot()`.
+
+- **`analysis-service/kafka/consumer.py`**: Subscribed to `cost.events`; `CostSignalSnapshot`
+  dispatches to `state.on_cost_signal_snapshot`.
+
+- **`analysis-service/services/state.py`**: Added `cost_signals: dict` field + `on_cost_signal_snapshot` handler.
+
+- **`analysis-service/models/domain.py`**: Added `BottleneckType.FINANCIAL_PRESSURE`.
+
+- **`analysis-service/services/detectors.py`**: Added `_detect_financial_pressure` — three
+  sub-signals (`eu261_exposure ≥ €10K`, `holding_fuel ≥ €5K`, `ground_handling ≥ €50K`) each
+  produce a distinct zone bottleneck with WARNING/CRITICAL severity. Wired into `detect_all`.
+
+- **`analysis-service/services/recommender.py`**: Added `_recs_financial_pressure` — maps
+  `eu261` → `OPEN_SECURITY_LANE`, `holding_fuel` → `GROUND_DELAY_PROGRAM`,
+  `ground_handling` → `REASSIGN_GATE`. All three action types have scoring rules in
+  `ranking.py` so they rank by impact×confidence/cost alongside operational bottlenecks.
+
+- **`dashboards/art-dashboard/src/components/AutonomousPanel.tsx`**: Removed the separate
+  `costsApi.recommendations()` query — financial pressure recommendations now arrive via the
+  unified analysis recommendations path.
+
+**Tests**: 8 new `TestFinancialPressureDetector` tests in `test_analysis_detectors.py`.
+Full analysis suite: 113 passed, 3 pre-existing `confluent_kafka` import failures unchanged.
+Ruff clean on all 7 changed Python files.
+
+**What is still open.** The impact/cost weights in `ranking.py` are heuristic, not calibrated
+against measured outcomes. Calibration requires G8 counterfactual attribution (still open).
+Cost-service `/recommendations` endpoint kept for direct financial API access.

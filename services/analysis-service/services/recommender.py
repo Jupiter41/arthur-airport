@@ -97,6 +97,7 @@ def _generate_for_bottleneck(
         BottleneckType.BAGGAGE_THROUGHPUT: _recs_baggage_throughput,
         BottleneckType.GROUND_VEHICLE: _recs_ground_vehicle,
         BottleneckType.ACTIVE_INCIDENT: _recs_active_incident,
+        BottleneckType.FINANCIAL_PRESSURE: _recs_financial_pressure,
     }
     handler = handlers.get(bn.type)
     if handler is None:
@@ -662,3 +663,82 @@ def _recs_active_incident(
         ))
 
     return recs
+
+
+# ── Financial pressure recommendations (G5) ─────────────────
+
+
+def _recs_financial_pressure(
+    state: OperationalState,
+    bn: Bottleneck,
+    now: datetime,
+) -> list[Recommendation]:
+    """Generate recommendations for financial-pressure bottlenecks.
+
+    Signal → action mapping mirrors cost-service/services/recommendations.py but
+    the recommendations pass through the unified impact×confidence/cost ranking in
+    ranking.py (OPEN_SECURITY_LANE, GROUND_DELAY_PROGRAM, REASSIGN_GATE all have
+    scoring rules there).
+    """
+    signal = bn.metrics.get("signal", "")
+    expiry = now + timedelta(minutes=60)
+
+    if signal == "eu261_exposure":
+        eu261 = bn.metrics.get("eu261_exposure", 0.0)
+        return [Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.OPEN_SECURITY_LANE,
+            description=(
+                f"Open additional security lane — EU261 exposure €{eu261:,.0f} "
+                f"at risk; reducing queue wait prevents compensation claims"
+            ),
+            expected_impact="Reduce EU261 exposure by ~30% (€{:,.0f})".format(eu261 * 0.3),
+            cost="2-hour security officer shift",
+            confidence_score=0.70,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"new_lane_count": 5, "financial_signal": "eu261_exposure"},
+        )]
+
+    if signal == "holding_fuel":
+        holding = bn.metrics.get("holding_fuel", 0.0)
+        return [Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.GROUND_DELAY_PROGRAM,
+            description=(
+                f"Initiate Ground Delay Program — holding fuel cost €{holding:,.0f}; "
+                f"hold departures at gate to reduce airborne stack"
+            ),
+            expected_impact="Eliminate ~50% holding fuel burn (€{:,.0f})".format(holding * 0.5),
+            cost="~500 EUR admin + distributed departure delays",
+            confidence_score=0.80,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={
+                "holdable_flights": 0,
+                "stagger_minutes": 10,
+                "financial_signal": "holding_fuel",
+            },
+        )]
+
+    if signal == "ground_handling":
+        handling = bn.metrics.get("ground_handling", 0.0)
+        return [Recommendation(
+            id=f"rec-{uuid4().hex[:12]}",
+            bottleneck_id=bn.id,
+            action_type=ActionType.REASSIGN_GATE,
+            description=(
+                f"Reassign gates to reduce turnaround conflicts — "
+                f"ground handling cost €{handling:,.0f} inflated by overtime"
+            ),
+            expected_impact="Reduce ground handling cost by ~10% (€{:,.0f})".format(handling * 0.1),
+            cost="~200 EUR pax walk-time cost",
+            confidence_score=0.60,
+            expiry_sim_time=expiry,
+            priority_rank=1,
+            parameters={"financial_signal": "ground_handling"},
+        )]
+
+    return []

@@ -123,6 +123,9 @@ class OperationalState:
         # Recent security congestion events
         self.security_congestion_events: deque = deque(maxlen=100)
 
+        # Latest financial signals from cost-service (via CostSignalSnapshot)
+        self.cost_signals: dict = {}
+
     # ── Event handlers ───────────────────────────────────────
 
     def restore_graph(self, snapshot: dict) -> None:
@@ -326,6 +329,16 @@ class OperationalState:
             "status": "active",
             "location": payload.get("location", ""),
             "created_at": self.sim_time,
+        }
+
+    def on_cost_signal_snapshot(self, payload: dict) -> None:
+        """Process CostSignalSnapshot — update latest financial signals."""
+        self.cost_signals = {
+            "eu261_exposure": float(payload.get("eu261_exposure", 0.0)),
+            "holding_fuel": float(payload.get("holding_fuel", 0.0)),
+            "ground_handling": float(payload.get("ground_handling", 0.0)),
+            "total_cost_eur": float(payload.get("total_cost_eur", 0.0)),
+            "updated_at": payload.get("at", ""),
         }
 
     def on_incident_status_changed(self, payload: dict) -> None:

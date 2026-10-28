@@ -117,6 +117,7 @@ TOPICS = [
     "weather.events",
     "incidents.events",
     "ground.events",
+    "cost.events",
 ]
 
 
@@ -231,6 +232,7 @@ async def _dispatch_event(
         "IncidentStatusChanged": state.on_incident_status_changed,
         "GroundVehicleDispatched": state.on_ground_vehicle_dispatched,
         "GroundVehicleReturned": state.on_ground_vehicle_returned,
+        "CostSignalSnapshot": state.on_cost_signal_snapshot,
     }
 
     if event_type in {"CommandExecuted", "CommandRejected"}:
