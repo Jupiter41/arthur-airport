@@ -2656,3 +2656,12 @@ now passes **7 checks in 80.22 seconds**. This fixes test restoration rather tha
 raising endpoint response timeouts. Evidence: `ldt-a45-full-tests.txt` and
 `ldt-bag-combined-tests.txt` under `.pytest_cache/`. Remaining integration checks
 are being run separately; no uninterrupted complete-suite pass is claimed.
+
+After restoration, all ten readiness checks passed again. The resumed suite
+(excluding the eight passing proposal tests and two passing baggage regressions)
+then passed nine checks before incident-cost ranking exceeded its existing
+five-second timeout: **9 passed, 1 failed in 8.31 seconds**. The earlier isolated
+22-check ranking/financial pass therefore does not establish sustained ranking
+latency under retained-history load. Ranking performance remains open alongside
+intermittent gateway readiness and passenger summary latency. Evidence:
+`.pytest_cache/ldt-a45-resumed-readiness.json`, `ldt-a45-resumed-tests.txt`.
