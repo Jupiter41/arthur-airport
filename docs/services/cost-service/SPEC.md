@@ -22,6 +22,14 @@ failed transactions leave no partial charges or seen-event marker. Runtime state
 includes gate occupancy starts and staffing hour, and is restored on restart.
 Running summaries are published to the in-process cache only after commit.
 
+Every fifth `SimClockTick` also commits a `CostSignalSnapshot` to that same
+outbox. Its amounts come from the selected day's transaction-local totals after
+all tick charges, never from the process cache. It includes `sim_day`,
+`rates_version`, `source_event_id` and simulation timestamp `at`, and uses the
+stable Kafka key `cost-signal`. Rollback publishes no snapshot; replay keeps the
+committed event ID. Invalid simulation timestamps are rejected, with no wall-clock
+fallback.
+
 Kafka offsets are committed after processing. A new consumer group starts from
 the earliest retained records; an existing group's committed positions are kept.
 Missing input event IDs use the
@@ -196,6 +204,17 @@ Aircraft are classified into three families for cost calculations:
 ---
 
 ## 6. REST API
+
+Incident ranking attributes each compensation record once per incident, only for
+the requested simulation day. Distinct affected flights and records prevent
+duplicate graph edges from inflating totals. Incidents with direct charges but
+no affected flights have zero attributed compensation; the query must not scan
+unrelated compensation records for such incidents.
+
+Database-backed reports use the shared driver's public accessor. If no driver
+is initialized they return 503; unavailable storage must not appear as an empty
+incident ranking or a zero-valued hourly curve. A connected graph with no records
+still returns the normal empty/padded report.
 
 All endpoints are prefixed with `/api/v1/costs`.
 

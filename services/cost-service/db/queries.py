@@ -107,9 +107,15 @@ async def most_expensive_incidents(driver: AsyncDriver, sim_day: int, limit: int
             """
             MATCH (c:CostRecord {sim_day: $day})-[:CAUSED_BY]->(i:Incident)
             WITH i, sum(c.amount_eur) AS direct_cost
-            OPTIONAL MATCH (i)-[:AFFECTS]->(f:Flight)
-            OPTIONAL MATCH (eu:CostRecord {category: 'eu261_compensation'})-[:FOR_FLIGHT]->(f)
-            WITH i, direct_cost, coalesce(sum(eu.amount_eur), 0) AS eu261_cost
+            CALL {
+                WITH i
+                MATCH (i)-[:AFFECTS]->(f:Flight)
+                WITH DISTINCT f
+                MATCH (f)<-[:FOR_FLIGHT]-(eu:CostRecord)
+                WHERE eu.category = 'eu261_compensation' AND eu.sim_day = $day
+                WITH DISTINCT eu
+                RETURN coalesce(sum(eu.amount_eur), 0) AS eu261_cost
+            }
             RETURN i.id AS id, i.type AS type, i.severity AS severity,
                    direct_cost, eu261_cost,
                    direct_cost + eu261_cost AS total_impact
