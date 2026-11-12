@@ -872,3 +872,34 @@ consumer offsets after durable input handling and proposal evaluation succeed.
 New consumer groups replay retained inputs from the earliest offset. Other
 analysis projections/bottleneck discovery, epochs, training recovery and domain
 owner mutation/receipt/outbox atomicity remain separate roadmap gaps.
+
+### LDT continuation corrections (2026-10-29)
+
+`CostSignalSnapshot` is an outbox fact on `cost.events`, keyed by `cost-signal`,
+every fifth consumed simulation tick. It carries `eu261_exposure`, `holding_fuel`,
+`ground_handling`, `total_cost_eur`, `at`, `sim_day`, `rates_version` and
+`source_event_id`. Values include the tick's committed charges from the selected
+day. It shares ledger/inbox/checkpoint atomicity and acknowledged outbox delivery;
+publication never occurs inside a retriable Neo4j transaction callback.
+
+`ActionOutcomeMeasured` is an outbox fact on `analysis.events`, keyed by proposal
+ID. Its payload is the proposal document with `actual_outcome` and
+`outcome_measured_at`. It commits with the outcome write; retries retain its event
+ID, and an already measured proposal creates no new fact. Observed conditions do
+not prove causal attribution or calibrated savings.
+
+`GroundDelayProgram` on `flights.commands` takes `flight_ids`,
+`stagger_minutes` and optional `reason`. Duplicate IDs are held once; only
+scheduled/boarding departures are eligible. The duration applies uniformly to
+eligible flights; staggered slot allocation is not implemented. Empty/ineligible
+batches reject. `RebookPassengers` remains a recognized legacy command but
+receives a rejection until replacement itinerary/capacity validation exists.
+Analysis leaves rebooking advisory rather than emitting this command.
+
+`SecurityQueueUpdated` keeps its existing fields and cadence (each normal tick,
+every 20 BULK ticks), with a shared validated payload schema. Passenger-service
+persists the identical observation in its per-terminal `SecurityProjection`
+before publication. Analysis restores it from Neo4j and compares source `at`
+timestamps in UTC, so replay cannot regress a newer queue observation. Restoring
+an observation does not advance the simulation clock or synthesize a forecast.
+Persistence/publication atomicity and simulation epochs remain separate gaps.

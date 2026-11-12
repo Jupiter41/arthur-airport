@@ -9,6 +9,9 @@
 
 ## 1. Domain responsibilities
 
+Status summaries count non-null persisted statuses through the existing status
+index, avoiding full node/property scans as synthetic history accumulates.
+
 - Maintain authoritative state for all `Passenger` nodes in Neo4j
 - Advance passenger location/status based on `SimClockTick` events
 - React to `FlightStatusChanged` and `FlightGateAssigned` events to issue passenger alerts
@@ -531,6 +534,12 @@ Supports filter frame:
 
 ### Command execution receipts (Real LDT correction)
 
+`rebook_passengers` remains advisory: passenger IDs and an inbound flight do not
+define a replacement itinerary. Until destination/capacity validation and an
+atomic `ON_FLIGHT` reassignment are implemented, analysis must not dispatch it.
+Previously queued `RebookPassengers` commands receive `CommandRejected` without
+mutations. A nonexistent `rebooking` status must not imply successful rebooking.
+
 Accepted commands emit the existing domain fact plus `CommandExecuted`; rejected
 commands emit `CommandRejected` with a reason. Both receipts carry `command_id`
 and `command_type`, use the current simulation clock, and are stored in Neo4j
@@ -547,6 +556,14 @@ publishes it on each normal tick (every 20 ticks in BULK mode). Analysis uses
 these measured snapshots to detect and resolve observed congestion. It does
 not invent forecast confidence from an observed wait. This also avoids trying
 to reconstruct exact queue counts from sampled per-passenger events.
+
+Before publishing each aggregate, passenger-service saves the validated payload
+as `SecurityProjection {terminal}` in Neo4j. The snapshot preserves its own
+simulation timestamp `at`, queue depth, lane count and observed wait. It is
+unsampled in normal and BULK modes at the publication cadence above. Analysis
+reads these owner snapshots at startup and reconciliation, without advancing its
+clock. Persistence precedes publication; atomic domain/outbox delivery remains G1
+work. Epoch-aware rewind fencing and vehicle recovery remain separate gaps.
 
 
 ### Forecast correctness verification (2026-10-17)
