@@ -2646,3 +2646,13 @@ Gateway readiness remains unresolved: the long-running gateway reports all nine
 upstreams false after three seconds, while a fresh process inside its container,
 with the same tracing initialization, reaches flight/weather readiness in 79/174
 milliseconds. This narrows investigation but does not prove a cause or close G12.
+
+The subsequent complete run passed all eight proposal tests and baggage pagination,
+then exposed a teardown race: Compose start returned before baggage readiness,
+so the next test could not connect (9 passed, 1 failed; 201.84 seconds). Pagination
+teardown now waits for `/ready` and restores the original simulation pause state
+in a nested finally block. The sequential pagination/review/all-baggage-REST run
+now passes **7 checks in 80.22 seconds**. This fixes test restoration rather than
+raising endpoint response timeouts. Evidence: `ldt-a45-full-tests.txt` and
+`ldt-bag-combined-tests.txt` under `.pytest_cache/`. Remaining integration checks
+are being run separately; no uninterrupted complete-suite pass is claimed.

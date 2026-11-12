@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import subprocess
+import time
 
 import pytest
 import requests
@@ -39,8 +40,9 @@ asyncio.run(main())
 
 
 def test_unfiltered_baggage_retains_nulls_and_crosses_to_scanned_index():
+    baggage = os.getenv("BAGGAGE_SVC_URL", "http://localhost:8003")
     try:
-        requests.get(os.getenv("BAGGAGE_SVC_URL", "http://localhost:8003") + "/ready", timeout=5).raise_for_status()
+        requests.get(baggage + "/ready", timeout=5).raise_for_status()
     except requests.RequestException:
         if os.getenv("REQUIRE_LIVE_STACK") == "1":
             pytest.fail("Baggage service unavailable")
@@ -57,7 +59,19 @@ def test_unfiltered_baggage_retains_nulls_and_crosses_to_scanned_index():
             cwd=root, capture_output=True, text=True, timeout=90)
         assert result.returncode == 0, result.stdout + result.stderr
     finally:
-        subprocess.run(["docker", "compose", "up", "-d", "--no-deps", "baggage-service"],
-                       cwd=root, capture_output=True, check=True, timeout=40)
-        if not paused:
-            requests.post(sim + "/api/v1/sim/resume", timeout=10).raise_for_status()
+        try:
+            subprocess.run(["docker", "compose", "up", "-d", "--no-deps", "baggage-service"],
+                           cwd=root, capture_output=True, check=True, timeout=40)
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                try:
+                    if requests.get(baggage + "/ready", timeout=3).status_code == 200:
+                        break
+                except requests.RequestException:
+                    pass
+                time.sleep(1)
+            else:
+                pytest.fail("Baggage service did not recover after pagination test")
+        finally:
+            if not paused:
+                requests.post(sim + "/api/v1/sim/resume", timeout=10).raise_for_status()
