@@ -200,8 +200,12 @@ class TestBaggageServiceREST:
             assert response.status_code == 200 and response.json() == {"items": [], "total": 0}
         finally:
             with driver.session() as session:
-                session.run("MATCH (n) WHERE n.id IN $ids DETACH DELETE n",
-                            ids=[flight_id, passenger_id, *bag_ids]).consume()
+                session.run("UNWIND $ids AS id MATCH (b:Baggage {id:id}) DETACH DELETE b",
+                            ids=bag_ids).consume()
+                session.run("MATCH (p:Passenger {id:$id}) DETACH DELETE p",
+                            id=passenger_id).consume()
+                session.run("MATCH (f:Flight {id:$id}) DETACH DELETE f",
+                            id=flight_id).consume()
             driver.close()
 
     def test_list_baggage(self):

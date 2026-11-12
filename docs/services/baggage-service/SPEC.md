@@ -191,6 +191,12 @@ passenger filters remain mandatory relationship matches, and totals count distin
 bags. Page ordering uses last scan descending with bag ID as a deterministic tie
 break. A small page must not materialize the airport's full relationship history.
 
+Unfiltered pages use indexed ordering: unscanned bags first, then scan timestamp
+descending, with ID descending within each group. Null scan timestamps remain
+visible. The owner uses the transactional bag count and an indexed scanned count
+to split offsets across these groups; metadata expands only after page selection.
+Filtered pages retain their documented scan-descending/ID-ascending ordering.
+
 Query parameters:
 
 | Parameter | Type | Description |

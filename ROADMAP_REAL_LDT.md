@@ -2605,3 +2605,25 @@ Local diagnostics: `.pytest_cache/ldt-ranking-final.txt`, `ldt-gateway-final.txt
 `ldt-python311-units.txt`. A temporary automatic-approval usage failure prevented
 one test invocation; a later approved rerun completed all gateway tests. No
 timeout budgets were raised to manufacture passing results.
+
+## 37. A44 — Indexed baggage pages retain unscanned items (2026-11-12)
+
+Unfiltered baggage pages now select entities before expanding metadata, using
+an ID index for unscanned bags and a `(last_scan_at,id)` index for scanned bags.
+Null scans remain visible, with deterministic descending ID ties. Exact bag and
+scanned counts split offsets at the null boundary. Filtered ordering is unchanged.
+The contract documents this ordering explicitly. Deep offsets still require index
+traversal; this is not a constant-time pagination claim.
+
+The real database regression passes (57.76 seconds), checking nulls, boundary
+pages, exact totals and offsets beyond the end. It pauses the simulation and
+stops/restores the baggage owner to keep the boundary fixed during assertions.
+Baggage REST then passes four checks, including default listing, filtered metadata,
+summary and map, before `/flagged` exceeds its existing ten-second timeout.
+A separate default-list measurement returns HTTP 200 in 5.05 seconds over
+12,330,267 bags. Fixture cleanup now uses indexed labelled IDs rather than a
+whole-graph ID filter. Ruff and whitespace checks pass. Diagnostics:
+`.pytest_cache/ldt-bag-index-tests.txt`, `ldt-bag-rest-tests.txt`.
+
+Flagged-bag lookup and the previously recorded gateway/summary load concerns
+remain open; no complete gate pass is claimed.

@@ -3,6 +3,8 @@
 import logging
 from datetime import datetime
 
+from neo4j import AsyncSession
+
 from _common import neo4j_client
 
 logger = logging.getLogger(__name__)
@@ -14,6 +16,7 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    "CREATE INDEX baggage_page_scan IF NOT EXISTS FOR (b:Baggage) ON (b.last_scan_at, b.id)",
     "CREATE INDEX baggage_status IF NOT EXISTS FOR (b:Baggage) ON (b.status)",
     "CREATE INDEX baggage_id IF NOT EXISTS FOR (b:Baggage) ON (b.id)",
     "CREATE INDEX scan_event_baggage_tag IF NOT EXISTS FOR (s:ScanEvent) ON (s.baggage_tag)",
@@ -114,6 +117,8 @@ async def get_all_baggage(
     """
 
     async with driver.session() as session:
+        if not any((flight_id, passenger_id, status, zone)) and flagged is None:
+            return await _unfiltered_baggage_page(session, limit, offset)
         count_result = await session.run(count_query, **params)
         count_record = await count_result.single()
         total = count_record["total"] if count_record else 0
@@ -130,6 +135,46 @@ async def get_all_baggage(
         bag["flight_id"] = r["flight_id"]
         items.append(bag)
 
+    return items, total
+
+
+async def _unfiltered_baggage_page(
+    session: AsyncSession, limit: int, offset: int,
+) -> tuple[list[dict], int]:
+    """Read null and scanned groups in index order, including boundary pages."""
+    total = (await (await session.run("MATCH (b:Baggage) RETURN count(b) AS n")).single())["n"]
+    scanned = (await (await session.run(
+        "MATCH (b:Baggage) USING INDEX b:Baggage(last_scan_at, id) "
+        "WHERE b.last_scan_at IS NOT NULL AND b.id IS NOT NULL RETURN count(b) AS n",
+    )).single())["n"]
+    unscanned = total - scanned
+    groups = []
+    if offset < unscanned:
+        groups.append(("USING INDEX b:Baggage(id)",
+                       "b.id IS NOT NULL AND b.last_scan_at IS NULL", "b.id DESC",
+                       offset, min(limit, unscanned - offset)))
+    remaining = limit - sum(group[4] for group in groups)
+    if remaining:
+        groups.append(("USING INDEX b:Baggage(last_scan_at, id)",
+                       "b.last_scan_at IS NOT NULL AND b.id IS NOT NULL",
+                       "b.last_scan_at DESC, b.id DESC", max(0, offset - unscanned), remaining))
+    items = []
+    for hint, predicate, ordering, skip, take in groups:
+        result = await session.run(f"""
+            MATCH (b:Baggage) {hint} WHERE {predicate}
+            WITH b ORDER BY {ordering} SKIP $skip LIMIT $take
+            OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
+            OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
+            RETURN b {{.id, .tag, .status, .weight_kg, .is_dangerous_goods,
+                       .dg_class, .last_scan_zone, .last_scan_at, .carousel}} AS baggage,
+                   p.id AS passenger_id, p.name AS passenger_name,
+                   f.flight_number AS flight_number, f.id AS flight_id
+            ORDER BY {ordering}
+        """, skip=skip, take=take)
+        async for row in result:
+            items.append(dict(row["baggage"], passenger_id=row["passenger_id"],
+                              passenger_name=row["passenger_name"],
+                              flight_number=row["flight_number"], flight_id=row["flight_id"]))
     return items, total
 
 
