@@ -223,8 +223,13 @@ class TestBaggageServiceREST:
         assert "zones" in data
 
     def test_flagged(self):
-        r = requests.get(f"{BAGGAGE_SVC}/api/v1/flagged", timeout=10)
+        r = requests.get(f"{BAGGAGE_SVC}/api/v1/flagged", params={"limit": 2}, timeout=10)
         assert r.status_code == 200
+        page = r.json()
+        assert page["limit"] == 2 and page["offset"] == 0
+        assert len(page["flagged"]) <= 2 and page["total"] >= len(page["flagged"])
+        ids = [item["id"] for item in page["flagged"]]
+        assert ids == sorted(set(ids))
 
 
 # ── Weather service REST ─────────────────────────────────────────

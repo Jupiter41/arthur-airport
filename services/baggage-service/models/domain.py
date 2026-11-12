@@ -103,3 +103,6 @@ class BaggageListResponse(BaseModel):
 
 class FlaggedResponse(BaseModel):
     flagged: list[FlaggedItem]
+    total: int
+    limit: int
+    offset: int

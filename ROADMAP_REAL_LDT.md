@@ -2726,3 +2726,29 @@ not a full-suite success. Diagnostics: `.pytest_cache/ldt-a46-python-units.txt`,
 `ldt-a47-gateway-tests.txt`, `ldt-summary-repeat.txt`,
 `ldt-passenger-summary-profile.txt`, `ldt-dashboard-proxy-tests.txt`, and
 `ldt-a47-isolated-tests.txt`.
+
+## 42. A49 — Bounded, navigable baggage review queue (2026-11-12)
+
+The prior indexed flagged query still returned 18,119 metadata rows for 17,862
+bags, exceeding the gateway's bounded response and intermittently timing out.
+The API now returns 50 bags by default (limit 1–500, offset >=0), an exact total,
+and page metadata. Candidate IDs are paged before metadata expansion; duplicate
+metadata edges cannot duplicate a bag, and inconsistent multiple owners display
+the smallest owner ID deterministically. No pending reviews are silently cleared.
+The dashboard uses React Query directly for this paged list and exposes its
+range, total, loading/error state, and Previous/Next controls.
+
+The null/scanned boundary regression now executes the unchanged production
+queries/index hints on an isolated unique synthetic graph label, avoiding a
+linear offset through millions of unrelated bags and avoiding owner stop/start.
+The retained-history REST check still tests default listing at its original
+10-second budget. An offset beyond the final bag returns immediately after the
+count-store lookup. Deep offsets remain linear index traversal, not a latency
+certification. All **seven baggage checks pass in 10.09 seconds**; duplicate-edge,
+page order, total, both review predicates and metadata are checked. All **44
+dashboard tests pass**, after rerunning outside the sandbox whose temporary-file
+rename restriction had prevented test collection. Browser Next advances from
+1–50 to 51–100 of the roughly 17,900-record queue with API/WS online. Both images
+were rebuilt; Ruff/whitespace checks pass. Evidence:
+`.pytest_cache/ldt-a48-page-tests.txt`, `ldt-a48-page-build.txt`, and
+`ldt-a48-dashboard-tests.txt`. Complete live validation continues below.

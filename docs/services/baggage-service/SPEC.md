@@ -316,7 +316,12 @@ Response `200`:
 ---
 
 #### `GET /flagged`
-All currently flagged baggage items.
+Paginated flagged/review queue. `limit` defaults to 50 (1–500); `offset` defaults
+to zero. The response retains `flagged` and adds `total`, `limit`, and `offset`.
+Items are ordered by ID ascending and selected before metadata expansion. Each
+bag appears once even with duplicate metadata edges; inconsistent multiple
+owners use the smallest passenger/flight ID for display. No records are deleted
+or automatically cleared by this read endpoint.
 
 Includes bags with status `flagged` or review status `pending`, once per bag even
 when both match. Both candidate sets use property indexes before passenger and

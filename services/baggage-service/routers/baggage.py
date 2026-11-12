@@ -112,8 +112,11 @@ async def flow_map():
 
 
 @router.get("/flagged")
-async def list_flagged():
-    items = await get_flagged_baggage()
+async def list_flagged(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    items, total = await get_flagged_baggage(limit=limit, offset=offset)
     flagged = []
     for item in items:
         flagged.append({
@@ -127,4 +130,4 @@ async def list_flagged():
             "flagged_at": item.get("flagged_at"),
             "review_status": item.get("review_status", "pending"),
         })
-    return {"flagged": flagged}
+    return {"flagged": flagged, "total": total, "limit": limit, "offset": offset}

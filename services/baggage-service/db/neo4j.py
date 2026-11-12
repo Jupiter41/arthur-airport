@@ -144,6 +144,8 @@ async def _unfiltered_baggage_page(
 ) -> tuple[list[dict], int]:
     """Read null and scanned groups in index order, including boundary pages."""
     total = (await (await session.run("MATCH (b:Baggage) RETURN count(b) AS n")).single())["n"]
+    if offset >= total:
+        return [], total
     scanned = (await (await session.run(
         "MATCH (b:Baggage) USING INDEX b:Baggage(last_scan_at, id) "
         "WHERE b.last_scan_at IS NOT NULL AND b.id IS NOT NULL RETURN count(b) AS n",
@@ -374,10 +376,10 @@ async def get_baggage_by_zone(zone: str) -> list[dict]:
         return [dict(r) async for r in result]
 
 
-async def get_flagged_baggage() -> list[dict]:
-    """Get all currently flagged baggage items."""
+async def get_flagged_baggage(limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
+    """Page distinct flagged/pending bags before expanding display metadata."""
     driver = get_driver()
-    query = """
+    candidates = """
     CALL {
         MATCH (b:Baggage {status: 'flagged'})
         USING INDEX b:Baggage(status)
@@ -387,17 +389,29 @@ async def get_flagged_baggage() -> list[dict]:
         USING INDEX b:Baggage(review_status)
         RETURN b
     }
+    """
+    query = candidates + """
+    WITH b ORDER BY b.id SKIP $offset LIMIT $limit
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
+    WITH b, p ORDER BY p.id
+    WITH b, head(collect(p)) AS p
     OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
+    WITH b, p, f ORDER BY f.id
+    WITH b, p, head(collect(f)) AS f
     RETURN b {
         .id, .tag, .status, .is_dangerous_goods, .dg_class,
         .last_scan_zone, .flag_reason, .flagged_at, .review_status
     } AS baggage,
     p.name AS passenger_name,
     f.flight_number AS flight_number
+    ORDER BY b.id
     """
     async with driver.session() as session:
-        result = await session.run(query)
+        count = await (await session.run(candidates + "RETURN count(b) AS total")).single()
+        total = count["total"] if count else 0
+        if offset >= total:
+            return [], total
+        result = await session.run(query, limit=limit, offset=offset)
         records = [record async for record in result]
     items = []
     for r in records:
@@ -405,7 +419,7 @@ async def get_flagged_baggage() -> list[dict]:
         bag["passenger_name"] = r["passenger_name"]
         bag["flight_number"] = r["flight_number"]
         items.append(bag)
-    return items
+    return items, total
 
 
 async def get_flight_baggage(flight_id: str, statuses: list[str] | None = None) -> list[dict]:

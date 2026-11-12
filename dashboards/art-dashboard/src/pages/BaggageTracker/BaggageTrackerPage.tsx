@@ -13,10 +13,9 @@ import type { Flight } from "../../types";
 export default function BaggageTrackerPage() {
   const zones = useBaggageStore((s) => s.zones);
   const summary = useBaggageStore((s) => s.summary);
-  const flagged = useBaggageStore((s) => s.flagged);
   const setZones = useBaggageStore((s) => s.setZones);
   const setSummary = useBaggageStore((s) => s.setSummary);
-  const setFlagged = useBaggageStore((s) => s.setFlagged);
+  const [flaggedOffset, setFlaggedOffset] = useState(0);
   const [flights, setFlights] = useState<Flight[]>([]);
 
   const incidents = useIncidentStore((s) => s.incidents);
@@ -48,7 +47,7 @@ export default function BaggageTrackerPage() {
     if (changed) setZones(updated);
   }, [incidents, zones, setZones]);
 
-  const queries = useBaggageTrackerQueries();
+  const queries = useBaggageTrackerQueries(flaggedOffset);
 
   useEffect(() => {
     if (queries.map.data) setZones(queries.map.data);
@@ -57,10 +56,6 @@ export default function BaggageTrackerPage() {
   useEffect(() => {
     if (queries.summary.data) setSummary(queries.summary.data);
   }, [queries.summary.data, setSummary]);
-
-  useEffect(() => {
-    if (queries.flagged.data) setFlagged(queries.flagged.data);
-  }, [queries.flagged.data, setFlagged]);
 
   useEffect(() => {
     if (queries.flights.data) setFlights(queries.flights.data);
@@ -131,7 +126,14 @@ export default function BaggageTrackerPage() {
       </div>
 
       <LoadingProgressPanel flights={flights} />
-      <FlaggedItemsPanel flagged={flagged} />
+      <FlaggedItemsPanel
+        flagged={queries.flagged.data?.flagged ?? []}
+        total={queries.flagged.data?.total ?? 0}
+        offset={flaggedOffset}
+        loading={queries.flagged.isFetching}
+        error={queries.flagged.isError}
+        onPageChange={setFlaggedOffset}
+      />
     </div>
   );
 }

@@ -137,7 +137,10 @@ if estimated_completion_min > time_remaining_min → show ⚠ SLOW
 
 ## 6. Flagged items panel
 
-All items in `flagged` or `held_for_review` status:
+The status=`flagged` or review_status=`pending` queue is read in pages of 50.
+The panel shows its displayed range and exact total, with Previous/Next controls.
+Pagination uses React Query as its data source and refreshes the selected page;
+it does not copy a partial page into the global flagged-item list.
 
 | Field              | Description                                   |
 | ------------------ | --------------------------------------------- |

@@ -190,7 +190,10 @@ export const passengersApi = {
 export const baggageApi = {
   summary: () => apiFetch<unknown>("/baggage/flow/summary"),
   map: () => apiFetch<unknown>("/baggage/flow/map"),
-  flagged: () => apiFetch<unknown>("/baggage/flagged"),
+  flagged: (params?: Record<string, string>) => {
+    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+    return apiFetch<unknown>(`/baggage/flagged${qs}`);
+  },
   search: (q: string) =>
     apiFetch<unknown>(`/baggage/search?q=${encodeURIComponent(q)}`),
   get: (id: string) => apiFetch<unknown>(`/baggage/${encodeURIComponent(id)}`),

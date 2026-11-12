@@ -93,7 +93,7 @@ export function usePassengerFlowQueries() {
 
 /* ──────── Baggage Tracker ──────── */
 
-export function useBaggageTrackerQueries() {
+export function useBaggageTrackerQueries(flaggedOffset = 0) {
   const map = useQuery({
     queryKey: ["baggage", "map"],
     queryFn: async () => {
@@ -124,13 +124,11 @@ export function useBaggageTrackerQueries() {
   });
 
   const flagged = useQuery({
-    queryKey: ["baggage", "flagged"],
+    queryKey: ["baggage", "flagged", flaggedOffset],
     queryFn: async () => {
-      const data = await baggageApi.flagged();
-      const fd = data as { flagged?: FlaggedBaggage[] };
-      return (
-        fd.flagged ?? (Array.isArray(data) ? (data as FlaggedBaggage[]) : [])
-      );
+      const data = await baggageApi.flagged({ limit: "50", offset: String(flaggedOffset) });
+      const fd = data as { flagged: FlaggedBaggage[]; total: number };
+      return fd;
     },
     refetchInterval: 5_000,
   });

@@ -86,14 +86,23 @@ export function FlowSummaryPanel({ summary }: { summary: BaggageFlowSummary | nu
   );
 }
 
-export function FlaggedItemsPanel({ flagged }: { flagged: FlaggedBaggage[] }) {
-  if (flagged.length === 0) return null;
+export function FlaggedItemsPanel({ flagged, total, offset, loading, error, onPageChange }: {
+  flagged: FlaggedBaggage[];
+  total: number;
+  offset: number;
+  loading: boolean;
+  error: boolean;
+  onPageChange: (offset: number) => void;
+}) {
+  if (total === 0 && offset === 0 && !loading && !error) return null;
 
   return (
     <div className="bg-gray-800 rounded p-3">
       <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">
-        Flagged Items ({flagged.length})
+        Flagged Items ({flagged.length ? `${offset + 1}–${offset + flagged.length} of ${total.toLocaleString()}` : total.toLocaleString()})
       </h3>
+      {error && <p className="text-sm text-red-400" role="alert">Could not load flagged items.</p>}
+      {loading && <p className="text-sm text-gray-400" role="status">Loading flagged items…</p>}
       <div className="space-y-2 max-h-48 overflow-y-auto">
         {flagged.map((item) => (
           <div
@@ -119,6 +128,16 @@ export function FlaggedItemsPanel({ flagged }: { flagged: FlaggedBaggage[] }) {
             </div>
           </div>
         ))}
+      </div>
+      <div className="flex justify-end gap-3 mt-2 text-sm">
+        <button aria-label="Previous flagged page" disabled={loading || offset === 0}
+          className="disabled:opacity-40" onClick={() => onPageChange(Math.max(0, offset - 50))}>
+          Previous
+        </button>
+        <button aria-label="Next flagged page" disabled={loading || error || offset + flagged.length >= total}
+          className="disabled:opacity-40" onClick={() => onPageChange(offset + 50)}>
+          Next
+        </button>
       </div>
     </div>
   );
