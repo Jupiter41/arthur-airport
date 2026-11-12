@@ -18,6 +18,7 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    "CREATE INDEX passenger_page_order IF NOT EXISTS FOR (p:Passenger) ON (p.name, p.id)",
     "CREATE INDEX passenger_pnr IF NOT EXISTS FOR (p:Passenger) ON (p.pnr)",
     "CREATE INDEX passenger_status IF NOT EXISTS FOR (p:Passenger) ON (p.status)",
     "CREATE INDEX passenger_location IF NOT EXISTS FOR (p:Passenger) ON (p.location_zone)",
@@ -76,13 +77,14 @@ async def get_all_passengers(
     driver = get_driver()
 
     where_clauses: list[str] = []
+    flight_filters: list[str] = []
     params: dict = {"limit": limit, "offset": offset}
 
     if flight_id:
-        where_clauses.append("f.id = $flight_id")
+        flight_filters.append("f.id = $flight_id")
         params["flight_id"] = flight_id
     if flight_number:
-        where_clauses.append("f.flight_number = $flight_number")
+        flight_filters.append("f.flight_number = $flight_number")
         params["flight_number"] = flight_number
     if status:
         statuses = [s.strip() for s in status.split(",")]
@@ -98,24 +100,39 @@ async def get_all_passengers(
         where_clauses.append("p.special_assistance = $sa")
         params["sa"] = special_assistance
 
-    where = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+    flight_where = "WHERE " + " AND ".join(flight_filters) if flight_filters else ""
+    where_clauses.append(f"EXISTS {{ MATCH (p)-[:ON_FLIGHT]->(f:Flight) {flight_where} }}")
+    where = "WHERE " + " AND ".join(where_clauses)
 
     count_query = f"""
-    MATCH (p:Passenger)-[:ON_FLIGHT]->(f:Flight)
+    MATCH (p:Passenger)
     {where}
     RETURN count(p) AS total
     """
     data_query = f"""
-    MATCH (p:Passenger)-[:ON_FLIGHT]->(f:Flight)
+    MATCH (p:Passenger)
     {where}
+    WITH p ORDER BY p.name, p.id SKIP $offset LIMIT $limit
+    MATCH (p)-[:ON_FLIGHT]->(f:Flight)
+    {flight_where}
     RETURN p {{
         .id, .name, .pnr, .status, .location_zone, .seat,
         .connection, .special_assistance
     }} AS passenger,
     f.flight_number AS flight_number
-    ORDER BY p.name
-    SKIP $offset LIMIT $limit
+    ORDER BY p.name, p.id
     """
+
+    if not any((flight_id, flight_number, status, zone)) and connection is None and special_assistance is None:
+        # Exactly one ON_FLIGHT per passenger is the domain assignment contract.
+        count_query = "MATCH (:Passenger)-[:ON_FLIGHT]->() RETURN count(*) AS total"
+        data_query = data_query.replace(
+            "MATCH (p:Passenger)\n",
+            "MATCH (p:Passenger) USING INDEX p:Passenger(name, id)\n", 1,
+        ).replace(
+            f"{where}\n",
+            f"{where} AND p.name IS NOT NULL AND p.id IS NOT NULL\n", 1,
+        )
 
     async with driver.session() as session:
         count_result = await session.run(count_query, **params)

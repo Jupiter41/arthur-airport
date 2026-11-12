@@ -284,6 +284,19 @@ Base path: `/api/v1`
 
 Paginated list of passengers.
 
+Paginate distinct passenger entities before expanding flight metadata. An
+existential flight match applies flight-ID/number filters and excludes orphan
+passengers without multiplying rows. Order by name and ID for stable pages;
+counts and page selection use the same predicates.
+
+The unfiltered path uses the transactional `ON_FLIGHT` relationship count
+store under the domain invariant of one outbound assignment per passenger.
+Orphans contribute no relationship. Named/identified passengers are read in
+name/ID index order before flight metadata expansion. Multiple assignments or
+missing required names/IDs are invalid graph data and must be repaired rather
+than treated as supported pagination input. Filtered totals count matching
+passenger entities using the predicates above.
+
 Query parameters:
 
 | Parameter            | Type    | Description                                  |

@@ -9,6 +9,10 @@
 
 ## 1. Domain responsibilities
 
+Readiness probes release upstream response bodies after inspecting their status,
+including failed probes. Repeated checks must not retain unread fetch streams
+and exhaust the gateway's connection resources during service restarts.
+
 - Proxy and aggregate REST requests to upstream services
 - Subscribe to all Kafka topics and maintain a WebSocket fan-out to connected clients
 - Issue and validate stub JWT tokens
