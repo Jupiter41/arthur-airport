@@ -2561,3 +2561,47 @@ Diagnostics are retained under `.pytest_cache/ldt-live-tests.txt`,
 Next: diagnose incident-ranking query cost and gateway upstream-check behavior
 under retained-history load, then rerun the complete gate. Current changes remain
 uncommitted alongside the user's existing Raspberry Pi/access-control work.
+
+## 36. A43 — Incremental commits, incident ranking and indexed passenger pages (2026-11-12)
+
+Runtime/tests from A40–A42 are committed as `7638143`; contracts/evidence as
+`92f7319` and `3f1b910`. Pre-existing Raspberry Pi/access-control changes remain
+unstaged, including their sections in shared specs. No commits were pushed.
+
+`661ad92` repairs incident ranking: compensation traversal starts from distinct
+affected flights, deduplicates compensation records and filters the requested
+day. Incidents without affected flights receive zero compensation. This avoids
+unrelated scans and cross-day/duplicate-edge inflation. A real Neo4j regression
+plus all 21 financial endpoint tests pass together (22 checks, 6.10 seconds).
+Test cleanup targets labelled fixture IDs, with a random isolated simulation day.
+
+`e77c047` releases readiness fetch response bodies for both successful and failed
+probes. All 29 gateway tests pass with local HTTP socket access, including a
+repeated-probe/recovery regression. This resource cleanup does **not** resolve
+every observed readiness failure: under retained-history load the gateway still
+sometimes reports all upstreams unavailable while direct readiness passes.
+
+`d4fd390` fixes passenger listing after a complete run passed 98 checks (including
+all restart tests) and then exhausted Neo4j transaction memory on passenger list.
+Flight filtering uses existence predicates, and pagination precedes flight
+metadata expansion. The unfiltered path uses transactional relationship counts
+under the one-assignment-per-passenger invariant and the new `(name,id)` index.
+The index is ONLINE. A measured default list returns 200 in 0.16 seconds; the
+real pagination regression passes with filters, metadata, ordering and orphan
+exclusion. Final Python 3.11 units: **1,137 pass**, three dependency warnings,
+92.76 seconds. Ruff/whitespace checks pass.
+
+**Remaining runtime evidence:** the subsequent REST/security run passed 21
+checks, including passenger REST, then timed out on unfiltered baggage listing
+(217.14 seconds total). A focused rerun passed the pagination regression and
+default passenger list but timed out on passenger flow summary. Thus the prior
+0.78-second summary result is a single observation, not a sustained latency
+guarantee. Gateway readiness instability, baggage ordering/count performance,
+and summary performance under concurrent retained-history load remain open G12
+work. Do not claim a complete live gate or stable production latency.
+
+Local diagnostics: `.pytest_cache/ldt-ranking-final.txt`, `ldt-gateway-final.txt`,
+`ldt-pagination-verified.txt`, `ldt-passenger-targeted.txt`, and
+`ldt-python311-units.txt`. A temporary automatic-approval usage failure prevented
+one test invocation; a later approved rerun completed all gateway tests. No
+timeout budgets were raised to manufacture passing results.
