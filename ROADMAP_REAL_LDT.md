@@ -2704,3 +2704,25 @@ existing large-bundle warnings. Full unit/live verification follows below.
 Evidence: `.pytest_cache/ldt-gateway-probe-load.json`,
 `ldt-a46-dashboard-build.txt`, and the earlier readiness failure in
 `ldt-a46-full-tests.txt`.
+
+## 41. A48 — Dashboard proxy follows recreated gateway containers (2026-11-12)
+
+Browser inspection found API offline/WS disconnected with viewer sign-in 502.
+Nginx logs showed connection refusal at the gateway's previous container IP.
+The dashboard proxy now resolves its gateway variable through Docker DNS with
+five-second validity, preserving original paths/query strings for API, auth and
+WebSocket routes. The image was rebuilt. Browser verification shows API online,
+WS connected and simulation time advancing. New browser-facing auth/API-query
+and WebSocket-upgrade integration checks both pass (0.33 seconds).
+
+The complete Python suite passes **1,137 checks** (95.83 seconds; three existing
+dependency warnings), all **29 gateway tests** pass, and the dashboard build
+passes. Running units concurrently with the live gate triggered a passenger
+summary timeout; after units finished, 12 consecutive summaries returned 200 in
+1.00–2.51 seconds. PROFILE reads the status index in 1.47 seconds. The standalone
+live run then passed eight proposal checks before the original baggage boundary
+fixture exceeded its worker budget. These failures are retained as evidence,
+not a full-suite success. Diagnostics: `.pytest_cache/ldt-a46-python-units.txt`,
+`ldt-a47-gateway-tests.txt`, `ldt-summary-repeat.txt`,
+`ldt-passenger-summary-profile.txt`, `ldt-dashboard-proxy-tests.txt`, and
+`ldt-a47-isolated-tests.txt`.

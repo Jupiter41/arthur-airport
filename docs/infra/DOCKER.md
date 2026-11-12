@@ -11,6 +11,11 @@ must not run a background exporter against the absent optional collector: queued
 collector DNS lookups can exhaust Node's shared worker pool and block upstream
 readiness and proxy requests.
 
+The dashboard's Nginx proxy resolves `api-gateway` through Docker's embedded DNS
+with a short cache. Gateway container recreation must not leave auth, API, or
+WebSocket routes pointing to its previous container address. Requests retain
+their original paths and query strings.
+
 ---
 
 ## 1. Service inventory
