@@ -33,6 +33,26 @@ function inputs(unavailable?: string) {
 afterEach(() => mock.restoreAll());
 
 describe("complete digital twin readiness", () => {
+  it("releases every response stream across repeated probes and recovery", async () => {
+    inputs();
+    mock.restoreAll();
+    mock.method(kafka, "isKafkaConnected", () => true);
+    mock.method(kafka, "isKafkaFresh", () => true);
+    let released = 0;
+    let healthy = false;
+    mock.method(globalThis, "fetch", async () => ({
+      ok: healthy, body: { cancel: async () => { released += 1; } },
+    }));
+    const failed = response();
+    await handleReady({} as never, failed as never);
+    assert.equal(failed.statusCode, 503);
+    healthy = true;
+    const recovered = response();
+    await handleReady({} as never, recovered as never);
+    assert.equal(recovered.statusCode, 200);
+    assert.equal(released, 18);
+  });
+
   it("checks readiness of all nine upstreams", async () => {
     const seen = inputs();
     const res = response();

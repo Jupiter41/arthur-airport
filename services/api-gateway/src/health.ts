@@ -22,6 +22,7 @@ async function checkService(baseUrl: string): Promise<boolean> {
       const resp = await fetch(`${baseUrl}/ready`, {
         signal: controller.signal,
       });
+      await resp.body?.cancel();
       return resp.ok;
     } finally {
       clearTimeout(timer);
