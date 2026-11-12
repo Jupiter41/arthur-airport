@@ -9,6 +9,9 @@
 
 ## 1. Domain responsibilities
 
+Status summaries count non-null persisted statuses through the existing status
+index, avoiding full node/property scans as synthetic history accumulates.
+
 - Maintain authoritative state for all `Baggage` nodes in Neo4j
 - Advance baggage status based on `SimClockTick` and flight events
 - Model the conveyor/sorting system with throughput constraints and failure modes
@@ -36,6 +39,13 @@ Restart recovery reads `last_scan_zone` (with a legacy `current_zone` fallback),
 restores queued departure and arrived bags, and retains their tags, dangerous
 goods attributes, passenger link and terminal routing metadata. Cross-terminal
 transit progress remains tracked in roadmap G9.
+
+Recovery materializes only conveyor queue states (`inducted`, `screening`,
+`sorting`, `arrived`). Loaded, in-flight and flagged bags remain authoritative
+in Neo4j and are handled by status-filtered flight/incident operations. They are
+not copied into an unbounded startup deduplication set: induction reads only
+`dropped_off` bags, so persisted status is its restart guard. No history is
+deleted or sampled to bound recovery memory.
 
 Conveyor failures are tracked by `system_failure` incident identity. A resolved
 cascade child at the same location cannot release its parent's failed zones.
@@ -174,6 +184,12 @@ Base path: `/api/v1`
 
 #### `GET /baggage`
 List baggage items with filters.
+
+Count matching bag entities without expanding optional passenger/flight metadata.
+Apply ordering and pagination to bags before loading that metadata. Flight and
+passenger filters remain mandatory relationship matches, and totals count distinct
+bags. Page ordering uses last scan descending with bag ID as a deterministic tie
+break. A small page must not materialize the airport's full relationship history.
 
 Query parameters:
 

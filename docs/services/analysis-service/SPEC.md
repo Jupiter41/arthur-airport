@@ -7,9 +7,15 @@ and proposes actions. It never writes another service's operational entities.
 
 All entry points (manual Apply, automatic rules, human approval) share a single
 mapping to concrete commands. Supported mappings are `ReassignGate`, `HoldFlight`
-on `flights.commands`, `OpenSecurityLane` on `passengers.commands`, and
-`RedirectBaggage` on `baggage.commands`. Aggregate recommendations without the
+and `GroundDelayProgram` on `flights.commands`, `OpenSecurityLane` on
+`passengers.commands`, `RedirectBaggage` on `baggage.commands`, and
+`ContainIncident`/`ResolveIncident` on `incidents.commands`.
+`rebook_passengers` remains advisory until a replacement itinerary can be
+validated and persisted by the passenger owner. Aggregate recommendations without the
 required entity identifiers remain advisory; applying one returns 422.
+Previously dispatched rebooking proposals can be failed during reconciliation or
+by a matching passenger-owner rejection. A legacy success receipt cannot certify
+an itinerary change that was never implemented.
 
 Proposals transition `pending → approved → dispatched → executed|failed`, or
 `pending → rejected`. Approval authorizes dispatch; it does not prove execution.
@@ -92,11 +98,29 @@ Before starting its consumer, analysis reads flights, gates, current weather,
 active incidents and the latest baggage aggregate from Neo4j. It reconciles
 these projections every ten ticks. This read-only snapshot does not advance the
 simulation clock; only `SimClockTick` does that. Domain facts update the cache
-between reconciliations. Security and ground-vehicle recovery remain separate
-roadmap work.
+between reconciliations. Security restores the owner's persisted per-terminal
+`SecurityProjection` observations too. Live and restored snapshots validate the
+same payload contract and retain their source `at`; older observations cannot
+overwrite newer cache data. An empty legacy graph leaves checkpoints unobserved,
+not falsely measured as empty. Ground-vehicle recovery remains roadmap work.
 
 Weather facts use the producer's `new_category` and recommended arrival/departure
 rates. Capacity is expressed relative to configured CAVOK rates. Baggage occupancy
 uses unsampled `BaggageZoneSnapshot` facts, including in BULK mode; per-bag
 `scan_zone` transitions cannot be summed into exact occupancy. What-if requests
 require the simulation clock and must not substitute wall-clock time.
+
+## Observed action outcomes
+
+After at least 30 simulation minutes, executed proposals can record observed
+conditions. Due-time comparisons normalize offsets to UTC. Incident measurements
+read the target's persisted status, including resolved incidents; an absent
+target is unknown, not proof of resolution. Gate measurements compare the observed
+gate with the requested `gate_id`. Security measurements use the terminal's
+observed queue wait and lane count, with its observation timestamp; an unobserved
+checkpoint is not measurable. Observations do not establish causal savings.
+
+Outcome updates and `ActionOutcomeMeasured` facts commit together in the analysis
+outbox. Duplicate measurements do nothing. Rebuilding the action log preserves
+the stored outcome and measurement timestamp. The scheduler records actual elapsed
+simulation minutes, which may exceed 30 after downtime or a bulk tick.

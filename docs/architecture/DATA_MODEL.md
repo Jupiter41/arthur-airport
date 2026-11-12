@@ -428,3 +428,13 @@ index orders pending publication. Lifecycle/proposal writes and these entries ar
 one transaction; the publisher removes entries only after broker confirmation.
 No domain-owner node is written by analysis. Stored event IDs and proposal-based
 command IDs provide stable at-least-once delivery identities.
+
+### Security observation recovery (2026-10-29)
+
+Passenger-service owns `SecurityProjection`, unique on `terminal` (`A`, `B`, `C`).
+Its `document` is the validated `SecurityQueueUpdated` payload: `terminal`,
+`queue_depth`, `lanes_open`, `wait_minutes`, and simulation timestamp `at`.
+The owner writes it before publishing the same unsampled aggregate. Analysis
+reads it alongside the other operational projections without mutating it.
+This stores observations, not passenger queue membership or a simulation epoch;
+it does not close the owner mutation/outbox atomicity gap.

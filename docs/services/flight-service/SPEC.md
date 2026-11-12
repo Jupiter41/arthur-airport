@@ -366,6 +366,13 @@ Maintains a map of `aircraft_registration → (inbound_flight, outbound_flight)`
 
 ### Command execution receipts (Real LDT correction)
 
+`GroundDelayProgram` accepts a non-empty list of concrete flight IDs and a
+positive `stagger_minutes`. Duplicate IDs are applied once. Only departures in
+`scheduled` or `boarding` can be ground-held; arrivals and other states are
+skipped. The current command applies the same hold duration to each eligible
+flight; it does not allocate staggered runway slots. An entirely ineligible batch
+is rejected. Batch mutation and receipt atomicity remain G1 work.
+
 Accepted commands emit the existing domain fact plus `CommandExecuted`; rejected
 commands emit `CommandRejected` with a reason. Both receipts carry `command_id`
 and `command_type`, use the current simulation clock, and are stored in Neo4j

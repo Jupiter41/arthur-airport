@@ -199,7 +199,7 @@ async def on_incident_created(payload: dict, sim_time: datetime):
 
 When this service starts (or restarts) while the simulation is already running:
 
-1. **Rebuild conveyor system** — `BaggageConsumerState.rebuild_from_neo4j()` loads all bags currently in the conveyor system (statuses: `inducted`, `screening`, `sorting`, `loaded`) and repopulates the zone queues.
+1. **Rebuild conveyor system** — `BaggageConsumerState.rebuild_from_neo4j()` loads conveyor queue states (`inducted`, `screening`, `sorting`, `arrived`) and repopulates the zone queues. Loaded/in-flight/flagged history stays in Neo4j; induction's `dropped_off` query excludes it without an unbounded startup ID cache.
 2. **Screening queue** — bags in `screening` status are re-enqueued into their respective zones. DG flags are preserved in Neo4j.
 3. **Inducted bag IDs set** — rebuilt from Neo4j to prevent re-induction of already-processed bags.
 4. **Conveyor zone status** — zone health (normal/degraded/offline) is stored in Neo4j and restored on rebuild.

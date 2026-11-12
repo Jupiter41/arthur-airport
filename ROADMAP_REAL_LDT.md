@@ -1,11 +1,12 @@
 # Roadmap to a Real Living Digital Twin (LDT)
 
-> **Current verification: 2026-10-17.** The architecture review in §§0–9 and
+> **Current verification: 2026-11-12 (see A42 for validation limits).** The architecture review in §§0–9 and
 > execution entries A1–A10 are historical observations, not a blanket claim that
 > the LDT is complete. A11–A14 record this continuation; §10 is the current gap
 > register. In particular, the old “applied” behavior in A8/A9 was an audit fact,
 > not domain execution. It has been replaced by command dispatch plus owner
-> receipts. Full Kafka/Neo4j runtime validation is still outstanding.
+> receipts. Targeted Kafka/Neo4j checks pass; the complete runtime gate still has
+> unresolved large-history performance failures documented in A41/A42.
 
 > Principal-architect / product-CTO review of the Arthur International Airport digital twin, and a
 > pragmatic transformation plan to evolve it from a **facade of an LDT** into an **operational LDT**
@@ -1227,13 +1228,13 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 |---|---|---|
 | G1 / P0 — partial | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. A24 adds atomic analysis proposal decisions/attempts, lifecycle facts and command outbox entries. | Extend transactional domain/outbox/inbox boundaries to the remaining owners and receipts. Financial Kafka delivery remains at least once with stable event IDs, not exactly once; simulation epochs and legacy repair are separate work. |
 | G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
-| G3 / P1 — **closed** | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies; A33 deletes 7× `db/neo4j.py` driver-lifecycle boilerplate; A34 deletes 7× `kafka/producer.py` producer-lifecycle boilerplate; A39 adds `run_consumer_loop()` to `_common.kafka_runtime` and applies it to flight-service, incident-service, and weather-service, replacing ~45 lines of identical while-loop boilerplate per service. Baggage and passenger retain their deferred-command loops (command-before-clock recovery requires per-batch mutation). Analysis and cost retain manual-commit/retry loops. `kafka_runtime` moved to `TYPE_CHECKING` imports so it is importable without `confluent_kafka`. Consumer god-module pattern (domain logic + transport in one file) is intentionally left — domain inversion is a larger P2 refactor. | Invert application orchestration so domain handlers live in `application/` and consumers are thin adapters. |
+| G3 / P1 — partial | A27/A33/A34 consolidate logging and transport lifecycle; A39 shares three batch-consumer loops. Baggage/passenger retain deferred commands, and analysis/cost retain retry/manual-commit semantics. Consumer modules still combine transport and domain orchestration. Sharing loops does not complete the original application-boundary work. | Invert application orchestration so domain handlers live in `application/` and consumers are thin adapters, retaining command-before-clock and retry tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
-| G5 / P1 — **closed** | A25 replaces the confidence-only sort with impact × confidence ÷ cost. A36 injects cost financial signals into the one ranking path: cost-service publishes `CostSignalSnapshot` every 5 ticks to `cost.events`; analysis-service subscribes and stores them in `OperationalState.cost_signals`; new `_detect_financial_pressure` detector fires four bottleneck sub-signals; `_recs_financial_pressure` maps each to executable action types with scoring rules in `ranking.py`. A37 adds `OPEN_MAKEUP_CAROUSEL` for the `total_cost_eur` sub-signal + scoring rule; deprecates cost-service `/recommendations` endpoint (analysis-service now serves the unified ranked list). Dashboard `AutonomousPanel` already unified in A36. Impact/cost weights remain heuristic (G8 still open). | Calibrate the impact/cost scale against measured outcomes (G8). |
-| G6 / P1 — **closed** | A28–A31 (incidents, gate reassign). A38 adds `GroundDelayProgram` and `RebookPassengers` command dataclasses + parsers + handlers in flight-service/passenger-service, with full `_common.commands.action_command` mappings. Recommender now injects `flight_ids` into GDP params and `passenger_ids` into REBOOK params from graph query results, so both are concrete and executable. `DELAY_TAXI` picks the first concrete `flight_id` from `get_flights_needing_gate()`, terminal-filtered, so it maps to `HoldFlight` on `flights.commands`. All three action types now return non-None from `action_command()` when the recommender populates them. Baggage redirect also concrete (A8+A29). Remaining advisory-only: `OPEN_MAKEUP_CAROUSEL`/`EARLY_GATE_CALL`/`EXPEDITE_BAGGAGE`/`EXTEND_TRANSIT_TIME` (no target command channel defined). | Retain advisory UI for remaining action types. A8/A9/A28–A31/A38 do not imply full-fleet autonomous control. |
+| G5 / P1 — partial | A25/A36/A37 unify ranked financial/operational recommendations and deprecate the separate cost endpoint. A40 repairs financial snapshots to use transaction-local totals, including current tick charges, and commit through the durable outbox. Scores remain heuristic; a scored action may still be advisory, including makeup carousels and rebooking. | Validate comparable impact/cost units and causal action effects; calibrate against measured outcomes (G8). Ranking is not evidence of executability or financial savings. |
+| G6 / P1 — partial | A28–A31 add incident/gate actions. A40 fixes A38 GDP's nonexistent single-flight attribute, excludes arrivals and deduplicates targets. Its hold duration is uniform, not a staggered slot allocation. A38 rebooking called the database with the wrong signature, used an invalid status and never changed itineraries; A40 keeps it advisory and rejects queued commands without mutation. Mapping to a command alone did not prove owner execution. | Implement replacement-flight/capacity validation and atomic itinerary reassignment before enabling rebooking. Retain advisory UI for unsupported actions and validate real owner handlers. GDP slot allocation and owner atomicity remain open. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
-| G8 / P1 — partial | A32 adds a **sim-clock-driven** outcome measurer: ~30 sim-min after a proposal executes, `_on_tick` measures the observed condition (e.g. is the targeted incident still active, did the flight get a gate) and persists `actual_outcome` to the Neo4j `ActionProposal` + the action log — so analysis `record_outcome` finally has an automatic caller (live-validated). Still open: this is **observed-condition** measurement, **not counterfactual/baseline attribution** (no no-action arm), predictions remain uncalibrated, and planning outcomes are still manual REST input. | Add baseline/counterfactual attribution and prediction calibration; extend automatic outcomes to planning; validated training/history before financial savings claims. |
-| G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
+| G8 / P1 — partial | A32 schedules observed outcomes after 30 simulation minutes. A40 preserves results when rebuilding logs, commits measurement facts with results, compares UTC instants and requested gates, reads persisted incident status, and uses timestamped observed security waits. Missing targets/checkpoint observations are unknown rather than success; elapsed time can exceed 30 after downtime. This is observed-condition measurement, not causal attribution. | Validate fresh projections across restart/BULK mode, add baseline/counterfactual attribution and prediction calibration, and extend automatic outcomes to planning. Planning outcomes remain manual; no calibrated savings claim. |
+| G9 / P1 — partial | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled; A17/A18 preserve queued metadata and incident ownership. A41 adds owner-persisted, validated security observations and analysis recovery with source timestamps/stale-event guards. Baggage startup now loads actual conveyor queue states instead of millions of loaded/in-flight history IDs; graph history remains intact. | Complete vehicle and cross-terminal transit recovery, validate epoch/rewind behavior and close the G1 aggregate publication crash window. Security observations do not establish fresh counterfactual outcomes. |
 | G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
 | G12 / P2 — partial | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. A26 adds the missing `cost-service`/`planning-service` k8s manifests and the gateway's cost/planning service URLs (`kustomize build` + offline validation; no live apply — cluster RBAC denies it here). Sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate and validate the remaining load/crash/replica behavior on a cluster. Functional integration success is not complete fidelity or deployment certification. |
@@ -2382,3 +2383,181 @@ was already concrete (A8+A29).
 **Lines deleted.** ~45 lines × 3 services = ~135 lines of near-identical transport boilerplate removed from service directories.
 
 **Tests.** 15 new unit tests in `tests/unit/test_consumer_loop.py` (dispatch order, tick dedup, error isolation, health tracking, lifecycle). Full clean-suite run: 298 passed (excluding pre-existing `confluent_kafka`/`neo4j`/`services.gate_resolver` import failures that are unrelated to G3). Ruff clean on all 4 changed Python files.
+
+---
+
+## 33. A40 — Review merged changes and repair execution/evidence regressions (2026-10-29)
+
+**Baseline:** fast-forwarded `main` from `3be5305` to merged PR #1 at `47caf9b`.
+Git autostash reapplied the existing Raspberry Pi/access-control working changes
+without conflicts. This continuation changes the issues below; it does not
+certify those separate deployment changes or all A25–A39 claims.
+
+**Findings and delivered corrections:**
+
+- **Orchestrator startup:** A34 imported `BufferError` from `confluent_kafka`,
+  which does not export it. Use Python's built-in exception, retaining the
+  existing bounded producer-buffer retries. The existing actual-import test
+  reproduced the startup failure and now passes.
+- **G1/G5 financial signals:** A36 published directly from a retriable ledger
+  callback and read the previous process cache. A rollback could therefore leak
+  an uncommitted snapshot; current tick charges and another worker's committed
+  totals were missing. Snapshot construction now happens after all batch records
+  update transaction-local totals. The snapshot commits with the existing
+  ledger/inbox/checkpoint/outbox, includes day/rate/source provenance and uses
+  acknowledged publication with key `cost-signal`. The wall-clock fallback and
+  direct publisher are removed. Tests cover stale caches, day changes, current
+  charges, rollback, duplicate inputs and broker-failure recovery.
+- **G6 GDP:** A38 dereferenced `cmd.flight_id` before reaching its batch handler,
+  although GDP has only `flight_ids`. Single-target lookups now stay in the
+  corresponding command branches. GDP validates concrete IDs, applies each once,
+  excludes arrivals, rejects wholly ineligible batches and retains replayable
+  receipts. Its current duration applies uniformly; allocating staggered runway
+  slots is still future work. Owner mutation/receipt atomicity remains G1.
+- **G6 rebooking:** A38 passed three arguments to a four-argument database
+  function, selected a nonexistent passenger status and never reassigned
+  `ON_FLIGHT`. Repairing only the call would still falsely claim rebooking.
+  The canonical mapper therefore keeps rebooking advisory, while legacy queued
+  commands reject without mutation. Already dispatched proposals can reconcile
+  to failure or accept a matching owner rejection; legacy success receipts
+  cannot certify an itinerary change. Replacement-flight selection, capacity
+  validation and atomic itinerary reassignment remain required before enabling it.
+- **G8 outcomes:** rebuilt REST logs no longer overwrite persisted outcomes with
+  null. Measurement and `ActionOutcomeMeasured` commit together through the
+  analysis outbox, with duplicate measurements ignored. Due times compare UTC
+  instants and results retain actual elapsed simulation minutes. Gate success
+  requires the requested gate. Incident outcomes read persisted terminal status;
+  missing incidents are unknown. Security uses normalized terminal names and
+  timestamped observed waits rather than forecasts/defaults. The live test now
+  seeds a genuinely resolved synthetic incident instead of asserting that a
+  never-existent incident proves success. These remain observations, not causal
+  savings or calibrated predictions.
+
+**Validation:** final focused execution/ledger/outcome/proposal/config checks:
+**103 passed**. Full host Python **3.14.3** unit run: **1,109 passed, 10 failed,
+two warnings**, in **9.91 s**. Eight failures require missing `lightgbm`, one
+requires missing `stable_baselines3`, and one requires missing `gymnasium`.
+These dependencies were not installed into the user's global environment.
+The target Python 3.11 CI/runtime environment was not exercised. Ruff passes for
+all five affected service trees, shared commands and affected tests;
+`git diff --check` passes. The initial sandbox test process hung in Windows
+asyncio socket-pair creation; the completed checks ran outside that sandbox.
+Full-unit diagnostics are retained locally in
+`.pytest_cache/ldt-continuation-units-final.txt` (ignored, not a CI artifact).
+
+**Runtime limit and next work:** Docker Desktop's Linux engine is unavailable
+on this machine, so no live Kafka/Neo4j or Kubernetes validation is claimed for
+this change. Rerun the strict full-stack gate with ML dependencies and services
+available. G3/G5/G6 are marked partial: shared loops, ranking and command mapping
+alone do not complete application inversion, calibrated effects or owner
+execution. Fresh security/gate projection recovery, causal attribution, actual
+rebooking, staggered GDP slots and the other §10 gaps remain open. Keep this
+roadmap active.
+
+---
+
+## 34. A41 — Live validation, security recovery and startup/reporting repairs (2026-10-29)
+
+**Continuation of A40:** Docker is available. The existing isolated
+`art-ldt-validation` project was rebuilt from this working tree, with current
+shared-code/config mounts. Other Docker projects and the validation graph's
+history were retained. This supersedes A40's unavailable-Docker limitation;
+the earlier entry remains a record of that run.
+
+**G9 security observation recovery:** passenger-service now persists the same
+validated `SecurityQueueUpdated` payload that it publishes, per terminal, in
+`SecurityProjection`. Both normal and BULK publication remain unsampled at the
+existing cadence. The shared payload validates terminal/count/lane/wait/time
+fields and normalizes UTC timestamps. Analysis reads these observations at
+startup/reconciliation, retains source time without inventing a simulation tick
+or forecast, and rejects older or invalid observations without partial updates.
+Tests compare the real producer payload with storage/recovery, exercise replay
+and malformed input, and rebuild all three checkpoints in a fresh analysis
+process against passenger-owned Neo4j data.
+
+**Live-discovered baggage startup gap:** the old validation graph contained
+1,920,733 `in_hold` bags, plus other states. Startup loaded that history even
+though loaded/in-flight/flagged bags were never restored into conveyor queues.
+The service reached approximately 2.015 GiB and missed its startup health window,
+blocking the orchestrator and gateway. Recovery now loads actual queue states
+only (`inducted`, `screening`, `sorting`, `arrived`). Persisted bag status already
+excludes historical bags from the `dropped_off` induction query. No graph record
+is deleted or sampled. After rebuilding, observed memory was 106.2 MiB, and
+queue rebuild completed between 16:46:25.907 and 16:46:25.951 UTC. This is local
+evidence, not a calibrated sustained-load benchmark. Cross-terminal transit,
+history convergence and epoch behavior remain separate work.
+
+**Live-discovered G3 reporting regression:** A33 removed the private cost-driver
+holder, but cost/carbon routes still referenced `db._driver`. P&L therefore
+returned HTTP 500 despite service readiness. All report/valuation routes now use
+the public accessor. Uninitialized storage returns 503, including rankings and
+hourly curves that previously fabricated empty/zero results. Connected graphs
+without records retain normal empty/padded responses. Twelve route regressions
+check unavailable storage and correct driver forwarding.
+
+**Validation repairs and added live coverage:** financial/rate workers use the
+public lifecycle API rather than removed `_init_driver`. The new clock-snapshot
+test keeps the departure fixture's flight-link invariant scoped to departure
+events: clock-driven staffing costs correctly lack a flight relationship.
+New real-broker tests verify stable-ID snapshot retry after acknowledgement gaps
+and GDP receipt replay with duplicate targets and an ineligible arrival. The
+GDP command holds the departure once and leaves the arrival unchanged. The
+resolved-incident and fresh security-process tests also pass independently.
+GDP fixture cleanup now waits until the financial consumer has durably handled
+the emitted flight fact before removing its synthetic flight. An initial cleanup
+race left an orphan fact retrying; restoring that fixture until its inbox commit
+recovered the consumer without skipping input or changing offsets. The financial
+restart/replay and corrected GDP tests then both passed.
+
+**Validation:** all **1,137 unit tests pass in Python 3.11** with the project ML
+dependencies, using a disposable Docker test image; no global host packages were
+changed. The three warnings concern TestClient/httpx compatibility and existing
+LightGBM/ROC-AUC notices. All service trees pass Ruff and `git diff --check` passes.
+All eleven application images build, including gateway/dashboard TypeScript.
+The final baggage-listing correction additionally paginates bag entities before
+optional passenger/flight expansion. This avoids the Neo4j transaction-memory
+exhaustion observed against millions of historical bags. The filtered pagination
+regression verifies exact totals, stable ordering, metadata and empty results;
+all 46 REST/security checks pass together in 38.45 seconds. The complete gate's
+last October run reached 102 passing checks before this listing correction.
+Final whole-suite evidence is recorded in the subsequent continuation.
+
+**Remaining scope:** G1 owner mutation/receipt/outbox atomicity, G2 accounting
+perspective, G3 application inversion, G4/G5 calibrated effects/ranking, actual
+rebooking and staggered GDP slots, job-input/training recovery, causal outcome
+attribution, vehicle/transit/epoch recovery, frontend state consolidation and
+cluster/load certification remain active in §10. This slice does not complete
+the entire LDT or certify the separate Raspberry Pi deployment work.
+
+## 35. A42 — Resume cold-start validation and indexed history summaries (2026-11-12)
+
+Docker Desktop was restarted and the existing validation graph retained. Runtime
+hash checks confirm all 28 modified Python files match the workspace. The cold
+graph now contains 8,569,452 synthetic passengers. Status aggregation scanned
+passenger nodes and properties, exceeding the integration fixture's ten-second
+flow-summary timeout before proposal tests could run. Passenger and baggage
+summary queries now explicitly use their existing status indexes and count
+non-null persisted statuses. This preserves all domain status counts without
+sampling history or maintaining a second authoritative total. Missing statuses
+are outside the domain contract; baggage summaries already excluded them.
+
+Both owner images were rebuilt. All **1,137 Python 3.11 unit tests pass** in
+65.83 seconds, with three existing dependency warnings. Ruff passes all service
+trees, and whitespace checks pass. The final live gate is being checked below;
+unit success does not establish the large-history latency target or complete §10.
+
+**Measured result:** passenger flow summary returns HTTP 200 in **0.78 seconds**
+on the retained graph after the index change. All eight proposal concurrency/
+recovery checks pass in the resumed complete gate. The gate then stops with
+**17 passed, one failed** in 93.55 seconds: incident-cost ranking exceeds its
+existing five-second request timeout. The final readiness check finds every
+domain service ready directly, but gateway readiness returns 503 on its upstream
+checks. These are unresolved; no complete-stack pass is claimed. A subsequent
+six-case focused REST/security run stalled after collection and was interrupted,
+so its October 46-case evidence remains historical rather than a fresh pass.
+
+Diagnostics are retained under `.pytest_cache/ldt-live-tests.txt`,
+`ldt-python311-units.txt`, `ldt-post-readiness.json`, and `ldt-source-parity.json`.
+Next: diagnose incident-ranking query cost and gateway upstream-check behavior
+under retained-history load, then rerun the complete gate. Current changes remain
+uncommitted alongside the user's existing Raspberry Pi/access-control work.
