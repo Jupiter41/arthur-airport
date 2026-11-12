@@ -18,6 +18,9 @@ Gives ground handlers and operations staff a live view of the entire baggage han
 
 ## 2. Layout
 
+Below the desktop breakpoint, the conveyor map and statistics stack vertically
+so queue counts and summary values remain readable on phone-width screens.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Baggage Operations                        ART  SIM: Day 1 · 14:32  │

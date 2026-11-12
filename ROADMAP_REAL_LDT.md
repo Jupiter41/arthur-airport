@@ -2843,3 +2843,18 @@ Evidence: `.pytest_cache/ldt-a51-build.txt`, `ldt-a51-readiness.json`,
 `ldt-a51-bag-profile.txt`, `ldt-a51-passenger-tests.txt`, `ldt-a51-board-profile.txt`,
 `ldt-a51-python-units.txt`, `ldt-a51-concurrent.json`, `ldt-source-parity.json`,
 and `ldt-a51-full-tests.txt`.
+
+## 45. A52 — Responsive header and readable baggage panels (2026-11-12)
+
+The approved browser control test exposed overlapping navigation/weather/status
+and simulation controls at 1280px. The header now wraps its groups with automatic
+height, retaining all controls. At phone width the baggage map/statistics also
+stack, avoiding compressed count cards. The dashboard image was rebuilt; all
+**44 dashboard tests pass** (10.58 seconds). Browser screenshots verify the
+1280px desktop and 375px phone layouts; temporary viewport overrides were reset.
+Pre-existing public-navigation/access-control edits remain unstaged.
+
+Evidence: `.pytest_cache/ldt-a51-header.png`, `ldt-a51-phone.png`,
+`ldt-a51-dashboard.png`, `ldt-a51-responsive-build.txt`, and
+`ldt-a51-dashboard-tests.txt`. These UI repairs do not claim the broader G10
+state-consolidation or G11 data-policy roadmap work is complete.

@@ -156,9 +156,9 @@ export function HeaderBar() {
 
   return (
     <header className="bg-surface-card/80 backdrop-blur-md border-b border-panel-border/60 shadow-lg shadow-black/20 relative z-[100] shrink-0">
-      <div className="flex items-center justify-between px-4 h-12 gap-4">
+      <div className="flex flex-wrap items-center justify-between px-4 min-h-12 py-2 gap-x-4 gap-y-2">
         {/* Left: Logo + nav */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex flex-wrap items-center gap-3 min-w-0 max-w-full">
           <NavLink to="/" className="flex items-center gap-2 shrink-0">
             <span className="text-lg">✈️</span>
             <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-accent to-blue-300 bg-clip-text text-transparent">
@@ -194,12 +194,12 @@ export function HeaderBar() {
         </div>
 
         {/* Center: Weather (hidden on small screens) */}
-        <div className="hidden xl:flex items-center min-w-0">
+        <div className="hidden xl:flex items-center shrink-0">
           <WeatherStrip />
         </div>
 
         {/* Right: status + controls */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
           <IncidentBadge />
           <ConnectionStatus />
           <div className="h-5 w-px bg-panel-border/40 hidden sm:block" />

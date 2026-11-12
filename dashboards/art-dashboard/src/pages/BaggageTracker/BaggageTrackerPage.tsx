@@ -114,8 +114,8 @@ export default function BaggageTrackerPage() {
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2">
           <ConveyorMap zones={zones} />
         </div>
 

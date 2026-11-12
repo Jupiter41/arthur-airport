@@ -18,6 +18,10 @@ The flight board is the primary operational view of Arthur International Airport
 
 ## 2. Layout
 
+The shared header wraps navigation, weather, connection status and simulation
+controls onto additional rows when their combined width exceeds the viewport.
+It must not overlap text or controls at 1280px or narrow phone widths.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  KART  Arthur International Airport          SIM: Day 1 · 14:32 ▶  │  ← Header bar
