@@ -2683,3 +2683,24 @@ a strengthened duplicate-direct-edge regression. The cost owner was rebuilt;
 Ruff and whitespace checks pass. Full-suite validation is underway. Evidence:
 `.pytest_cache/ldt-ranking-profile.txt`, `ldt-ranking-index-profile.txt`,
 `ldt-ranking-index-tests.txt`, and `ldt-a46-full-tests.txt`.
+
+## 40. A47 — Opt-in gateway tracing prevents collector DNS starvation (2026-11-12)
+
+Inspection of the affected long-running gateway found more than 30 active DNS
+requests, almost all for the absent `jaeger` host. A readiness fetch evaluated
+inside that process also timed out; fresh container processes remained fast.
+The Compose gateway environment omitted `OTEL_ENABLED`, unlike the Python
+services, so its default-true tracing initialized an exporter even without the
+optional observability profile. Exporter DNS work occupied Node's shared worker
+pool and delayed domain hostname lookups. No service-availability bypass or
+readiness timeout increase was introduced.
+
+Compose now passes `${OTEL_ENABLED:-false}` to the gateway. The infrastructure
+contract documents enabling tracing together with the collector profile. After
+recreation, **40/40 readiness probes pass**, at four concurrent clients, maximum
+0.416 seconds. The temporary localhost-only diagnostic inspector was removed by
+recreation. The dashboard production build also passes (23.31 seconds), with
+existing large-bundle warnings. Full unit/live verification follows below.
+Evidence: `.pytest_cache/ldt-gateway-probe-load.json`,
+`ldt-a46-dashboard-build.txt`, and the earlier readiness failure in
+`ldt-a46-full-tests.txt`.

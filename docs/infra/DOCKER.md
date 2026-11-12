@@ -4,6 +4,13 @@
 **Runtime:** Docker ≥ 24 · Docker Compose ≥ 2.20  
 **File:** `docker-compose.yml` at repo root
 
+Tracing is opt-in for every application service, including the gateway, through
+`OTEL_ENABLED` (default `false`). To export traces, enable it together with the
+`observability` or `full` Compose profile that supplies Jaeger. A default stack
+must not run a background exporter against the absent optional collector: queued
+collector DNS lookups can exhaust Node's shared worker pool and block upstream
+readiness and proxy requests.
+
 ---
 
 ## 1. Service inventory

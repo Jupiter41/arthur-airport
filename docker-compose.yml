@@ -461,6 +461,7 @@ services:
       NODE_ENV: development
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       OTEL_SERVICE_NAME: api-gateway
+      OTEL_ENABLED: "${OTEL_ENABLED:-false}"
     depends_on:
       kafka:
         condition: service_healthy
