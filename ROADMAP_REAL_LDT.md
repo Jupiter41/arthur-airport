@@ -2665,3 +2665,21 @@ five-second timeout: **9 passed, 1 failed in 8.31 seconds**. The earlier isolate
 latency under retained-history load. Ranking performance remains open alongside
 intermittent gateway readiness and passenger summary latency. Evidence:
 `.pytest_cache/ldt-a45-resumed-readiness.json`, `ldt-a45-resumed-tests.txt`.
+
+## 39. A46 — Rank from indexed daily compensation, not flight history (2026-11-12)
+
+The retained-graph PROFILE identifies 545,297 flight-cost relationship rows in
+the prior correlated ranking query, including 545,345 filter database hits even
+when day 1 has no matching compensation. The revised query starts once from a
+new `(sim_day,category)` index, aggregates distinct compensation records per
+incident, then joins those totals to the day's direct-cost incidents. Direct
+records are also deduplicated per incident to tolerate duplicate CAUSED_BY edges.
+No ledger records or historical state are changed.
+
+PROFILE elapsed time falls from 2.74 to 0.05 seconds; the compensation branch
+now performs one index seek and zero historical relationship expansions for this
+day. All **22 financial endpoint/ranking checks pass in 3.10 seconds**, including
+a strengthened duplicate-direct-edge regression. The cost owner was rebuilt;
+Ruff and whitespace checks pass. Full-suite validation is underway. Evidence:
+`.pytest_cache/ldt-ranking-profile.txt`, `ldt-ranking-index-profile.txt`,
+`ldt-ranking-index-tests.txt`, and `ldt-a46-full-tests.txt`.

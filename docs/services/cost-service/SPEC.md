@@ -205,11 +205,12 @@ Aircraft are classified into three families for cost calculations:
 
 ## 6. REST API
 
-Incident ranking attributes each compensation record once per incident, only for
-the requested simulation day. Distinct affected flights and records prevent
-duplicate graph edges from inflating totals. Incidents with direct charges but
-no affected flights have zero attributed compensation; the query must not scan
-unrelated compensation records for such incidents.
+Incident ranking includes the requested day's direct-cost incidents, counting
+each direct record once per incident even with duplicate edges. It reads that
+day's compensation through a composite `(sim_day,category)` index before
+traversing affected-flight relationships, counting each compensation record once
+per incident. Incidents without affected flights have zero compensation. The
+query must not traverse all historical flight-cost relationships for each incident.
 
 Database-backed reports use the shared driver's public accessor. If no driver
 is initialized they return 503; unavailable storage must not appear as an empty

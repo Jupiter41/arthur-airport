@@ -105,17 +105,20 @@ async def most_expensive_incidents(driver: AsyncDriver, sim_day: int, limit: int
     async with driver.session() as session:
         result = await session.run(
             """
-            MATCH (c:CostRecord {sim_day: $day})-[:CAUSED_BY]->(i:Incident)
-            WITH i, sum(c.amount_eur) AS direct_cost
             CALL {
-                WITH i
-                MATCH (i)-[:AFFECTS]->(f:Flight)
-                WITH DISTINCT f
-                MATCH (f)<-[:FOR_FLIGHT]-(eu:CostRecord)
-                WHERE eu.category = 'eu261_compensation' AND eu.sim_day = $day
-                WITH DISTINCT eu
-                RETURN coalesce(sum(eu.amount_eur), 0) AS eu261_cost
+                MATCH (eu:CostRecord {sim_day: $day, category: 'eu261_compensation'})
+                USING INDEX eu:CostRecord(sim_day, category)
+                MATCH (eu)-[:FOR_FLIGHT]->(:Flight)<-[:AFFECTS]-(incident:Incident)
+                WITH DISTINCT incident, eu
+                WITH incident, sum(eu.amount_eur) AS amount
+                RETURN collect({incident: incident, amount: amount}) AS compensations
             }
+            MATCH (c:CostRecord {sim_day: $day})-[:CAUSED_BY]->(i:Incident)
+            WITH DISTINCT compensations, i, c
+            WITH compensations, i, sum(c.amount_eur) AS direct_cost
+            WITH i, direct_cost, coalesce(head([
+                entry IN compensations WHERE entry.incident = i | entry.amount
+            ]), 0) AS eu261_cost
             RETURN i.id AS id, i.type AS type, i.severity AS severity,
                    direct_cost, eu261_cost,
                    direct_cost + eu261_cost AS total_impact

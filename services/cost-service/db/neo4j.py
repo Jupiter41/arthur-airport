@@ -16,6 +16,7 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    "CREATE INDEX cost_record_day_category IF NOT EXISTS FOR (c:CostRecord) ON (c.sim_day, c.category)",
     "CREATE INDEX cost_outbox_order IF NOT EXISTS FOR (c:CostOutbox) ON (c.revision, c.position)",
     "CREATE INDEX cost_record_category IF NOT EXISTS FOR (c:CostRecord) ON (c.category)",
     "CREATE INDEX cost_record_sim_day IF NOT EXISTS FOR (c:CostRecord) ON (c.sim_day)",

@@ -22,6 +22,7 @@ async def main():
             await (await session.run('''
                 CREATE (a:Incident {id:$a}), (b:Incident {id:$b}), (f:Flight {id:$f})
                 CREATE (c:CostRecord {id:$c, sim_day:$day, amount_eur:10})-[:CAUSED_BY]->(a)
+                CREATE (c)-[:CAUSED_BY]->(a)
                 CREATE (d:CostRecord {id:$d, sim_day:$day, amount_eur:20})-[:CAUSED_BY]->(b)
                 CREATE (a)-[:AFFECTS]->(f), (a)-[:AFFECTS]->(f)
                 CREATE (e:CostRecord {id:$e, sim_day:$day, category:'eu261_compensation', amount_eur:100})
