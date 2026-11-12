@@ -12,6 +12,13 @@
 Status summaries count non-null persisted statuses through the existing status
 index, avoiding full node/property scans as synthetic history accumulates.
 
+Boarding candidate reads start from the flight-status index and include only
+`boarding`, `scheduled`, `delayed`, `airborne`, `departed`, and `taxiing` flights
+within the existing schedule cutoff. These are exactly the states accepted by
+the boarding/catch-up rules; arrived/diverted/cancelled history cannot board and
+must not repeatedly materialize its passenger manifests. Other status queries
+keep their existing behavior. Historical passenger records are not rewritten.
+
 - Maintain authoritative state for all `Passenger` nodes in Neo4j
 - Advance passenger location/status based on `SimClockTick` events
 - React to `FlightStatusChanged` and `FlightGateAssigned` events to issue passenger alerts

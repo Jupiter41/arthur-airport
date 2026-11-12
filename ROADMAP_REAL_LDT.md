@@ -2803,3 +2803,43 @@ Final candidate verification: **1,137 Python units pass in 59.60 seconds** with
 three existing dependency warnings (`.pytest_cache/ldt-unscanned-python-units.txt`).
 This verifies the prepared source; the airport graph migration and post-deploy
 concurrent recheck remain pending explicit approval. No commits were pushed.
+
+## 44. A51 — Approved migration deployed; boarding history bounded (2026-11-12)
+
+The user explicitly approved both previously blocked actions. The seed writer
+was deployed before baggage; startup completed the bounded legacy-label backfill
+and persisted `BaggageIndexMigration.ready=true`. All application readiness checks
+passed afterward. The graph was migrated in place, preserving business history.
+The default bag-page PROFILE now uses two count-store totals and reads 50 rows
+from the `UnscannedBaggage(id)` index, rather than counting 12.5 million scanned
+entries. The measured profile is **0.263 seconds** over 12,610,898 bags.
+
+Browser operator sign-in, Acquire control, Pause (PAUSED/Resume displayed),
+Resume (running clock/Pause displayed), Release control and Sign out all
+succeeded. The original running state, 60x speed and viewer access were restored.
+No control lease is retained. Screenshots are in `.pytest_cache/ldt-a51-controls.png`
+and `ldt-a51-dashboard.png`.
+
+The initial post-migration concurrent check then timed out on passenger summary,
+so the index change alone was not treated as full stability. Diagnostics found
+the departure pipeline reading historic manifests although boarding rules reject
+arrived/diverted/cancelled flights. The boarding query now starts from the flight
+status index and accepts exactly the existing normal/catch-up states. Other
+status queries retain their prior semantics. Historical passenger records are
+not changed by this optimization. A broad-cutoff profile returns in **0.182s**;
+seven focused passenger checks pass in 37.22s, including all six eligible states,
+ineligible/missing states, cutoff, metadata, empty filters and unchanged default
+behavior. All **1,137 Python units pass in 90.85s**, three dependency warnings.
+Runtime parity verifies **33 changed Python files**; Ruff/whitespace checks pass.
+
+The final repeat uses the original ten-second request limit, three concurrent
+clients and 40 requests (eight each): **40/40 HTTP 200**, no failures. Maximum
+latencies are baggage page 0.165s, flagged page 0.282s, passenger summary 1.906s,
+incident ranking 2.882s, gateway readiness 0.110s. This is modest concurrent
+validation, not a sustained-load or cluster certification. The complete live
+suite now contains 136 checks and is recorded below when finished.
+
+Evidence: `.pytest_cache/ldt-a51-build.txt`, `ldt-a51-readiness.json`,
+`ldt-a51-bag-profile.txt`, `ldt-a51-passenger-tests.txt`, `ldt-a51-board-profile.txt`,
+`ldt-a51-python-units.txt`, `ldt-a51-concurrent.json`, `ldt-source-parity.json`,
+and `ldt-a51-full-tests.txt`.

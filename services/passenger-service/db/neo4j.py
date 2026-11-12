@@ -18,6 +18,7 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    "CREATE INDEX flight_status IF NOT EXISTS FOR (f:Flight) ON (f.status)",
     "CREATE INDEX passenger_page_order IF NOT EXISTS FOR (p:Passenger) ON (p.name, p.id)",
     "CREATE INDEX passenger_pnr IF NOT EXISTS FOR (p:Passenger) ON (p.pnr)",
     "CREATE INDEX passenger_status IF NOT EXISTS FOR (p:Passenger) ON (p.status)",
@@ -355,44 +356,29 @@ async def get_zone_density() -> dict[str, int]:
     return {r["zone"]: r["n"] for r in records}
 
 
-async def get_passengers_by_status(status: str, scheduled_before: str | None = None) -> list[dict]:
-    """Get all passengers with a given status.
-
-    If scheduled_before is provided (ISO datetime string), only returns passengers
-    on flights with scheduled_time <= that value. This dramatically reduces result
-    sets for statuses like 'booked' where most passengers are far from their flight.
-    """
-    driver = get_driver()
-    if scheduled_before:
-        query = """
-        MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f:Flight)
-        WHERE f.scheduled_time <= $before
-        OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
-        RETURN p.id AS id, p.name AS name, f.id AS flight_id,
-               p.special_assistance AS special_assistance,
-               p.location_zone AS location_zone,
-               p.dwell_minutes AS dwell_minutes,
-               p.airside_at AS airside_at,
-               p.deplaning_at AS deplaning_at,
-               p.baggage_claim_at AS baggage_claim_at,
-               p.customs_at AS customs_at,
-               p.connection AS connection,
-               p.connection_flight_id AS connection_flight_id,
-               f.flight_number AS flight_number,
-               f.estimated_time AS estimated_time,
-               f.scheduled_time AS scheduled_time,
-               f.status AS flight_status,
-               f.direction AS direction,
-               f.flight_type AS flight_type,
-               g.id AS gate_id,
-               g.terminal_id AS terminal_id
+async def get_passengers_by_status(
+    status: str,
+    scheduled_before: str | None = None,
+    flight_statuses: list[str] | None = None,
+) -> list[dict]:
+    """Read matching passengers, optionally from indexed eligible flight states."""
+    params: dict = {"status": status}
+    if flight_statuses is not None:
+        params["flight_statuses"] = flight_statuses
+        start = """
+        MATCH (f:Flight) USING INDEX f:Flight(status)
+        WHERE f.status IN $flight_statuses
         """
-        async with driver.session() as session:
-            result = await session.run(query, status=status, before=scheduled_before)
-            return [dict(r) async for r in result]
+        if scheduled_before:
+            start += " AND f.scheduled_time <= $before "
+        start += " WITH f MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f) "
     else:
-        query = """
-        MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f:Flight)
+        start = "MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f:Flight) "
+        if scheduled_before:
+            start += " WHERE f.scheduled_time <= $before "
+    if scheduled_before:
+        params["before"] = scheduled_before
+    query = start + """
         OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
         RETURN p.id AS id, p.name AS name, f.id AS flight_id,
                p.special_assistance AS special_assistance,
@@ -412,10 +398,10 @@ async def get_passengers_by_status(status: str, scheduled_before: str | None = N
                f.flight_type AS flight_type,
                g.id AS gate_id,
                g.terminal_id AS terminal_id
-        """
-        async with driver.session() as session:
-            result = await session.run(query, status=status)
-            return [dict(r) async for r in result]
+    """
+    async with get_driver().session() as session:
+        result = await session.run(query, **params)
+        return [dict(r) async for r in result]
 
 
 async def get_passengers_by_flight(flight_id: str) -> list[dict]:

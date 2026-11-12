@@ -1249,7 +1249,10 @@ async def _advance_boarding(sim_time: datetime, delta_minutes: int = 1) -> None:
     # Time-window: only passengers with flights departing within next 1.5 hours
     cutoff = (sim_time + timedelta(hours=1, minutes=30)).isoformat()
     try:
-        pax_list = await get_passengers_by_status("at_gate", scheduled_before=cutoff)
+        pax_list = await get_passengers_by_status(
+            "at_gate", scheduled_before=cutoff,
+            flight_statuses=["boarding", "scheduled", "delayed", "airborne", "departed", "taxiing"],
+        )
     except Exception as e:
         logger.error("Failed to get at_gate passengers: %s", e)
         return
