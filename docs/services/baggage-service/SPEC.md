@@ -318,6 +318,10 @@ Response `200`:
 #### `GET /flagged`
 All currently flagged baggage items.
 
+Includes bags with status `flagged` or review status `pending`, once per bag even
+when both match. Both candidate sets use property indexes before passenger and
+flight metadata expansion; historical bags outside these sets are not scanned.
+
 Response `200`:
 ```json
 {

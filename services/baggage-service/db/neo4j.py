@@ -16,6 +16,7 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    "CREATE INDEX baggage_review_status IF NOT EXISTS FOR (b:Baggage) ON (b.review_status)",
     "CREATE INDEX baggage_page_scan IF NOT EXISTS FOR (b:Baggage) ON (b.last_scan_at, b.id)",
     "CREATE INDEX baggage_status IF NOT EXISTS FOR (b:Baggage) ON (b.status)",
     "CREATE INDEX baggage_id IF NOT EXISTS FOR (b:Baggage) ON (b.id)",
@@ -377,8 +378,15 @@ async def get_flagged_baggage() -> list[dict]:
     """Get all currently flagged baggage items."""
     driver = get_driver()
     query = """
-    MATCH (b:Baggage)
-    WHERE b.status = 'flagged' OR b.review_status = 'pending'
+    CALL {
+        MATCH (b:Baggage {status: 'flagged'})
+        USING INDEX b:Baggage(status)
+        RETURN b
+        UNION
+        MATCH (b:Baggage {review_status: 'pending'})
+        USING INDEX b:Baggage(review_status)
+        RETURN b
+    }
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
     OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
     RETURN b {

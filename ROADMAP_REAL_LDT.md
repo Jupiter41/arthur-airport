@@ -2627,3 +2627,22 @@ whole-graph ID filter. Ruff and whitespace checks pass. Diagnostics:
 
 Flagged-bag lookup and the previously recorded gateway/summary load concerns
 remain open; no complete gate pass is claimed.
+
+## 38. A45 — Indexed flagged/review candidate union (2026-11-12)
+
+`GET /flagged` now unions indexed status=`flagged` and review_status=`pending`
+candidate sets before expanding metadata. UNION retains each matching bag once
+when both conditions match. This preserves the existing predicate, including
+pending reviews on bags whose status has changed, while avoiding an OR filter
+over the full baggage history. A new review-status index is created at startup.
+
+The real Neo4j regression verifies both conditions, overlap deduplication,
+nonmatching exclusion and passenger/flight metadata. It passes together with all
+five baggage REST checks: **6 passed in 26.26 seconds** on the retained graph.
+The owner image was rebuilt; Ruff and whitespace checks pass. Evidence:
+`.pytest_cache/ldt-bag-review-tests.txt`, `ldt-bag-review-build.txt`.
+
+Gateway readiness remains unresolved: the long-running gateway reports all nine
+upstreams false after three seconds, while a fresh process inside its container,
+with the same tracing initialization, reaches flight/weather readiness in 79/174
+milliseconds. This narrows investigation but does not prove a cause or close G12.
