@@ -124,6 +124,12 @@ A single flight movement (arrival or departure). Each physical flight has two no
 
 ### `Baggage`
 
+`UnscannedBaggage` is an auxiliary label on bags whose `last_scan_at` is null.
+It supplies a count-store total and an ID index; scan writes remove it atomically
+with their timestamp update. It is reconstructible metadata, not a separate
+domain state. `BaggageIndexMigration {id:'unscanned-v1', ready:true}` records the
+completed legacy backfill, whose label writes commit in batches of at most 1,000.
+
 | Property             | Type     | Description                                                                                                                                |
 | -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `id`                 | String   | UUID                                                                                                                                       |

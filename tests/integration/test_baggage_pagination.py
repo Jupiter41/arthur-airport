@@ -1,5 +1,6 @@
 """Real indexed bag ordering on an isolated, bounded synthetic graph label."""
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -8,41 +9,80 @@ import pytest
 import requests
 
 WORKER = r"""
-import asyncio
+import asyncio, ast, json, sys
+from datetime import datetime
 from uuid import uuid4
-from db.neo4j import wait_for_neo4j, get_driver, _unfiltered_baggage_page, close_neo4j
+sources=json.load(sys.stdin)
+db={'__name__':'candidate_baggage_db'}
+exec(compile(sources['db'],'candidate_baggage_db.py','exec'),db)
 async def main():
-    await wait_for_neo4j(max_attempts=1)
-    label='BaggagePageTest'+uuid4().hex
+    await db['wait_for_neo4j'](max_attempts=1)
+    label='BagPageFixture'+uuid4().hex
     ids=[label+'-'+str(n) for n in range(4)]
-    indexes=[label+'Id',label+'Scan']
-    async with get_driver().session() as session:
+    indexes=[label+'Id',label+'Scan',label+'UnscannedId']
+    async with db['get_driver']().session() as session:
         # Execute the production queries on a unique label. This tests actual
         # Neo4j index/null semantics without a linear deep offset through history.
         class ScopedSession:
+            async def __aenter__(self): return self
+            async def __aexit__(self,*args): pass
             def run(self, query, **params):
+                query=query.replace(':BaggageIndexMigration', ':'+label+'Migration')
+                query=query.replace(':UnscannedBaggage', ':'+label+'Unscanned')
+                for kind in ['Passenger','Flight','ScanEvent']:
+                    query=query.replace(':'+kind, ':'+label+kind)
                 return session.run(query.replace(':Baggage', ':'+label), **params)
+        scoped=ScopedSession()
+        class ScopedDriver:
+            def session(self): return scoped
+        db['get_driver']=lambda:ScopedDriver()
         try:
             await (await session.run(f'CREATE INDEX {indexes[0]} FOR (b:{label}) ON (b.id)')).consume()
             await (await session.run(f'CREATE INDEX {indexes[1]} FOR (b:{label}) ON (b.last_scan_at,b.id)')).consume()
+            await (await session.run(f'CREATE INDEX {indexes[2]} FOR (b:{label}Unscanned) ON (b.id)')).consume()
             await (await session.run('CALL db.awaitIndexes(30)')).consume()
             await (await session.run(f'''UNWIND range(0,3) AS n
                 CREATE (b:{label} {{id:$ids[n],tag:$ids[n],status:'collected'}})
+                FOREACH (_ IN CASE WHEN n=3 THEN [1] ELSE [] END | SET b:{label}Unscanned)
                 FOREACH (_ IN CASE WHEN n>1 THEN [1] ELSE [] END |
                     SET b.last_scan_at='2024-06-15T12:00:00')''',ids=ids)).consume()
-            scoped=ScopedSession()
-            first,total=await _unfiltered_baggage_page(scoped,2,0)
+            await db['_backfill_unscanned_index'](scoped)
+            await db['_backfill_unscanned_index'](scoped)
+            first,total=await db['_unfiltered_baggage_page'](scoped,2,0)
             assert total==4 and [b['id'] for b in first]==[ids[1],ids[0]],first
             assert all(b.get('last_scan_at') is None for b in first)
-            across,again=await _unfiltered_baggage_page(scoped,3,1)
+            across,again=await db['_unfiltered_baggage_page'](scoped,3,1)
             assert again==4 and [b['id'] for b in across]==[ids[0],ids[3],ids[2]],across
             assert across[0].get('last_scan_at') is None
-            assert await _unfiltered_baggage_page(scoped,2,4)==([],4)
+            assert await db['_unfiltered_baggage_page'](scoped,2,4)==([],4)
+            now=datetime.fromisoformat('2024-06-15T13:00:00')
+            await db['update_baggage_statuses']([{'id':ids[0],'status':'sorting','zone':'sorting-matrix'}],now)
+            await db['update_baggage_status'](ids[1],'sorting','sorting-matrix',now)
+
+            # Compile only the two production seed functions, using the same
+            # isolated label adapter. No application service is restarted.
+            tree=ast.parse(sources['seed'])
+            funcs=[n for n in tree.body if isinstance(n,ast.AsyncFunctionDef)
+                   and n.name in ('_persist_baggage','_persist_arrival_baggage')]
+            seed={'get_driver':lambda:ScopedDriver()}
+            exec(compile(ast.Module(body=funcs,type_ignores=[]),'candidate_seed.py','exec'),seed)
+            await (await session.run(f'CREATE (:{label}Passenger {{id:$id}}), (:{label}Flight {{id:$id}})',id=label)).consume()
+            template=dict(passenger_id=label,flight_id=label,weight_kg=12.0,status='dropped_off',
+                          is_dangerous_goods=False,dg_class=None,last_scan_zone=None,last_scan_at=None,carousel=None)
+            await seed['_persist_baggage']([dict(template,id=label+'-4',tag=label+'-4')])
+            await seed['_persist_arrival_baggage']([dict(template,id=label+'-5',tag=label+'-5')])
+            count=await (await scoped.run('MATCH (b:UnscannedBaggage) RETURN count(b) AS n')).single()
+            assert count['n']==2,count
+            await db['flag_baggage'](label+'-4','synthetic-test','screening-unit-1',now)
+            assert await db['redirect_baggage_to_flight'](label+'-5',label,now)
+            count=await (await scoped.run('MATCH (b:UnscannedBaggage) RETURN count(b) AS n')).single()
+            assert count['n']==0,count
         finally:
-            await (await session.run(f'MATCH (b:{label}) DELETE b')).consume()
+            for suffix in ['','Unscanned','Migration','Passenger','Flight','ScanEvent']:
+                await (await session.run(f'MATCH (b:{label}{suffix}) DETACH DELETE b')).consume()
             for index in indexes:
                 await (await session.run(f'DROP INDEX {index} IF EXISTS')).consume()
-    await close_neo4j()
+    await db['close_neo4j']()
 asyncio.run(main())
 """
 
@@ -54,8 +94,13 @@ def test_unfiltered_baggage_retains_nulls_and_crosses_to_scanned_index():
         if os.getenv("REQUIRE_LIVE_STACK") == "1":
             pytest.fail("Baggage service unavailable")
         pytest.skip("Live stack unavailable")
+    root = Path(__file__).resolve().parents[2]
+    sources = {
+        "db": (root / "services/baggage-service/db/neo4j.py").read_text(encoding="utf-8"),
+        "seed": (root / "services/sim-orchestrator/services/baggage.py").read_text(encoding="utf-8"),
+    }
     result = subprocess.run(
         ["docker", "compose", "exec", "-T", "baggage-service", "python", "-c", WORKER],
-        cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=60,
+        cwd=root, input=json.dumps(sources), capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr

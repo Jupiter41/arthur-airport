@@ -193,9 +193,16 @@ break. A small page must not materialize the airport's full relationship history
 
 Unfiltered pages use indexed ordering: unscanned bags first, then scan timestamp
 descending, with ID descending within each group. Null scan timestamps remain
-visible. The owner uses the transactional bag count and an indexed scanned count
+visible. The owner uses transactional bag and unscanned-label count-store totals
 to split offsets across these groups; metadata expands only after page selection.
 Filtered pages retain their documented scan-descending/ID-ascending ordering.
+
+`UnscannedBaggage` is derived index metadata for bags with no `last_scan_at`.
+Seeding adds it for null scans; every owner scan/redirect removes it in the same
+transaction as the timestamp update. Startup backfills legacy null scans once,
+recording completion in `BaggageIndexMigration`. Timestamp remains authoritative;
+the label can be rebuilt from it. This enables exact null counts from Neo4j's
+count store and direct indexed null pages, avoiding scans of all historical bags.
 
 Query parameters:
 

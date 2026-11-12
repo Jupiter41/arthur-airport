@@ -206,6 +206,8 @@ async def _persist_baggage(baggage: list[dict]) -> None:
                     bag.last_scan_zone = b.last_scan_zone,
                     bag.last_scan_at = b.last_scan_at,
                     bag.carousel = b.carousel
+                FOREACH (_ IN CASE WHEN bag.last_scan_at IS NULL THEN [1] ELSE [] END |
+                    SET bag:UnscannedBaggage)
                 MERGE (pax)-[:CARRIES]->(bag)
                 MERGE (bag)-[:LOADED_ON]->(f)
                 """,
@@ -238,6 +240,8 @@ async def _persist_arrival_baggage(baggage: list[dict]) -> None:
                     bag.last_scan_zone = b.last_scan_zone,
                     bag.last_scan_at = b.last_scan_at,
                     bag.carousel = b.carousel
+                FOREACH (_ IN CASE WHEN bag.last_scan_at IS NULL THEN [1] ELSE [] END |
+                    SET bag:UnscannedBaggage)
                 MERGE (bag)-[:LOADED_ON]->(f)
                 """,
                 baggage=batch,

@@ -10,12 +10,14 @@ from _common import neo4j_client
 logger = logging.getLogger(__name__)
 
 CONSTRAINTS = [
+    "CREATE CONSTRAINT baggage_index_migration_id IF NOT EXISTS FOR (m:BaggageIndexMigration) REQUIRE m.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_projection_id IF NOT EXISTS FOR (p:BaggageProjection) REQUIRE p.id IS UNIQUE",
     "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_tag IF NOT EXISTS FOR (b:Baggage) REQUIRE b.tag IS UNIQUE",
 ]
 
 INDEXES = [
+    "CREATE INDEX unscanned_baggage_id IF NOT EXISTS FOR (b:UnscannedBaggage) ON (b.id)",
     "CREATE INDEX baggage_review_status IF NOT EXISTS FOR (b:Baggage) ON (b.review_status)",
     "CREATE INDEX baggage_page_scan IF NOT EXISTS FOR (b:Baggage) ON (b.last_scan_at, b.id)",
     "CREATE INDEX baggage_status IF NOT EXISTS FOR (b:Baggage) ON (b.status)",
@@ -48,8 +50,29 @@ async def create_constraints_and_indexes() -> None:
     driver = get_driver()
     async with driver.session() as session:
         for stmt in CONSTRAINTS + INDEXES:
-            await session.run(stmt)
+            await (await session.run(stmt)).consume()
+        await _backfill_unscanned_index(session)
     logger.info("Baggage constraints and indexes created")
+
+
+async def _backfill_unscanned_index(session: AsyncSession) -> None:
+    """Idempotent metadata migration, with at most 1,000 label writes per commit."""
+    marker = await (await session.run(
+        "MATCH (m:BaggageIndexMigration {id:'unscanned-v1', ready:true}) RETURN m.id",
+    )).single()
+    if marker is not None:
+        return
+    await (await session.run(
+        "MATCH (b:Baggage) WHERE b.last_scan_at IS NULL AND NOT b:UnscannedBaggage "
+        "CALL { WITH b SET b:UnscannedBaggage } IN TRANSACTIONS OF 1000 ROWS",
+    )).consume()
+    await (await session.run(
+        "MATCH (b:UnscannedBaggage) WHERE b.last_scan_at IS NOT NULL "
+        "CALL { WITH b REMOVE b:UnscannedBaggage } IN TRANSACTIONS OF 1000 ROWS",
+    )).consume()
+    await (await session.run(
+        "MERGE (m:BaggageIndexMigration {id:'unscanned-v1'}) SET m.ready=true",
+    )).consume()
 
 
 # ---------------------------------------------------------------------------
@@ -146,25 +169,23 @@ async def _unfiltered_baggage_page(
     total = (await (await session.run("MATCH (b:Baggage) RETURN count(b) AS n")).single())["n"]
     if offset >= total:
         return [], total
-    scanned = (await (await session.run(
-        "MATCH (b:Baggage) USING INDEX b:Baggage(last_scan_at, id) "
-        "WHERE b.last_scan_at IS NOT NULL AND b.id IS NOT NULL RETURN count(b) AS n",
+    unscanned = (await (await session.run(
+        "MATCH (b:UnscannedBaggage) RETURN count(b) AS n",
     )).single())["n"]
-    unscanned = total - scanned
     groups = []
     if offset < unscanned:
-        groups.append(("USING INDEX b:Baggage(id)",
-                       "b.id IS NOT NULL AND b.last_scan_at IS NULL", "b.id DESC",
+        groups.append(("UnscannedBaggage", "USING INDEX b:UnscannedBaggage(id)",
+                       "b.id IS NOT NULL", "b.id DESC",
                        offset, min(limit, unscanned - offset)))
-    remaining = limit - sum(group[4] for group in groups)
+    remaining = limit - sum(group[5] for group in groups)
     if remaining:
-        groups.append(("USING INDEX b:Baggage(last_scan_at, id)",
+        groups.append(("Baggage", "USING INDEX b:Baggage(last_scan_at, id)",
                        "b.last_scan_at IS NOT NULL AND b.id IS NOT NULL",
                        "b.last_scan_at DESC, b.id DESC", max(0, offset - unscanned), remaining))
     items = []
-    for hint, predicate, ordering, skip, take in groups:
+    for label, hint, predicate, ordering, skip, take in groups:
         result = await session.run(f"""
-            MATCH (b:Baggage) {hint} WHERE {predicate}
+            MATCH (b:{label}) {hint} WHERE {predicate}
             WITH b ORDER BY {ordering} SKIP $skip LIMIT $take
             OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
             OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
@@ -250,6 +271,7 @@ async def update_baggage_statuses(changes: list[dict], sim_time: datetime) -> No
             """
             UNWIND $changes AS change
             MATCH (b:Baggage {id: change.id})
+            REMOVE b:UnscannedBaggage
             SET b.status = change.status, b.last_scan_zone = change.zone,
                 b.last_scan_at = $at,
                 b.carousel = coalesce(change.carousel, b.carousel)
@@ -273,6 +295,7 @@ async def update_baggage_status(
     sim_time_str = sim_time.isoformat()
     query = """
     MATCH (b:Baggage {id: $id})
+    REMOVE b:UnscannedBaggage
     SET b.status = $status,
         b.last_scan_zone = $zone,
         b.last_scan_at = $at
@@ -314,6 +337,7 @@ async def flag_baggage(
     sim_time_str = sim_time.isoformat()
     query = """
     MATCH (b:Baggage {id: $id})
+    REMOVE b:UnscannedBaggage
     SET b.status = 'flagged',
         b.last_scan_zone = $zone,
         b.last_scan_at = $at,
@@ -519,6 +543,7 @@ async def redirect_baggage_to_flight(
     OPTIONAL MATCH (b)-[old:LOADED_ON]->(:Flight)
     DELETE old
     CREATE (b)-[:LOADED_ON {redirected_at: $at}]->(f)
+    REMOVE b:UnscannedBaggage
     SET b.last_scan_zone = 'redirected',
         b.last_scan_at = $at
     RETURN b.id AS id

@@ -22,7 +22,7 @@ async def main():
                 CREATE (p:Passenger {id:$prefix,name:$prefix})
                 CREATE (f:Flight {id:$prefix,flight_number:$prefix})
                 WITH p,f UNWIND range(0,3) AS n
-                CREATE (b:Baggage {id:$ids[n],tag:$ids[n],
+                CREATE (b:Baggage:UnscannedBaggage {id:$ids[n],tag:$ids[n],
                     status:CASE WHEN n IN [0,2] THEN 'flagged' ELSE 'collected' END,
                     review_status:CASE WHEN n IN [1,2] THEN 'pending' ELSE 'cleared' END})
                 CREATE (p)-[:CARRIES]->(b) CREATE (b)-[:LOADED_ON]->(f)

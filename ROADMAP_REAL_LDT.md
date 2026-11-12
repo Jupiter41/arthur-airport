@@ -2752,3 +2752,54 @@ rename restriction had prevented test collection. Browser Next advances from
 were rebuilt; Ruff/whitespace checks pass. Evidence:
 `.pytest_cache/ldt-a48-page-tests.txt`, `ldt-a48-page-build.txt`, and
 `ldt-a48-dashboard-tests.txt`. Complete live validation continues below.
+
+## 43. A50 — Complete functional gate; concurrency fix prepared, deployment blocked (2026-11-12)
+
+The uninterrupted local gate passes **135/135 live tests in 487.46 seconds**,
+including all six restart checks, durable jobs/ledger/rates, owner commands,
+endpoint contracts, dashboard proxy and security projections. The final Python
+suite before the next index change passes **1,137 tests in 61.24 seconds**, with
+three dependency warnings. Dashboard **44/44** and gateway **29/29** tests pass;
+the production dashboard image builds. All ten readiness checks pass after the
+restart suite. Source parity verifies **32 Python files** against the running
+owners. Browser recovery, viewer API/WS, review pagination and operator sign-in
+were observed; the browser was restored to viewer mode.
+
+A subsequent modest concurrent endpoint probe still times out on baggage, so
+functional success does not establish stable concurrent retained-history latency.
+PROFILE shows every default page counts **12,499,860 scanned entries** for
+12,519,022 total bags; isolated query time is 1.37 seconds but contention is
+variable. The prepared follow-up replaces that repeated scan with a derived
+`UnscannedBaggage` label/count-store total and ID index. Both seed functions add
+the label for null scans; batch/single scans, flags and redirects remove it with
+the timestamp update. A one-time idempotent startup backfill reconciles legacy
+labels in commits of at most **1,000** writes. Approximately 19,162 null bags
+needed labelling at the profile snapshot; the legacy scan must still read history.
+The seed writer must deploy before baggage startup/backfill.
+
+The candidate source is tested against six uniquely labelled synthetic fixture
+nodes, without deployment or airport-node migration: legacy backfill and replay,
+incorrect-label repair, count/ordering/null-boundary pages, both seed functions,
+and all four scan/flag/redirect writers pass (**2.20 seconds**). The fixture uses
+only isolated labels and cleans them/indexes afterward. Ruff/whitespace pass.
+The full unit check for this candidate is recorded below when complete.
+
+**Deployment remains blocked by automatic approval review**, which rejected the
+two-service restart plus persistent graph-label backfill as exceeding the general
+fix authorization. It also rejected acquiring the browser's simulation control
+lease as a privileged access change. Neither rejection was bypassed. The derived
+index is prepared in source but is **not deployed to the airport graph**, and the
+browser pause/resume test was not performed. Explicit approval is required for
+these two actions. The graph's business timestamps/statuses/history are unchanged
+by the prepared migration; index labels and migration completion are persistent
+metadata. Full roadmap G1–G12 completion and sustained-load certification are
+still distinct from the 135-case functional pass.
+
+Evidence: `.pytest_cache/ldt-a49-full-tests.txt`, `ldt-a49-python-units.txt`,
+`ldt-a49-final-readiness.json`, `ldt-source-parity.json`, `ldt-a49-latency.json`,
+`ldt-bag-page-profile.txt`, and `ldt-unscanned-isolated-tests.txt`.
+
+Final candidate verification: **1,137 Python units pass in 59.60 seconds** with
+three existing dependency warnings (`.pytest_cache/ldt-unscanned-python-units.txt`).
+This verifies the prepared source; the airport graph migration and post-deploy
+concurrent recheck remain pending explicit approval. No commits were pushed.

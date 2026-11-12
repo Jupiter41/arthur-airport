@@ -16,6 +16,11 @@ with a short cache. Gateway container recreation must not leave auth, API, or
 WebSocket routes pointing to its previous container address. Requests retain
 their original paths and query strings.
 
+The unscanned-baggage index migration requires the orchestrator's seed writer
+and baggage owner's scan writer to maintain the derived label together. Deploy
+the updated seed writer before restarting baggage for its one-time backfill.
+Readiness waits for backfill completion; existing timestamps/history are retained.
+
 ---
 
 ## 1. Service inventory
