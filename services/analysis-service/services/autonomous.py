@@ -18,6 +18,7 @@ P2-4-1 through P2-4-4, P5-1-5.
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from datetime import datetime, timedelta
 
 from models.domain import (
@@ -294,8 +295,8 @@ def execution_entry(proposal: dict, sim_time: datetime, *, decided_by: str | Non
         "initiated_by": proposal.get("proposed_by"),
         "approved_by": decided_by or proposal.get("decided_by") or proposal["proposed_by"],
         "parameters": dict(proposal.get("parameters") or {}),
-        "actual_outcome": None,
-        "outcome_measured_at": None,
+        "actual_outcome": deepcopy(proposal.get("actual_outcome")),
+        "outcome_measured_at": proposal.get("outcome_measured_at"),
     }
 
 

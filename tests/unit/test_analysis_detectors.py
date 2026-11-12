@@ -53,7 +53,7 @@ class TestSecurityQueueDetector:
     def test_observed_snapshots_detect_and_resolve_without_forecast_confidence(self, state):
         state.on_security_queue_updated({
             "terminal": "B", "queue_depth": 180,
-            "lanes_open": 3, "wait_minutes": 25,
+            "lanes_open": 3, "wait_minutes": 25, "at": "2026-01-01T10:00:00Z",
         })
         bottlenecks = [b for b in detect_all(state, {}) if b.type == BottleneckType.SECURITY_QUEUE]
         assert len(bottlenecks) == 1
@@ -63,7 +63,7 @@ class TestSecurityQueueDetector:
         assert not check_resolved(state, bn)
         state.on_security_queue_updated({
             "terminal": "B", "queue_depth": 20,
-            "lanes_open": 5, "wait_minutes": 3,
+            "lanes_open": 5, "wait_minutes": 3, "at": "2026-01-01T10:01:00Z",
         })
         assert check_resolved(state, bn)
 

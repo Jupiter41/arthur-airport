@@ -13,10 +13,10 @@ Usage (consumer validation):
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Envelope ─────────────────────────────────────────────────
@@ -125,6 +125,20 @@ class PassengerAlertPayload(BaseModel):
     message: str
     urgency: str = "medium"
     at: Optional[datetime] = None
+
+
+class SecurityQueueUpdatedPayload(BaseModel):
+    terminal: Literal["A", "B", "C", "Terminal A", "Terminal B", "Terminal C"]
+    queue_depth: int = Field(ge=0, strict=True)
+    lanes_open: int = Field(ge=0, le=20, strict=True)
+    wait_minutes: float = Field(ge=0, allow_inf_nan=False)
+    at: datetime
+
+    @field_validator("at")
+    @classmethod
+    def utc_timestamp(cls, value: datetime) -> datetime:
+        return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None
+                else value.astimezone(timezone.utc))
 
 
 class SecurityCongestionDetectedPayload(BaseModel):
@@ -266,6 +280,7 @@ PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "PassengerStatusChanged": PassengerStatusChangedPayload,
     "PassengerAlert": PassengerAlertPayload,
     "SecurityCongestionDetected": SecurityCongestionDetectedPayload,
+    "SecurityQueueUpdated": SecurityQueueUpdatedPayload,
     "BaggageStatusChanged": BaggageStatusChangedPayload,
     "BaggageFlagged": BaggageFlaggedPayload,
     "WeatherStateChanged": WeatherStateChangedPayload,

@@ -94,7 +94,7 @@ class TestSecurityEvents:
     def test_actual_passenger_snapshot_updates_observed_state(self, state: OperationalState):
         state.on_security_queue_updated({
             "terminal": "B", "queue_depth": 150,
-            "lanes_open": 3, "wait_minutes": 25,
+            "lanes_open": 3, "wait_minutes": 25, "at": "2026-01-01T10:00:00Z",
         })
         sec = state.security["Terminal B"]
         assert sec.queue_depth == 150

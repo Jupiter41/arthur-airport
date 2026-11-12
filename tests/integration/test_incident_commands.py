@@ -144,13 +144,14 @@ def test_executed_proposal_outcome_is_measured_automatically():
     clock = datetime.fromisoformat(
         requests.get(f"{SIM}/api/v1/sim/status", timeout=10).json()["sim_time"]
     )
-    # Executed 31 sim-min ago → immediately due; its incident never existed, so
-    # the observed outcome is "resolved". Backdating keeps the test deterministic
+    # Executed 31 sim-min ago → immediately due; persist actual resolved evidence.
+    # Missing incidents must not be treated as proof of resolution. Backdating
+    # keeps the test deterministic
     # (no waiting for 30 real-time-scaled minutes).
     proposal = {
         "id": proposal_id, "action_type": "resolve_incident",
         "description": "Synthetic outcome-measurement proposal",
-        "parameters": {"incident_id": f"never-{uuid4()}"},
+        "parameters": {"incident_id": f"test-outcome-incident-{uuid4()}"},
         "confidence_score": 0.9, "proposed_by": "integration-test",
         "proposed_at": clock.isoformat(), "status": "executed",
         "requires_human": False, "emitted": True,
@@ -170,6 +171,8 @@ def test_executed_proposal_outcome_is_measured_automatically():
 
     try:
         with driver.session() as session:
+            session.run("CREATE (:Incident {id: $id, status: 'resolved'})",
+                        id=proposal["parameters"]["incident_id"]).consume()
             session.run(
                 "CREATE (p:ActionProposal {id: $id, document: $document, status: 'executed', "
                 "target_key: $id, recommendation_id: null})",
@@ -182,6 +185,8 @@ def test_executed_proposal_outcome_is_measured_automatically():
     finally:
         with driver.session() as session:
             session.run("MATCH (p:ActionProposal {id: $id}) DETACH DELETE p", id=proposal_id).consume()
+            session.run("MATCH (i:Incident {id: $id}) DETACH DELETE i",
+                        id=proposal["parameters"]["incident_id"]).consume()
         driver.close()
 
 

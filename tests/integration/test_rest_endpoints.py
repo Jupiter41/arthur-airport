@@ -164,6 +164,46 @@ class TestPassengerServiceREST:
 # ── Baggage service REST ─────────────────────────────────────────
 
 class TestBaggageServiceREST:
+    def test_filtered_pages_keep_exact_totals_order_and_metadata(self):
+        from neo4j import GraphDatabase
+        from uuid import uuid4
+
+        prefix = f"pagination-{uuid4()}"
+        flight_id, passenger_id = f"{prefix}-flight", f"{prefix}-passenger"
+        bag_ids = [f"{prefix}-{n}" for n in range(3)]
+        driver = GraphDatabase.driver(os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+            auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "art-digital-twin")))
+        try:
+            with driver.session() as session:
+                session.run("CREATE (f:Flight {id:$fid, flight_number:'ZZ001', status:'completed'}) "
+                    "CREATE (p:Passenger {id:$pid, name:'Synthetic traveller', status:'departed_airport'}) "
+                    "WITH f,p UNWIND $ids AS id CREATE (b:Baggage {id:id, tag:id, status:'collected', "
+                    "last_scan_at:'2100-01-01T12:00:00', last_scan_zone:'arrival-belt-1', "
+                    "is_dangerous_goods:false}) CREATE (p)-[:CARRIES]->(b) CREATE (b)-[:LOADED_ON]->(f)",
+                    fid=flight_id, pid=passenger_id, ids=bag_ids).consume()
+            pages = []
+            for offset in (0, 2):
+                response = requests.get(f"{BAGGAGE_SVC}/api/v1/baggage",
+                    params={"flight_id": flight_id, "passenger_id": passenger_id,
+                            "status": "collected", "zone": "arrival-belt-1", "flagged": "false",
+                            "limit": 2, "offset": offset}, timeout=10)
+                assert response.status_code == 200, response.text
+                page = response.json()
+                assert page["total"] == 3
+                assert len(page["items"]) == (2 if offset == 0 else 1)
+                assert all(item["passenger_id"] == passenger_id and item["flight_id"] == flight_id
+                           and item["passenger_name"] == "Synthetic traveller" for item in page["items"])
+                pages.extend(item["id"] for item in page["items"])
+            assert pages == bag_ids
+            response = requests.get(f"{BAGGAGE_SVC}/api/v1/baggage",
+                params={"flight_id": f"{prefix}-missing"}, timeout=10)
+            assert response.status_code == 200 and response.json() == {"items": [], "total": 0}
+        finally:
+            with driver.session() as session:
+                session.run("MATCH (n) WHERE n.id IN $ids DETACH DELETE n",
+                            ids=[flight_id, passenger_id, *bag_ids]).consume()
+            driver.close()
+
     def test_list_baggage(self):
         r = requests.get(f"{BAGGAGE_SVC}/api/v1/baggage", timeout=10)
         assert r.status_code == 200

@@ -8,7 +8,7 @@ import pytest
 from tests.conftest import import_service_module
 
 import_service_module("flight", "application.commands")
-from _common.commands import CommandReceipts, action_command
+from _common.commands import CommandReceipts, action_command  # noqa: E402
 
 NOW = datetime(2024, 6, 15, 12)
 COMMAND = {"command_id": "cmd-1", "command_type": "HoldFlight", "payload": {}}
@@ -128,3 +128,19 @@ def test_incident_action_note_optional():
 def test_incident_action_without_id_has_no_command():
     assert action_command("resolve_incident", {"note": "n"}) is None
     assert action_command("contain_incident", {"incident_id": ""}) is None
+
+
+@pytest.mark.parametrize("ids", [[], [""], ["  "], [None], [1], [True], "f1"])
+def test_gdp_requires_concrete_string_id_list(ids):
+    assert action_command("ground_delay_program", {"flight_ids": ids}) is None
+
+
+def test_gdp_mapping_copies_unique_targets_and_rebooking_stays_advisory():
+    params = {"flight_ids": ["f1", "f1", "f2"], "stagger_minutes": 5}
+    intent = action_command("ground_delay_program", params)
+    assert intent.payload["flight_ids"] == ["f1", "f2"]
+    params["flight_ids"].append("f3")
+    assert intent.payload["flight_ids"] == ["f1", "f2"]
+    assert action_command("rebook_passengers", {
+        "inbound_flight": "f1", "passenger_ids": ["p1"],
+    }) is None

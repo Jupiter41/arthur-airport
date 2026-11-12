@@ -39,7 +39,7 @@ async def counts(tx, source):
     return dict(row)
 
 async def main():
-    await db._init_driver()
+    await db.wait_for_neo4j(max_attempts=1)
     consumer.set_carbon_factors(json.loads(Path('fixtures/carbon_factors.json').read_text()))
     await ledger.initialize()
     event = args['event']
@@ -83,7 +83,8 @@ async def main():
             "MATCH (c:CostRecord {source_event_id: $id})-[:FOR_FLIGHT]->(:Flight {id: $fid}) "
             "RETURN count(c) AS n", id=event['event_id'], fid=fid)).single()
     assert saved['inbox'] == 1
-    assert links['n'] == saved['costs']
+    if event['event_type'] == 'FlightStatusChanged':
+        assert links['n'] == saved['costs']
     if mode == 'crash-after-commit':
         print(json.dumps({'applied': applied, **saved}), flush=True)
         os._exit(23)  # No graceful shutdown or offset acknowledgement.
@@ -113,12 +114,22 @@ async def main():
         finally:
             observed.close()
             producer.close_kafka_producer()
-    if mode == 'outbox':
+    if mode in {'outbox', 'outbox-snapshot'}:
         async with db.get_driver().session() as session:
             row = await (await session.run(
                 "MATCH (e:CostOutbox) WHERE e.document CONTAINS $id "
-                "RETURN e.id AS id, e.document AS document", id=event['event_id'])).single()
+                "AND ($kind = '' OR e.document CONTAINS $kind) "
+                "RETURN e.id AS id, e.document AS document", id=event['event_id'],
+                kind='CostSignalSnapshot' if mode == 'outbox-snapshot' else '')).single()
         assert row
+        if mode == 'outbox-snapshot':
+            from services.cost_engine import get_running_totals
+            snapshot = json.loads(row['document'])
+            assert snapshot['event_type'] == 'CostSignalSnapshot'
+            assert snapshot['payload']['source_event_id'] == event['event_id']
+            assert snapshot['payload']['total_cost_eur'] == round(get_running_totals()['total_cost_eur'], 2)
+            assert snapshot['payload']['sim_day'] == event['payload']['day_of_sim']
+            assert snapshot['payload']['rates_version']
         original = outbox.publish_confirmed
         def unavailable(event):
             raise RuntimeError('Injected broker failure')
@@ -143,7 +154,7 @@ async def main():
             # Delivery happened, but simulate a crash before deleting its outbox
             # entry. Reopen storage, then use the actual outbox worker to retry.
             await db.close_neo4j()
-            await db._init_driver()
+            await db.wait_for_neo4j(max_attempts=1)
             await outbox.publish_pending()
             matches = 0
             deadline = time.monotonic() + 20
@@ -152,6 +163,8 @@ async def main():
                 if message and not message.error():
                     received = json.loads(message.value())
                     if received['event_id'] == document['event_id']:
+                        if mode == 'outbox-snapshot':
+                            assert message.key() == b'cost-signal'
                         matches += 1
             assert matches == 2, matches
             async with db.get_driver().session() as session:
@@ -248,6 +261,14 @@ def test_committed_gate_window_survives_process_crash_and_duplicate_replay():
 
 def test_outbox_survives_broker_failure_and_replays_same_id_after_ack_gap():
     assert worker("outbox", event()) == {"applied": True, "costs": 3, "carbon": 3, "inbox": 1}
+
+
+def test_committed_cost_snapshot_replays_through_real_broker_with_same_id():
+    candidate = event()
+    candidate["event_type"] = "SimClockTick"
+    candidate["payload"]["tick_number"] = 10
+    result = worker("outbox-snapshot", candidate)
+    assert result["applied"] is True and result["inbox"] == 1
 
 
 def test_kafka_redelivery_is_acknowledged_after_service_restart_without_recharging():

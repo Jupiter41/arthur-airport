@@ -134,8 +134,6 @@ class BaggageConsumerState:
                         ))
                 self.inducted_bag_ids.add(tag)
                 inducted += 1
-            elif status in ("loaded", "in_hold", "flagged"):
-                self.inducted_bag_ids.add(tag)
         logger.info("Rebuilt conveyor state from Neo4j: %d bags in pipeline, %d inducted total",
                      inducted, len(self.inducted_bag_ids))
 

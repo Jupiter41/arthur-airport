@@ -167,6 +167,8 @@ class OperationalState:
             self.weather.updated_at = _parse_dt(weather.get("timestamp"))
         for row in snapshot["baggage"]:
             self.on_baggage_zone_snapshot(json.loads(row["document"]))
+        for row in snapshot.get("security", []):
+            self.on_security_queue_updated(json.loads(row["document"]))
 
     def on_clock_tick(self, payload: dict) -> None:
         """Process SimClockTick."""
@@ -176,6 +178,8 @@ class OperationalState:
             self.baggage_zones.clear()
             self.baggage_snapshot_at = None
             self.makeup_over_threshold_since.clear()
+            for sec in self.security.values():
+                sec.last_updated = None
         self.sim_time = clock
         self.speed_multiplier = payload.get("speed_multiplier", 1.0)
         self.tick_number = payload.get("tick_number", 0)
@@ -248,16 +252,25 @@ class OperationalState:
             )
 
     def on_security_queue_updated(self, payload: dict) -> None:
-        terminal = payload.get("terminal", "")
+        from _common.events import SecurityQueueUpdatedPayload
+
+        try:
+            observation = SecurityQueueUpdatedPayload.model_validate(payload)
+        except ValueError:
+            logger.warning("Ignoring invalid security observation")
+            return
+        terminal = observation.terminal
         if terminal in {"A", "B", "C"}:
             terminal = f"Terminal {terminal}"
         sec = self.security.get(terminal)
         if sec is None:
             return
-        sec.queue_depth = payload["queue_depth"]
-        sec.open_lanes = payload["lanes_open"]
-        sec.observed_wait_minutes = payload["wait_minutes"]
-        sec.last_updated = self.sim_time
+        if sec.last_updated and _utc(observation.at) < _utc(sec.last_updated):
+            return
+        sec.queue_depth = observation.queue_depth
+        sec.open_lanes = observation.lanes_open
+        sec.observed_wait_minutes = observation.wait_minutes
+        sec.last_updated = observation.at
 
     def on_baggage_status_changed(self, payload: dict) -> None:
         """Process BaggageStatusChanged — track zone occupancy."""

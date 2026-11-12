@@ -430,11 +430,12 @@ async def _execute_command(envelope: dict) -> str | None:
         logger.warning("Rejected command %s: no sim_time yet (clock not started)", command_type)
         return "Simulation clock not available"
 
-    flight = await get_flight_by_id(cmd.flight_id)
-    if not flight:
-        m_commands.labels(command_type=command_type, outcome="rejected").inc()
-        logger.warning("Rejected command %s: flight %s not found", command_type, cmd.flight_id)
-        return "Flight not found"
+    if isinstance(cmd, (HoldFlight, ReassignGate)):
+        flight = await get_flight_by_id(cmd.flight_id)
+        if not flight:
+            m_commands.labels(command_type=command_type, outcome="rejected").inc()
+            logger.warning("Rejected command %s: flight %s not found", command_type, cmd.flight_id)
+            return "Flight not found"
 
     if isinstance(cmd, HoldFlight):
         precondition_error = validate_hold_precondition(flight.get("status", ""))
@@ -460,7 +461,7 @@ async def _execute_command(envelope: dict) -> str | None:
         held, skipped = 0, 0
         for fid in cmd.flight_ids:
             flight = await get_flight_by_id(fid)
-            if flight is None:
+            if flight is None or flight.get("direction") != "departure":
                 skipped += 1
                 continue
             precondition_error = validate_hold_precondition(flight.get("status", ""))

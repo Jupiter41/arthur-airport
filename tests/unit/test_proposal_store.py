@@ -2,7 +2,6 @@
 
 import asyncio
 from copy import deepcopy
-from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 import importlib
 import json
@@ -144,6 +143,60 @@ def commands(driver):
 
 def document(driver, key):
     return json.loads(driver.db["proposals"][key]["document"])
+
+
+def test_outcome_and_audit_fact_are_atomic_idempotent_and_survive_log_rebuild(context):
+    store, execution, _, driver = context
+    proposal = asyncio.run(create(context, human=False))
+    asyncio.run(execution.dispatch(proposal, NOW))
+    asyncio.run(execution.receive_result("CommandExecuted", {
+        "command_id": proposal.id, "command_type": "OpenSecurityLane",
+    }, NOW, "passengers.events"))
+    measured_at = NOW + timedelta(minutes=42)
+    outcome = {"measurable": True, "current_wait_minutes": 12, "measured_sim_minutes": 42}
+    before = deepcopy(driver.db)
+    driver.fail_after_outbox = True
+    with pytest.raises(RuntimeError, match="Injected"):
+        asyncio.run(store.record_outcome(proposal.id, outcome, measured_at))
+    assert driver.db == before
+    assert asyncio.run(store.record_outcome(proposal.id, outcome, measured_at)) is not None
+    assert asyncio.run(store.record_outcome(proposal.id, {"wrong": True}, measured_at)) is None
+    facts = [json.loads(row["document"]) for row in driver.db["outbox"].values()]
+    measured, = [fact for fact in facts if fact.get("event_type") == "ActionOutcomeMeasured"]
+    assert measured["payload"]["actual_outcome"] == outcome
+    assert datetime.fromisoformat(measured["sim_time"]) == measured_at
+    execution.approval_queue.clear()
+    entry, = asyncio.run(execution.confirmed_log())
+    assert entry["actual_outcome"] == outcome
+    assert entry["outcome_measured_at"] == measured_at.isoformat()
+    entry["actual_outcome"]["current_wait_minutes"] = 999
+    assert asyncio.run(execution.confirmed_log())[0]["actual_outcome"] == outcome
+
+
+@pytest.mark.parametrize("finish", ["receipt", "reconcile"])
+def test_legacy_dispatched_rebooking_can_fail_but_never_claim_execution(context, finish):
+    store, execution, _, driver = context
+    proposal = execution.approval_queue.propose(
+        action_type="rebook_passengers", description="Legacy advisory",
+        parameters={"inbound_flight": "f1", "passenger_ids": ["p1"]},
+        confidence_score=0.9, proposed_by="operator", proposed_at=NOW, requires_human=False,
+    )
+    proposal = asyncio.run(execution.persist(proposal, NOW))
+    # Simulate a proposal dispatched by A38 before this correction was installed.
+    legacy = document(driver, proposal.id)
+    legacy["status"] = "dispatched"
+    row = driver.db["proposals"][proposal.id]
+    row.update(document=json.dumps(legacy), status="dispatched")
+    payload = {"command_id": proposal.id, "command_type": "RebookPassengers"}
+    assert asyncio.run(store.receipt("CommandExecuted", payload, NOW, "passengers.events")) is None
+    assert asyncio.run(store.receipt("CommandRejected", payload, NOW, "flights.events")) is None
+    if finish == "receipt":
+        saved = asyncio.run(store.receipt("CommandRejected", payload, NOW, "passengers.events"))
+    else:
+        saved = asyncio.run(store.fail(proposal.id, NOW, "replacement itinerary unavailable"))
+    assert saved["status"] == "failed"
+    assert asyncio.run(execution.confirmed_log()) == []
+    assert commands(driver) == []
 
 
 def test_creation_deduplicates_active_targets_after_cache_loss(context):

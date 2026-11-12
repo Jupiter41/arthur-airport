@@ -365,6 +365,91 @@ def test_rate_update_has_a_stable_kafka_routing_key(cost_ctx, monkeypatch):
     assert json.loads(sent[0]["value"]) == fact
 
 
+def clock_tick(event_id="snapshot-tick", day=1):
+    return {"event_id": event_id, "event_type": "SimClockTick",
+            "sim_time": f"2026-01-{day:02d}T12:30:00Z",
+            "payload": {"day_of_sim": day, "tick_number": 10}}
+
+
+def snapshots(driver):
+    return [event for row in driver.db["outbox"].values()
+            if (event := json.loads(row["document"]))["event_type"] == "CostSignalSnapshot"]
+
+
+def test_cost_snapshot_uses_committed_day_and_current_tick_charges(cost_ctx):
+    consumer, engine, _, driver = cost_ctx
+    asyncio.run(consumer.process_envelope(departed()))
+    # A stale replica/cache must never be the source for the financial snapshot.
+    engine.init_running_totals({"total_cost_eur": 999999})
+    asyncio.run(consumer.process_envelope(clock_tick()))
+    signal, = snapshots(driver)
+    state = json.loads(driver.db["document"])
+    total = state["days"]["1"]["cost"]
+    assert signal["payload"]["total_cost_eur"] == round(total["total_cost_eur"], 2)
+    assert total["by_category"]["staffing"] > 0
+    assert signal["payload"]["sim_day"] == 1
+    assert signal["payload"]["rates_version"] == state["rates_version"]
+    assert signal["payload"]["source_event_id"] == "snapshot-tick"
+    assert signal["payload"]["at"] == signal["sim_time"]
+    assert asyncio.run(consumer.process_envelope(clock_tick())) is False
+    assert snapshots(driver) == [signal]
+    asyncio.run(consumer.process_envelope(clock_tick("day-two", day=2)))
+    day_two = snapshots(driver)[-1]["payload"]
+    assert day_two["sim_day"] == 2
+    assert day_two["total_cost_eur"] == round(engine.get_running_totals()["total_cost_eur"], 2)
+    assert day_two["total_cost_eur"] < signal["payload"]["total_cost_eur"]
+
+
+def test_cost_snapshot_rolls_back_then_retries_via_acknowledged_outbox(cost_ctx, monkeypatch):
+    consumer, _, _, driver = cost_ctx
+    producer = importlib.import_module("kafka.producer")
+    outbox = importlib.import_module("services.outbox")
+    sent = []
+
+    class Broker:
+        def produce(self, **message):
+            sent.append(message)
+            message["callback"](None, None)
+
+        def poll(self, timeout):
+            pass
+
+    monkeypatch.setattr(producer, "_producer", Broker())
+    before = deepcopy(driver.db)
+    driver.fail_once = "UNWIND $events"
+    with pytest.raises(RuntimeError, match="Injected"):
+        asyncio.run(consumer.process_envelope(clock_tick()))
+    assert driver.db == before
+    assert sent == []  # no uncommitted publication inside the transaction callback
+    asyncio.run(consumer.process_envelope(clock_tick()))
+    signal, = snapshots(driver)
+    failed_ids = []
+
+    def fail(event):
+        failed_ids.append(event["event_id"])
+        raise RuntimeError("Broker unavailable")
+
+    monkeypatch.setattr(outbox, "publish_confirmed", fail)
+    with pytest.raises(RuntimeError, match="Broker"):
+        asyncio.run(outbox.publish_pending())
+    assert snapshots(driver) == [signal]
+    monkeypatch.setattr(outbox, "publish_confirmed", producer.publish_confirmed)
+    asyncio.run(outbox.publish_pending())
+    assert not driver.db["outbox"]
+    delivered = [m for m in sent if json.loads(m["value"])["event_type"] == "CostSignalSnapshot"]
+    assert len(delivered) == 1 and delivered[0]["key"] == b"cost-signal"
+    assert json.loads(delivered[0]["value"]) == signal
+
+
+def test_invalid_snapshot_clock_rejects_without_effects(cost_ctx):
+    consumer, _, _, driver = cost_ctx
+    envelope = clock_tick()
+    envelope["sim_time"] = "invalid"
+    with pytest.raises(ValidationError):
+        asyncio.run(consumer.process_envelope(envelope))
+    assert not driver.db["inbox"] and not driver.db["outbox"]
+
+
 @pytest.mark.parametrize("mode", ["restart", "rewind", "late"])
 def test_evicted_days_rebuild_from_ledger_without_losing_or_doubling_charges(cost_ctx, mode):
     consumer, engine, carbon, driver = cost_ctx

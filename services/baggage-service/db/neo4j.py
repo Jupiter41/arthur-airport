@@ -65,13 +65,14 @@ async def get_all_baggage(
     driver = get_driver()
 
     where_clauses: list[str] = []
+    matches = ["MATCH (b:Baggage)"]
     params: dict = {"limit": limit, "offset": offset}
 
     if flight_id:
-        where_clauses.append("f.id = $flight_id")
+        matches.append("MATCH (b)-[:LOADED_ON]->(:Flight {id: $flight_id})")
         params["flight_id"] = flight_id
     if passenger_id:
-        where_clauses.append("p.id = $passenger_id")
+        matches.append("MATCH (:Passenger {id: $passenger_id})-[:CARRIES]->(b)")
         params["passenger_id"] = passenger_id
     if status:
         statuses = [s.strip() for s in status.split(",")]
@@ -85,19 +86,22 @@ async def get_all_baggage(
         params["zone"] = zone
 
     where = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+    match = "\n".join(matches)
+    distinct = "DISTINCT " if flight_id or passenger_id else ""
 
     count_query = f"""
-    MATCH (b:Baggage)
-    OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
-    OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
+    {match}
     {where}
-    RETURN count(b) AS total
+    RETURN count({distinct}b) AS total
     """
     data_query = f"""
-    MATCH (b:Baggage)
+    {match}
+    {where}
+    WITH {distinct}b
+    ORDER BY b.last_scan_at DESC, b.id
+    SKIP $offset LIMIT $limit
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
     OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
-    {where}
     RETURN b {{
         .id, .tag, .status, .weight_kg, .is_dangerous_goods,
         .dg_class, .last_scan_zone, .last_scan_at, .carousel
@@ -106,8 +110,7 @@ async def get_all_baggage(
     p.name AS passenger_name,
     f.flight_number AS flight_number,
     f.id AS flight_id
-    ORDER BY b.last_scan_at DESC
-    SKIP $offset LIMIT $limit
+    ORDER BY b.last_scan_at DESC, b.id
     """
 
     async with driver.session() as session:
@@ -302,6 +305,8 @@ async def get_baggage_counts_by_status() -> dict[str, int]:
     driver = get_driver()
     query = """
     MATCH (b:Baggage)
+    USING INDEX b:Baggage(status)
+    WHERE b.status IS NOT NULL
     RETURN b.status AS status, count(b) AS cnt
     """
     async with driver.session() as session:
@@ -463,11 +468,11 @@ async def redirect_baggage_to_flight(
 
 
 async def get_baggage_in_pipeline() -> list[dict]:
-    """Return pipeline state using the same scan fields written by transitions."""
+    """Return actual queues; persisted status excludes historical bags from induction."""
     driver = get_driver()
     query = """
     MATCH (b:Baggage)
-    WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived', 'loaded', 'in_hold', 'flagged']
+    WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived']
     OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)

@@ -102,6 +102,76 @@ def test_flight_precondition_failure_produces_rejection(monkeypatch):
     assert "cannot hold" in events[0][1]["reason"]
 
 
+def test_gdp_handles_batch_once_skips_arrivals_and_confirms_redelivery(monkeypatch):
+    consumer, _, _, documents, events = context("flight", monkeypatch)
+    flights = {
+        "f1": {"id": "f1", "direction": "departure", "status": "scheduled"},
+        "f2": {"id": "f2", "direction": "departure", "status": "boarding"},
+        "arrival": {"id": "arrival", "direction": "arrival", "status": "approach"},
+        "gone": {"id": "gone", "direction": "departure", "status": "airborne"},
+    }
+    holds = []
+
+    async def get_flight(key):
+        return flights.get(key)
+
+    async def hold(*args):
+        holds.append(args)
+        return {"id": args[0]}
+
+    monkeypatch.setattr(consumer, "get_flight_by_id", get_flight)
+    monkeypatch.setattr(consumer, "hold_flight", hold)
+    command = {
+        "command_id": "gdp-1", "command_type": "GroundDelayProgram",
+        "payload": {"flight_ids": ["f1", "arrival", "missing", "f1", "gone", "f2"],
+                    "stagger_minutes": 5},
+    }
+    asyncio.run(consumer._handle_command(command))
+    consumer._command_receipts.results.clear()
+    asyncio.run(consumer._handle_command(command))
+    assert holds == [(fid, "ground_delay_program", 5, NOW) for fid in ("f1", "f2")]
+    assert [kind for kind, _ in events] == ["CommandExecuted", "CommandExecuted"]
+    assert "gdp-1" in documents
+
+
+def test_gdp_rejects_batch_with_no_eligible_departures(monkeypatch):
+    consumer, _, _, _, events = context("flight", monkeypatch)
+
+    async def arrival(key):
+        return {"id": key, "direction": "arrival", "status": "approach"}
+
+    async def never_hold(*args):
+        raise AssertionError("An arrival cannot be ground-held")
+
+    monkeypatch.setattr(consumer, "get_flight_by_id", arrival)
+    monkeypatch.setattr(consumer, "hold_flight", never_hold)
+    asyncio.run(consumer._handle_command({
+        "command_id": "gdp-arrival", "command_type": "GroundDelayProgram",
+        "payload": {"flight_ids": ["arrival"], "stagger_minutes": 5},
+    }))
+    assert events[0][0] == "CommandRejected"
+    assert "no flights held" in events[0][1]["reason"]
+
+
+def test_rebooking_without_replacement_itinerary_rejects_without_writes(monkeypatch):
+    consumer, _, db, documents, events = context("passenger", monkeypatch)
+
+    async def never_write(*args, **kwargs):
+        raise AssertionError("Advisory rebooking must not mutate passengers")
+
+    monkeypatch.setattr(db, "update_passenger_status", never_write)
+    command = {
+        "command_id": "rebook-1", "command_type": "RebookPassengers",
+        "payload": {"inbound_flight": "inbound", "passenger_ids": ["p1"]},
+    }
+    asyncio.run(consumer._handle_command(command))
+    consumer._command_receipts.results.clear()
+    asyncio.run(consumer._handle_command(command))
+    assert [kind for kind, _ in events] == ["CommandRejected", "CommandRejected"]
+    assert "replacement itinerary" in events[0][1]["reason"]
+    assert "rebook-1" in documents
+
+
 def test_passenger_lane_change_is_saved_emitted_and_rebuilt(monkeypatch):
     consumer, _, db, _, events = context("passenger", monkeypatch)
     saved = {}

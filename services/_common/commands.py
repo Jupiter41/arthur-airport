@@ -48,14 +48,15 @@ def action_command(action_type: str, parameters: dict) -> CommandIntent | None:
             )
     if action_type == "ground_delay_program":
         flight_ids = parameters.get("flight_ids")
-        if isinstance(flight_ids, list) and flight_ids:
+        if (isinstance(flight_ids, list) and flight_ids
+                and all(isinstance(fid, str) and fid.strip() for fid in flight_ids)):
             stagger = parameters.get("stagger_minutes", 10)
             if type(stagger) is int and stagger > 0:
                 return CommandIntent(
                     "flights.commands",
                     "GroundDelayProgram",
                     {
-                        "flight_ids": flight_ids,
+                        "flight_ids": list(dict.fromkeys(flight_ids)),
                         "stagger_minutes": stagger,
                         "reason": "ground_delay_program",
                     },
@@ -74,20 +75,8 @@ def action_command(action_type: str, parameters: dict) -> CommandIntent | None:
                 },
                 terminal,
             )
-    if action_type == "rebook_passengers":
-        inbound = text("inbound_flight")
-        passenger_ids = parameters.get("passenger_ids")
-        if inbound and isinstance(passenger_ids, list) and passenger_ids:
-            return CommandIntent(
-                "passengers.commands",
-                "RebookPassengers",
-                {
-                    "inbound_flight": inbound,
-                    "passenger_ids": passenger_ids,
-                    "reason": text("reason") or "missed_connection",
-                },
-                inbound,
-            )
+    # Passenger identities alone do not specify a replacement itinerary.
+    # Rebooking remains advisory until the owner can validate and change it.
     if (
         action_type == "redirect_baggage"
         and text("bag_id")

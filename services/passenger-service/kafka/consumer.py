@@ -637,40 +637,8 @@ async def _execute_command(envelope: dict) -> str | None:
         )
 
     elif isinstance(cmd, RebookPassengers):
-        from db.neo4j import get_passenger_by_id, update_passenger_status
-        reboooked, skipped = 0, 0
-        for pid in cmd.passenger_ids:
-            pax = await get_passenger_by_id(pid)
-            if pax is None:
-                skipped += 1
-                continue
-            if pax.get("status") in ("departed", "arrived", "cancelled"):
-                skipped += 1
-                continue
-            updated = await update_passenger_status(pid, "rebooking", _state.sim_time)
-            if updated:
-                from kafka.producer import emit_passenger_status_changed
-                await emit_passenger_status_changed(
-                    passenger_id=pid,
-                    name=pax.get("name", ""),
-                    previous_status=pax.get("status", ""),
-                    new_status="rebooking",
-                    location_zone=pax.get("location_zone", ""),
-                    sim_time=_state.sim_time,
-                    flight_id=pax.get("flight_id"),
-                    flight_number=pax.get("flight_number"),
-                )
-                reboooked += 1
-            else:
-                skipped += 1
-        if reboooked == 0:
-            m_commands.labels(command_type=command_type, outcome="rejected").inc()
-            return f"RebookPassengers: no passengers rebooked ({skipped} skipped)"
-        m_commands.labels(command_type=command_type, outcome="accepted").inc()
-        logger.info(
-            "RebookPassengers: %d rebooked, %d skipped (inbound=%s)",
-            reboooked, skipped, cmd.inbound_flight,
-        )
+        m_commands.labels(command_type=command_type, outcome="rejected").inc()
+        return "RebookPassengers: replacement itinerary is not implemented; advisory only"
 
     return None
 
@@ -854,9 +822,17 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
                 m_sec_queue_depth.labels(terminal=terminal).set(cp.queue_depth)
                 m_sec_wait.labels(terminal=terminal).set(round(cp.wait_minutes(0), 1))
                 if not is_bulk or _tick_counter % 20 == 0:
+                    from db.neo4j import save_security_projection
+
+                    wait = round(cp.wait_minutes(0), 1)
+                    await save_security_projection({
+                        "terminal": terminal, "queue_depth": cp.queue_depth,
+                        "lanes_open": cp.lanes_open, "wait_minutes": wait,
+                        "at": sim_time.isoformat(),
+                    })
                     emit_security_queue_updated(
                         terminal, cp.queue_depth, cp.lanes_open,
-                        cp.wait_minutes(0), sim_time,
+                        wait, sim_time,
                     )
                 m_sec_lanes.labels(terminal=terminal).set(cp.lanes_open)
 

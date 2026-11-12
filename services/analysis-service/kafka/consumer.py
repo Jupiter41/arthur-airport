@@ -338,12 +338,20 @@ async def _measure_due_outcomes(now: datetime) -> None:
     """
     from services import outcome, proposal_store
     from services.autonomous import record_outcome
+    from db.neo4j import query_incident_for_outcome
+    from types import SimpleNamespace
     try:
         documents = await proposal_store.list_documents()
         for doc in outcome.due_for_outcome(documents, now):
+            measurement_state = state
+            if doc.get("action_type") in {"resolve_incident", "contain_incident"}:
+                incident_id = (doc.get("parameters") or {}).get("incident_id")
+                incident = await query_incident_for_outcome(incident_id) if incident_id else None
+                measurement_state = SimpleNamespace(active_incidents={incident_id: incident} if incident else {})
             measured = outcome.measure_outcome(
-                doc.get("action_type", ""), doc.get("parameters") or {}, state,
+                doc.get("action_type", ""), doc.get("parameters") or {}, measurement_state,
             )
+            measured["measured_sim_minutes"] = outcome.elapsed_minutes(doc["executed_at"], now)
             saved = await proposal_store.record_outcome(doc["id"], measured, now)
             if saved is not None:
                 record_outcome(f"action-{doc['id']}", measured, now)

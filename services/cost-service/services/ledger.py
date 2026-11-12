@@ -145,6 +145,19 @@ async def _write_effects(tx: AsyncManagedTransaction, batch: LedgerBatch, envelo
             if kind == "cost":
                 payload["incident_id"] = row.get("incident_id")
             events.append(event("CostRecorded" if kind == "cost" else "CarbonRecorded", record["sim_time"], payload))
+    if envelope["event_type"] == "SimClockTick" and envelope["payload"].get("tick_number", 0) % 5 == 0:
+        day = batch.state["sim_day"]
+        totals = batch.state["days"][str(day)]["cost"]
+        categories = totals["by_category"]
+        events.append(event("CostSignalSnapshot", envelope["sim_time"], {
+            "eu261_exposure": round(totals["eu261_exposure"], 2),
+            "holding_fuel": round(categories.get("holding_fuel", 0.0), 2),
+            "ground_handling": round(categories.get("ground_handling", 0.0), 2),
+            "total_cost_eur": round(totals["total_cost_eur"], 2),
+            "at": envelope["sim_time"], "sim_day": day,
+            "rates_version": batch.state["rates_version"],
+            "source_event_id": envelope["event_id"],
+        }))
     events.append(event("FinancialEventProcessed", envelope["sim_time"], {
         "source_event_id": envelope["event_id"], "event_type": envelope["event_type"],
         "sim_day": batch.billing_day if batch.billing_day is not None else batch.state["sim_day"],

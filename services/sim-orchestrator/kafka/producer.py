@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from confluent_kafka import Producer, BufferError
+from confluent_kafka import Producer
 
 from _common import kafka_runtime
 from services.airport_config import load_airport_runtime_config

@@ -26,8 +26,10 @@ def set_factors(factors: dict) -> None:
 
 
 def _require_neo4j() -> None:
-    if db._driver is None:
-        raise HTTPException(status_code=503, detail="neo4j not connected")
+    try:
+        db.get_driver()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="neo4j not connected") from exc
 
 
 @router.get("/summary")

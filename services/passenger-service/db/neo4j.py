@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 CONSTRAINTS = [
     "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT security_checkpoint_terminal IF NOT EXISTS FOR (s:SecurityCheckpoint) REQUIRE s.terminal IS UNIQUE",
+    "CREATE CONSTRAINT security_projection_terminal IF NOT EXISTS FOR (s:SecurityProjection) REQUIRE s.terminal IS UNIQUE",
     "CREATE CONSTRAINT passenger_id IF NOT EXISTS FOR (p:Passenger) REQUIRE p.id IS UNIQUE",
     # 1C — Accessibility & special assistance pool
     "CREATE CONSTRAINT wheelchair_resource_terminal IF NOT EXISTS FOR (w:WheelchairResource) REQUIRE w.terminal IS UNIQUE",
@@ -488,6 +489,8 @@ async def get_status_counts() -> dict[str, int]:
     driver = get_driver()
     query = """
     MATCH (p:Passenger)
+    USING INDEX p:Passenger(status)
+    WHERE p.status IS NOT NULL
     RETURN p.status AS status, count(p) AS cnt
     """
     async with driver.session() as session:
@@ -562,6 +565,20 @@ async def list_recent_assignments(since_iso: str | None = None, limit: int = 500
     async with driver.session() as session:
         result = await session.run(cypher, since=since_iso, limit=int(limit))
         return [dict(rec["a"]) async for rec in result]
+
+
+async def save_security_projection(payload: dict) -> None:
+    """Persist the same unsampled observation that the owner publishes."""
+    from _common.events import SecurityQueueUpdatedPayload
+
+    snapshot = SecurityQueueUpdatedPayload.model_validate(payload)
+    terminal = snapshot.terminal.removeprefix("Terminal ")
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MERGE (s:SecurityProjection {terminal: $terminal}) SET s.document = $document",
+            terminal=terminal, document=snapshot.model_dump_json(),
+        )
+        await result.consume()
 
 
 async def save_security_lanes(terminal: str, lanes: int, sim_time: datetime) -> None:

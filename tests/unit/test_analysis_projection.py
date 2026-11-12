@@ -128,8 +128,8 @@ def test_graph_loader_reads_all_sections_from_one_driver_transaction(monkeypatch
 
     monkeypatch.setattr(module, "get_driver", lambda: MagicMock(session=Session))
     snapshot = asyncio.run(module.load_operational_projection())
-    assert set(snapshot) == {"flights", "gates", "incidents", "weather", "baggage"}
-    assert len(queries) == 5
+    assert set(snapshot) == {"flights", "gates", "incidents", "weather", "baggage", "security"}
+    assert len(queries) == 6
     assert all("SET " not in query and "CREATE " not in query for query in queries)
 
 
@@ -141,3 +141,64 @@ def test_clock_rewind_releases_baggage_snapshot_timestamp_guard():
     assert state.baggage_snapshot_at is None
     state.on_baggage_zone_snapshot({"zones": [], "at": "2026-01-01T09:01:00"})
     assert state.baggage_snapshot_at == datetime(2026, 1, 1, 9, 1)
+
+
+def test_security_owner_payload_persists_and_restores_without_clock_or_forecast(monkeypatch):
+    state_type = import_service_module("analysis", "services.state").OperationalState
+    db = import_service_module("passenger", "db.neo4j")
+    producer = importlib.import_module("kafka.producer")
+    saved, emitted = {}, []
+
+    class Result:
+        async def consume(self):
+            pass
+
+    class Session:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+        async def run(self, query, **params):
+            assert "SecurityProjection" in query
+            saved.update(params)
+            return Result()
+
+    monkeypatch.setattr(db, "get_driver", lambda: MagicMock(session=Session))
+    monkeypatch.setattr(producer, "_produce_event", lambda kind, clock, payload, **kw: emitted.append(payload))
+    payload = {"terminal": "B", "queue_depth": 180, "lanes_open": 3,
+               "wait_minutes": 25, "at": NOW.isoformat()}
+    asyncio.run(db.save_security_projection(payload))
+    producer.set_bulk_mode(True)
+    producer.emit_security_queue_updated("B", 180, 3, 25, NOW)
+    assert json.loads(saved["document"]) == emitted[0]
+    recovered = state_type()
+    recovered.restore_graph({**dict.fromkeys(("flights", "gates", "incidents", "weather", "baggage"), []),
+                             "security": [{"document": saved["document"]}]})
+    assert recovered.sim_time is None
+    security = recovered.security["Terminal B"]
+    assert (security.queue_depth, security.open_lanes, security.observed_wait_minutes) == (180, 3, 25)
+    assert security.last_updated.isoformat() == "2026-01-01T10:00:00+00:00"
+    assert security.forecast_confidence == 0
+
+
+def test_security_replay_cannot_regress_newer_observation_and_rewind_resets_guard():
+    state = import_service_module("analysis", "services.state").OperationalState()
+    payload = {"terminal": "B", "queue_depth": 180, "lanes_open": 3,
+               "wait_minutes": 25, "at": "2026-01-01T10:00:00Z"}
+    state.on_clock_tick({"sim_time": payload["at"]})
+    state.on_security_queue_updated(payload)
+    state.on_security_queue_updated({**payload, "queue_depth": 0, "at": "2026-01-01T11:59:00+02:00"})
+    assert state.security["Terminal B"].queue_depth == 180
+    state.on_clock_tick({"sim_time": "2026-01-01T09:00:00Z"})
+    state.on_security_queue_updated({**payload, "queue_depth": 7, "at": "2026-01-01T09:01:00Z"})
+    assert state.security["Terminal B"].queue_depth == 7
+
+
+@pytest.mark.parametrize("invalid", [{"at": "invalid"}, {"queue_depth": -1},
+                                      {"lanes_open": True}, {"wait_minutes": float("nan")}])
+def test_invalid_security_observation_has_no_partial_effect(invalid):
+    state = import_service_module("analysis", "services.state").OperationalState()
+    state.on_security_queue_updated({"terminal": "B", "queue_depth": 180, "lanes_open": 3,
+                                     "wait_minutes": 25, "at": NOW.isoformat(), **invalid})
+    assert state.security["Terminal B"].last_updated is None
+    assert state.security["Terminal B"].queue_depth == 0

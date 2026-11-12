@@ -21,7 +21,7 @@ Pure: no I/O, no global state.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # How long after execution to let effects settle before measuring.
 OUTCOME_DELAY_MIN = 30
@@ -31,9 +31,21 @@ def _parse(ts: object) -> datetime | None:
     if not isinstance(ts, str) or not ts:
         return None
     try:
-        return datetime.fromisoformat(ts).replace(tzinfo=None)
+        return _utc(datetime.fromisoformat(ts))
     except (ValueError, TypeError):
         return None
+
+
+def _utc(value: datetime) -> datetime:
+    return (value.astimezone(timezone.utc) if value.tzinfo is not None
+            else value.replace(tzinfo=timezone.utc))
+
+
+def elapsed_minutes(executed_at: str, now: datetime) -> float:
+    executed = _parse(executed_at)
+    if executed is None:
+        raise ValueError("Invalid executed_at timestamp")
+    return (_utc(now) - executed).total_seconds() / 60
 
 
 def due_for_outcome(documents: list[dict], now: datetime) -> list[dict]:
@@ -43,11 +55,7 @@ def due_for_outcome(documents: list[dict], now: datetime) -> list[dict]:
     at least :data:`OUTCOME_DELAY_MIN` sim-minutes have passed since ``executed_at``.
     """
     due: list[dict] = []
-    # Parsed executed_at is naive (tz stripped); match that for a safe compare,
-    # since state.sim_time may be timezone-aware.
-    if now.tzinfo is not None:
-        now = now.replace(tzinfo=None)
-    cutoff = now - timedelta(minutes=OUTCOME_DELAY_MIN)
+    cutoff = _utc(now) - timedelta(minutes=OUTCOME_DELAY_MIN)
     for doc in documents:
         if doc.get("status") != "executed" or doc.get("actual_outcome") is not None:
             continue
@@ -71,10 +79,13 @@ def measure_outcome(action_type: str, parameters: dict, state) -> dict:
         incident_id = parameters.get("incident_id")
         incident = (getattr(state, "active_incidents", {}) or {}).get(incident_id)
         status = incident.get("status") if isinstance(incident, dict) else None
+        if not incident_id or status is None:
+            return {**base, "measurable": False, "target": "incident",
+                    "incident_id": incident_id, "reason": "target incident not observed"}
         if action_type == "resolve_incident":
-            resolved = incident is None or status == "resolved"
+            resolved = status == "resolved"
         else:  # contain_incident
-            resolved = incident is None or status in ("contained", "resolved")
+            resolved = status in ("contained", "resolved")
         return {**base, "target": "incident", "incident_id": incident_id,
                 "incident_status": status, "bottleneck_resolved": resolved}
 
@@ -82,16 +93,28 @@ def measure_outcome(action_type: str, parameters: dict, state) -> dict:
         flight_id = parameters.get("flight_id")
         flight = (getattr(state, "flights", {}) or {}).get(flight_id)
         gate = getattr(flight, "gate", None) if flight is not None else None
+        expected_gate = parameters.get("gate_id")
+        if flight is None or not expected_gate:
+            return {**base, "measurable": False, "target": "flight_gate",
+                    "flight_id": flight_id, "gate": gate,
+                    "reason": "target flight or requested gate not observed"}
         return {**base, "target": "flight_gate", "flight_id": flight_id,
-                "gate": gate, "bottleneck_resolved": gate is not None}
+                "gate": gate, "requested_gate": expected_gate,
+                "bottleneck_resolved": gate == expected_gate}
 
     if action_type == "open_security_lane":
         terminal = parameters.get("terminal")
+        terminal = f"Terminal {terminal}" if terminal in {"A", "B", "C"} else terminal
         sec = (getattr(state, "security", {}) or {}).get(terminal)
-        wait = getattr(sec, "forecast_wait_minutes", None) if sec is not None else None
+        observed_at = getattr(sec, "last_updated", None)
+        if observed_at is None:
+            return {**base, "measurable": False, "target": "security",
+                    "terminal": terminal, "reason": "checkpoint not observed"}
+        wait = getattr(sec, "observed_wait_minutes", None)
         lanes = getattr(sec, "open_lanes", None) if sec is not None else None
         return {**base, "target": "security", "terminal": terminal,
-                "current_wait_minutes": wait, "open_lanes": lanes}
+                "current_wait_minutes": wait, "open_lanes": lanes,
+                "observed_at": observed_at.isoformat()}
 
     # No measurement model yet for this action type — say so honestly.
     return {"measured_sim_minutes": OUTCOME_DELAY_MIN, "measurable": False,

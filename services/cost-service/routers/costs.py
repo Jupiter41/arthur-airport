@@ -23,8 +23,10 @@ router = APIRouter(prefix="/api/v1/costs", tags=["costs"])
 
 def _require_neo4j() -> None:
     """Raise 503 if Neo4j is not connected. Use at the top of any DB-backed handler."""
-    if db._driver is None:
-        raise HTTPException(status_code=503, detail="neo4j not connected")
+    try:
+        db.get_driver()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="neo4j not connected") from exc
 
 
 @router.get("/summary")
@@ -51,7 +53,7 @@ async def cost_summary():
 async def get_pnl(day: int = Query(1, ge=1)):
     """Full P&L for a simulated day."""
     _require_neo4j()
-    raw = await daily_pnl(db._driver, day)
+    raw = await daily_pnl(db.get_driver(), day)
     # Transform to match frontend CostPnL interface
     by_category: dict[str, float] = {}
     total_records = 0
@@ -75,22 +77,21 @@ async def get_pnl(day: int = Query(1, ge=1)):
 async def get_flight_costs(flight_id: str):
     """All costs for a specific flight."""
     _require_neo4j()
-    return await flight_cost_breakdown(db._driver, flight_id)
+    return await flight_cost_breakdown(db.get_driver(), flight_id)
 
 
 @router.get("/incident/{incident_id}")
 async def get_incident_costs(incident_id: str):
     """Total financial impact of an incident."""
     _require_neo4j()
-    return await incident_total_cost(db._driver, incident_id)
+    return await incident_total_cost(db.get_driver(), incident_id)
 
 
 @router.get("/incidents/ranking")
 async def get_incident_ranking(day: int = Query(1, ge=1), limit: int = Query(5, ge=1, le=20)):
     """Top incidents by financial impact."""
-    if db._driver is None:
-        return {"incidents": []}
-    raw = await most_expensive_incidents(db._driver, day, limit)
+    _require_neo4j()
+    raw = await most_expensive_incidents(db.get_driver(), day, limit)
     # Transform field names to match frontend IncidentCostRanking interface
     incidents = []
     for r in raw:
@@ -111,9 +112,8 @@ async def get_incident_ranking(day: int = Query(1, ge=1), limit: int = Query(5, 
 @router.get("/hourly")
 async def get_hourly_curve(day: int = Query(1, ge=1)):
     """Cost curve per simulated hour — always returns 24 data points (0-23)."""
-    if db._driver is None:
-        return {"hours": [{"hour": h, "cost_eur": 0.0, "revenue_eur": 0.0, "net_eur": 0.0} for h in range(24)]}
-    raw = await hourly_cost_curve(db._driver, day)
+    _require_neo4j()
+    raw = await hourly_cost_curve(db.get_driver(), day)
     # Build a lookup from actual data
     by_hour: dict[int, dict] = {}
     for r in raw:
@@ -140,7 +140,7 @@ async def get_hourly_curve(day: int = Query(1, ge=1)):
 async def get_terminal_costs(terminal_id: str, day: int = Query(1, ge=1)):
     """P&L per terminal."""
     _require_neo4j()
-    return await terminal_pnl(db._driver, terminal_id, day)
+    return await terminal_pnl(db.get_driver(), terminal_id, day)
 
 
 @router.get("/rates")
@@ -221,7 +221,7 @@ async def get_ebitda(
 ):
     """Revenue + OpEx waterfall and EBITDA for a sim-day, projected over horizon."""
     _require_neo4j()
-    pnl = await daily_pnl(db._driver, day)
+    pnl = await daily_pnl(db.get_driver(), day)
     return valuation_engine.build_ebitda(pnl, horizon=horizon)  # type: ignore[arg-type]
 
 
@@ -229,7 +229,7 @@ async def get_ebitda(
 async def post_valuation_sensitivity(body: ValuationSensitivityRequest):
     """EBITDA per scenario across a 3-axis cartesian product."""
     _require_neo4j()
-    pnl = await daily_pnl(db._driver, body.day)
+    pnl = await daily_pnl(db.get_driver(), body.day)
     base = valuation_engine.build_ebitda(pnl, horizon=body.horizon)  # type: ignore[arg-type]
     scenarios = valuation_engine.run_sensitivity(
         base,
@@ -244,7 +244,7 @@ async def post_valuation_sensitivity(body: ValuationSensitivityRequest):
 async def post_valuation_thesis(body: ValuationThesisRequest):
     """Structured investment-case JSON. Dashboards / PDF renderers consume directly."""
     _require_neo4j()
-    pnl = await daily_pnl(db._driver, body.day)
+    pnl = await daily_pnl(db.get_driver(), body.day)
     base = valuation_engine.build_ebitda(pnl, horizon=body.horizon)  # type: ignore[arg-type]
     scenarios = valuation_engine.run_sensitivity(
         base,

@@ -136,11 +136,14 @@ def emit_security_queue_updated(
     wait_minutes: float, sim_time: datetime,
 ) -> None:
     """An authoritative aggregate; never sample individual queue snapshots."""
-    _produce_event("SecurityQueueUpdated", sim_time, {
+    from _common.events import SecurityQueueUpdatedPayload
+
+    payload = SecurityQueueUpdatedPayload.model_validate({
         "terminal": terminal, "queue_depth": queue_depth,
         "lanes_open": lanes_open, "wait_minutes": round(wait_minutes, 1),
         "at": sim_time.isoformat(),
-    }, key=terminal)
+    }).model_dump(mode="json")
+    _produce_event("SecurityQueueUpdated", sim_time, payload, key=terminal)
 
 
 # ── 1C — Accessibility events ────────────────────────────────────────────

@@ -42,6 +42,93 @@ def wait_for(check, timeout=90):
     pytest.fail("Live state did not converge before timeout")
 
 
+def test_gdp_broker_command_holds_departures_once_and_preserves_arrivals():
+    from datetime import datetime, timedelta
+    from neo4j import GraphDatabase
+
+    clock = requests.get(f"{SIM}/api/v1/sim/status", timeout=10).json()["sim_time"]
+    scheduled = (datetime.fromisoformat(clock) + timedelta(hours=3)).isoformat()
+    command_id = f"test-gdp-{uuid4()}"
+    departure, arrival = f"{command_id}-departure", f"{command_id}-arrival"
+    command = {"command_id": command_id, "command_type": "GroundDelayProgram",
+               "payload": {"flight_ids": [departure, arrival, departure], "stagger_minutes": 5}}
+    driver = GraphDatabase.driver(os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+        auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "art-digital-twin")))
+    publish_and_observe = r'''
+import json, sys, time
+from uuid import uuid4
+from confluent_kafka import Consumer, Producer, TopicPartition
+command = json.load(sys.stdin)
+observer = Consumer({'bootstrap.servers': 'kafka:9092', 'group.id': str(uuid4()),
+                     'enable.auto.commit': False})
+producer = Producer({'bootstrap.servers': 'kafka:9092', 'acks': 'all'})
+try:
+    metadata = observer.list_topics('flights.events', timeout=10)
+    partitions = [TopicPartition('flights.events', n) for n in metadata.topics['flights.events'].partitions]
+    observer.assign([TopicPartition(p.topic, p.partition, observer.get_watermark_offsets(p)[1])
+                     for p in partitions])
+    def send():
+        producer.produce('flights.commands', key=b'gdp', value=json.dumps(command))
+        assert producer.flush(10) == 0
+    send()
+    receipts, status_events = 0, []
+    deadline = time.monotonic() + 45
+    while (receipts < 2 or not status_events) and time.monotonic() < deadline:
+        message = observer.poll(0.2)
+        if not message or message.error():
+            continue
+        event = json.loads(message.value())
+        if (event.get('event_type') == 'FlightStatusChanged'
+                and event.get('payload', {}).get('flight_id') == command['payload']['flight_ids'][0]):
+            status_events.append(event['event_id'])
+        if event.get('payload', {}).get('command_id') == command['command_id']:
+            assert event['event_type'] == 'CommandExecuted', event
+            receipts += 1
+            if receipts == 1:
+                send()
+    assert receipts == 2, receipts
+    assert status_events
+    print(json.dumps(status_events))
+finally:
+    observer.close()
+'''
+    command_sent, safe_to_delete = False, True
+    try:
+        with driver.session() as session:
+            session.run("UNWIND $rows AS row CREATE (f:Flight) SET f = row",
+                rows=[{"id": fid, "flight_number": "ZZ001", "direction": direction,
+                       "status": "scheduled", "scheduled_time": scheduled, "estimated_time": scheduled,
+                       "delay_minutes": 0, "pax_count": 0, "aircraft_type": "A320"}
+                      for fid, direction in ((departure, "departure"), (arrival, "arrival"))]).consume()
+        command_sent, safe_to_delete = True, False
+        result = subprocess.run(["docker", "compose", "exec", "-T", "flight-service", "python", "-c",
+                                 publish_and_observe], input=json.dumps(command), text=True,
+                                capture_output=True, cwd=ROOT, timeout=65)
+        assert result.returncode == 0, result.stdout + result.stderr
+        with driver.session() as session:
+            rows = session.run("MATCH (f:Flight) WHERE f.id IN $ids RETURN f.id AS id, "
+                               "f.status AS status, f.delay_minutes AS delay", ids=[departure, arrival]).data()
+        states = {row["id"]: row for row in rows}
+        assert states[departure]["delay"] == 5
+        assert states[arrival]["delay"] == 0 and states[arrival]["status"] == "scheduled"
+        event_ids = json.loads(result.stdout.strip().splitlines()[-1])
+
+        def financial_processed():
+            with driver.session() as session:
+                row = session.run("MATCH (i:CostInbox) WHERE i.id IN $ids RETURN count(i) AS n",
+                                  ids=event_ids).single()
+                return row["n"] == len(event_ids)
+
+        wait_for(financial_processed)
+        safe_to_delete = True
+    finally:
+        with driver.session() as session:
+            if not command_sent or safe_to_delete:
+                session.run("MATCH (f:Flight) WHERE f.id IN $ids DETACH DELETE f", ids=[departure, arrival]).consume()
+            session.run("MATCH (r:CommandReceipt {id: $id}) DELETE r", id=command_id).consume()
+        driver.close()
+
+
 def test_forecast_points_identify_real_source_and_clock():
     response = requests.get(f"{PASSENGER}/api/v1/flow/forecast?terminal=B&window=30", timeout=15)
     assert response.status_code == 200, response.text

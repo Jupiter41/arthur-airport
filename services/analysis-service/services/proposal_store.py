@@ -129,6 +129,7 @@ async def record_outcome(proposal_id: str, outcome: dict, clock: datetime) -> di
         document["outcome_measured_at"] = clock.isoformat()
         document["revision"] = revision
         await _save(tx, document)
+        await _outbox(tx, revision, [_fact("ActionOutcomeMeasured", document, clock)])
         return document
 
     return await _transaction(apply)
@@ -223,7 +224,11 @@ async def reject(proposal_id: str, clock: datetime, decided_by: str, reason: str
 async def fail(proposal_id: str, clock: datetime, reason: str) -> dict | None:
     async def apply(tx: AsyncManagedTransaction, revision: int) -> dict | None:
         document = await _get(tx, proposal_id)
-        if not document or document["status"] != "approved":
+        if not document:
+            return None
+        withdrawn_rebooking = (document["status"] == "dispatched"
+                               and document["action_type"] == "rebook_passengers")
+        if document["status"] != "approved" and not withdrawn_rebooking:
             return None
         document.update(status="failed", failure_reason=reason)
         document["revision"] = revision
@@ -240,8 +245,11 @@ async def receipt(kind: str, payload: dict, clock: datetime, topic: str) -> dict
         if not document or document["status"] != "dispatched":
             return None
         intent = action_command(document["action_type"], document["parameters"])
-        if (intent is None or topic != intent.topic.replace(".commands", ".events")
-                or payload.get("command_type") != intent.command_type):
+        legacy_rejection = (document["action_type"] == "rebook_passengers"
+                            and kind == "CommandRejected" and topic == "passengers.events"
+                            and payload.get("command_type") == "RebookPassengers")
+        if not legacy_rejection and (intent is None or topic != intent.topic.replace(".commands", ".events")
+                                    or payload.get("command_type") != intent.command_type):
             return None
         document["revision"] = revision
         if kind == "CommandExecuted":

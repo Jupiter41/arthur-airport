@@ -33,6 +33,15 @@ async def wait_for_neo4j(max_attempts: int = 12, delay_s: float = 5) -> None:
 # ── Query helpers ────────────────────────────────────────────
 
 
+async def query_incident_for_outcome(incident_id: str) -> dict | None:
+    """Read terminal status too: active-only projections cannot prove resolution."""
+    async with get_driver().session() as session:
+        row = await (await session.run(
+            "MATCH (i:Incident {id: $id}) RETURN i.status AS status", id=incident_id,
+        )).single()
+    return {"status": row["status"]} if row else None
+
+
 async def query_gate_availability() -> dict:
     """Return per-terminal gate availability: {terminal: {total, occupied, free}}."""
     driver = get_driver()
@@ -144,6 +153,7 @@ async def load_operational_projection() -> dict:
                 "RETURN properties(w) AS weather ORDER BY w.timestamp DESC LIMIT 1"
             ),
             "baggage": "MATCH (p:BaggageProjection {id: 'latest'}) RETURN p.document AS document",
+            "security": "MATCH (s:SecurityProjection) RETURN s.document AS document",
         }
         snapshot = {}
         for key, query in queries.items():

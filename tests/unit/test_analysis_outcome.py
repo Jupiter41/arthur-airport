@@ -6,7 +6,12 @@ by the live test.
 """
 
 from datetime import datetime, timedelta, timezone
+import asyncio
+import importlib
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 from tests.conftest import import_service_module
 
@@ -50,10 +55,26 @@ class TestDueForOutcome:
         aware_now = NOW.replace(tzinfo=timezone.utc)
         assert due_for_outcome([_doc()], aware_now) == [_doc()]
 
+    @pytest.mark.parametrize("executed_at,expected", [
+        ("2024-06-15T15:30:00+02:00", True),
+        ("2024-06-15T13:30:00-02:00", False),
+    ])
+    def test_offsets_compare_instants_not_local_clock_faces(self, executed_at, expected):
+        doc = _doc(executed_at=executed_at)
+        assert bool(due_for_outcome([doc], NOW.replace(tzinfo=timezone.utc))) is expected
+
+    def test_elapsed_minutes_retains_delay_after_downtime(self):
+        assert _outcome.elapsed_minutes("2024-06-15T14:00:00+02:00", NOW) == 120
+
 
 class TestMeasureIncident:
-    def test_resolved_when_incident_gone(self):
+    def test_missing_incident_is_unknown(self):
         state = SimpleNamespace(active_incidents={})
+        o = measure_outcome("resolve_incident", {"incident_id": "inc-1"}, state)
+        assert o["measurable"] is False and "bottleneck_resolved" not in o
+
+    def test_persisted_resolved_incident_is_measurable(self):
+        state = SimpleNamespace(active_incidents={"inc-1": {"status": "resolved"}})
         o = measure_outcome("resolve_incident", {"incident_id": "inc-1"}, state)
         assert o["measurable"] and o["bottleneck_resolved"] is True
 
@@ -71,19 +92,58 @@ class TestMeasureIncident:
 class TestMeasureOther:
     def test_reassign_gate_resolved_when_gated(self):
         state = SimpleNamespace(flights={"f1": SimpleNamespace(gate="B07")})
-        o = measure_outcome("reassign_gate", {"flight_id": "f1"}, state)
+        o = measure_outcome("reassign_gate", {"flight_id": "f1", "gate_id": "B07"}, state)
         assert o["bottleneck_resolved"] is True and o["gate"] == "B07"
 
     def test_reassign_gate_not_resolved_without_gate(self):
         state = SimpleNamespace(flights={"f1": SimpleNamespace(gate=None)})
-        o = measure_outcome("reassign_gate", {"flight_id": "f1"}, state)
+        o = measure_outcome("reassign_gate", {"flight_id": "f1", "gate_id": "B07"}, state)
         assert o["bottleneck_resolved"] is False
 
     def test_open_security_lane_reports_wait(self):
-        state = SimpleNamespace(security={"B": SimpleNamespace(forecast_wait_minutes=12, open_lanes=5)})
+        state = SimpleNamespace(security={"Terminal B": SimpleNamespace(
+            forecast_wait_minutes=99, observed_wait_minutes=12, open_lanes=5, last_updated=NOW)})
         o = measure_outcome("open_security_lane", {"terminal": "B"}, state)
         assert o["measurable"] and o["current_wait_minutes"] == 12 and o["open_lanes"] == 5
+        assert o["observed_at"] == NOW.isoformat()
+
+    def test_gate_assignment_to_another_gate_is_not_success(self):
+        state = SimpleNamespace(flights={"f1": SimpleNamespace(gate="A01")})
+        o = measure_outcome("reassign_gate", {"flight_id": "f1", "gate_id": "B07"}, state)
+        assert o["bottleneck_resolved"] is False
+
+    def test_unknown_flight_and_unobserved_checkpoint_are_not_measurable(self):
+        state = SimpleNamespace(flights={}, security={
+            "Terminal B": SimpleNamespace(open_lanes=4, last_updated=None)})
+        assert not measure_outcome("reassign_gate", {"flight_id": "missing", "gate_id": "B07"}, state)["measurable"]
+        assert not measure_outcome("open_security_lane", {"terminal": "B"}, state)["measurable"]
 
     def test_unknown_action_is_not_measurable(self):
         o = measure_outcome("ground_delay_program", {}, SimpleNamespace())
         assert o["measurable"] is False and "reason" in o
+
+
+@pytest.mark.parametrize("incident,measurable", [({"status": "resolved"}, True), (None, False)])
+def test_scheduler_reads_persisted_incident_and_records_actual_elapsed(monkeypatch, incident, measurable):
+    from tests.unit.test_consumer_burst_recovery import context
+
+    consumer = context("analysis", monkeypatch)
+    store = importlib.import_module("services.proposal_store")
+    db = importlib.import_module("db.neo4j")
+    doc = _doc(executed_at=(NOW - timedelta(minutes=45)).isoformat(),
+               parameters={"incident_id": "synthetic-incident"})
+    monkeypatch.setattr(store, "list_documents", AsyncMock(return_value=[doc]))
+    save = AsyncMock(return_value=doc)
+    read = AsyncMock(return_value=incident)
+    monkeypatch.setattr(store, "record_outcome", save)
+    monkeypatch.setattr(db, "query_incident_for_outcome", read)
+    # The active-only cache has no incident, even for a legitimately resolved one.
+    consumer.state.active_incidents.clear()
+    asyncio.run(consumer._measure_due_outcomes(NOW))
+    read.assert_awaited_once_with("synthetic-incident")
+    measured = save.await_args.args[1]
+    assert measured["measurable"] is measurable
+    assert measured["measured_sim_minutes"] == 45
+    assert save.await_args.args[0] == "p1" and save.await_args.args[2] == NOW
+    if measurable:
+        assert measured["bottleneck_resolved"] is True

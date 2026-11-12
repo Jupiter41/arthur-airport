@@ -110,7 +110,7 @@ def _parse_gdp(payload: dict) -> tuple[Command | None, str | None]:
     flight_ids = payload.get("flight_ids")
     if not isinstance(flight_ids, list) or not flight_ids:
         return None, "GroundDelayProgram: flight_ids must be a non-empty list"
-    if not all(isinstance(fid, str) and fid for fid in flight_ids):
+    if not all(isinstance(fid, str) and fid.strip() for fid in flight_ids):
         return None, "GroundDelayProgram: all flight_ids must be non-empty strings"
 
     stagger = _coerce_positive_int(payload.get("stagger_minutes", 10))
@@ -121,7 +121,7 @@ def _parse_gdp(payload: dict) -> tuple[Command | None, str | None]:
     if not isinstance(reason, str) or not reason:
         return None, "GroundDelayProgram: reason must be a non-empty string"
 
-    return GroundDelayProgram(flight_ids=list(flight_ids), stagger_minutes=stagger, reason=reason), None
+    return GroundDelayProgram(flight_ids=list(dict.fromkeys(flight_ids)), stagger_minutes=stagger, reason=reason), None
 
 
 def validate_hold_precondition(status: str) -> str | None:
