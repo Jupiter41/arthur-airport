@@ -28,10 +28,10 @@ coding alone (they need a decision from the owner or a running cluster).
 |----|-----|-------|--------|-------------------|
 | G1  | P0   | Transactional domain-write + outbox/inbox boundaries | ⚠ substantially closed (2026-11-13) | A40+A42: shared `_common/outbox.py`; discrete-event handlers (G1-c) + transactional command receipts (G1-b) atomic in all three owners; per-tick checkpoint atomicity (G1-a) **done for pax+baggage**, **partial for flight**. Remainder: flight tick-consolidation + `ensure_gate_assigned`/turnaround/ground-vehicle/fuel/bulk-snapshot, pax `OpenSecurityLane`; **CI live-stack validation** is the closure bar |
 | G2  | P0–P1| Shared financial rates + accounting perspective | ⚠ partial | **Blocked on owner decision:** airport-vs-airline accounting perspective (30% landing/compensation assumptions) |
-| G3  | P1   | Transport/logging/consumer consolidation into `_common` | ✅ closed | A27/A33/A34/A39 |
+| G3  | P1   | Transport/logging/consumer consolidation into `_common` | ⚠ partial | Shared transport loops delivered; application-boundary separation remains (§10). |
 | G4  | P1   | Unify the 3 what-if simulators → one effect core | ☐ open | Largest remaining coding item; needs design + historical validation |
-| G5  | P1   | Unified impact×confidence÷cost ranking + cost signals | ✅ closed | A25/A36/A37 |
-| G6  | P1   | Concrete executable actions (GDP/rebook/taxi/gate/incident) | ✅ closed | A28–A31/A38 |
+| G5  | P1   | Unified impact×confidence÷cost ranking + cost signals | ⚠ partial | Shared ranking delivered; comparable causal effects and outcome calibration remain (§10). |
+| G6  | P1   | Concrete executable actions (GDP/rebook/taxi/gate/incident) | ⚠ partial | Owner commands delivered; rebooking stays advisory, GDP slot allocation and owner atomicity remain (§10). |
 | G7  | P1   | Crash/interruption recovery for jobs | ⚠ partial | Planning jobs done; training-job recovery remains |
 | G8  | P1   | Outcome measurement → calibration | ⚠ partial | Observed-condition measurement done; counterfactual/baseline + prediction calibration **need measured outcomes from a running system** |
 | G9  | P1   | Graph-based projection rebuild (all domains) | ⚠ partial | Analysis security/vehicle + transit-progress recovery remain |
@@ -39,10 +39,9 @@ coding alone (they need a decision from the owner or a running cluster).
 | G11 | P2   | Reconcile data policy with fake-data contract | ☐ open | The supplied AGENTS.md requires all data to be fake. Remote two-tier reference/calibration policy conflicts with that instruction; no external data was imported during this continuation. See §10 and A53. |
 | G12 | P2   | Sustained load + crash/replica validation | ⚠ partial | **Blocked on cluster:** needs real cluster time + RBAC; not a code task |
 
-**Honest summary:** the LDT-defining gaps (action loop, ranking, concrete commands) are closed
-(G3/G5/G6). The only genuinely large remaining *coding* items are **G1** and **G4**. G2/G8/G12 are
-blocked on decisions or infrastructure, not on more code, and should be treated as explicitly parked
-rather than unfinished.
+The action loop, shared transport and ranking have delivered slices, with the
+remaining work listed in §10. Passing the local runtime gate does not close the
+effect-model, recovery, calibration or cluster-validation gaps.
 
 ---
 
@@ -3091,3 +3090,9 @@ as a passing load result. Final gate and post-restart concurrency results follow
 Evidence: `.pytest_cache/ldt-home-final-verified-units.txt`,
 `ldt-home-review-focused-final.txt`, `ldt-home-review-profile.txt`,
 `ldt-home-concurrent.json`, and `ldt-home-final-live.txt`.
+
+Final A54 runtime gate: **136/136 live integration tests passed in 428.53s**,
+including all six restart checks. Post-gate concurrency: **40/40 HTTP requests**
+passed with the unchanged ten-second deadline. Source parity verified 33 Python
+files across six running services. Evidence: `ldt-home-postgate-concurrent.json`
+and `ldt-home-source-parity.txt`. These results precede the G9 branch integration.
