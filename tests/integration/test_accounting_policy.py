@@ -6,6 +6,8 @@ import subprocess
 
 import pytest
 
+from tests.integration.test_financial_ledger import isolated_financial_worker  # noqa: F401
+
 ROOT = Path(__file__).resolve().parents[2]
 
 COST_CHECK = r'''
@@ -86,7 +88,8 @@ async def run():
         async def cleanup(tx):
             state, _ = await ledger._locked_state(tx)
             await (await tx.run('MATCH (c:CostRecord {sim_day: $day}) DETACH DELETE c', day=day)).consume()
-            await (await tx.run('MATCH (n) WHERE n.id IN $ids DETACH DELETE n', ids=[fid, tid])).consume()
+            await (await tx.run('MATCH (f:Flight {id:$id}) DETACH DELETE f', id=fid)).consume()
+            await (await tx.run('MATCH (t:Terminal {id:$id}) DETACH DELETE t', id=tid)).consume()
             state['days'].pop(str(day), None)
             await (await tx.run("MATCH (s:CostRuntime {id: 'latest'}) SET s.document = $document",
                 document=json.dumps(state))).consume()
@@ -138,6 +141,8 @@ print('G2 live planning: fees, full liability, airport-only benefits and legacy 
 def test_accounting_policy_against_local_stack(service, source):
     # COMPOSE_PROJECT_NAME/COMPOSE_FILE allow an isolated local stack; CI uses
     # its already running full stack. No skips certify this accounting gate.
-    result = subprocess.run(['docker', 'compose', 'exec', '-T', service, 'python', '-c', source],
+    # Reuse the ledger gate's module fixture: its normal consumer/outbox is
+    # stopped while these independent migration/restart workers own the clock.
+    result = subprocess.run(['docker', 'compose', 'run', '--rm', '-T', '--no-deps', service, 'python', '-c', source],
                             cwd=ROOT, env=os.environ.copy(), capture_output=True, text=True, timeout=90)
     assert result.returncode == 0, result.stdout + result.stderr
