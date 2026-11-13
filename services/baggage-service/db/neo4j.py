@@ -22,6 +22,7 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    "CREATE INDEX review_baggage_id IF NOT EXISTS FOR (b:ReviewBaggage) ON (b.id)",
     "CREATE INDEX unscanned_baggage_id IF NOT EXISTS FOR (b:UnscannedBaggage) ON (b.id)",
     "CREATE INDEX baggage_review_status IF NOT EXISTS FOR (b:Baggage) ON (b.review_status)",
     "CREATE INDEX baggage_page_scan IF NOT EXISTS FOR (b:Baggage) ON (b.last_scan_at, b.id)",
@@ -59,6 +60,7 @@ async def create_constraints_and_indexes() -> None:
         for stmt in CONSTRAINTS + INDEXES:
             await (await session.run(stmt)).consume()
         await _backfill_unscanned_index(session)
+        await _backfill_review_index(session)
     logger.info("Baggage constraints and indexes created")
 
 
@@ -79,6 +81,28 @@ async def _backfill_unscanned_index(session: AsyncSession) -> None:
     )).consume()
     await (await session.run(
         "MERGE (m:BaggageIndexMigration {id:'unscanned-v1'}) SET m.ready=true",
+    )).consume()
+
+
+async def _backfill_review_index(session: AsyncSession) -> None:
+    """Build review membership from indexed sources, in bounded commits."""
+    marker = await (await session.run(
+        "MATCH (m:BaggageIndexMigration {id:'review-v1', ready:true}) RETURN m.id",
+    )).single()
+    if marker is not None:
+        return
+    for predicate in ["b.status = 'flagged'", "b.review_status = 'pending'"]:
+        await (await session.run(
+            f"MATCH (b:Baggage) WHERE {predicate} "
+            "CALL { WITH b SET b:ReviewBaggage } IN TRANSACTIONS OF 1000 ROWS",
+        )).consume()
+    await (await session.run(
+        "MATCH (b:ReviewBaggage) WHERE coalesce(b.status, '') <> 'flagged' "
+        "AND coalesce(b.review_status, '') <> 'pending' "
+        "CALL { WITH b REMOVE b:ReviewBaggage } IN TRANSACTIONS OF 1000 ROWS",
+    )).consume()
+    await (await session.run(
+        "MERGE (m:BaggageIndexMigration {id:'review-v1'}) SET m.ready=true",
     )).consume()
 
 
@@ -285,6 +309,8 @@ async def update_baggage_statuses(changes: list[dict], sim_time: datetime) -> No
             CREATE (s:ScanEvent {baggage_tag: b.tag, zone: change.zone,
                                  status: change.status, at: $at})
             CREATE (b)-[:SCANNED_AT]->(s)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [1] ELSE [] END | SET b:ReviewBaggage)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [] ELSE [1] END | REMOVE b:ReviewBaggage)
             """,
             changes=changes, at=sim_time.isoformat(),
         )
@@ -316,6 +342,8 @@ async def write_baggage_statuses_tx(tx, changes: list[dict], sim_time: datetime)
         CREATE (s:ScanEvent {baggage_tag: b.tag, zone: change.zone,
                              status: change.status, at: $at})
         CREATE (b)-[:SCANNED_AT]->(s)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [1] ELSE [] END | SET b:ReviewBaggage)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [] ELSE [1] END | REMOVE b:ReviewBaggage)
         """,
         changes=changes, at=sim_time.isoformat(),
     )
@@ -347,6 +375,8 @@ async def flag_baggage_tx(
             b.review_status = $review_status
         CREATE (s:ScanEvent {baggage_tag: b.tag, zone: $zone, status: 'flagged', at: $at})
         CREATE (b)-[:SCANNED_AT]->(s)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [1] ELSE [] END | SET b:ReviewBaggage)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [] ELSE [1] END | REMOVE b:ReviewBaggage)
         """,
         id=baggage_id,
         zone=scan_zone,
@@ -483,6 +513,8 @@ async def update_baggage_status(
         at: $at
     })
     CREATE (b)-[:SCANNED_AT]->(s)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [1] ELSE [] END | SET b:ReviewBaggage)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [] ELSE [1] END | REMOVE b:ReviewBaggage)
     RETURN b {
         .id, .tag, .status, .weight_kg, .is_dangerous_goods,
         .dg_class, .last_scan_zone, .last_scan_at
@@ -528,6 +560,8 @@ async def flag_baggage(
         at: $at
     })
     CREATE (b)-[:SCANNED_AT]->(s)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [1] ELSE [] END | SET b:ReviewBaggage)
+    FOREACH (_ IN CASE WHEN b.status = 'flagged' OR b.review_status = 'pending' THEN [] ELSE [1] END | REMOVE b:ReviewBaggage)
     RETURN b {
         .id, .tag, .status, .weight_kg, .is_dangerous_goods,
         .dg_class, .last_scan_zone, .last_scan_at,
@@ -580,18 +614,9 @@ async def get_baggage_by_zone(zone: str) -> list[dict]:
 async def get_flagged_baggage(limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
     """Page distinct flagged/pending bags before expanding display metadata."""
     driver = get_driver()
-    candidates = """
-    CALL {
-        MATCH (b:Baggage {status: 'flagged'})
-        USING INDEX b:Baggage(status)
-        RETURN b
-        UNION
-        MATCH (b:Baggage {review_status: 'pending'})
-        USING INDEX b:Baggage(review_status)
-        RETURN b
-    }
-    """
+    candidates = "MATCH (b:ReviewBaggage) "
     query = candidates + """
+    USING INDEX b:ReviewBaggage(id) WHERE b.id IS NOT NULL
     WITH b ORDER BY b.id SKIP $offset LIMIT $limit
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
     WITH b, p ORDER BY p.id

@@ -124,6 +124,11 @@ A single flight movement (arrival or departure). Each physical flight has two no
 
 ### `Baggage`
 
+`ReviewBaggage` is derived membership for status `flagged` or review status
+`pending`. The owner maintains it in each status/flag transaction; its ID index
+and count-store total support bounded review pages. `review-v1` in
+`BaggageIndexMigration` records the indexed, bounded legacy backfill.
+
 `UnscannedBaggage` is an auxiliary label on bags whose `last_scan_at` is null.
 It supplies a count-store total and an ID index; scan writes remove it atomically
 with their timestamp update. It is reconstructible metadata, not a separate

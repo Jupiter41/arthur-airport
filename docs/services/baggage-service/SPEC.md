@@ -331,8 +331,14 @@ owners use the smallest passenger/flight ID for display. No records are deleted
 or automatically cleared by this read endpoint.
 
 Includes bags with status `flagged` or review status `pending`, once per bag even
-when both match. Both candidate sets use property indexes before passenger and
-flight metadata expansion; historical bags outside these sets are not scanned.
+when both match. Startup uses property indexes for both source candidate sets;
+page reads expand passenger/flight metadata only after selecting review IDs.
+
+`ReviewBaggage` is derived membership for that predicate. Status/flag writes
+maintain it transactionally. A bounded, idempotent `review-v1` startup migration
+backfills both indexed candidate sets and removes stale membership. Counts use
+the label count store and pages use its ID index, without sorting the whole
+historical review queue. Source status/review properties remain authoritative.
 
 Response `200`:
 ```json

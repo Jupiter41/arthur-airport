@@ -206,6 +206,7 @@ def test_tick_restores_tentative_caches_only_before_commit(monkeypatch, outcome)
     state.last_tick_sim_time = EARLIER
     state.security.checkpoints["A"].queue = ["p1"]
     state.security.checkpoints["A"]._queue_set = {"p1"}
+    checkpoint = state.security.checkpoints["A"]
     state.security_enqueued = {"p1"}
     monkeypatch.setattr(consumer, "read_tick_checkpoint", AsyncMock(return_value=EARLIER))
     for name in ["_warm_start_departures", "_ml_tick", "_wheelchair_tick"]:
@@ -229,6 +230,7 @@ def test_tick_restores_tentative_caches_only_before_commit(monkeypatch, outcome)
     monkeypatch.setattr(consumer, "_check_connections", AsyncMock(side_effect=RuntimeError("post-commit")))
     asyncio.run(consumer._on_clock_tick({"day_of_sim": 1}, SIM_TIME))
     assert state.security.checkpoints["A"].lanes_open == 7
+    assert state.security.checkpoints["A"] is checkpoint
     if outcome == "post_commit_failure":
         assert state.security.checkpoints["A"].queue == []
         assert state.last_tick_sim_time == SIM_TIME and consumer._tick_counter == 10

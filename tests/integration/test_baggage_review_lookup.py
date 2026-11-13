@@ -25,6 +25,7 @@ async def main():
                 CREATE (b:Baggage:UnscannedBaggage {id:$ids[n],tag:$ids[n],
                     status:CASE WHEN n IN [0,2] THEN 'flagged' ELSE 'collected' END,
                     review_status:CASE WHEN n IN [1,2] THEN 'pending' ELSE 'cleared' END})
+                FOREACH (_ IN CASE WHEN n<3 THEN [1] ELSE [] END | SET b:ReviewBaggage)
                 CREATE (p)-[:CARRIES]->(b) CREATE (b)-[:LOADED_ON]->(f)
                 CREATE (p)-[:CARRIES]->(b) CREATE (b)-[:LOADED_ON]->(f)
             ''',prefix=prefix,ids=ids)).consume()

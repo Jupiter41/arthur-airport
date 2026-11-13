@@ -829,7 +829,16 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         global _tick_counter
         lanes = {terminal: cp.lanes_open for terminal, cp in _state.security.checkpoints.items()}
         for name, value in snapshot.items():
-            setattr(_state, name, value)
+            if name == "security":
+                # Keep checkpoint identities: an in-flight lane command may
+                # already hold a reference while waiting for its graph write.
+                for attr, saved in vars(value).items():
+                    if attr != "checkpoints":
+                        setattr(_state.security, attr, saved)
+                for terminal, checkpoint in value.checkpoints.items():
+                    vars(_state.security.checkpoints[terminal]).update(vars(checkpoint))
+            else:
+                setattr(_state, name, value)
         for terminal, count in lanes.items():
             _state.security.checkpoints[terminal].lanes_open = count
         zones.restore_density(zone_snapshot)

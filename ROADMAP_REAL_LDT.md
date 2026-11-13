@@ -36,7 +36,7 @@ coding alone (they need a decision from the owner or a running cluster).
 | G8  | P1   | Outcome measurement → calibration | ⚠ partial | Observed-condition measurement done; counterfactual/baseline + prediction calibration **need measured outcomes from a running system** |
 | G9  | P1   | Graph-based projection rebuild (all domains) | ⚠ partial | Analysis security/vehicle + transit-progress recovery remain |
 | G10 | P2   | Remove Zustand/WS vs React-Query/REST duplication | ✅ closed | Closed 2026-11-13 — passenger + analysis dedup; build/tests green (2 vestigial unread WS stores noted for follow-up) |
-| G11 | P2   | Reconcile data policy with fake-data contract | ✅ closed | Closed 2026-11-13 — two-tier policy reconciled (CLAUDE.md r#5, ADR-006, DATA.md). Owner decision: **keep** real-world data as labelled opt-in reference/calibration input; generated operational data stays 100% synthetic, no real personal data |
+| G11 | P2   | Reconcile data policy with fake-data contract | ☐ open | The supplied AGENTS.md requires all data to be fake. Remote two-tier reference/calibration policy conflicts with that instruction; no external data was imported during this continuation. See §10 and A53. |
 | G12 | P2   | Sustained load + crash/replica validation | ⚠ partial | **Blocked on cluster:** needs real cluster time + RBAC; not a code task |
 
 **Honest summary:** the LDT-defining gaps (action loop, ranking, concrete commands) are closed
@@ -3064,3 +3064,30 @@ Evidence: `.pytest_cache/ldt-home-final-python.txt`, `ldt-home-gateway-tests.txt
 `ldt-home-dashboard-tests.txt`, `ldt-home-dashboard-build.txt`,
 `ldt-home-live-focused-final.txt`, `ldt-home-replay-units.txt`,
 `ldt-home-tick-rollback.txt`, and `ldt-home-full-tests.txt`.
+
+## 47. A54 — Bounded baggage review and rollback identity (2026-11-13)
+
+The first merged live run passed 113 checks before the review endpoint exceeded
+its unchanged ten-second deadline after restart testing. Indexed source sets
+still required sorting the entire historical review queue. The derived
+`ReviewBaggage` label now supplies an ID index and count-store total. A bounded,
+restart-safe startup backfill preserves source status/review properties; status
+and flag writers maintain membership in their existing transactions. Isolated
+Neo4j tests cover migration replay, stale membership, commit/rollback, clearing
+and duplicate owner relationships. The deployed profile counts 19,299 review
+bags with one count-store hit and selects two IDs with three index hits.
+
+Passenger rollback now also preserves checkpoint object identities, including
+references held by independently awaiting lane commands. Failure-injection tests
+assert both the restored values and the original identity.
+
+Validation before the full gate: **1,201 Python units pass** (57.80s; three
+dependency warnings), **seven focused live checks pass** (12.94s). Both owner
+images were rebuilt. A concurrent probe immediately after recreation observed
+gateway readiness 503s; all ten readiness endpoints recovered before starting
+the final full gate. This is recorded as transient unready evidence, not counted
+as a passing load result. Final gate and post-restart concurrency results follow.
+
+Evidence: `.pytest_cache/ldt-home-final-verified-units.txt`,
+`ldt-home-review-focused-final.txt`, `ldt-home-review-profile.txt`,
+`ldt-home-concurrent.json`, and `ldt-home-final-live.txt`.

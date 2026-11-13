@@ -19,7 +19,7 @@ async def main():
     await db['wait_for_neo4j'](max_attempts=1)
     label='BagPageFixture'+uuid4().hex
     ids=[label+'-'+str(n) for n in range(4)]
-    indexes=[label+'Id',label+'Scan',label+'UnscannedId']
+    indexes=[label+'Id',label+'Scan',label+'UnscannedId',label+'ReviewId']
     async with db['get_driver']().session() as session:
         # Execute the production queries on a unique label. This tests actual
         # Neo4j index/null semantics without a linear deep offset through history.
@@ -30,6 +30,7 @@ async def main():
             def run(self, query, **params):
                 query=query.replace(':BaggageIndexMigration', ':'+label+'Migration')
                 query=query.replace(':UnscannedBaggage', ':'+label+'Unscanned')
+                query=query.replace(':ReviewBaggage', ':'+label+'Review')
                 for kind in ['Passenger','Flight','ScanEvent']:
                     query=query.replace(':'+kind, ':'+label+kind)
                 return self.connection.run(query.replace(':Baggage', ':'+label), **params)
@@ -41,6 +42,7 @@ async def main():
             await (await session.run(f'CREATE INDEX {indexes[0]} FOR (b:{label}) ON (b.id)')).consume()
             await (await session.run(f'CREATE INDEX {indexes[1]} FOR (b:{label}) ON (b.last_scan_at,b.id)')).consume()
             await (await session.run(f'CREATE INDEX {indexes[2]} FOR (b:{label}Unscanned) ON (b.id)')).consume()
+            await (await session.run(f'CREATE INDEX {indexes[3]} FOR (b:{label}Review) ON (b.id)')).consume()
             await (await session.run('CALL db.awaitIndexes(30)')).consume()
             await (await session.run(f'''UNWIND range(0,3) AS n
                 CREATE (b:{label} {{id:$ids[n],tag:$ids[n],status:'collected'}})
@@ -49,6 +51,13 @@ async def main():
                     SET b.last_scan_at='2024-06-15T12:00:00')''',ids=ids)).consume()
             await db['_backfill_unscanned_index'](scoped)
             await db['_backfill_unscanned_index'](scoped)
+            await (await scoped.run('MATCH(b:Baggage {id:$id}) SET b.review_status="pending"',id=ids[0])).consume()
+            await (await scoped.run('MATCH(b:Baggage {id:$id}) SET b:ReviewBaggage',id=ids[3])).consume()
+            await db['_backfill_review_index'](scoped)
+            await db['_backfill_review_index'](scoped)
+            review,total_review=await db['get_flagged_baggage']()
+            assert total_review==1 and [b['id'] for b in review]==[ids[0]],review
+            await (await scoped.run('MATCH(b:Baggage {id:$id}) SET b.review_status="cleared"',id=ids[0])).consume()
             first,total=await db['_unfiltered_baggage_page'](scoped,2,0)
             assert total==4 and [b['id'] for b in first]==[ids[1],ids[0]],first
             assert all(b.get('last_scan_at') is None for b in first)
@@ -94,8 +103,14 @@ async def main():
             assert dict(record)=={'status':'dropped_off','scan':None,'unscanned':True},record
             count=await (await scoped.run('MATCH(b:UnscannedBaggage) RETURN count(b) AS n')).single()
             assert count['n']==1,count
+            review,total_review=await db['get_flagged_baggage']()
+            assert total_review==2 and {b['id'] for b in review}=={label+'-4',label+'-7'},review
+            await (await scoped.run('MATCH(b:Baggage {id:$id}) SET b.review_status="cleared"',id=label+'-4')).consume()
+            await db['update_baggage_status'](label+'-4','collected','arrival-belt-1',now)
+            review,total_review=await db['get_flagged_baggage']()
+            assert total_review==1 and review[0]['id']==label+'-7',review
         finally:
-            for suffix in ['','Unscanned','Migration','Passenger','Flight','ScanEvent']:
+            for suffix in ['','Unscanned','Review','Migration','Passenger','Flight','ScanEvent']:
                 await (await session.run(f'MATCH (b:{label}{suffix}) DETACH DELETE b')).consume()
             for index in indexes:
                 await (await session.run(f'DROP INDEX {index} IF EXISTS')).consume()
