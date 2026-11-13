@@ -3264,3 +3264,20 @@ isolated financial-worker fixture and indexed Flight/Terminal cleanup, retaining
 the 90-second deadline. Both accounting/planning checks pass in **20.53s**
 (`g9-accounting-verified.txt`). No production timeout was widened. The final
 consolidated run is recorded in `g9-complete-stack.txt`.
+
+Subsequent merged-gate checks exposed two further integration boundaries. Planning
+lease fixtures now include the current accounting policy expected by the merged
+result contract; all five planning recovery checks pass. A later gate passed 90
+checks before a post-restart flow-summary recount exceeded ten seconds on roughly
+ten million passenger records. The API now uses a Neo4j-derived presentation
+snapshot warmed before readiness and refreshed independently every 15 seconds.
+It exposes observation clock, age and stale status; failed refreshes retain the
+previous complete observation. Business decisions and operational queues do not
+use this cache, and the ten-second HTTP deadline is unchanged.
+
+The formerly failing passenger restart check now passes (27.38s), followed by
+**40/40 concurrent HTTP requests**. All eight flow-summary requests complete in
+at most **0.067s**, including while the Python regression suite runs. New cache
+tests cover cold rebuild, slow-refresh read isolation, failure retention and an
+empty successful replacement. Evidence: `g9-flow-restart-verified.txt`,
+`g9-flow-concurrent.json`, and `g9-release-units.txt`. Final validation follows.

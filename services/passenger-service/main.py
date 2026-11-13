@@ -104,6 +104,10 @@ async def lifespan(app: FastAPI):
     set_ws_broadcast(ws_broadcast)
 
     # 8. Start Kafka consumer as background task
+    from services import flow_projection
+    await flow_projection.refresh()
+    flow_stop = asyncio.Event()
+    flow_task = asyncio.create_task(flow_projection.run(flow_stop))
     consumer_task = asyncio.create_task(run_consumer())
 
     def _consumer_done(task: asyncio.Task) -> None:
@@ -133,6 +137,9 @@ async def lifespan(app: FastAPI):
     # Shutdown
     stop_consumer()
     outbox_stop.set()
+    flow_stop.set()
+    with suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.gather(flow_task, return_exceptions=True), timeout=5)
     with suppress(asyncio.TimeoutError):
         await asyncio.wait_for(asyncio.gather(consumer_task, return_exceptions=True), timeout=5)
     with suppress(asyncio.TimeoutError):

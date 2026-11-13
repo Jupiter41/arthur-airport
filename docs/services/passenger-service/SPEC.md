@@ -424,6 +424,16 @@ Query parameters: `pnr`, `name` (partial match)
 
 #### `GET /flow/summary`
 
+`by_status` and `total_in_airport` use a read snapshot rebuilt from Neo4j before
+startup readiness, then refreshed in the background every 15 real seconds after
+the preceding read completes. This is a presentation cache, not operational
+state or a decision input. Security queues remain the committed owner projection.
+Responses expose `counts_observed_sim_time`, `counts_age_seconds` and
+`counts_stale`; source failure retains the last successful snapshot and marks it
+stale. The observation clock is the owner clock when the read began, not a claim
+of a globally historical snapshot. Monotonic elapsed time measures read freshness
+only; business time remains driven by `SimClockTick`.
+
 Real-time passenger flow summary across all zones.
 
 Response `200`:

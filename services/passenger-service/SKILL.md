@@ -190,6 +190,7 @@ When this service starts (or restarts) while the simulation is already running:
 4. **Dwell time timers** — persisted passenger dwell values and the owner runtime retain progress. Tick computation uses private state; failed transactions cannot expose tentative queue mutations.
 5. **Metric reconciliation** — `_on_clock_tick` resets `passengers_in_airport`, `security_queue_depth`, `security_wait_minutes`, `security_lanes_open` from Neo4j, self-correcting within one tick.
 6. **Boarding progress** — boarding counts are computed from Neo4j on each tick, so no persistent counter is needed.
+7. **Flow count reads** — warm the graph-derived status-count snapshot before readiness. A separate 15-second refresh loop publishes complete successful reads; failures retain the previous counts with freshness/stale metadata. This presentation cache never drives passenger decisions.
 
 **Tests:** `tests/integration/test_resilience.py::TestRestartRebuild::test_passenger_service_security_rebuild`
 

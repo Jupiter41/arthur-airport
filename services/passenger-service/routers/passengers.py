@@ -202,7 +202,8 @@ async def flow_summary():
     sim_time = get_sim_time()
     security = get_security()
 
-    by_status = await get_status_counts()
+    from services import flow_projection
+    by_status, count_observation = await flow_projection.read()
 
     # Compute total in airport (active statuses only)
     active = {"checked_in", "security_queue", "airside", "at_gate",
@@ -249,6 +250,7 @@ async def flow_summary():
         "sim_time": sim_time.isoformat() if sim_time else None,
         "total_in_airport": total,
         "by_status": by_status,
+        **count_observation,
         "security": sec_summary,
         "connections_at_risk": conn_at_risk,
         "connections_missed": conn_missed,

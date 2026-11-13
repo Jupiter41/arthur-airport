@@ -167,6 +167,9 @@ class TestRestartRebuild:
         assert r.status_code == 200
         after = r.json()
         assert set(after["security"]) == {"A", "B", "C"}
+        assert after["counts_age_seconds"] >= 0
+        assert isinstance(after["counts_stale"], bool)
+        assert "counts_observed_sim_time" in after
         for terminal in after["security"].values():
             assert terminal["queue_length"] >= 0
             assert terminal["lanes_open"] >= 0
