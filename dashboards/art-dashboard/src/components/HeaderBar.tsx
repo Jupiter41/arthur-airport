@@ -62,6 +62,11 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+const publicDeployment = import.meta.env.VITE_PUBLIC_DEPLOYMENT === "true";
+const navigation = NAV_ITEMS.map(item => item.children && publicDeployment
+  ? { ...item, children: item.children.filter(child => !["/debug", "/ml", "/planning", "/scenarios", "/whatif", "/data-sources"].includes(child.path)) }
+  : item);
+
 function NavDropdown({
   item,
 }: {
@@ -169,7 +174,7 @@ export function HeaderBar() {
           <div className="h-5 w-px bg-panel-border/40 hidden md:block" />
 
           <nav className="flex items-center gap-0.5">
-            {NAV_ITEMS.map((item) =>
+            {navigation.map((item) =>
               item.children ? (
                 <NavDropdown key={item.label} item={item} />
               ) : (

@@ -11,7 +11,7 @@ export function SpeedSelector({
     <div className="flex items-center justify-between gap-2">
       <span className="text-sm text-gray-300">Speed</span>
       <div className="flex gap-1">
-        {SPEEDS.map((s) => (
+        {SPEEDS.filter(s => import.meta.env.VITE_PUBLIC_DEPLOYMENT !== "true" || s <= 10).map((s) => (
           <button
             key={s}
             onClick={() => onChange(s)}

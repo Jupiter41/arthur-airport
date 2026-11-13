@@ -184,10 +184,10 @@ as `dwell_minutes`. Do not re-sample on subsequent ticks.
 
 When this service starts (or restarts) while the simulation is already running:
 
-1. **Rebuild security queues** — `rebuild_security_from_neo4j()` loads passengers in `in_security` status and repopulates the terminal queue deques.
+1. **Rebuild security queues** — restore `PassengerRuntime` and its clock before serving, then reconcile queue membership against graph `security_queue` passengers, lane overrides and active breach identities.
 2. **Connection risk state** — recalculated on every tick from Neo4j data; no persistent in-memory state to rebuild.
-3. **Zone density tracking** — zone counts are re-derived from Neo4j passenger locations on the first tick after restart.
-4. **Dwell time timers** — individual timers are lost on restart, but passengers still advance via the state machine on the next tick based on their current status and timestamps.
+3. **Zone density tracking** — zone counts are re-derived from Neo4j passenger locations during startup, before a new tick.
+4. **Dwell time timers** — persisted passenger dwell values and the owner runtime retain progress. Tick computation uses private state; failed transactions cannot expose tentative queue mutations.
 5. **Metric reconciliation** — `_on_clock_tick` resets `passengers_in_airport`, `security_queue_depth`, `security_wait_minutes`, `security_lanes_open` from Neo4j, self-correcting within one tick.
 6. **Boarding progress** — boarding counts are computed from Neo4j on each tick, so no persistent counter is needed.
 

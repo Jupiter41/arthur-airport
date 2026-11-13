@@ -1,5 +1,49 @@
 # api-gateway — specification
 
+## Production Raspberry access contract (2026-10-15)
+
+With `PUBLIC_DEPLOYMENT=true`, public `POST /auth/viewer` issues short-lived,
+unique viewer JWTs. `/auth/token` requires server-side operator credentials;
+neither credentials nor signing keys belong in frontend builds. JWTs use HS256,
+validated subject, role, expiry, and unique session ID. Login issuance is limited
+by trusted client IP; JSON bodies are capped at 16 KiB.
+
+Every non-read domain request requires operator rank. In public deployments it
+also requires an exclusive 120-second controller lease acquired with
+`POST /api/v1/control`, renewed with the same call and `X-Control-Lease`, and
+released with `DELETE /api/v1/control`. GET returns holder/expiry but never its
+secret. A lease belongs to the JWT session, including when accounts are shared.
+One domain write may be in flight; conflicts return 409, absent/expired lease
+423. A disconnected write keeps the gateway busy for an upstream timeout safety
+window. Restart loses leases and requires re-acquisition; run one gateway only.
+This transient authorization state is separate from airport state.
+
+Public deployment uses an explicit route allowlist: dashboard observation and
+bounded simulation speed/settings/pause/resume, flight hold/release, and incident
+commands. New routes are denied until reviewed. Debug/Cypher, reset, model
+training, data-source changes, scenario runs, planning, LLM calls, and bulk mode
+are unavailable through this deployment. Speed is capped at 10x and daily flights
+at 100, with passenger multiplier at most 1; upstream Pydantic validation still
+applies. Path encodings, dot segments, and repeated slashes are rejected before
+proxying. Read requests are coalesced/cached for two seconds in a bounded cache.
+
+WebSocket upgrades validate same-site Origin and authentication; active sessions
+are capped at 64, frames at 4 KiB, message rate at 30/second, and outgoing buffers
+at 256 KiB. Slow consumers reconnect and recover the bootstrap snapshot. Expired
+JWT sessions disconnect. Public clients never reach raw service WebSockets.
+On each WebSocket connection the dashboard also reads `/sim/status` once to
+restore authoritative clock speed and pause state, including when no ticks are
+being emitted. Subsequent changes arrive through Kafka/WebSocket events.
+
+See `docs/infra/RASPBERRY_PLAN.md` for deployment acceptance criteria.
+
+The gateway uses Node's native fetch for its fixed upstream route table, with a
+30-second timeout, 16 in-flight requests, and 512-KiB response limit. Only a
+same-origin trailing-slash redirect is followed. Browser credentials never reach
+domain services. This replaces http-proxy-middleware, whose glob dependency has
+an unresolved denial-of-service advisory at deployment time. Runtime images use
+Node 22 LTS; this extends the earlier Node 20 development baseline.
+
 **Language:** Node.js 20+ / TypeScript  
 **Framework:** Express 5 + ws (WebSocket)  
 **Port:** 3000  

@@ -4,7 +4,8 @@ import { shutdownTracing } from "./tracing";
 import express, { Request, Response } from "express";
 import { createServer } from "http";
 import client from "prom-client";
-import { handleToken, authMiddleware, requireRole } from "./auth";
+import { handleToken, handleViewer, authMiddleware, requireRole } from "./auth";
+import { accessPolicy, setupControl, readCache, publicDeployment } from "./access";
 import { setupProxy } from "./proxy";
 import { handleAggregate } from "./aggregate";
 import { handleDataSources } from "./dataSources";
@@ -16,11 +17,16 @@ import {
   heavyLimiter,
   simResetLimiter,
   injectLimiter,
+  loginLimiter,
 } from "./rateLimit";
 
 const app = express();
 const server = createServer(app);
 const PORT = parseInt(process.env.PORT || "3000", 10);
+app.disable("x-powered-by");
+if (publicDeployment) app.set("trust proxy", 1); // only private nginx reaches this port
+server.requestTimeout = 35_000;
+server.headersTimeout = 10_000;
 
 // Prometheus metrics
 client.collectDefaultMetrics();
@@ -43,7 +49,9 @@ app.use((req: Request, res: Response, next) => {
   const start = Date.now();
   res.on("finish", () => {
     const duration = Date.now() - start;
-    const pathLabel = req.path.split("/").slice(0, 4).join("/") || req.path;
+    const namespace = req.path.split("/")[3];
+    const pathLabel = ["flights", "passengers", "baggage", "weather", "incidents", "sim", "analysis", "costs", "airport", "control", "network"].includes(namespace)
+      ? `/api/v1/${namespace}` : "other";
     requestsTotal.inc({
       method: req.method,
       path: pathLabel,
@@ -54,7 +62,12 @@ app.use((req: Request, res: Response, next) => {
   next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: "16kb" }));
+app.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  next();
+});
 
 // --- Public routes (no auth) ---
 app.get("/health", (_req: Request, res: Response) => {
@@ -68,16 +81,19 @@ app.get("/metrics", async (_req: Request, res: Response) => {
   res.end(await client.register.metrics());
 });
 
-app.post("/auth/token", handleToken);
+app.post("/auth/token", loginLimiter, handleToken);
+app.post("/auth/viewer", loginLimiter, handleViewer);
 
 // --- Protected routes (auth required) ---
 app.use(authMiddleware);
+app.use(defaultLimiter);
+setupControl(app);
+app.use(accessPolicy);
 
 // Rate limiting: apply specific limiters before default
 app.use("/api/v1/airport", heavyLimiter);
 app.use("/api/v1/sim/reset", simResetLimiter);
 app.use("/api/v1/incidents/inject", injectLimiter);
-app.use(defaultLimiter);
 
 // RBAC: approving/rejecting a safety-guarded proposal (A9) is the highest-
 // privilege command path — gate the mutating verbs on the `approver` role.
@@ -91,6 +107,7 @@ app.use("/api/v1/analysis/approvals", (req, res, next) => {
   }
   approverGate(req, res, next);
 });
+app.use(readCache);
 
 // Aggregate and health
 app.get("/api/v1/airport", handleAggregate);

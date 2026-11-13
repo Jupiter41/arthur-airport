@@ -184,18 +184,25 @@ class OperationalState:
         for row in snapshot["baggage"]:
             self.on_baggage_zone_snapshot(json.loads(row["document"]))
         for row in snapshot.get("security", []):
+            from _common.events import SecurityQueueUpdatedPayload
+
             if row.get("document"):
-                self.on_security_queue_updated(json.loads(row["document"]))
+                observation = SecurityQueueUpdatedPayload.model_validate(json.loads(row["document"]))
+                self.on_security_queue_updated(observation.model_dump(mode="json"))
                 continue
             measured = row.get("checkpoint") or {}
             if measured.get("at"):
-                self.on_security_queue_updated({**measured, "terminal": row["terminal"]})
+                observation = SecurityQueueUpdatedPayload.model_validate({**measured, "terminal": row["terminal"]})
+                self.on_security_queue_updated(observation.model_dump(mode="json"))
         for row in snapshot.get("vehicles", []):
+            from _common.events import GroundVehicleObservation
+
             raw = row["vehicle"]
-            kind = raw["type"]
+            observed = GroundVehicleObservation.model_validate(raw)
+            kind = observed.type
             vehicle = self.vehicles.setdefault(kind, VehicleTypeState(vehicle_type=kind))
             vehicle.total += 1
-            vehicle.dispatched += int(raw.get("status") != "available")
+            vehicle.dispatched += int(observed.status != "available")
             vehicle.utilisation_pct = vehicle.dispatched / vehicle.total * 100
             at = _parse_dt(raw.get("at"))
             if at and (self.vehicle_snapshot_at is None or _utc(at) > _utc(self.vehicle_snapshot_at)):

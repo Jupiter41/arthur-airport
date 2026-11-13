@@ -35,9 +35,10 @@ _events_produced: int = 0
 _on_hour_boundary = None
 _on_day_boundary = None
 _on_tick = None
+_on_checkpoint = None
 
 
-def configure_callbacks(on_hour=None, on_day=None, on_tick=None) -> None:
+def configure_callbacks(on_hour=None, on_day=None, on_tick=None, on_checkpoint=None) -> None:
     """Register callbacks for hour-boundary, day-boundary, and per-tick events.
 
     Args:
@@ -45,10 +46,11 @@ def configure_callbacks(on_hour=None, on_day=None, on_tick=None) -> None:
         on_day: Async callable(next_day, sim_time) invoked at 23:30 to seed the next day.
         on_tick: Async callable(sim_time) invoked every simulated minute.
     """
-    global _on_hour_boundary, _on_day_boundary, _on_tick
+    global _on_hour_boundary, _on_day_boundary, _on_tick, _on_checkpoint
     _on_hour_boundary = on_hour
     _on_day_boundary = on_day
     _on_tick = on_tick
+    _on_checkpoint = on_checkpoint
 
 
 def get_state() -> dict:
@@ -271,6 +273,13 @@ async def run_clock_loop() -> None:
             m_tick_total.inc()
         except Exception as e:
             logger.error("Failed to emit SimClockTick at tick %d: %s", _tick_number, e)
+
+        if _on_checkpoint:
+            try:
+                await _on_checkpoint()
+            except Exception:
+                pause()
+                logger.exception("Clock checkpoint failed; simulation paused")
 
         tick_elapsed = (time.monotonic() - tick_start) * 1000  # ms
         m_tick_latency.observe(tick_elapsed)

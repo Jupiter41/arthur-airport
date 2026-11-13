@@ -1,5 +1,14 @@
 # passenger-service — specification
 
+### Raspberry runtime profile (2026-10-15)
+
+`FORECAST_TRAINING_ENABLED=false` disables collection, parquet writes, and all
+automatic/manual retraining entrypoints. Read-only pretrained model inference
+and the documented schedule-based fallback remain available. `ML_THREADS`
+limits LightGBM workers (default 1); numerical libraries also receive one-thread
+environment settings. Training is performed off-device and only trusted model
+files may be installed by the host administrator.
+
 **Language:** Python 3.11+  
 **Framework:** FastAPI  
 **Port:** 8002  

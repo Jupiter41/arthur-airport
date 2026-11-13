@@ -15,6 +15,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY . .
 
+# Fixed packaging tools: keep inherited base-image advisories out of runtime.
+RUN pip install --no-cache-dir --only-binary=:all: pip==26.2.1 setuptools==83.0.0
+
 EXPOSE 8008
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \

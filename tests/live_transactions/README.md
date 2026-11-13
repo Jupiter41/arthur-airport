@@ -19,7 +19,7 @@ port overrides when another stack is already running. The test harness inherits
 them for every independent owner process. Worker containers mount current owner
 sources read-only alongside the normal shared-library/config mounts.
 
-Coverage for flight, passenger and baggage owners:
+Coverage for flight, passenger and baggage owners, plus analysis discovery:
 
 - actual domain/outbox/checkpoint writes followed by rollback or abrupt process exit;
 - process exit after commit, then a new worker replaying the same tick;
@@ -29,6 +29,10 @@ Coverage for flight, passenger and baggage owners:
 - real Kafka input replay through owner dispatch and acknowledged consumer polling;
 - flight gate assignment, turnaround, vehicle, fuel and BULK summary facts;
 - reconciliation of newer incident/arrival projections when the tick is a replay.
+- independent discovery rollback, abrupt exits, restart before evaluation, replica contention and stable identities;
+- accepted clock rewinds, stale-offset fencing, late owner observations and empty graph replacement;
+- actual unsampled owner snapshots through Kafka in REALTIME/BULK, including security assistance/freeze and full fleet counts;
+- owner checkpoint restoration before the first new tick, including cross-terminal baggage transit and turnaround/vehicle progress.
 
 The separate `domain-transactions` CI job runs this suite. The existing
 `full-stack` job continues to require every application service and all REST,

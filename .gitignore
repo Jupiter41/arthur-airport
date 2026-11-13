@@ -63,3 +63,5 @@ __queuestorage__/
 MISC.md
 
 .claude
+operator-credentials.txt
+audit-production.json

@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends curl libgomp1 && rm -rf /var/lib/apt/lists/*
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app
+COPY requirements.txt .
+# RL is optional. Pi uses the existing rule engine; omit PyTorch/SB3 entirely.
+# Gym remains for the environment helpers imported by the optional evaluator.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    sed '/^stable-baselines3==/d' requirements.txt > requirements-pi.txt && \
+    pip install --only-binary=:all: -r requirements-pi.txt
+COPY . .
+
+# Fixed packaging tools: keep inherited base-image advisories out of runtime.
+RUN pip install --no-cache-dir --only-binary=:all: pip==26.2.1 setuptools==83.0.0
+USER 1000:1000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8007"]

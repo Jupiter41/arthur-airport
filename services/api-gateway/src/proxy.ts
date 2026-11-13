@@ -1,10 +1,4 @@
-import {
-  createProxyMiddleware,
-  fixRequestBody,
-  Options,
-} from "http-proxy-middleware";
 import { Express } from "express";
-import { IncomingMessage, ServerResponse } from "http";
 import client from "prom-client";
 
 const upstreamErrors =
@@ -167,44 +161,62 @@ const PROXY_ROUTES: ProxyRoute[] = [
 ];
 
 function joinPath(base: string, suffix: string): string {
-  if (!suffix || suffix === "/") {
-    return base;
-  }
-  return `${base.replace(/\/+$/, "")}/${suffix.replace(/^\/+/, "")}`;
+  const queryAt = suffix.indexOf("?");
+  const path = queryAt < 0 ? suffix : suffix.slice(0, queryAt);
+  const query = queryAt < 0 ? "" : suffix.slice(queryAt);
+  return (!path || path === "/" ? base :
+    `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`) + query;
 }
 
 export function setupProxy(app: Express): void {
   for (const route of PROXY_ROUTES) {
     const target = UPSTREAM[route.service];
     const key = route.service;
-    const options: Options = {
-      target,
-      changeOrigin: true,
-      // Express strips mount path from req.url, rebuild with desired upstream prefix.
-      pathRewrite: (_path: string) => joinPath(route.upstreamPrefix, _path),
-      // Follow FastAPI 307 trailing-slash redirects internally
-      followRedirects: true,
-      on: {
-        proxyReq: fixRequestBody,
-        error: (
-          _err: Error,
-          _req: IncomingMessage,
-          res: ServerResponse | import("net").Socket,
-        ) => {
-          upstreamErrors.inc({ service: key });
-          if ("writeHead" in res && !res.headersSent) {
-            res.writeHead(502, { "Content-Type": "application/json" });
-            res.end(
-              JSON.stringify({
-                error: `${key} service unavailable`,
-                service: key,
-              }),
-            );
+    app.use(route.mountPath, async (req, res) => {
+      if (activeRequests >= 16) {
+        res.status(503).json({ error: "Airport busy; retry shortly" }); return;
+      }
+      activeRequests++;
+      try {
+        // Only declared upstreams are reachable. Do not forward browser secrets
+        // or use user-controlled glob patterns to route requests.
+        let url = new URL(joinPath(route.upstreamPrefix, req.url), target);
+        const signal = AbortSignal.timeout(30_000);
+        const init: RequestInit = { method: req.method, signal, redirect: "manual" };
+        if (!["GET", "HEAD"].includes(req.method) && req.body !== undefined) {
+          init.body = JSON.stringify(req.body);
+          init.headers = { "Content-Type": "application/json" };
+        }
+        let upstream = await fetch(url, init);
+        // FastAPI may add a trailing slash. Only follow that exact same-origin
+        // redirect; never follow an arbitrary redirect to another endpoint.
+        if ([307, 308].includes(upstream.status)) {
+          const location = upstream.headers.get("location");
+          const next = location ? new URL(location, url) : null;
+          if (!next || next.origin !== url.origin || next.pathname.replace(/\/$/, "") !== url.pathname.replace(/\/$/, "")) {
+            await upstream.body?.cancel(); throw new Error("Unsafe upstream redirect");
           }
-        },
-      },
-    };
-
-    app.use(route.mountPath, createProxyMiddleware(options));
+          await upstream.body?.cancel(); url = next;
+          upstream = await fetch(url, init);
+        }
+        const chunks: Uint8Array[] = [];
+        let size = 0;
+        if (upstream.body) {
+          for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
+            size += chunk.length;
+            if (size > 512 * 1024) throw new Error("Upstream response limit");
+            chunks.push(chunk);
+          }
+        }
+        res.status(upstream.status);
+        res.setHeader("Content-Type", upstream.headers.get("content-type") ?? "application/json");
+        res.end(Buffer.concat(chunks));
+      } catch {
+        upstreamErrors.inc({ service: key });
+        if (!res.headersSent) res.status(502).json({ error: `${key} service unavailable`, service: key });
+      } finally { activeRequests--; }
+    });
   }
 }
+
+let activeRequests = 0;

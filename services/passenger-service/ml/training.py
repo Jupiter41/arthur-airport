@@ -24,6 +24,7 @@ MODELS_DIR = Path(os.getenv("MODELS_PATH", "/app/models"))
 TRAINING_DIR = Path(os.getenv("TRAINING_DATA_PATH", "/app/training_data"))
 RETRAIN_EVERY_N_DAYS = int(os.getenv("FORECAST_RETRAIN_EVERY_N_DAYS", "3"))
 MIN_TRAINING_ROWS = 500
+TRAINING_ENABLED = os.getenv("FORECAST_TRAINING_ENABLED", "true").lower() == "true"
 
 # In-memory training buffers per terminal
 _buffers: dict[str, deque] = {
@@ -49,19 +50,23 @@ def make_model() -> lgb.LGBMRegressor:
         reg_alpha=0.1,
         reg_lambda=0.1,
         random_state=42,
-        n_jobs=-1,
+        n_jobs=max(1, int(os.getenv("ML_THREADS", "1"))),
         verbose=-1,
     )
 
 
 def add_training_row(terminal: str, features: dict, target: int, sim_time: datetime) -> None:
     """Add a training row to the in-memory buffer."""
+    if not TRAINING_ENABLED:
+        return
     row = {**features, "target": target, "sim_time": sim_time.isoformat()}
     _buffers[terminal].append(row)
 
 
 def flush_to_parquet(terminal: str) -> None:
     """Flush buffer to parquet file. Appends to existing data."""
+    if not TRAINING_ENABLED:
+        return
     buf = _buffers[terminal]
     if not buf:
         return
@@ -94,6 +99,8 @@ def flush_to_parquet(terminal: str) -> None:
 
 def maybe_flush(sim_time: datetime) -> None:
     """Flush buffers every 60 sim-minutes to avoid memory growth."""
+    if not TRAINING_ENABLED:
+        return
     global _last_flush_hour
     current_hour = sim_time.hour
     if current_hour != _last_flush_hour:
@@ -104,6 +111,8 @@ def maybe_flush(sim_time: datetime) -> None:
 
 def retrain_sync(terminal: str) -> float | None:
     """Synchronous retrain — run in executor thread. Returns MAE or None."""
+    if not TRAINING_ENABLED:
+        return None
     parquet_path = TRAINING_DIR / f"{terminal}.parquet"
     if not parquet_path.exists():
         logger.info("No training data for terminal %s", terminal)
@@ -166,6 +175,9 @@ def retrain_sync(terminal: str) -> float | None:
 async def maybe_retrain(sim_day: int) -> bool:
     """Check if retraining is needed. Returns True if retrained."""
     global _last_retrain_day
+
+    if not TRAINING_ENABLED:
+        return False
 
     if sim_day < RETRAIN_EVERY_N_DAYS:
         return False

@@ -30,6 +30,7 @@ from services.injector import set_seed
 from services.network import get_network_engine, reset_network_engine
 from services.scenario_engine import get_engine
 from services.seeder import emit_initial_weather, seed_day
+from services.runtime_state import checkpoint, restore
 
 from _common._logging import setup_logging
 
@@ -113,11 +114,14 @@ async def lifespan(app: FastAPI):
     if not await airport_exists():
         await seed_airport_structure()
 
-    # 7. Seed Day 1 schedule + passengers + baggage
-    await seed_day(sim_day=1)
+    # Resume the shared airport instead of rewinding it on container restart.
+    restored = await restore()
+    await seed_day(sim_day=clock.get_sim_day())
 
     # 8. Emit initial weather
-    await emit_initial_weather()
+    if not restored:
+        await emit_initial_weather()
+        await checkpoint(command="initialize")
 
     # 9. Configure clock callbacks and start loop
     set_seed(42)
@@ -125,6 +129,7 @@ async def lifespan(app: FastAPI):
         on_hour=_on_hour_boundary,
         on_day=_on_day_boundary,
         on_tick=_on_tick,
+        on_checkpoint=checkpoint,
     )
 
     # 10. Load scenario definitions
@@ -155,6 +160,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     clock.stop()
+    clock_task.cancel()
+    try:
+        await clock_task
+    except asyncio.CancelledError:
+        pass
+    await checkpoint()
     stop_consumer()
     close_kafka_producer()
     reset_network_engine()

@@ -1,10 +1,14 @@
 import { useState, useCallback } from "react";
 import { useSimStore } from "../stores/simStore";
 import { simApi } from "../hooks/useApi";
+import { useAccess } from "../hooks/auth";
 
 const SPEEDS = [1, 10, 60, 600, 3600];
 
 export function SimControls() {
+  const access = useAccess();
+  const publicDeployment = import.meta.env.VITE_PUBLIC_DEPLOYMENT === "true";
+  const canChange = access.role !== "viewer" && (!publicDeployment || access.controlling);
   const { paused, speed_multiplier } = useSimStore((s) => s.status);
   const setPaused = useSimStore((s) => s.setPaused);
   const setSpeed = useSimStore((s) => s.setSpeed);
@@ -62,9 +66,9 @@ export function SimControls() {
         className="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600"
         value={speed_multiplier}
         onChange={(e) => handleSpeed(Number(e.target.value))}
-        disabled={loading}
+        disabled={loading || !canChange}
       >
-        {SPEEDS.map((s) => (
+        {SPEEDS.filter(s => !publicDeployment || s <= 10).map((s) => (
           <option key={s} value={s}>
             {s}×
           </option>
@@ -74,7 +78,7 @@ export function SimControls() {
       {/* Pause / Resume */}
       <button
         onClick={handlePauseResume}
-        disabled={loading}
+        disabled={loading || !canChange}
         className={`text-xs font-bold px-2 py-1 rounded ${
           paused
             ? "bg-green-600 hover:bg-green-500 text-white"
@@ -87,7 +91,7 @@ export function SimControls() {
       {/* Reset */}
       <button
         onClick={handleReset}
-        disabled={loading}
+        disabled={loading || !canChange || publicDeployment}
         className={`text-xs font-bold px-2 py-1 rounded ${
           confirmReset
             ? "bg-red-600 hover:bg-red-500 text-white"

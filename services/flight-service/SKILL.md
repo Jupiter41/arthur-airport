@@ -175,12 +175,12 @@ async def propagate_turnaround(flight_id: str, delay_min: int,
 
 When this service starts (or restarts) while the simulation is already running:
 
-1. **Rebuild in-memory state from Neo4j** — `FlightConsumerState.rebuild_from_neo4j()` loads incident-impacted runway/gate sets. Flights in transient states (`boarding`, `taxiing`, `approach`) are picked up on the next tick.
-2. **Runway queue rebuilds automatically** — the queue is refilled from Neo4j on each `_on_clock_tick` by querying flights in `approach` or `departed` status.
+1. **Restore committed progress before serving** — `FlightConsumerState.rebuild_from_neo4j()` restores the versioned `FlightRuntime` document and its simulation time, then refreshes graph-owned holds and incident restrictions.
+2. **Runway queue** — checkpointed queue state is restored; current flights and weather reconcile it on each tick.
 3. **Gate conflict resolver is stateless** — no rebuild needed; it evaluates conflicts per-tick.
-4. **Turnaround tracker** — in-flight turnaround timers are lost on restart, but new turnarounds are started on the next `at_gate` transition.
+4. **Turnaround and fleet** — task timers, vehicle travel/return deadlines, pending requests and assignments survive in the checkpoint. Public fleet nodes and unsampled fleet facts commit with every tick in REALTIME and BULK.
 5. **Metric reconciliation** — `_on_clock_tick` resets all gauges (`flights_active`, `flights_delayed_current`) from Neo4j counts, so metrics self-correct within one tick.
-6. **Idempotency** — duplicate `SimClockTick` events are safe; the transition evaluator is deterministic given current state.
+6. **Idempotency** — the owner runtime lock fences duplicate/competing ticks; a replay does not repeat domain advancement or domain facts.
 
 **Tests:** `tests/integration/test_resilience.py::TestServiceRestart::test_flight_service_restart`, `TestRestartRebuild::test_flight_service_incident_impacts_rebuild`
 

@@ -1,5 +1,13 @@
 # Event bus — Kafka topics & schemas
 
+### SimControlChanged (2026-10-15)
+
+Topic `sim.clock`, producer `sim-orchestrator`, key `control`, standard envelope.
+Payload: `{command: initialize|speed|pause|resume|settings, paused: boolean,
+speed_multiplier: integer, settings: object}`. Emitted after Neo4j checkpoints an
+operator command. Consumers refresh control displays from this event; airport
+entity transitions still advance only on `SimClockTick`.
+
 **Project:** Arthur International Airport Digital Twin  
 **Broker:** Apache Kafka 3.x  
 **Schema format:** JSON (Avro-compatible, Schema Registry optional)
@@ -790,8 +798,8 @@ no operational consumer; planning pages continue reading their REST API.
 
 
 `SecurityQueueUpdated` is an unsampled aggregate on `passengers.events` with
-`terminal`, `queue_depth`, `lanes_open`, `wait_minutes` and `at`. Passenger-service
-publishes it on each normal tick (every 20 ticks in BULK mode). Analysis uses
+`terminal`, `queue_depth`, `lanes_open`, `wait_minutes`, `sa_queue_depth`,
+`frozen` and `at`. Passenger-service publishes it on every REALTIME and BULK tick. Analysis uses
 these measured snapshots to detect and resolve observed congestion. It does
 not invent forecast confidence from an observed wait. This also avoids trying
 to reconstruct exact queue counts from sampled per-passenger events.
@@ -799,13 +807,14 @@ to reconstruct exact queue counts from sampled per-passenger events.
 
 ### Baggage aggregate projection (2026-10-17)
 
-`BaggageZoneSnapshot` on `baggage.events`, key `zones`, is published every normal
-tick and every twenty BULK ticks. Payload: `{zones: [{zone_id, items, status,
+`BaggageZoneSnapshot` on `baggage.events`, key `zones`, is published every REALTIME
+and BULK tick. Payload: `{zones: [{zone_id, items, status,
 throughput_per_hour, utilisation_pct}], at}`. It is unsampled even when per-bag
 events are suppressed. Baggage-service persists the latest payload before send
 in `BaggageProjection {id: 'latest', document}` for analysis restart recovery.
 Snapshots replace zone counts; replay does not increment occupancy. Older
-snapshot times are ignored. Transactional delivery remains G1 roadmap work.
+snapshot times are ignored. Projection, checkpoint and fact commit atomically
+through the owner outbox.
 
 ### Atomic financial accounting (2026-10-18)
 

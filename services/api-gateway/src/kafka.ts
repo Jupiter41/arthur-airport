@@ -25,7 +25,8 @@ let consumer: Consumer | null = null;
 let connected = false;
 let lastMessageAt: number | null = null;
 
-const FRESHNESS_THRESHOLD_MS = 30_000; // 30 seconds
+const FRESHNESS_THRESHOLD_MS = Math.max(30_000,
+  Number(process.env.KAFKA_FRESHNESS_THRESHOLD_MS) || 30_000);
 
 export function isKafkaConnected(): boolean {
   return connected;

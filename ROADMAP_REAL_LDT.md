@@ -34,7 +34,7 @@ coding alone (they need a decision from the owner or a running cluster).
 | G6  | P1   | Concrete executable actions (GDP/rebook/taxi/gate/incident) | ⚠ partial | Owner commands delivered; rebooking stays advisory, GDP slot allocation and owner atomicity remain (§10). |
 | G7  | P1   | Crash/interruption recovery for jobs | ⚠ partial | Planning jobs done; training-job recovery remains |
 | G8  | P1   | Outcome measurement → calibration | ⚠ partial | Observed-condition measurement done; counterfactual/baseline + prediction calibration **need measured outcomes from a running system** |
-| G9  | P1   | Graph-based projection rebuild (all domains) | ⚠ partial | Analysis security/vehicle + transit-progress recovery remain |
+| G9  | P1   | Graph-based projection rebuild (all domains) | ✅ closed | A55: durable discovery, unsampled owner snapshots, pre-tick transit/fleet/security recovery; eight independent-process Neo4j/Kafka recovery checks pass. |
 | G10 | P2   | Remove Zustand/WS vs React-Query/REST duplication | ✅ closed | Closed 2026-11-13 — passenger + analysis dedup; build/tests green (2 vestigial unread WS stores noted for follow-up) |
 | G11 | P2   | Reconcile data policy with fake-data contract | ☐ open | The supplied AGENTS.md requires all data to be fake. Remote two-tier reference/calibration policy conflicts with that instruction; no external data was imported during this continuation. See §10 and A53. |
 | G12 | P2   | Sustained load + crash/replica validation | ⚠ partial | **Blocked on cluster:** needs real cluster time + RBAC; not a code task |
@@ -1261,7 +1261,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G6 / P1 — partial | A28–A31 add incident/gate actions. A40 fixes A38 GDP's nonexistent single-flight attribute, excludes arrivals and deduplicates targets. Its hold duration is uniform, not a staggered slot allocation. A38 rebooking called the database with the wrong signature, used an invalid status and never changed itineraries; A40 keeps it advisory and rejects queued commands without mutation. Mapping to a command alone did not prove owner execution. | Implement replacement-flight/capacity validation and atomic itinerary reassignment before enabling rebooking. Retain advisory UI for unsupported actions and validate real owner handlers. GDP slot allocation and owner atomicity remain open. |
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 — partial | A32 schedules observed outcomes after 30 simulation minutes. A40 preserves results when rebuilding logs, commits measurement facts with results, compares UTC instants and requested gates, reads persisted incident status, and uses timestamped observed security waits. Missing targets/checkpoint observations are unknown rather than success; elapsed time can exceed 30 after downtime. This is observed-condition measurement, not causal attribution. | Validate fresh projections across restart/BULK mode, add baseline/counterfactual attribution and prediction calibration, and extend automatic outcomes to planning. Planning outcomes remain manual; no calibrated savings claim. |
-| G9 / P1 — partial | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled; A17/A18 preserve queued metadata and incident ownership. A41 adds owner-persisted, validated security observations and analysis recovery with source timestamps/stale-event guards. Baggage startup now loads actual conveyor queue states instead of millions of loaded/in-flight history IDs; graph history remains intact. | Complete vehicle and cross-terminal transit recovery, validate epoch/rewind behavior and close the G1 aggregate publication crash window. Security observations do not establish fresh counterfactual outcomes. |
+| G9 / P1 — **closed** (2026-11-13, A55) | Analysis replaces its complete graph projection, restores stable discovery identities/timers, and serializes discovery plus facts in its outbox. Passenger security and full flight fleet observations are validated and unsampled in REALTIME/BULK; baggage persists and publishes its aggregate on every tick. Owner startup restores committed conveyor transit, turnaround/vehicle progress, queues and simulation time before another tick. | Verified with eight independent-process Neo4j/Kafka checks: rollback, abrupt exits before/after commit, accepted-clock startup, competing evaluators, replay/fencing/rewind, late/deleted inputs, proposal refresh, replica reads, broker failure retention, actual owner snapshots in both modes, and pre-tick owner checkpoint equality. This closes graph recovery; historical global snapshots, predictive calibration (G8), training jobs (G7) and cluster certification remain separate scope. |
 | G10 / P2 — **closed** (2026-11-13) | Hand-synchronized duplication removed for the two domains where it actually occurred: **passenger flow** (store was a pure React-Query mirror) and **analysis bottlenecks/recommendations** (RQ-preferred-with-WS-fallback dual read). `passengerStore`/`analysisStore` deleted, types moved to `src/types.ts`, consumers repointed; OVERVIEW rewritten to "one source of truth per domain" (WS-fed Zustand for live operational domains; React Query/REST for request-response domains). Build (`tsc -b && vite build`) + 40 tests green. | Two vestigial WS-fed-but-unread stores (`costStore`, `groundVehicleStore`) remain as a minor non-duplicating follow-up cleanup. Live seed-then-patch domains (flights/weather/incidents/sim clock) are a single source already and were left as-is. |
 | G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
 | G12 / P2 — partial | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. A26 adds the missing `cost-service`/`planning-service` k8s manifests and the gateway's cost/planning service URLs (`kustomize build` + offline validation; no live apply — cluster RBAC denies it here). Sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate and validate the remaining load/crash/replica behavior on a cluster. Functional integration success is not complete fidelity or deployment certification. |
@@ -3202,3 +3202,52 @@ Both existing durable-rate integration checks also pass, covering competing rate
 updates, frozen planning recovery and rebuilding an evicted day from the ledger.
 G2 is closed. G4/G8 modelling/calibration work remains separate; no calibrated
 payment forecast or validated investment return is claimed.
+
+## 48. A55 — G9 recovery completed and branch consolidation (2026-11-13)
+
+Merged `origin/codex/finish-g1-transactions` through `f315342` as `621581c`,
+retaining local receipt replay and indexed large-history reads. All local and
+remote branch heads are now ancestors of main, including the older ranking/
+manifest branch and v1. The restored Pi/access-control work is included in the
+overall consolidation requested by the owner. No branch history is rewritten.
+
+G9 now has a complete graph-derived discovery boundary. Analysis serializes
+graph replacement, active bottlenecks, recommendation identities, threshold
+timers and discovery facts. Replica endpoints refresh the committed document;
+accepted-but-unevaluated clocks recover at startup. Clock offsets fence old
+writers while newer-offset rewinds reset timers. Owner graphs are the latest
+committed inputs, not a globally historical snapshot at the analysis clock.
+
+Integration review repaired lost assistance/freeze fields in the shared security
+schema and connected the previously unhandled full fleet snapshot. Fleet facts
+replace counts by identity; invalid/duplicate payloads cannot partly replace
+state, and stale facts cannot regress observations. Missing legacy security
+observations stay unmeasured. Removed connection/financial inputs retire old
+discovery entries. Legacy graph metadata and historical entity data are retained.
+
+The real BULK producer contract exposed a missing first-tick baggage projection:
+its write had been gated by the metrics cadence. Baggage now writes its complete
+projection and stages its fact on every committed tick. The independent startup
+comparison also exposed stale security membership after drain; drain now removes
+those markers in the same private tick state. Conveyor destinations/travel time,
+turnaround/vehicle progress, security queues and owner clocks restore before
+any new tick. The cross-terminal startup check requires an actual TransitBag.
+
+Validation: **eight G9 live checks pass in 133.17s** on a separate disposable
+Neo4j/Kafka project. These cover abrupt exits, transaction rollback, competing
+evaluators, accepted-clock startup, stable replay identities, same-clock late
+inputs, empty graph replacement, clock rewind/fencing, proposal status refresh,
+independent replica reads, retained publication during broker failure, actual
+REALTIME/BULK owner snapshots and all three owner startup checkpoints. The
+preceding complete domain transaction run passed **all 28 G1 checks**; its BULK
+G9 failure led to the repair and successful G9 rerun above. **1,238 Python units**
+pass (three dependency warnings), followed by **136 focused regressions** after
+the drain repair. Dashboard **40/40**, gateway **29/29**, production image builds
+and Python lint pass. The final full runtime gate follows below.
+
+Evidence: `.pytest_cache/g9-domain-live.txt`, `g9-projection-verified.txt`,
+`g9-complete-units.txt`, `g9-last-regressions.txt`, `g9-fleet-unit-final.txt`,
+`g9-dashboard-tests.txt`, `g9-gateway-tests-verified.txt`, `g9-final-build.txt`,
+and `g9-full-stack.txt`. The disposable recovery tests are required in CI and
+build analysis alongside the three owners. G9 is ticked done in both tables;
+the other open modelling/calibration rows are not silently closed.

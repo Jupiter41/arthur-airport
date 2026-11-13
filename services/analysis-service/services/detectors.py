@@ -116,6 +116,12 @@ def check_resolved(
     elif bottleneck.type == BottleneckType.CONNECTION_CLUSTER:
         # Connection clusters resolve when the inbound flight lands
         flight_id = bottleneck.metrics.get("inbound_flight")
+        if state.graph_loaded and not any(
+            cluster.get("inbound_flight") == flight_id
+            and cluster.get("outbound_flight") == bottleneck.metrics.get("outbound_flight")
+            for cluster in state.connection_clusters
+        ):
+            return True
         if flight_id and flight_id in state.flights:
             f = state.flights[flight_id]
             if f.status in ("arrived", "turnaround", "completed"):
@@ -127,6 +133,10 @@ def check_resolved(
             incident = state.active_incidents.get(incident_id)
             if incident is None or incident.get("status") == "resolved":
                 return True
+
+    elif bottleneck.type == BottleneckType.FINANCIAL_PRESSURE:
+        return not any(candidate.zone == bottleneck.zone
+                       for candidate in _detect_financial_pressure(state, now, set()))
 
     return False
 

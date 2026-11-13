@@ -1187,6 +1187,7 @@ async def _drain_security_queues(
         all_drained = main_drained + sa_drained
         if not all_drained:
             continue
+        _state.security_enqueued.difference_update(all_drained)
 
         new_zone = f"airside-{terminal}"
         default_old_zone = f"security-{terminal}"

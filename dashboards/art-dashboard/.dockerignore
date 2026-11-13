@@ -4,3 +4,6 @@ dist/
 README.md
 *.md
 tests/
+.env*
+tmp*/
+audit-production.json

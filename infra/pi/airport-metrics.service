@@ -1,0 +1,18 @@
+[Unit]
+Description=Collect Raspberry host and container health metrics
+After=docker.service
+
+[Service]
+Type=oneshot
+User=arthur
+WorkingDirectory=/opt/arthur-airport
+ExecStart=/usr/bin/python3 /opt/arthur-airport/scripts/raspberry_monitor.py collect
+UMask=0027
+Nice=10
+CPUQuota=15%
+MemoryMax=96M
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/arthur-airport/metrics
+PrivateTmp=true
+TimeoutStartSec=45

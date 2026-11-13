@@ -1,5 +1,19 @@
 # sim-orchestrator — specification
 
+## Durable runtime state (2026-10-15)
+
+The runtime checkpoints `sim_time`, day, tick, speed, pause state, and validated
+settings in one `SimState {id: 'airport'}` node. Startup restores that checkpoint
+before seeding the current simulated day; it does not reset an existing airport
+to day one or overwrite existing weather. Each emitted clock tick is followed
+by a checkpoint. Operator speed/pause/resume/settings commands checkpoint and
+emit `SimControlChanged` on `sim.clock` before responding. Database failure
+pauses the clock and prevents successful command acknowledgement. Checkpoint
+and Kafka publication are not an atomic distributed transaction; crash recovery
+may replay the last clock interval. Existing event consumers must remain
+idempotent. Initial daily flights honor `DAILY_FLIGHT_TARGET`; subsequent days
+use current validated settings. Settings validation remains Pydantic-based.
+
 **Language:** Python 3.11+  
 **Framework:** FastAPI (control API) + asyncio (simulation loop)  
 **Port:** 8006  

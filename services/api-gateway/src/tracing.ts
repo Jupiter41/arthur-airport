@@ -10,25 +10,27 @@
  *   OTEL_ENABLED                  — set to "false" to disable (default: true)
  */
 
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { Resource } from "@opentelemetry/resources";
-import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import type { NodeSDK as SDK } from "@opentelemetry/sdk-node";
 
 const enabled = (process.env.OTEL_ENABLED ?? "true") !== "false";
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
-let sdk: NodeSDK | undefined;
+let sdk: SDK | undefined;
 
 if (enabled && endpoint) {
+  // Avoid loading hundreds of instrumentation modules on the Pi when tracing
+  // is disabled. Imports remain before Express when tracing is enabled.
+  const { NodeSDK } = require("@opentelemetry/sdk-node") as typeof import("@opentelemetry/sdk-node");
+  const { getNodeAutoInstrumentations } = require("@opentelemetry/auto-instrumentations-node") as typeof import("@opentelemetry/auto-instrumentations-node");
+  const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http") as typeof import("@opentelemetry/exporter-trace-otlp-http");
+  const { resourceFromAttributes } = require("@opentelemetry/resources") as typeof import("@opentelemetry/resources");
   const exporter = new OTLPTraceExporter({
     url: `${endpoint}/v1/traces`,
   });
 
   sdk = new NodeSDK({
-    resource: new Resource({
-      [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? "api-gateway",
+    resource: resourceFromAttributes({
+      "service.name": process.env.OTEL_SERVICE_NAME ?? "api-gateway",
     }),
     traceExporter: exporter,
     instrumentations: [

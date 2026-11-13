@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "crypto";
+import { timingSafeEqual, randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
 
@@ -35,7 +35,7 @@ function loadClients(): Record<string, Client> {
     try {
       const parsed = JSON.parse(raw) as Record<string, Client>;
       // Basic shape validation — drop malformed entries rather than trust them.
-      const clean: Record<string, Client> = {};
+      const clean: Record<string, Client> = Object.create(null);
       for (const [id, c] of Object.entries(parsed)) {
         if (
           c &&
@@ -77,7 +77,10 @@ const CLIENTS = loadClients();
 export function isSecureConfig(): boolean {
   if (!IS_PROD) return true;
   if (JWT_SECRET === DEV_JWT_SECRET) return false;
+  if (JWT_SECRET.length < 32) return false;
+  if (!Number.isInteger(JWT_EXPIRES_IN) || JWT_EXPIRES_IN < 60 || JWT_EXPIRES_IN > 86400) return false;
   if (Object.keys(CLIENTS).length === 0) return false;
+  if (Object.values(CLIENTS).some(c => c.secret.length < 32)) return false;
   return true;
 }
 
@@ -108,12 +111,12 @@ export function handleToken(req: Request, res: Response): void {
 
   const { client_id, secret } = req.body ?? {};
 
-  if (!client_id) {
+  if (typeof client_id !== "string" || !client_id || client_id.length > 100) {
     res.status(400).json({ error: "client_id required" });
     return;
   }
 
-  const client = CLIENTS[client_id as string];
+  const client = Object.hasOwn(CLIENTS, client_id) ? CLIENTS[client_id] : undefined;
   // Reject unknown clients and bad secrets identically (no client enumeration).
   // Note: no dev backdoor — credentials are always validated.
   if (
@@ -125,8 +128,9 @@ export function handleToken(req: Request, res: Response): void {
     return;
   }
 
-  const token = jwt.sign({ sub: client_id, role: client.role }, JWT_SECRET, {
+  const token = jwt.sign({ sub: client_id, role: client.role, jti: randomUUID() }, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
+    algorithm: "HS256",
   });
 
   res.json({ token, expires_in: JWT_EXPIRES_IN, role: client.role });
@@ -151,7 +155,7 @@ export function authMiddleware(
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = verifyAccessToken(token);
     (req as unknown as Record<string, unknown>).user = decoded;
     next();
   } catch {
@@ -174,7 +178,7 @@ export function requireRole(
       | { role?: string }
       | undefined;
     const role = user?.role as Role | undefined;
-    const rank = role ? ROLE_RANK[role] : undefined;
+    const rank = role && Object.hasOwn(ROLE_RANK, role) ? ROLE_RANK[role] : undefined;
     if (rank === undefined || rank < required) {
       res.status(403).json({ error: "insufficient role", required: minRole });
       return;
@@ -209,9 +213,32 @@ export function verifyTokenFromRequest(req: TokenRequest): boolean {
   if (!token) return false;
 
   try {
-    jwt.verify(token, JWT_SECRET);
+    verifyAccessToken(token);
     return true;
   } catch {
     return false;
   }
+}
+
+export function verifyAccessToken(token: string): jwt.JwtPayload {
+  const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+  if (typeof decoded === "string" || typeof decoded.sub !== "string" || !decoded.sub) {
+    throw new Error("invalid subject");
+  }
+  if (IS_PROD && (
+    typeof decoded.exp !== "number" || typeof decoded.jti !== "string" ||
+    !Object.hasOwn(ROLE_RANK, decoded.role as string)
+  )) throw new Error("invalid session claims");
+  return decoded;
+}
+
+export function handleViewer(_req: Request, res: Response): void {
+  if (!isSecureConfig()) {
+    res.status(404).json({ error: "not available" });
+    return;
+  }
+  const token = jwt.sign({ sub: `viewer:${randomUUID()}`, role: "viewer", jti: randomUUID() }, JWT_SECRET,
+    { expiresIn: 3600, algorithm: "HS256" });
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ token, expires_in: 3600, role: "viewer" });
 }

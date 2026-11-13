@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
-import type { KafkaEvent } from "../types";
+import type { KafkaEvent, SimStatus } from "../types";
 import { useSimStore } from "../stores/simStore";
 import { useFlightStore } from "../stores/flightStore";
 import { useWeatherStore } from "../stores/weatherStore";
@@ -10,6 +10,7 @@ import { useCostStore } from "../stores/costStore";
 import { getAuthToken } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
 import { queryClient } from "../queryClient";
+import { simApi } from "./useApi";
 
 const RAW_WS_URL = (import.meta.env.VITE_WS_URL as string | undefined)
   ?.trim()
@@ -33,6 +34,12 @@ type EventHandler = (
 ) => void;
 
 export const eventHandlers: Record<string, EventHandler> = {
+  SimControlChanged: (payload) => {
+    if (typeof payload.paused === "boolean") useSimStore.getState().setPaused(payload.paused);
+    if (typeof payload.speed_multiplier === "number") useSimStore.getState().setSpeed(payload.speed_multiplier);
+    void queryClient.invalidateQueries({ queryKey: ["sim-settings"] });
+    void queryClient.invalidateQueries({ queryKey: ["sim-status"] });
+  },
   SimClockTick: (payload, sim_time) => {
     const tickFromPayload = payload?.sim_time;
     const nextTick =
@@ -286,6 +293,14 @@ export function useWebSocket() {
         ws.onopen = () => {
           reconnectAttempt.current = 0;
           useConnectionStore.getState().setWsConnected(true, null);
+          // A paused clock emits no ticks. Load authoritative speed/pause state
+          // on each connection instead of keeping the store's initial defaults.
+          void simApi.status().then((value) => {
+            if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return;
+            const status = value as SimStatus & { tick_number?: number };
+            useSimStore.getState().setStatus({ ...status,
+              tick_count: status.tick_number ?? status.tick_count ?? 0 });
+          }).catch(() => { /* The connection indicators report API failures. */ });
           // Subscribe to all topics
           ws.send(
             JSON.stringify({
@@ -299,6 +314,7 @@ export function useWebSocket() {
                 "alerts",
                 "sim",
                 "analysis",
+                "costs",
               ],
             }),
           );

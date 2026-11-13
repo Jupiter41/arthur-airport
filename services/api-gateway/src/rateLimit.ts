@@ -2,6 +2,11 @@ import rateLimit from "express-rate-limit";
 import { Request, Response } from "express";
 import client from "prom-client";
 
+export const loginLimiter = rateLimit({
+  windowMs: 60_000, limit: 15, standardHeaders: true, legacyHeaders: false,
+  message: { error: "Too many login attempts; retry in a minute" },
+});
+
 const rateLimitHits = new client.Counter({
   name: "gateway_rate_limit_hits_total",
   help: "Rate limit rejections",
@@ -23,7 +28,7 @@ function keyGenerator(req: Request): string {
   const user = (req as unknown as Record<string, unknown>).user as
     | { sub?: string }
     | undefined;
-  if (user?.sub) {
+  if (user?.sub && !user.sub.startsWith("viewer:")) {
     return `token:${user.sub}`;
   }
   return `ip:${req.ip ?? "unknown"}`;

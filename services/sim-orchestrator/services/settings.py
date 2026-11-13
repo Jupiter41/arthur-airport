@@ -9,6 +9,7 @@ API (``PATCH /api/v1/sim/settings``).
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -77,7 +78,7 @@ class SimSettings(BaseModel):
 
 # ── Module-level singleton ──────────────────────────────────
 
-_settings = SimSettings()
+_settings = SimSettings(daily_flights=int(os.getenv("DAILY_FLIGHT_TARGET", str(_runtime.simulation.daily_flight_target))))
 
 
 def get_settings() -> SimSettings:

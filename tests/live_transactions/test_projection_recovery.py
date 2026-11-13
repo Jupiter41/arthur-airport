@@ -46,6 +46,10 @@ def test_committed_exit_replay_competing_evaluators_and_replica_endpoints(discov
     endpoints = projection("endpoints")
     assert endpoints["bottlenecks"]["bottlenecks"] == committed["document"]["bottlenecks"]
     assert endpoints["recommendations"]["recommendations"] == committed["document"]["recommendations"]
+    pending = projection("proposal")
+    assert any(r["execution_status"] == "pending" for r in pending["document"]["recommendations"])
+    rejected = projection("reject-proposal")
+    assert any(r["execution_status"] == "rejected" for r in rejected["document"]["recommendations"])
     projection("resolve")
     resolved = projection("evaluate")
     assert not resolved["document"]["bottlenecks"]
@@ -84,3 +88,7 @@ def test_owner_checkpoint_is_available_before_first_new_tick(owner):
     startup = worker(owner, "startup")
     assert startup["checkpoint"] == json.loads(committed["runtime"][0]["document"])
     assert startup["sim_time"] == committed["runtime"][0]["tick"]
+    if owner == "baggage":
+        assert '"type": "TransitBag"' in json.dumps(startup["checkpoint"])
+    if owner == "flight":
+        assert '"type": "TurnaroundPlan"' in json.dumps(startup["checkpoint"])

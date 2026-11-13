@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./queryClient";
 import { HeaderBar } from "./components/HeaderBar";
+import { AccessBar } from "./components/AccessBar";
 import { WebSocketManager } from "./components/WebSocketManager";
 import FlightBoardPage from "./pages/FlightBoard/FlightBoardPage";
 
@@ -47,6 +48,7 @@ function AppShell() {
     <div className="h-screen flex flex-col bg-surface text-white">
       <WebSocketManager />
       <HeaderBar />
+      <AccessBar />
       <main className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<PageFallback />}>
           <Routes>

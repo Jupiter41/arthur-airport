@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 WORKDIR /app
 COPY package*.json .
@@ -8,6 +8,8 @@ COPY . .
 # Accept Mapbox token as a build-time arg so Vite can inline it
 ARG VITE_MAPBOX_TOKEN
 ENV VITE_MAPBOX_TOKEN=$VITE_MAPBOX_TOKEN
+ARG VITE_PUBLIC_DEPLOYMENT=false
+ENV VITE_PUBLIC_DEPLOYMENT=$VITE_PUBLIC_DEPLOYMENT
 
 RUN npm run build
 

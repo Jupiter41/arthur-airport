@@ -234,3 +234,54 @@ def test_invalid_graph_replacement_never_publishes_partial_state():
         state.restore_graph({"flights": [], "gates": [], "incidents": [], "weather": [],
                              "baggage": [{"document": '{"at":"2026-01-01T12:00:00Z"}'}]})
     assert "keep" in state.flights and not state.graph_loaded
+
+
+def test_fleet_snapshot_replaces_counts_rejects_invalid_and_fences_old_input():
+    state = import_service_module("analysis", "services.state").OperationalState()
+    payload = {"at": "2026-01-01T10:00:00Z", "vehicles": [
+        {"id": "v1", "type": "fuel_truck", "status": "available"},
+        {"id": "v2", "type": "fuel_truck", "status": "returning"},
+    ]}
+    state.on_ground_vehicle_snapshot(payload)
+    fleet = state.vehicles
+    assert fleet["fuel_truck"].total == 2
+    assert fleet["fuel_truck"].dispatched == 1
+    state.on_ground_vehicle_dispatched({"vehicle_type": "fuel_truck"})
+    assert fleet["fuel_truck"].dispatched == 1
+    with pytest.raises(ValueError):
+        state.on_ground_vehicle_snapshot({**payload, "vehicles": [payload["vehicles"][0]] * 2})
+    assert state.vehicles is fleet
+    state.on_ground_vehicle_snapshot({"at": "2026-01-01T09:59:00Z", "vehicles": []})
+    assert state.vehicles is fleet
+    state.on_ground_vehicle_snapshot({"at": "2026-01-01T10:01:00Z", "vehicles": []})
+    assert state.vehicles == {}
+    state.on_clock_tick({"sim_time": "2026-01-01T10:01:00Z"})
+    state.on_clock_tick({"sim_time": "2026-01-01T09:00:00Z"})
+    state.on_ground_vehicle_snapshot({**payload, "at": "2026-01-01T09:00:00Z"})
+    assert state.vehicles["fuel_truck"].total == 2
+
+
+@pytest.mark.parametrize("source", ["security", "vehicles"])
+def test_invalid_owner_graph_observation_keeps_previous_complete_projection(source):
+    state = import_service_module("analysis", "services.state").OperationalState()
+    state.on_flight_status_changed({"flight_id": "keep", "new_status": "boarding"})
+    graph = {key: [] for key in ("flights", "gates", "incidents", "weather", "baggage")}
+    graph[source] = ([{"terminal": "B", "checkpoint": {"at": NOW.isoformat(), "queue_depth": -1}}]
+                     if source == "security" else [{"vehicle": {"id": "v", "type": "fuel", "status": "invalid"}}])
+    with pytest.raises(ValueError):
+        state.restore_graph(graph)
+    assert "keep" in state.flights and not state.graph_loaded
+
+
+def test_deleted_connection_and_financial_inputs_retire_durable_bottlenecks():
+    state_type = import_service_module("analysis", "services.state").OperationalState
+    detectors = importlib.import_module("services.detectors")
+    domain = importlib.import_module("models.domain")
+    state = state_type()
+    state.on_clock_tick({"sim_time": NOW.isoformat()})
+    state.graph_loaded = True
+    for kind in [domain.BottleneckType.CONNECTION_CLUSTER, domain.BottleneckType.FINANCIAL_PRESSURE]:
+        bn = domain.Bottleneck(id="old", type=kind, severity="warning", zone="deleted",
+            root_cause="synthetic", estimated_duration_minutes=10, affected_entity_count=1,
+            detected_at=NOW, metrics={"inbound_flight": "deleted", "outbound_flight": "gone"})
+        assert detectors.check_resolved(state, bn)

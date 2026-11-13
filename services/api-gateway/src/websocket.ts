@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
-import { verifyTokenFromRequest } from "./auth";
+import { verifyTokenFromRequest, verifyAccessToken } from "./auth";
 import client from "prom-client";
 
 // Prometheus metrics
@@ -19,6 +19,9 @@ interface WsClient {
   ws: WebSocket;
   subscriptions: Set<string>;
   alive: boolean;
+  expires: number;
+  messages: number;
+  windowStart: number;
 }
 
 const VALID_TOPICS = new Set([
@@ -30,6 +33,7 @@ const VALID_TOPICS = new Set([
   "alerts",
   "sim",
   "analysis",
+  "costs",
 ]);
 
 const clients = new Set<WsClient>();
@@ -98,21 +102,30 @@ export function fanOut(topicKey: string, event: object): void {
       client.subscriptions.has(topicKey) &&
       client.ws.readyState === WebSocket.OPEN
     ) {
+      if (client.ws.bufferedAmount > 256 * 1024) {
+        client.ws.terminate();
+        continue;
+      }
       client.ws.send(payload);
       wsEventsForwarded.inc({ topic: topicKey });
     }
   }
 }
 
-export function setupWebSocket(server: Server): void {
+export function setupWebSocket(server: Server): WebSocketServer {
   const wss = new WebSocketServer({
     server,
     path: "/ws",
+    maxPayload: 4096,
+    perMessageDeflate: false,
     verifyClient: (
       info: { req: IncomingMessage },
       callback: (result: boolean, code?: number, message?: string) => void,
     ) => {
-      const valid = verifyTokenFromRequest(info.req);
+      const origin = info.req.headers.origin;
+      const validOrigin = process.env.PUBLIC_DEPLOYMENT !== "true" ||
+        origin === process.env.PUBLIC_ORIGIN;
+      const valid = validOrigin && clients.size < 64 && verifyTokenFromRequest(info.req);
       if (!valid) {
         callback(false, 401, "Unauthorized");
       } else {
@@ -121,11 +134,17 @@ export function setupWebSocket(server: Server): void {
     },
   });
 
-  wss.on("connection", (ws: WebSocket, _req: IncomingMessage) => {
+  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+    const token = req.headers.authorization?.replace(/^Bearer /, "") ||
+      new URL(req.url ?? "/ws", "http://localhost").searchParams.get("token") || "";
+    const claims = verifyAccessToken(token);
     const client: WsClient = {
       ws,
       subscriptions: new Set(),
       alive: true,
+      expires: (claims.exp ?? (Date.now() / 1000 + 3600)) * 1000,
+      messages: 0,
+      windowStart: Date.now(),
     };
     clients.add(client);
     wsConnectionsGauge.set(clients.size);
@@ -141,6 +160,10 @@ export function setupWebSocket(server: Server): void {
     );
 
     ws.on("message", (raw: Buffer) => {
+      if (Date.now() - client.windowStart > 1000) {
+        client.windowStart = Date.now(); client.messages = 0;
+      }
+      if (++client.messages > 30) { ws.close(1008, "Message rate exceeded"); return; }
       try {
         const msg = JSON.parse(raw.toString());
 
@@ -201,7 +224,7 @@ export function setupWebSocket(server: Server): void {
 
   const heartbeatInterval = setInterval(() => {
     for (const client of clients) {
-      if (!client.alive) {
+      if (!client.alive || client.expires <= Date.now() || client.ws.bufferedAmount > 256 * 1024) {
         client.ws.terminate();
         clients.delete(client);
         wsConnectionsGauge.set(clients.size);
@@ -224,4 +247,5 @@ export function setupWebSocket(server: Server): void {
   wss.on("close", () => {
     clearInterval(heartbeatInterval);
   });
+  return wss;
 }

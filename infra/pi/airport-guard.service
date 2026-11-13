@@ -1,0 +1,8 @@
+[Unit]
+Description=Airport simulation resource guard
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/arthur-airport
+ExecStart=/usr/bin/python3 /opt/arthur-airport/scripts/pi_guard.py

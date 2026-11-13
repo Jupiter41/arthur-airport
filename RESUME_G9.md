@@ -1,6 +1,9 @@
 # Weekend checkpoint — 2026-11-13
 
-G9 is still OPEN/PARTIAL. Do not mark it closed based on unit tests alone.
+Historical checkpoint, superseded by ROADMAP_REAL_LDT.md A55. G9 is now closed
+after eight independent-process Neo4j/Kafka recovery checks, including actual
+REALTIME/BULK owner snapshots and pre-tick checkpoint restoration. The original
+notes below are retained for traceability.
 
 ## Completed before this checkpoint
 

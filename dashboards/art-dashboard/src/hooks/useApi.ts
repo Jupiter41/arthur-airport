@@ -1,4 +1,4 @@
-import { getAuthToken } from "./auth";
+import { getAuthToken, controlHeaders } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
 import type { WeatherState } from "../types";
 import type {
@@ -80,6 +80,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${bearer}`,
+          ...controlHeaders(),
           ...init?.headers,
         },
       });
@@ -92,7 +93,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     if (!res.ok) {
-      const msg = `API ${res.status}: ${res.statusText}`;
+      const detail = await res.json().catch(() => ({})) as { error?: string };
+      const msg = detail.error ?? `API ${res.status}: ${res.statusText}`;
       useConnectionStore.getState().setApiConnected(false, msg);
       throw new Error(msg);
     }

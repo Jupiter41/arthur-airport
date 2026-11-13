@@ -1,11 +1,9 @@
 """Seeder orchestration — coordinates schedule + passenger + baggage seeding."""
 
 import logging
-import os
 from datetime import timedelta
 
 from db.neo4j import get_driver
-from services.airport_config import load_airport_runtime_config
 from services.clock import get_sim_time, get_sim_day, SIM_START_TIME
 from services.schedule import generate_schedule
 from services.passengers import generate_passengers
@@ -17,13 +15,8 @@ logger = logging.getLogger(__name__)
 
 def _daily_flight_target() -> int:
     """Resolve daily flight target from env override or airport config."""
-    runtime = load_airport_runtime_config()
-    return int(
-        os.getenv(
-            "DAILY_FLIGHT_TARGET",
-            str(runtime.simulation.daily_flight_target),
-        )
-    )
+    from services.settings import get_settings
+    return get_settings().daily_flights
 
 
 async def _day_already_seeded(sim_date) -> bool:

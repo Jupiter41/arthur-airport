@@ -25,11 +25,11 @@ index, avoiding full node/property scans as synthetic history accumulates.
 
 `BaggageZoneSnapshot` on `baggage.events` contains `zones` (the complete zone
 summary: `zone_id`, `items`, `throughput_per_hour`, `utilisation_pct`, `status`)
-and `at` in simulation time. It is published every normal tick and every twenty
-BULK ticks, independent of per-bag event suppression. The latest payload is
+and `at` in simulation time. It is published every REALTIME and BULK tick,
+independent of per-bag event suppression. The latest payload is
 persisted by baggage-service in `BaggageProjection {id: 'latest', document}` so
-analysis can recover occupancy without replaying sampled events. Persistence
-precedes publication; transactional outbox delivery remains tracked in G1.
+analysis can recover occupancy without replaying sampled events. Projection,
+runtime checkpoint and outbox fact commit in the same owner transaction.
 
 Flight-wide and induction status changes may use one Neo4j batch transaction.
 Each changed bag still receives its own scan-history record and Kafka fact;
@@ -421,6 +421,11 @@ for restart-safe redelivery. See `EVENT_BUS.md`, “Real LDT execution and plann
 corrections”, for the lifecycle and transaction-boundary limitation.
 
 ### G1 transaction boundary
+
+Every committed tick persists `BaggageProjection` and stages the full unsampled
+`BaggageZoneSnapshot`, including the first tick in BULK mode. Aggregate recovery
+does not wait for the slower metrics/display cadence. Cross-terminal transit
+destinations and remaining travel time are part of the versioned owner runtime.
 
 A clock tick locks `BaggageOutboxSeq` before planning. Conveyor/transit progress,
 domain writes, scan history, aggregate projection, checkpoint and facts commit

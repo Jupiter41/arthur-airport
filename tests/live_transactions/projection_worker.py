@@ -61,6 +61,23 @@ async def main():
             await query(f"MATCH(n:{label}) DETACH DELETE n")
     elif mode == "resolve":
         await query("MATCH(s:SecurityCheckpoint) SET s.queue_depth=0, s.wait_minutes=0, s.frozen=false")
+    elif mode == "proposal":
+        from datetime import datetime
+        from services.approval_queue import Proposal
+        document = await projection_store.load()
+        rec = next(r for r in document["recommendations"] if r["executable"])
+        now = datetime.fromisoformat(document["clock"]["sim_time"])
+        proposal = Proposal(id="g1-projection-proposal", action_type=rec["action_type"],
+            description="Synthetic recovery proposal", parameters=rec["parameters"],
+            confidence_score=0.8, proposed_by="test", proposed_at=now.isoformat(),
+            recommendation_id=rec["id"], bottleneck_id=rec["bottleneck_id"])
+        await proposal_store.create(proposal.to_dict(), now)
+        await projection_store.evaluate()
+    elif mode == "reject-proposal":
+        from datetime import datetime
+        await proposal_store.reject("g1-projection-proposal", datetime(2100, 1, 1, 12),
+                                    "test", "Synthetic rejection")
+        await projection_store.evaluate()
     elif mode in ("fail", "exit-before-commit"):
         original = proposal_store._outbox
         async def fail(tx, revision, messages):

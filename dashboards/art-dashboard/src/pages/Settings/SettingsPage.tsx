@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { simApi } from "../../hooks/useApi";
+import { useAccess } from "../../hooks/auth";
 import { NumberInput, Toggle, SelectInput, Section } from "./FormControls";
 import { HourlyWeightsEditor } from "./HourlyWeightsEditor";
 import { SpeedSelector } from "./SpeedSelector";
@@ -12,6 +13,12 @@ import { WEATHER_OPTIONS } from "./types";
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+  const publicDeployment = import.meta.env.VITE_PUBLIC_DEPLOYMENT === "true";
+  const access = useAccess();
+  const [refreshingAccess, setRefreshingAccess] = useState(false);
+  const [controlReady, setControlReady] = useState(false);
+  const canChange = access.role !== "viewer" &&
+    (import.meta.env.VITE_PUBLIC_DEPLOYMENT !== "true" || access.controlling);
 
   const { data: status } = useQuery<SimStatus>({
     queryKey: ["sim-status"],
@@ -27,6 +34,17 @@ export default function SettingsPage() {
   const [local, setLocal] = useState<SimSettings | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setControlReady(false);
+    if (!canChange) return;
+    setRefreshingAccess(true);
+    void simApi.settings().then(settings => {
+      setLocal(settings as SimSettings); setDirty(false);
+      queryClient.setQueryData(["sim-settings"], settings);
+      setControlReady(true);
+    }).catch(() => setControlReady(false)).finally(() => setRefreshingAccess(false));
+  }, [canChange, queryClient]);
 
   useEffect(() => {
     if (serverSettings && !local) {
@@ -70,7 +88,7 @@ export default function SettingsPage() {
     const diff: Record<string, unknown> = {};
     if (serverSettings) {
       for (const key of Object.keys(local) as (keyof SimSettings)[]) {
-        if (local[key] !== serverSettings[key]) {
+        if (JSON.stringify(local[key]) !== JSON.stringify(serverSettings[key])) {
           diff[key] = local[key];
         }
       }
@@ -100,7 +118,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4 space-y-4">
+    <fieldset disabled={!canChange || refreshingAccess || !controlReady} className="h-full overflow-y-auto p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-white flex items-center gap-2">
@@ -173,7 +191,7 @@ export default function SettingsPage() {
             value={local.daily_flights}
             onChange={(v) => patch("daily_flights", v)}
             min={50}
-            max={1200}
+            max={publicDeployment ? 100 : 1200}
           />
           <NumberInput
             label="Load factor"
@@ -188,7 +206,7 @@ export default function SettingsPage() {
             value={local.pax_multiplier}
             onChange={(v) => patch("pax_multiplier", v)}
             min={0.1}
-            max={5.0}
+            max={publicDeployment ? 1 : 5.0}
             step={0.1}
           />
           <SelectInput
@@ -346,7 +364,7 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Autonomous Operations (P2-4-1) ── */}
-      <AutonomousSection />
-    </div>
+      {!publicDeployment && <AutonomousSection />}
+    </fieldset>
   );
 }

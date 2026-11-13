@@ -10,6 +10,7 @@ from services import clock
 from services.airport_config import load_airport_runtime_config
 from services.schedule import get_schedule_from_neo4j
 from services.settings import get_settings, update_settings
+from services.runtime_state import checkpoint
 from kafka.producer import emit_inject_incident
 from db.neo4j import get_driver
 
@@ -117,18 +118,21 @@ async def sim_speed(req: SpeedRequest):
             detail=f"Invalid speed. Valid values: {sorted(VALID_SPEEDS)}",
         )
     clock.set_speed(req.speed_multiplier)
+    await checkpoint(command="speed")
     return await sim_status()
 
 
 @router.post("/sim/pause")
 async def sim_pause():
     clock.pause()
+    await checkpoint(command="pause")
     return {"paused": True, "sim_time": clock.get_sim_time().isoformat()}
 
 
 @router.post("/sim/resume")
 async def sim_resume():
     clock.resume()
+    await checkpoint(command="resume")
     return {"paused": False, "sim_time": clock.get_sim_time().isoformat()}
 
 
@@ -392,4 +396,5 @@ async def sim_settings_patch(body: dict):
         updated = update_settings(body)
     except Exception as e:
         raise HTTPException(status_code=422, detail=str(e))
+    await checkpoint(command="settings")
     return updated.model_dump()
