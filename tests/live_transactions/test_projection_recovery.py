@@ -84,7 +84,7 @@ def test_actual_owner_snapshots_reach_analysis_without_sampled_drift(speed):
 @pytest.mark.parametrize("owner", ["flight", "passenger", "baggage"])
 def test_owner_checkpoint_is_available_before_first_new_tick(owner):
     worker(owner, "seed", auxiliary=owner == "flight")
-    committed = worker(owner, "tick", auxiliary=owner in {"flight", "baggage"})
+    committed = worker(owner, "tick", auxiliary=owner in {"flight", "baggage"}, progress=owner == "flight")
     startup = worker(owner, "startup")
     assert startup["checkpoint"] == json.loads(committed["runtime"][0]["document"])
     assert startup["sim_time"] == committed["runtime"][0]["tick"]
@@ -92,3 +92,5 @@ def test_owner_checkpoint_is_available_before_first_new_tick(owner):
         assert '"type": "TransitBag"' in json.dumps(startup["checkpoint"])
     if owner == "flight":
         assert '"type": "TurnaroundPlan"' in json.dumps(startup["checkpoint"])
+        assert startup["progress"]["pending_requests"] > 0
+        assert startup["progress"]["travelling"] > 0

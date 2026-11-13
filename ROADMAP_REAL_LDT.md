@@ -1,12 +1,11 @@
 # Roadmap to a Real Living Digital Twin (LDT)
 
-> **Current verification: 2026-11-12 (see A42 for validation limits).** The architecture review in §§0–9 and
-> execution entries A1–A10 are historical observations, not a blanket claim that
-> the LDT is complete. A11–A14 record this continuation; §10 is the current gap
-> register. In particular, the old “applied” behavior in A8/A9 was an audit fact,
-> not domain execution. It has been replaced by command dispatch plus owner
-> receipts. Targeted Kafka/Neo4j checks pass; the complete runtime gate still has
-> unresolved large-history performance failures documented in A41/A42.
+> **Current verification: 2026-11-13 (A54/A55).** Sections 0–9 and early
+> execution entries are historical observations. Section 10 is the current gap
+> register. G9 graph recovery is validated with independent Neo4j/Kafka workers,
+> including REALTIME/BULK production snapshots and pre-tick startup restoration.
+> The pre-G9 runtime gate passed 136 tests; final consolidated evidence is recorded
+> in A55. These checks do not claim completion of every modelling/calibration gap.
 
 > Principal-architect / product-CTO review of the Arthur International Airport digital twin, and a
 > pragmatic transformation plan to evolve it from a **facade of an LDT** into an **operational LDT**
@@ -26,8 +25,8 @@ coding alone (they need a decision from the owner or a running cluster).
 
 | ID | Pri | Title | Status | Note / blocked-on |
 |----|-----|-------|--------|-------------------|
-| G1  | P0   | Transactional domain-write + outbox/inbox boundaries | ⚠ substantially closed (2026-11-13) | A40+A42: shared `_common/outbox.py`; discrete-event handlers (G1-c) + transactional command receipts (G1-b) atomic in all three owners; per-tick checkpoint atomicity (G1-a) **done for pax+baggage**, **partial for flight**. Remainder: flight tick-consolidation + `ensure_gate_assigned`/turnaround/ground-vehicle/fuel/bulk-snapshot, pax `OpenSecurityLane`; **CI live-stack validation** is the closure bar |
-| G2  | P0–P1| Shared financial rates + accounting perspective | ⚠ partial | **Blocked on owner decision:** airport-vs-airline accounting perspective (30% landing/compensation assumptions) |
+| G1  | P0   | Transactional domain-write + outbox/inbox boundaries | ✅ closed (local owner boundary) | Remote G1 completion merged; all 28 independent-process transaction/crash/fencing/Kafka checks pass (A55). Broader cluster/load certification remains G12. |
+| G2  | P0–P1| Shared financial rates + accounting perspective | ✅ closed | Shared airport-v1 accounting, separate airline exposure, full compensation liability and airport-only planning benefits; two live accounting/planning checks pass (A55). |
 | G3  | P1   | Transport/logging/consumer consolidation into `_common` | ⚠ partial | Shared transport loops delivered; application-boundary separation remains (§10). |
 | G4  | P1   | Unify the 3 what-if simulators → one effect core | ☐ open | Largest remaining coding item; needs design + historical validation |
 | G5  | P1   | Unified impact×confidence÷cost ranking + cost signals | ⚠ partial | Shared ranking delivered; comparable causal effects and outcome calibration remain (§10). |
@@ -1253,8 +1252,8 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 
 | ID / priority | Remaining gap and evidence | What completion actually requires |
 |---|---|---|
-| G1 / P0 — substantially closed (A42) | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. A24 adds atomic analysis proposal decisions/attempts, lifecycle facts and command outbox entries. **A40 (2026-11-13)** adds the shared `_common/outbox.py` (generic `inbox_seen`/`mark_inbox`/`stage_outbox`/`run`) and makes the *canonical entity status-change path* atomic in all three remaining owners: flight (`_execute_transition` → `FlightStatusChanged` + `reassign_gate` → `FlightGateAssigned`), passenger (`_on_flight_status_changed` → deplaning/departed), baggage (flight-departed → bags `in_hold`). Each commits domain write + durable `*Inbox` dedup + `*Outbox` fact in one Neo4j transaction, with a lifespan-managed delivery loop publishing with stable IDs until broker ack. Container-free rollback/replay/ordering tests pass (31 new); full unit suite 1099 pass (6 pre-existing env-only failures). **A42 (2026-11-13)** closes most of the remainder: discrete-event handlers (G1-c) atomic in all three owners; transactional command receipts (G1-b, via `_common/command_store.save_receipt_in_tx`); per-tick single-transaction checkpoint atomicity (G1-a) **done for passenger + baggage** (locked `PassengerRuntime`/`BaggageOutboxSeq`, `tick.sim_time ≤ last_tick` replay guard, compute-then-apply), **partial for flight** (per-transition atomicity; full tick-consolidation deferred). Integrated unit suite 1142 pass / 5 pre-existing env-only fail, zero regressions, ruff clean. | **Still open:** flight's full per-tick consolidation + its `ensure_gate_assigned`/turnaround/ground-vehicle/fuel-warning/bulk-snapshot emits; passenger `OpenSecurityLane`. Deliberate deviations: passenger per-tick facts stay sampled (domain write + checkpoint are atomic; event *stream* sampled to avoid fast-forward flooding); baggage/passenger deliver the receipt *fact* via `emit` (idempotent, dedup by `command_id`) rather than the outbox. **CI live-stack (Neo4j+Kafka) validation remains the closure bar** — crash-mid-tick resume, competing-worker fencing, Kafka replay could not run in this container-free environment. Financial Kafka delivery remains at-least-once with stable IDs, not exactly once. |
-| G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
+| G1 / P0 — **closed for local owner boundaries** (2026-11-13, A55) | The merged remote G1 work consolidates full flight/passenger/baggage ticks, commands, domain writes, public aggregates, checkpoints and facts under each owner transaction; audit batches remain unsampled in BULK. Shared scoped repositories prevent nested commits. Stable-ID outboxes retain facts through broker failure and replay. | All 28 independent-process Neo4j/Kafka transaction tests pass, covering rollback, abrupt exits, competing ticks/commands, owner lock ordering and acknowledged input/output replay. Preserve the strict CI gate. Delivery remains at-least-once; broader cluster/load certification is tracked in G12. Historical A40/A42 partial-boundary notes are superseded by the merged G1 completion and A55 evidence. |
+| G2 / P0–P1 — **closed** (2026-11-13, A55) | Shared airport-v1 policy separates airport expense/revenue from airline fuel/handling/compensation exposure. Live and planning calculations use full compensation liability; investment benefits include airport financial effects only. Legacy checkpoints/results are migrated or labelled. Frozen financial rate inputs remain versioned. | Two strict live accounting/planning checks pass (20.53s), including real reports, ledger migration/restart, Kafka acknowledgement, planning policy and legacy result labels. The migration test runs with the standard isolated financial worker and indexed fixture cleanup. Predictive accuracy and causal savings remain G8. |
 | G3 / P1 — partial | A27/A33/A34 consolidate logging and transport lifecycle; A39 shares three batch-consumer loops. Baggage/passenger retain deferred commands, and analysis/cost retain retry/manual-commit semantics. Consumer modules still combine transport and domain orchestration. Sharing loops does not complete the original application-boundary work. | Invert application orchestration so domain handlers live in `application/` and consumers are thin adapters, retaining command-before-clock and retry tests. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 — partial | A25/A36/A37 unify ranked financial/operational recommendations and deprecate the separate cost endpoint. A40 repairs financial snapshots to use transaction-local totals, including current tick charges, and commit through the durable outbox. Scores remain heuristic; a scored action may still be advisory, including makeup carousels and rebooking. | Validate comparable impact/cost units and causal action effects; calibrate against measured outcomes (G8). Ranking is not evidence of executability or financial savings. |
@@ -3098,7 +3097,7 @@ files across six running services. Evidence: `ldt-home-postgate-concurrent.json`
 and `ldt-home-source-parity.txt`. These results precede the G9 branch integration.
 
 
-## 36. A43 — G1 complete owner boundaries and strict live CI gate (2026-11-13)
+## Remote history — G1 A43 — G1 complete owner boundaries and strict live CI gate (2026-11-13)
 
 **Closed scope.** Flight, passenger and baggage now lock their owner runtime before
 planning a tick. `_common/transaction_scope.py` borrows that transaction for every
@@ -3170,7 +3169,7 @@ This closes G1's owner transaction/delivery boundary, not G12's sustained-load o
 cluster certification, nor the other open §10 modelling/recovery gaps.
 
 
-## A44 — Close G2: airport accounting perspective (2026-11-13)
+## Remote history — G2 A44 — Close G2: airport accounting perspective (2026-11-13)
 
 **Owner decision:** use airport operating profit as the main financial view,
 with airline expenses and savings displayed separately. `_common.accounting`
@@ -3251,3 +3250,17 @@ Evidence: `.pytest_cache/g9-domain-live.txt`, `g9-projection-verified.txt`,
 and `g9-full-stack.txt`. The disposable recovery tests are required in CI and
 build analysis alongside the three owners. G9 is ticked done in both tables;
 the other open modelling/calibration rows are not silently closed.
+
+The strengthened flight startup fixture also exhausts the fuel fleet through
+the real request API, then verifies nonempty pending requests and in-flight
+vehicle travel before any new tick: **one live check passes in 7.54s**
+(`g9-pending-progress.txt`). G1/G2 status rows now reflect the merged implementations
+and local evidence rather than their superseded partial-boundary notes.
+
+The first consolidated full-stack attempt exposed an unrelated new accounting
+test failure: migration replay raced the active financial consumer, and generic
+fixture cleanup scanned every graph label. The test now reuses the existing
+isolated financial-worker fixture and indexed Flight/Terminal cleanup, retaining
+the 90-second deadline. Both accounting/planning checks pass in **20.53s**
+(`g9-accounting-verified.txt`). No production timeout was widened. The final
+consolidated run is recorded in `g9-complete-stack.txt`.

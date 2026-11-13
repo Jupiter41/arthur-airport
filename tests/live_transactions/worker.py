@@ -101,6 +101,11 @@ async def tick():
             consumer._state.vehicle_pool.initialize_fleet()
             consumer._state.holding_minutes["g1-second"] = 29
             consumer._state.noise_settings.update(diversion_rate=0, equipment_failure_rate=0)
+            if ARGS.get("progress"):
+                from services.ground_vehicles import VEHICLE_TASK_MAP, FLEET_SIZE
+                task = next(key for key, value in VEHICLE_TASK_MAP.items() if value == "fuel_truck")
+                for _ in range(FLEET_SIZE["fuel_truck"] + 1):
+                    consumer._state.vehicle_pool.request_vehicle(task, "g1-gate", "g1-second", CLOCK)
     from datetime import timedelta
     clock = CLOCK + timedelta(minutes=ARGS.get("minute", 0))
     await consumer._dispatch({"event_id": "g1-tick", "event_type": "SimClockTick",
@@ -199,8 +204,13 @@ async def main():
         else:
             await consumer._state.rebuild_from_neo4j()
         codec = consumer.tick_snapshot if OWNER == "flight" else consumer._TICK_CODEC
+        progress = {}
+        if OWNER == "flight":
+            pool = consumer._state.vehicle_pool
+            progress = {"pending_requests": len(pool.pending_requests),
+                        "travelling": sum(v.arrives_at is not None for v in pool.vehicles.values())}
         print(json.dumps({"checkpoint": json.loads(codec.dump(consumer._state)),
-                          "sim_time": consumer._state.sim_time.isoformat()}), flush=True)
+                          "sim_time": consumer._state.sim_time.isoformat(), "progress": progress}), flush=True)
         await db.close_neo4j()
         return
     elif mode == "snapshot":

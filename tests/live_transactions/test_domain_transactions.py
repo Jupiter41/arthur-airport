@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def worker(owner, mode, *, command=False, code=0, auxiliary=False, speed="REALTIME", minute=0):
+def worker(owner, mode, *, command=False, code=0, auxiliary=False, speed="REALTIME", minute=0, progress=False):
     assert os.getenv("G1_DISPOSABLE_STACK") == "1", "Set G1_DISPOSABLE_STACK=1 for an isolated infra-only stack"
     result = subprocess.run([
         "docker", "compose", "run", "--rm", "-T", "--no-deps",
@@ -27,7 +27,7 @@ def worker(owner, mode, *, command=False, code=0, auxiliary=False, speed="REALTI
         "-v", f"{ROOT}/services/{owner}-service:/g1-source:ro",
         f"{owner}-service", "python", "/g1-tests/worker.py",
     ], cwd=ROOT, input=json.dumps({"owner": owner, "mode": mode, "command": command,
-            "auxiliary": auxiliary, "speed": speed, "minute": minute}),
+            "auxiliary": auxiliary, "speed": speed, "minute": minute, "progress": progress}),
         text=True, capture_output=True, timeout=150)
     assert result.returncode == code, result.stdout + result.stderr
     return json.loads(result.stdout.strip().splitlines()[-1]) if code == 0 else None
