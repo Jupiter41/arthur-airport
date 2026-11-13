@@ -4,6 +4,7 @@ Hot path: updated incrementally on each state change. Never queries Neo4j per ti
 """
 
 from collections import defaultdict
+from _common.transaction_scope import current
 
 from db.neo4j import get_driver
 
@@ -49,6 +50,10 @@ def get_capacity(zone: str) -> int:
 
 def move_passenger(old_zone: str | None, new_zone: str) -> None:
     """Update density when a passenger moves zones."""
+    scope = current.get()
+    if scope is not None:
+        scope.effects.append(lambda: move_passenger(old_zone, new_zone))
+        return
     if old_zone:
         _zone_density[old_zone] = max(0, _zone_density[old_zone] - 1)
     _zone_density[new_zone] += 1
@@ -56,6 +61,10 @@ def move_passenger(old_zone: str | None, new_zone: str) -> None:
 
 def remove_passenger(zone: str) -> None:
     """Remove a passenger from a zone (e.g. departed_airport)."""
+    scope = current.get()
+    if scope is not None:
+        scope.effects.append(lambda: remove_passenger(zone))
+        return
     _zone_density[zone] = max(0, _zone_density[zone] - 1)
 
 

@@ -104,7 +104,7 @@ class Tx:
         if "MERGE (s:FlightRuntime" in query:
             db["runtime_rev"] += 1
             return Result([{"revision": db["runtime_rev"]}])
-        if "MATCH (i:FlightInbox" in query:
+        if "i:FlightInbox" in query and "RETURN i.id" in query:
             return Result([{"id": p["id"]}] if p["id"] in db["inbox"] else [])
         if "MERGE (i:FlightInbox" in query:
             db["inbox"].add(p["id"])
@@ -429,3 +429,42 @@ def test_runway_assignment_in_tx_is_atomic(flight_ctx):
     assert driver.db["runways"]["F1"] == "09L"
     assert _facts(driver) == {"FlightRunwayAssigned"}
     assert asyncio.run(consumer._commit_flight_writes(event_id, SIM_TIME, facts, [_w])) is False
+
+
+def test_restart_retains_checkpointed_weather_and_preserves_newer_input():
+    from datetime import timedelta
+    mod = _CONSUMER
+    saved = mod.FlightConsumerState()
+    saved.last_tick_sim_time = SIM_TIME
+    saved.weather_updated_at = SIM_TIME
+    saved.weather_affected_runways = {"09R"}
+    saved.runway_queue.update_capacity(10, 12, "IMC")
+    document = mod.tick_snapshot.dump(saved)
+    restarted = mod.FlightConsumerState()
+    mod.tick_snapshot.restore(restarted, document)
+    assert restarted.runway_queue.weather_category == "IMC"
+    assert restarted.weather_affected_runways == {"09R"}
+    newer = mod.FlightConsumerState()
+    newer.weather_updated_at = SIM_TIME + timedelta(minutes=1)
+    newer.runway_queue.update_capacity(22, 24, "VMC")
+    mod.tick_snapshot.restore(newer, document)
+    assert newer.runway_queue.weather_category == "VMC"
+    assert newer.weather_affected_runways == set()
+
+
+def test_flight_checkpoint_restores_executable_turnaround_vehicle_and_queue_types():
+    mod = _CONSUMER
+    saved = mod.FlightConsumerState()
+    saved.runway_queue.enqueue_arrival("F1", SIM_TIME.isoformat())
+    plan = mod.create_turnaround_plan("G1-REG", "F1", "A320")
+    plan.start(SIM_TIME)
+    saved.turnaround_plans["G1-REG"] = plan
+    saved.vehicle_pool.initialize_fleet()
+    saved.task_vehicles[("G1-REG", "fueling")] = "GV-FUE-001"
+    restored = mod.FlightConsumerState()
+    mod.tick_snapshot.restore(restored, mod.tick_snapshot.dump(saved))
+    assert restored.turnaround_plans["G1-REG"].tasks["fueling"].status.value == "in_progress"
+    assert restored.turnaround_plans["G1-REG"].critical_path_minutes() == plan.critical_path_minutes()
+    assert len(restored.vehicle_pool.vehicles) == len(saved.vehicle_pool.vehicles)
+    assert restored.task_vehicles[("G1-REG", "fueling")] == "GV-FUE-001"
+    assert restored.runway_queue.assign_slots(SIM_TIME)[0]["flight_id"] == "F1"

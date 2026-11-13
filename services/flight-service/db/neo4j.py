@@ -48,7 +48,9 @@ async def close_neo4j() -> None:
 
 def get_driver() -> AsyncDriver:
     """Return the initialised async Neo4j driver, or raise if not yet initialised."""
-    return neo4j_client.get_driver()
+    from _common.transaction_scope import current, borrowed, TransactionDriver
+    scope = current.get() or borrowed.get()
+    return TransactionDriver(scope) if scope is not None else neo4j_client.get_driver()
 
 
 async def check_neo4j() -> bool:

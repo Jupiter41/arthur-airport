@@ -583,3 +583,16 @@ commands. Commands wait for a validated simulation clock, retain partition order
 and retry transient failures. Offsets are committed after durable receipt handling;
 receipts remain replayable from Neo4j. This does not close the domain-write/receipt
 transaction gap or provide a transactional Kafka outbox.
+
+### G1 transaction boundary
+
+A clock tick locks `PassengerRuntime` before planning. Its domain writes, durable
+runtime checkpoint and pending facts commit in one Neo4j transaction. A failed
+attempt discards private queue/cache state; replay at or before the checkpoint
+is a no-op. Lane overrides and rebooking commit their receipt and receipt fact
+with the domain mutation. Inputs are acknowledged only after successful processing.
+
+Individual tick status notifications remain sampled for display throughput.
+`PassengerStatusBatchChanged` is the unsampled audit fact: `status_groups`
+(`ids`, `status`, `zone`), `dwell_items`, `location_updates` and `risk_updates`
+carry all FSM writes for that tick. Warm-start status cohorts use the same event.

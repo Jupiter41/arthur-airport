@@ -763,8 +763,8 @@ Owning services publish `CommandExecuted` or `CommandRejected` on their existing
 `{command_id, command_type, reason}`. `reason` is null on success. Receipts use
 the owner's current simulation clock. Receipt records are stored in Neo4j;
 redelivery re-emits the saved result without repeating the operation. A crash
-between a domain write and receipt persistence is still a transaction-boundary
-gap; this is not an exactly-once guarantee.
+between a domain write and receipt persistence is closed for flight, passenger
+and baggage owners by their transactional outbox boundaries (G1/A43); this is not an exactly-once guarantee.
 
 `SecurityLanesChanged` on `passengers.events` carries `terminal`, `lanes_open`
 and `previous_lanes_open`. Passenger-service persists each lane override in
@@ -871,4 +871,16 @@ reassignment; REST decisions read that shared simulation time. Analysis commits
 consumer offsets after durable input handling and proposal evaluation succeed.
 New consumer groups replay retained inputs from the earliest offset. Other
 analysis projections/bottleneck discovery, epochs, training recovery and domain
-owner mutation/receipt/outbox atomicity remain separate roadmap gaps.
+owner mutation/receipt/outbox atomicity is enforced for flight, passenger and
+baggage owners by G1/A43; broader cluster/load validation remains G12.
+
+### G1 unsampled transition batches
+
+`PassengerStatusBatchChanged` (`passengers.events`) contains `status_groups`
+(`ids`, `status`, `zone`), `dwell_items` (`[passenger_id, minutes]`),
+`location_updates` and `risk_updates`. `BaggageStatusBatchChanged`
+(`baggage.events`) contains `status_changes` (`id`, `status`, `zone`), `flags`
+and `loaded_rows`. Both use the standard envelope and tick `sim_time`, are
+staged atomically with all corresponding writes/checkpoint, and remain unsampled
+in BULK mode. Individual per-entity display notifications retain their existing
+sampling policy. Delivery is at-least-once with stable outbox event IDs.

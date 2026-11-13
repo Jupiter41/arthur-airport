@@ -13,8 +13,6 @@ import json
 import os
 import sys
 
-import pytest
-
 # Ensure services/ is on sys.path so _common is importable without a service context.
 _SERVICES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "services")
 if _SERVICES_DIR not in sys.path:
@@ -260,3 +258,39 @@ class TestLifecycle:
 
         asyncio.run(kafka_runtime.run_consumer_loop(broker, dispatch, lambda: running[0]))
         assert seen == ["A", "B", "C"]
+
+
+def test_manual_ack_retries_dispatch_before_committing_input():
+    """A failed transaction must not lose its Kafka input or advance the offset."""
+    attempts, acknowledged = [], []
+    running = True
+    event = {"event_id": "retry-me", "event_type": "DomainFact"}
+
+    class Broker:
+        def consume(self, *args, **kwargs):
+            class Message:
+                def error(self):
+                    return None
+                def value(self):
+                    import json
+                    return json.dumps(event).encode()
+            return [Message()]
+        def commit(self, asynchronous):
+            assert attempts == ["failed", "committed"]
+            assert asynchronous is False
+            acknowledged.append(True)
+        def close(self):
+            pass
+
+    async def dispatch(envelope):
+        nonlocal running
+        if not attempts:
+            attempts.append("failed")
+            raise RuntimeError("injected domain transaction failure")
+        attempts.append("committed")
+        running = False
+
+    from _common.kafka_runtime import run_consumer_loop
+    asyncio.run(run_consumer_loop(Broker(), dispatch, lambda: running,
+                                  manual_commit=True, timeout=0.01))
+    assert acknowledged == [True]

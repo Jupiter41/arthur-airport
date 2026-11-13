@@ -5,7 +5,7 @@ import importlib
 import sys
 from datetime import datetime
 from types import ModuleType
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -71,6 +71,7 @@ class _FakeDriver:
             "receipts": {},   # command_id -> (event_type, payload_json)
             "outbox": {},
             "gates": {},
+            "inbox": set(),
         }
         self.fail_on = None
 
@@ -107,7 +108,7 @@ class _Tx:
         if "MERGE (s:FlightRuntime" in query:
             db["runtime_rev"] += 1
             return _FakeResult([{"revision": db["runtime_rev"]}])
-        if "MATCH (r:CommandReceipt" in query:
+        if "RETURN r.event_type" in query:
             rec = db["receipts"].get(p["id"])
             return _FakeResult([{"event_type": rec[0], "payload": rec[1]}] if rec else [])
         if "MERGE (r:CommandReceipt" in query:
@@ -122,9 +123,10 @@ class _Tx:
         if "MERGE (f)-[r:ASSIGNED_TO]->(g)" in query:
             db["gates"][p["gate_id"]] = p["flight_id"]
             return _FakeResult([{"gate_id": p["gate_id"]}])
-        if "MATCH (i:FlightInbox" in query:
-            return _FakeResult()
+        if "i:FlightInbox" in query and "RETURN i.id" in query:
+            return _FakeResult([{"id": p["id"]}] if p["id"] in db["inbox"] else [])
         if "MERGE (i:FlightInbox" in query:
+            db["inbox"].add(p["id"])
             return _FakeResult()
         if "CREATE (e:FlightOutbox" in query:
             for row in p["rows"]:
@@ -219,7 +221,12 @@ def test_passenger_lane_change_is_saved_emitted_and_rebuilt(monkeypatch):
     async def passengers(status):
         return []
 
-    monkeypatch.setattr(db, "save_security_lanes", save_lanes)
+    async def atomic(command_id, command_type, terminal, lanes, clock, rejection):
+        assert rejection is None
+        await save_lanes(terminal, lanes, clock)
+        return "CommandExecuted", {}, True
+
+    monkeypatch.setattr(db, "security_lane_command_atomic", atomic)
     monkeypatch.setattr(db, "load_security_lanes", load_lanes)
     monkeypatch.setattr(db, "load_security_breaches", load_breaches)
     monkeypatch.setattr(consumer, "get_passengers_by_status", passengers)
@@ -234,7 +241,7 @@ def test_passenger_lane_change_is_saved_emitted_and_rebuilt(monkeypatch):
     )
     assert saved == {"B": 7}
     assert consumer._state.security.checkpoints["B"].lanes_open == 7
-    assert [kind for kind, _ in events] == ["SecurityLanesChanged", "CommandExecuted"]
+    assert events == []  # The transaction stages both facts for outbox delivery
     consumer._state.security.checkpoints["B"].lanes_open = 1
     asyncio.run(consumer.rebuild_security_from_neo4j())
     assert consumer._state.security.checkpoints["B"].lanes_open == 7
@@ -389,6 +396,46 @@ def test_rejected_gate_assignment_never_emits_gate_assigned(monkeypatch):
     monkeypatch.setattr(consumer, "get_flight_by_id", flight)
     monkeypatch.setattr(consumer, "is_gate_occupied", unoccupied)
     monkeypatch.setattr(consumer, "assign_flight_to_gate_in_tx", reject)
+    monkeypatch.setattr(consumer, "next_outbox_revision", AsyncMock(return_value=1))
     monkeypatch.setattr(consumer, "get_driver", lambda: _Driver())
     assert asyncio.run(consumer.reassign_gate("f1", "missing", NOW)) is None
     assert events == []
+
+
+def test_distinct_commands_at_one_clock_keep_distinct_facts(monkeypatch):
+    consumer, _, _, _, _ = context("flight", monkeypatch)
+    driver = _FakeDriver({"f1": {"id": "f1", "status": "boarding", "flight_number": "ZZ001",
+                                 "estimated_time": "2024-06-15T12:30:00", "delay_minutes": 0}})
+    async def get_flight(key):
+        return dict(driver.db["flights"][key])
+    async def unoccupied(*args, **kwargs):
+        return False
+    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
+    monkeypatch.setattr(consumer, "get_flight_by_id", get_flight)
+    monkeypatch.setattr(consumer, "is_gate_occupied", unoccupied)
+    consumer._state = consumer.FlightConsumerState()
+    consumer._state.sim_time = NOW
+    consumer._command_results.clear()
+    for command_id in ("first", "second"):
+        asyncio.run(consumer._handle_command({
+            "command_id": command_id, "command_type": "ReassignGate",
+            "payload": {"flight_id": "f1", "gate_id": "A01"},
+        }))
+    assert _outbox_types(driver).count("FlightGateAssigned") == 2
+    assert _outbox_types(driver).count("CommandExecuted") == 2
+    assert len(driver.db["outbox"]) == 4
+
+
+def test_rest_holds_read_latest_state_under_owner_lock_and_dedup_retry(monkeypatch):
+    consumer, _, _, _, _ = context("flight", monkeypatch)
+    driver = _FakeDriver({"f1": {"id": "f1", "status": "boarding", "flight_number": "ZZ001",
+                                 "estimated_time": "2024-06-15T12:30:00", "delay_minutes": 0}})
+    async def get_flight(key):
+        return dict(driver.db["flights"][key])
+    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
+    monkeypatch.setattr(consumer, "get_flight_by_id", get_flight)
+    consumer._state = consumer.FlightConsumerState()
+    for reason in ("first", "second", "second"):
+        asyncio.run(consumer.hold_flight("f1", reason, 5, NOW))
+    assert driver.db["flights"]["f1"]["delay_minutes"] == 10
+    assert len(driver.db["outbox"]) == 2

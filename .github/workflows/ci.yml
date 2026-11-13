@@ -20,6 +20,8 @@ jobs:
       - run: pip install ruff==0.15.9
       - name: Lint all Python services
         run: |
+          ruff check services/_common/
+          ruff check tests/live_transactions/
           ruff check services/flight-service/
           ruff check services/passenger-service/
           ruff check services/baggage-service/
@@ -127,5 +129,46 @@ jobs:
             stack-status.txt
             stack-services.log
       - name: Tear down disposable CI stack
+        if: always()
+        run: docker compose down -v
+
+  # G1 uses an infra-only disposable database: owners are independent workers,
+  # so a background consumer/outbox cannot hide an injected crash or drain facts.
+  domain-transactions:
+    name: G1 domain crash, fencing and Kafka replay
+    runs-on: ubuntu-latest
+    needs: [lint-python, unit-tests]
+    timeout-minutes: 35
+    env:
+      G1_DISPOSABLE_STACK: "1"
+      REQUIRE_LIVE_STACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - name: Build the three owning services
+        run: docker compose build flight-service passenger-service baggage-service
+      - name: Start disposable Neo4j and Kafka
+        run: |
+          docker compose up -d --wait neo4j kafka
+          docker compose run --rm --no-deps kafka-init
+      - name: Verify real transactions, process exits and acknowledged replay
+        run: python -m pytest tests/live_transactions -q --tb=short --junitxml=g1-transactions.xml
+      - name: Collect G1 service status and infrastructure logs
+        if: always()
+        run: |
+          docker compose ps -a > g1-stack-status.txt
+          docker compose logs --no-color --tail=200 > g1-stack.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g1-domain-transactions
+          path: |
+            g1-transactions.xml
+            g1-stack-status.txt
+            g1-stack.log
+      - name: Tear down disposable G1 stack
         if: always()
         run: docker compose down -v

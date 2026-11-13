@@ -45,7 +45,9 @@ async def close_neo4j() -> None:
 
 
 def get_driver():
-    return neo4j_client.get_driver()
+    from _common.transaction_scope import current, borrowed, TransactionDriver
+    scope = current.get() or borrowed.get()
+    return TransactionDriver(scope) if scope is not None else neo4j_client.get_driver()
 
 
 async def check_neo4j() -> bool:
@@ -273,12 +275,23 @@ async def bulk_update_status(
         p.{ts_field} = $ts
     RETURN count(p) AS cnt
     """
+    from _common.transaction_scope import current
+    scope = current.get()
+    if scope is not None and passenger_ids:
+        from _common.kafka_runtime import build_envelope
+        document = build_envelope("PassengerStatusBatchChanged", sim_time, {
+            "status_groups": [{"ids": passenger_ids, "status": new_status, "zone": new_zone}],
+            "dwell_items": [], "location_updates": [], "risk_updates": [],
+        }, "passenger-service")
+        scope.facts.append({"id": document["event_id"], "document": document})
+
     async with driver.session() as session:
         result = await session.run(
             query, ids=passenger_ids, status=new_status, zone=new_zone, ts=sim_str,
         )
         record = await result.single()
         return record["cnt"] if record else 0
+
 
 
 async def apply_status_change_atomic(
@@ -326,11 +339,7 @@ async def apply_status_change_atomic(
     async def apply(tx) -> bool:
         if await _outbox.inbox_seen(tx, "PassengerInbox", event_id):
             return False
-        rev_result = await tx.run(
-            "MATCH (o:PassengerOutbox) RETURN coalesce(max(o.revision), 0) AS rev"
-        )
-        rev_row = await rev_result.single()
-        revision = (rev_row["rev"] if rev_row else 0) + 1
+        revision = await next_outbox_revision(tx)
         for group in groups:
             ids = group["ids"]
             if not ids:
@@ -425,11 +434,7 @@ async def apply_changes_atomic(
     async def apply(tx) -> bool:
         if await _outbox.inbox_seen(tx, "PassengerInbox", event_id):
             return False
-        rev_result = await tx.run(
-            "MATCH (o:PassengerOutbox) RETURN coalesce(max(o.revision), 0) AS rev"
-        )
-        rev_row = await rev_result.single()
-        revision = (rev_row["rev"] if rev_row else 0) + 1
+        revision = await next_outbox_revision(tx)
         await _write_status_groups(tx, status_groups, sim_str)
         await _write_location_updates(tx, location_updates)
         await _write_risk_updates(tx, risk_updates)
@@ -506,7 +511,16 @@ async def apply_tick_atomic(
             await dwell_result.consume()
         await _write_location_updates(tx, location_updates)
         await _write_risk_updates(tx, risk_updates)
-        await _outbox.stage_outbox(tx, "PassengerOutbox", facts, revision)
+        if status_groups or dwell_items or location_updates or risk_updates:
+            from _common.kafka_runtime import build_envelope
+            document = build_envelope("PassengerStatusBatchChanged", tick_sim_time, {
+                "status_groups": status_groups, "dwell_items": dwell_items,
+                "location_updates": location_updates, "risk_updates": risk_updates,
+            }, "passenger-service")
+            staged_facts = [*facts, {"id": document["event_id"], "document": document}]
+        else:
+            staged_facts = facts
+        await _outbox.stage_outbox(tx, "PassengerOutbox", staged_facts, revision)
         advance = await tx.run(
             "MATCH (s:PassengerRuntime {id: 'latest'}) SET s.last_tick_sim_time = $ts",
             ts=sim_str,
@@ -548,11 +562,7 @@ async def rebook_passengers_atomic(
     terminal_statuses = ("departed", "arrived", "cancelled", "departed_airport")
 
     async def apply(tx) -> tuple[str, dict, bool]:
-        rev_result = await tx.run(
-            "MATCH (o:PassengerOutbox) RETURN coalesce(max(o.revision), 0) AS rev"
-        )
-        rev_row = await rev_result.single()
-        revision = (rev_row["rev"] if rev_row else 0) + 1
+        revision = await next_outbox_revision(tx)
 
         existing = await load_receipt_in_tx(tx, command_id)
         if existing is not None:
@@ -974,3 +984,61 @@ async def load_security_lanes() -> dict[str, int]:
             "MATCH (s:SecurityCheckpoint) RETURN s.terminal AS terminal, s.lanes_open AS lanes"
         )
         return {row["terminal"]: row["lanes"] async for row in result}
+
+
+async def security_lane_command_atomic(
+    command_id: str, command_type: str, terminal: str | None,
+    lanes: int | None, sim_time: datetime, rejection: str | None = None,
+) -> tuple[str, dict, bool]:
+    """Lane override, domain fact and receipt/fact commit together, even on rejection."""
+    from _common.command_store import load_receipt_in_tx, save_receipt_in_tx
+    from kafka.producer import build_command_receipt_fact
+    from uuid import uuid4
+
+    async def apply(tx):
+        # Shared ordering lock also serializes lane commands against ticks.
+        row = await (await tx.run(
+            "MERGE (s:PassengerRuntime {id: 'latest'}) "
+            "SET s.revision = coalesce(s.revision, 0) + 1 RETURN s.revision AS revision"
+        )).single()
+        revision = row["revision"]
+        receipt = await load_receipt_in_tx(tx, command_id)
+        mutated = receipt is None
+        facts = []
+        if receipt is None:
+            reason = rejection
+            if reason is None:
+                checkpoint = await (await tx.run(
+                    "MERGE (s:SecurityCheckpoint {terminal: $terminal}) "
+                    "WITH s, s.lanes_open AS previous "
+                    "SET s.lanes_open = $lanes, s.updated_at = $ts "
+                    "RETURN previous",
+                    terminal=terminal, lanes=lanes, ts=sim_time.isoformat(),
+                )).single()
+                document = build_command_receipt_fact("SecurityLanesChanged", sim_time, {
+                    "terminal": terminal, "lanes_open": lanes,
+                    "previous_lanes_open": checkpoint["previous"],
+                })
+                facts.append({"id": document["event_id"], "document": document})
+            receipt = ("CommandRejected" if reason else "CommandExecuted", {
+                "command_id": command_id, "command_type": command_type, "reason": reason,
+            })
+            await save_receipt_in_tx(tx, command_id, receipt)
+        document = build_command_receipt_fact(receipt[0], sim_time, receipt[1])
+        # Receipt retries are separate deliveries of the stored outcome.
+        document["event_id"] = str(uuid4())
+        facts.append({"id": document["event_id"], "document": document})
+        await _outbox.stage_outbox(tx, "PassengerOutbox", facts, revision)
+        return receipt[0], receipt[1], mutated
+
+    async with get_driver().session() as session:
+        return await session.execute_write(apply)
+
+
+async def next_outbox_revision(tx) -> int:
+    row = await (await tx.run(
+        "MERGE (s:PassengerRuntime {id: 'latest'}) "
+        "SET s.revision = coalesce(s.revision, 0) + 1 "
+        "RETURN s.revision AS revision"
+    )).single()
+    return row["revision"]

@@ -70,6 +70,12 @@ def _produce_event(
     payload: dict,
     key: str | None = None,
 ) -> None:
+    from _common.transaction_scope import current
+    scope = current.get()
+    if scope is not None:
+        document = kafka_runtime.build_envelope(event_type, sim_time, payload, PRODUCER_NAME)
+        scope.facts.append({"id": document["event_id"], "document": document})
+        return
     kafka_runtime.produce_event(
         _producer, event_type, sim_time, payload,
         producer_name=PRODUCER_NAME, topic=TOPIC, key=key,

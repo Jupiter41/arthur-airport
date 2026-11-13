@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import time
+from uuid import uuid4
 from datetime import datetime, timezone
 
 from confluent_kafka import Producer
@@ -68,7 +69,7 @@ def publish_confirmed(envelope: dict) -> None:
     payload = envelope.get("payload") or {}
     key = payload.get("flight_id") or envelope["event_id"]
     _producer.produce(
-        topic=TOPIC,
+        topic=GROUND_TOPIC if envelope["event_type"].startswith("GroundVehicle") else TOPIC,
         key=key.encode("utf-8"),
         value=json.dumps(envelope).encode("utf-8"),
         callback=lambda error, message: delivered.append(error),
@@ -96,6 +97,14 @@ def _produce_event(
         key: Optional Kafka message key (typically flight_id) for partition affinity.
         topic: Target topic, defaults to ``flights.events``.
     """
+    from _common.transaction_scope import current
+    scope = current.get()
+    if scope is not None:
+        event_id = str(uuid4())
+        scope.facts.append({"id": event_id, "document": build_fact(
+            event_id, event_type, sim_time, payload,
+        )})
+        return
     kafka_runtime.produce_event(
         _producer,
         event_type,

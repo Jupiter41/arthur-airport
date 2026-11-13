@@ -7,6 +7,10 @@ On each tick: advance departure FSM, drain security queues, check congestion,
 """
 
 import asyncio
+from _common.transaction_scope import current as current_tick, run_tick
+from _common.checkpoint import SnapshotCodec
+from services.security import SecurityCheckpoint
+from _common import kafka_runtime
 import json
 import logging
 import os
@@ -16,7 +20,6 @@ from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
 from _common.idempotency import IdempotencyTracker
-from _common.commands import CommandReceipts
 from _common.consumer_health import ConsumerHealthTracker
 from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
 
@@ -115,6 +118,7 @@ class PassengerConsumerState:
     def __init__(self) -> None:
         self.sim_time: datetime | None = None
         self.last_tick_sim_time: datetime | None = None
+        self.tick_counter = 0
         self.sim_day: int = 0
         self.security = SecuritySystem()
         self.weather_category: str = "CAVOK"
@@ -172,6 +176,7 @@ _consumer_health = ConsumerHealthTracker()
 
 def _ensure_bts_adapter():
     """Lazily initialise the BTS adapter if needed."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     if _state._bts_adapter is not None:
         return _state._bts_adapter
     from services.bts_adapter import BTSPassengerSource
@@ -186,6 +191,7 @@ def _ensure_bts_adapter():
 
 def get_passenger_source_info() -> dict:
     """Return current source status and available options."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     info = {
         "source": _state.passenger_source,
         "available": ["simulation", "bts_historical"],
@@ -198,6 +204,7 @@ def get_passenger_source_info() -> dict:
 
 def switch_passenger_source(new_source: str, csv_path: str | None = None) -> dict:
     """Switch the active passenger data source at runtime."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     valid_sources = ("simulation", "bts_historical")
     if new_source not in valid_sources:
         raise ValueError(f"Invalid passenger source '{new_source}'. Must be one of {valid_sources}")
@@ -229,6 +236,7 @@ def switch_passenger_source(new_source: str, csv_path: str | None = None) -> dic
 
 def get_bts_flow() -> dict | None:
     """Get BTS flow data for the current sim time."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     if _state.passenger_source != "bts_historical":
         return None
     adapter = _ensure_bts_adapter()
@@ -261,6 +269,7 @@ async def rebuild_security_from_neo4j() -> None:
     them into the in-memory SecuritySystem so queue_depth and wait_minutes
     are accurate immediately after a restart.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     try:
         pax_list = await get_passengers_by_status("security_queue")
     except Exception as e:
@@ -305,6 +314,7 @@ async def rebuild_security_from_neo4j() -> None:
 
 async def load_spatial_positions() -> None:
     """Load gate positions and walking zones from Neo4j for walking time computation."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     from db.neo4j import get_driver
     try:
         driver = get_driver()
@@ -336,22 +346,27 @@ async def load_spatial_positions() -> None:
 
 
 def set_ws_broadcast(fn):
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     _state.ws_broadcast = fn
 
 
 def get_sim_time() -> datetime | None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     return _state.sim_time
 
 
 def get_security() -> SecuritySystem:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     return _state.security
 
 
 def get_alerts() -> list[dict]:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     return _state.alerts
 
 
 def get_at_risk_connections() -> list[dict]:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     return _state.at_risk_connections
 
 
@@ -374,7 +389,7 @@ def _make_consumer() -> Consumer:
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
         "group.id": "pax-svc",
         "auto.offset.reset": "latest",
-        "enable.auto.commit": True,
+        "enable.auto.commit": False,
         "session.timeout.ms": 10000,
     })
 
@@ -391,6 +406,7 @@ def _make_command_consumer() -> Consumer:
 
 async def _run_command_consumer() -> None:
     """Keep commands responsive while the fact consumer awaits expensive ticks."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     global _consumer_running
     consumer = _make_command_consumer()
     consumer.subscribe(["passengers.commands"])
@@ -430,8 +446,18 @@ async def _run_command_consumer() -> None:
         consumer.close()
 
 
+def _bootstrap_clock(envelope: dict) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    if _state.sim_time is not None:
+        return
+    validated = _validate_envelope(envelope)
+    if validated is not None and validated[0] == "SimClockTick":
+        _state.sim_time = validated[1]
+
+
 async def run_consumer() -> None:
     """Main consumer loop — runs as background asyncio task."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     global _consumer, _consumer_running
 
     _consumer = _make_consumer()
@@ -444,75 +470,22 @@ async def run_consumer() -> None:
     ])
     _consumer_running = True
 
-    loop = asyncio.get_event_loop()
     logger.info(
         "Kafka consumer started (topics: sim.clock, flights.events, incidents.events, "
         "baggage.events, weather.events); dedicated passenger command consumer started"
     )
 
     command_task = asyncio.create_task(_run_command_consumer())
-    deferred_commands: list[dict] = []
     try:
-        while _consumer_running:
-            # Batch-consume to allow tick skipping when behind
-            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(5000, timeout=0.1))
-            if not msgs:
-                continue
-
-            # Separate clock ticks from other events, keeping order
-            latest_tick_envelope = None
-            other_envelopes: list[dict] = []
-            skipped_ticks = 0
-
-            for msg in msgs:
-                if msg is None or msg.error():
-                    continue
-                try:
-                    envelope = json.loads(msg.value().decode("utf-8"))
-                except Exception:
-                    continue
-                if envelope.get("event_type") == "SimClockTick":
-                    if latest_tick_envelope is not None:
-                        skipped_ticks += 1
-                    latest_tick_envelope = envelope
-                else:
-                    other_envelopes.append(envelope)
-
-            if skipped_ticks > 0:
-                logger.debug("Skipped %d stale clock ticks", skipped_ticks)
-
-            # On recovery a command can be fetched before the first clock.
-            # Bootstrap only from a validated SimClockTick, never issued_at.
-            if _state.sim_time is None and latest_tick_envelope is not None:
-                validated = _validate_envelope(latest_tick_envelope)
-                if validated is not None:
-                    _state.sim_time = validated[1]
-            other_envelopes = deferred_commands + other_envelopes
-            deferred_commands = []
-            # Process non-tick events first (flight status changes, etc.)
-            for envelope in other_envelopes:
-                if envelope.get("command_type") and _state.sim_time is None:
-                    deferred_commands.append(envelope)
-                    continue
-                try:
-                    await _dispatch(envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            # Process only the latest clock tick
-            if latest_tick_envelope is not None:
-                try:
-                    await _dispatch(latest_tick_envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            _consumer_health.mark_message()
+        await kafka_runtime.run_consumer_loop(
+            _consumer, _dispatch, lambda: _consumer_running, _consumer_health,
+            batch_size=5000, timeout=0.1, manual_commit=True,
+            bootstrap_tick=_bootstrap_clock,
+            commands_ready=lambda: _state.sim_time is not None,
+        )
     finally:
         _consumer_running = False
-        try:
-            await command_task
-        finally:
-            _consumer.close()
+        await command_task
         logger.info("Kafka consumer stopped")
 
 
@@ -551,6 +524,7 @@ async def _dispatch(envelope: dict) -> None:
     Command envelopes (keyed on ``command_type``, from ``passengers.commands``)
     are imperatives, not facts — they take a separate path.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     # Commands are keyed on command_type (no event_type / sim_time).
     if envelope.get("command_type") is not None:
         await _handle_command(envelope)
@@ -564,7 +538,7 @@ async def _dispatch(envelope: dict) -> None:
     # Idempotency check (skip for clock ticks)
     if event_type != "SimClockTick":
         event_id = envelope.get("event_id", "")
-        if _state.check_idempotency(event_id):
+        if event_id and event_id in _state._idempotency:
             return
 
     match event_type:
@@ -587,31 +561,39 @@ async def _dispatch(envelope: dict) -> None:
         case _:
             pass
 
+    _state.check_idempotency(envelope.get("event_id", ""))
 
 
-_command_receipts = CommandReceipts()
+
 
 
 async def _handle_command(envelope: dict) -> None:
-    from kafka.producer import _produce_event
-    from db.neo4j import get_driver
-    from _common.command_store import load_receipt, save_receipt
-
-    # G1-b: the RebookPassengers path commits the passenger status write, the
-    # domain PassengerStatusChanged facts, the receipt node and the owner receipt
-    # fact in ONE transaction (via rebook_passengers_atomic), with durable
-    # load_receipt_in_tx dedup. Other commands (OpenSecurityLane) keep the shared
-    # CommandReceipts.handle path (process-local dedup + direct receipt emit).
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     if envelope.get("command_type") == "RebookPassengers":
         await _handle_rebook_command(envelope)
         return
-
-    await _command_receipts.handle(
-        envelope, _state.sim_time, _execute_command,
-        lambda kind, clock, payload, key: _produce_event(kind, clock, payload, key=key),
-        load=lambda key: load_receipt(get_driver(), key),
-        save=lambda key, receipt: save_receipt(get_driver(), key, receipt),
+    from db.neo4j import security_lane_command_atomic
+    command_id = envelope.get("command_id")
+    if not isinstance(command_id, str) or not command_id:
+        raise ValueError("command_id is required")
+    if _state.sim_time is None:
+        raise RuntimeError("Simulation clock not available")
+    command_type = envelope.get("command_type")
+    cmd, error = parse_command(command_type, envelope.get("payload"))
+    terminal = cmd.terminal if isinstance(cmd, OpenSecurityLane) else None
+    lanes = cmd.lanes_open if isinstance(cmd, OpenSecurityLane) else None
+    if error is None and terminal not in _state.security.checkpoints:
+        error = "Unknown terminal"
+    kind, payload, applied = await security_lane_command_atomic(
+        command_id, command_type, terminal, lanes, _state.sim_time, error,
     )
+    if applied:
+        m_commands.labels(command_type=str(command_type), outcome=(
+            "accepted" if kind == "CommandExecuted" else "rejected"
+        )).inc()
+        if kind == "CommandExecuted":
+            _state.security.checkpoints[terminal].lanes_open = lanes
+            m_sec_lanes.labels(terminal=terminal).set(lanes)
 
 
 async def _handle_rebook_command(envelope: dict) -> None:
@@ -623,8 +605,7 @@ async def _handle_rebook_command(envelope: dict) -> None:
     delivered by the PassengerOutbox loop; redelivery re-emits the stored receipt
     without re-mutating any passenger.
     """
-    from kafka.producer import _produce_event
-
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     command_id = envelope.get("command_id")
     if not isinstance(command_id, str) or not command_id:
         raise ValueError("command_id is required")
@@ -634,13 +615,11 @@ async def _handle_rebook_command(envelope: dict) -> None:
     command_type = envelope.get("command_type")
     cmd, error = parse_command(command_type, envelope.get("payload"))
     if error is not None:
-        m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
-        logger.warning("Rejected command %s: %s", command_type, error)
-        _produce_event(
-            "CommandRejected", _state.sim_time,
-            {"command_id": command_id, "command_type": command_type, "reason": error},
-            key=command_id,
+        from db.neo4j import security_lane_command_atomic
+        await security_lane_command_atomic(
+            command_id, str(command_type), None, None, _state.sim_time, error,
         )
+        m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
         return
 
     assert isinstance(cmd, RebookPassengers)
@@ -654,50 +633,6 @@ async def _handle_rebook_command(envelope: dict) -> None:
             "RebookPassengers %s (command_id=%s, inbound=%s)",
             outcome, command_id, cmd.inbound_flight,
         )
-
-
-async def _execute_command(envelope: dict) -> str | None:
-    """Execute an operator/agent command from ``passengers.commands``.
-
-    Dedupes the command, parses/validates it, then executes the in-memory
-    mutation. A rejected command produces no side effect.
-    """
-    command_type = envelope.get("command_type")
-    cmd, error = parse_command(command_type, envelope.get("payload"))
-    if error is not None:
-        m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
-        logger.warning("Rejected command %s: %s", command_type, error)
-        return error
-
-    if isinstance(cmd, OpenSecurityLane):
-        checkpoint = _state.security.checkpoints.get(cmd.terminal)
-        if checkpoint is None:
-            m_commands.labels(command_type=command_type, outcome="rejected").inc()
-            logger.warning("Rejected OpenSecurityLane: unknown terminal %r", cmd.terminal)
-            return "Unknown terminal"
-        from db.neo4j import save_security_lanes
-        await save_security_lanes(cmd.terminal, cmd.lanes_open, _state.sim_time)
-        old_count = checkpoint.lanes_open
-        checkpoint.lanes_open = cmd.lanes_open
-        # Update Prometheus gauge immediately so the dashboard reflects the change
-        # before the next clock tick updates all security metrics.
-        m_sec_lanes.labels(terminal=cmd.terminal).set(cmd.lanes_open)
-        from kafka.producer import _produce_event
-        _produce_event("SecurityLanesChanged", _state.sim_time, {
-            "terminal": cmd.terminal, "lanes_open": cmd.lanes_open,
-            "previous_lanes_open": old_count,
-        }, key=cmd.terminal)
-        m_commands.labels(command_type=command_type, outcome="accepted").inc()
-        logger.info(
-            "Executed OpenSecurityLane: terminal %s lanes %d → %d",
-            cmd.terminal, old_count, cmd.lanes_open,
-        )
-
-    # RebookPassengers is handled atomically in _handle_rebook_command (G1-b) and
-    # never reaches this executor.
-    return None
-
-_tick_counter: int = 0
 
 
 @dataclass
@@ -742,6 +677,8 @@ async def _warm_start_departures(sim_time: datetime) -> None:
     try:
         pax_list = await get_passengers_by_status("booked", scheduled_before=cutoff)
     except Exception as e:
+        if current_tick.get() is not None:
+            raise
         logger.error("Warm-start query failed: %s", e)
         return
 
@@ -798,9 +735,38 @@ async def _warm_start_departures(sim_time: datetime) -> None:
     logger.info("Warm-start: advanced %d departure passengers to pipeline states", total_advanced)
 
 
+
+_TICK_CODEC = SnapshotCodec(
+    [SecuritySystem, SecurityCheckpoint],
+    (
+        "last_tick_sim_time", "sim_day", "security", "security_enqueued",
+        "airside_transitioned", "baggage_collected", "passengers_at_carousel",
+        "flight_carousel_zone", "current_mode", "last_mode", "last_sync_sim_time",
+        "noshow_drawn_flights", "tick_counter",
+    ),
+    publish_fields=(
+        "alerts", "at_risk_connections", "cached_flights_next_90", "cached_pax_next_90",
+    ),
+)
+
+
+async def _prepare_tick(candidate: PassengerConsumerState) -> None:
+    from db.neo4j import load_security_lanes
+    lanes = await load_security_lanes()
+    for terminal, cp in candidate.security.checkpoints.items():
+        cp.lanes_open = lanes.get(terminal, cp.lanes_open)
+        cp.frozen = _state.security.checkpoints[terminal].frozen
+
+
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
+    from db.neo4j import get_driver
+    await run_tick("PassengerRuntime", "PassengerOutbox", _state,
+                   _TICK_CODEC, get_driver, _advance_tick, payload, sim_time, _prepare_tick)
+
+
+async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     """Main tick handler — advance all passenger state machines."""
-    global _tick_counter
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
 
     # G1-a: durable replay / crash-resume guard. A re-delivered or already-applied
     # tick (sim_time <= the durable PassengerRuntime checkpoint) does NOTHING —
@@ -815,7 +781,7 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         logger.debug("Skipping replayed tick %s (<= checkpoint %s)", sim_time, durable_last)
         return
 
-    _tick_counter += 1
+    _state.tick_counter += 1
     _state.sim_time = sim_time
     _state.sim_day = payload.get("day_of_sim", 0)
 
@@ -838,14 +804,14 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     set_tick_batch_mode(True)
     try:
         # Warm-start: pre-advance early departure passengers on first tick
-        if _tick_counter == 1:
+        if _state.tick_counter == 1:
             await _warm_start_departures(sim_time)
 
         # === Critical path (every tick) ===
 
         # 1. ML feature cache (reduced frequency in BULK mode)
         ml_interval = 20 if is_bulk else 5
-        if _tick_counter % ml_interval == 0:
+        if _state.tick_counter % ml_interval == 0:
             await _ml_tick(sim_time)
 
         # 2b. Drain wheelchair request queue (1C — accessibility).
@@ -882,12 +848,12 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
 
         # 8. Check connections (reduced in BULK mode)
         conn_interval = 30 if is_bulk else 10
-        if _tick_counter % conn_interval == 0:
+        if _state.tick_counter % conn_interval == 0:
             await _check_connections(sim_time)
 
         # 9. Check congestion (reduced in BULK mode)
         congestion_interval = 20 if is_bulk else 5
-        if _tick_counter % congestion_interval == 0:
+        if _state.tick_counter % congestion_interval == 0:
             for terminal in ("A", "B", "C"):
                 cp = _state.security.get(terminal)
                 features = _build_context_features(terminal, sim_time)
@@ -907,7 +873,7 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
                         })
 
         # 10. Maybe retrain model (every 30 ticks = ~every 30 sim-minutes)
-        if _tick_counter % 30 == 0:
+        if _state.tick_counter % 30 == 0:
             retrained = await maybe_retrain(_state.sim_day)
             if retrained:
                 load_models()
@@ -915,7 +881,7 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
 
         # 11. Update Prometheus gauges (reduced in BULK mode)
         gauge_interval = 20 if is_bulk else 5
-        if _tick_counter % gauge_interval == 0:
+        if _state.tick_counter % gauge_interval == 0:
             try:
                 status_counts = await get_status_counts()
                 for status, count in status_counts.items():
@@ -929,7 +895,7 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             if cp:
                 m_sec_queue_depth.labels(terminal=terminal).set(cp.queue_depth)
                 m_sec_wait.labels(terminal=terminal).set(round(cp.wait_minutes(0), 1))
-                if not is_bulk or _tick_counter % 20 == 0:
+                if not is_bulk or _state.tick_counter % 20 == 0:
                     emit_security_queue_updated(
                         terminal, cp.queue_depth, cp.lanes_open,
                         cp.wait_minutes(0), sim_time,
@@ -944,6 +910,7 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
 
     except Exception as e:
         logger.error("Error in clock tick processing: %s", e, exc_info=True)
+        raise
     finally:
         set_tick_batch_mode(False)
 
@@ -957,6 +924,7 @@ async def _maybe_emit_bulk_snapshot(sim_time: datetime) -> None:
     Triggered every ``BULK_SNAPSHOT_INTERVAL_SIM_MIN`` sim-minutes.
     Also triggers on mode transition from BULK → FAST/REALTIME.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     force = _state.last_mode == "BULK" and _state.current_mode != "BULK"
 
     if not force and _state.last_sync_sim_time is not None:
@@ -1012,6 +980,8 @@ async def _advance_booked_to_checkin(
     try:
         pax_list = await get_passengers_by_status("booked", scheduled_before=cutoff)
     except Exception as e:
+        if current_tick.get() is not None:
+            raise
         logger.error("Failed to get booked passengers: %s", e)
         return plan
 
@@ -1077,6 +1047,8 @@ async def _advance_booked_to_checkin(
                         name=pax.get("name"),
                     )
                 except Exception as exc:
+                    if current_tick.get() is not None:
+                        raise
                     logger.warning("wheelchair request failed for %s: %s", pax["id"], exc)
         total_moved += len(batch)
 
@@ -1094,6 +1066,7 @@ async def _advance_checkin_to_security(
     The in-memory SecuritySystem enqueue stays inline (derived state, rebuildable
     from Neo4j); the DB status write + facts are returned for the atomic commit.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     plan = TickContribution()
     MAX_CHECKIN_TO_SECURITY_PER_TICK = 80 * delta_minutes  # ~80 pax/min across all terminals
 
@@ -1102,6 +1075,8 @@ async def _advance_checkin_to_security(
     try:
         pax_list = await get_passengers_by_status("checked_in", scheduled_before=cutoff)
     except Exception as e:
+        if current_tick.get() is not None:
+            raise
         logger.error("Failed to get checked_in passengers: %s", e)
         return plan
 
@@ -1183,10 +1158,11 @@ async def _drain_security_queues(
     — authoritative in-memory queue state, rebuildable from Neo4j. The DB status +
     dwell writes and facts are returned for the atomic tick commit (G1-a).
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     plan = TickContribution()
     # Periodic DB sync (every 60 ticks) to catch missed events/restarts.
     # On normal ticks, in-memory queues are authoritative.
-    if _tick_counter % 60 == 0:
+    if _state.tick_counter % 60 == 0:
         await _sync_security_from_db()
 
     forecast_queues = _get_forecast_queues(sim_time)
@@ -1227,9 +1203,12 @@ async def _sync_security_from_db() -> dict[str, str]:
     This prevents stuck passengers when the service restarts mid-simulation
     or if events were missed.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     try:
         pax_list = await get_passengers_by_status("security_queue")
     except Exception as e:
+        if current_tick.get() is not None:
+            raise
         logger.error("Failed to sync security queues from Neo4j: %s", e)
         return {}
 
@@ -1274,6 +1253,7 @@ def _get_forecast_queues(sim_time: datetime) -> dict[str, int]:
 
 def get_forecast_context(terminal: str) -> dict:
     """Snapshot current weather, incidents and neighbouring queue conditions."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     return {
         "weather_category": _state.weather_category,
         "load_factor_today": (
@@ -1292,6 +1272,7 @@ def get_forecast_context(terminal: str) -> dict:
 
 def _build_context_features(terminal: str, sim_time: datetime) -> dict:
     """Build feature vector for a terminal."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     return build_features(
         terminal=terminal,
         sim_time=sim_time,
@@ -1303,12 +1284,15 @@ def _build_context_features(terminal: str, sim_time: datetime) -> dict:
 
 async def _advance_airside_to_gate(sim_time: datetime) -> TickContribution:
     """Compute airside → at_gate transitions when dwell completes and gate opens."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     plan = TickContribution()
     # Time-window: only passengers with flights departing within next 2 hours
     cutoff = (sim_time + timedelta(hours=2)).isoformat()
     try:
         pax_list = await get_passengers_by_status("airside", scheduled_before=cutoff)
     except Exception as e:
+        if current_tick.get() is not None:
+            raise
         logger.error("Failed to get airside passengers: %s", e)
         return plan
 
@@ -1361,8 +1345,12 @@ async def _advance_airside_to_gate(sim_time: datetime) -> TickContribution:
                 try:
                     await wheelchair.mark_at_gate(pax["id"], sim_time)
                 except Exception as exc:
+                    if current_tick.get() is not None:
+                        raise
                     logger.debug("wheelchair mark_at_gate failed: %s", exc)
         except Exception as e:
+            if current_tick.get() is not None:
+                raise
             logger.warning("Skipping invalid airside passenger record %s: %s", pax.get("id"), e)
             continue
 
@@ -1382,12 +1370,15 @@ async def _advance_boarding(
     wholesale before this runs, so the draw never repeats); the DB status writes +
     facts are returned for the atomic tick commit (G1-a).
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     plan = TickContribution()
     # Time-window: only passengers with flights departing within next 1.5 hours
     cutoff = (sim_time + timedelta(hours=1, minutes=30)).isoformat()
     try:
         pax_list = await get_passengers_by_status("at_gate", scheduled_before=cutoff)
     except Exception as e:
+        if current_tick.get() is not None:
+            raise
         logger.error("Failed to get at_gate passengers: %s", e)
         return plan
 
@@ -1489,6 +1480,8 @@ async def _advance_boarding(
                 try:
                     await wheelchair.release(pax["id"], sim_time)
                 except Exception as exc:
+                    if current_tick.get() is not None:
+                        raise
                     logger.debug("wheelchair release failed: %s", exc)
 
     return plan
@@ -1509,6 +1502,7 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
     inline; the status transitions + facts + location updates are returned for the
     atomic tick commit (G1-a).
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     plan = TickContribution()
 
     def _carousel_zone_for(pax: dict) -> str | None:
@@ -1540,6 +1534,8 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
     try:
         deplaning = await get_passengers_by_status("deplaning")
     except Exception:
+        if current_tick.get() is not None:
+            raise
         deplaning = []
 
     to_customs: list[dict] = []
@@ -1594,6 +1590,8 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
     try:
         in_customs = await get_passengers_by_status("customs")
     except Exception:
+        if current_tick.get() is not None:
+            raise
         in_customs = []
 
     customs_to_bc: list[dict] = []
@@ -1626,6 +1624,8 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
     try:
         claiming = await get_passengers_by_status("baggage_claim")
     except Exception:
+        if current_tick.get() is not None:
+            raise
         claiming = []
 
     to_depart: list[dict] = []
@@ -1670,9 +1670,12 @@ async def _check_connections(sim_time: datetime) -> None:
     only after a successful, non-deduped commit; risk gauges and the at-risk
     snapshot (derived display state) are refreshed every call.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     try:
         conn_pax = await get_connecting_passengers()
     except Exception as e:
+        if current_tick.get() is not None:
+            raise
         logger.error("Failed to get connecting passengers: %s", e)
         return
 
@@ -1748,6 +1751,7 @@ async def _check_connections(sim_time: datetime) -> None:
 
 async def _ml_tick(sim_time: datetime) -> None:
     """Collect training data and update cached flight/pax counts."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
 
     # Update flight/pax data for features
     try:
@@ -1787,6 +1791,7 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime, event_id:
     In-memory zone-density bookkeeping (derived, rebuildable per rule #3) is
     applied only after the transaction commits, and skipped on a deduped redelivery.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     new_status = payload.get("new_status")
     flight_id = payload.get("flight_id")
     if not flight_id:
@@ -1873,6 +1878,7 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime, event_id:
 
 async def _on_flight_gate_assigned(payload: dict, sim_time: datetime) -> None:
     """Issue gate change alerts to affected passengers."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     flight_id = payload.get("flight_id")
     new_gate = payload.get("gate_id")
     old_gate = payload.get("previous_gate_id")
@@ -1963,6 +1969,7 @@ async def _on_flight_cancelled(payload: dict, sim_time: datetime, event_id: str 
 
 async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
     """Handle incident creation — security breach freezes affected terminal."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     incident_type = payload.get("type")
     if incident_type != "security_breach":
         return
@@ -1982,6 +1989,7 @@ async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
 
 async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None:
     """Resume frozen zones when incident is resolved."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     new_status = payload.get("new_status") or payload.get("status")
     if new_status != "resolved":
         return
@@ -2017,6 +2025,7 @@ def _extract_terminal_from_location(location: str) -> str | None:
 
 async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
     """Update cached weather category."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     cat = payload.get("category") or payload.get("new_category")
     if cat:
         _state.weather_category = cat
@@ -2031,6 +2040,7 @@ async def _on_baggage_status_changed(payload: dict, sim_time: datetime, event_id
     non-deduped commit. ``collected`` carries no domain write (in-memory tracking
     only, rebuildable), so it stays an in-memory set update.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     new_status = payload.get("new_status")
     if new_status not in ("on_carousel", "collected"):
         return
@@ -2082,4 +2092,5 @@ async def _on_baggage_status_changed(payload: dict, sim_time: datetime, event_id
 
 def _add_alert(alert: dict) -> None:
     """Add alert to in-memory history."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     _state.add_alert(alert)

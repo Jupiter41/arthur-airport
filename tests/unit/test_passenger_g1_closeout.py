@@ -103,7 +103,7 @@ class Tx:
             return Result([{"last_tick": db["runtime"]["last_tick"]}])
 
         # --- CommandReceipt (G1-b) ---
-        if "MATCH (r:CommandReceipt" in query and "RETURN" in query:
+        if "RETURN r.event_type" in query and "RETURN" in query:
             rec = db["receipts"].get(params["id"])
             if rec is None:
                 return Result([])
@@ -115,7 +115,7 @@ class Tx:
             return Result()
 
         # --- inbox / revision ---
-        if "MATCH (i:PassengerInbox" in query and "RETURN" in query:
+        if "i:PassengerInbox" in query and "RETURN i.id" in query and "RETURN" in query:
             return Result([{"id": params["id"]}] if params["id"] in db["inbox"] else [])
         if "coalesce(max(o.revision)" in query:
             revs = [row["revision"] for row in db["outbox"].values()]
@@ -209,7 +209,11 @@ def test_tick_applies_transitions_stages_facts_and_advances_checkpoint(db_mod):
     assert driver.db["pax"]["p1"]["status"] == "checked_in"
     assert driver.db["pax"]["p1"]["dwell"] == 7
     assert driver.db["runtime"]["last_tick"] == SIM_TIME.isoformat()
-    assert set(driver.db["outbox"]) == {"f1"}
+    assert "f1" in driver.db["outbox"] and len(driver.db["outbox"]) == 2
+    batch = next(json.loads(r["document"]) for r in driver.db["outbox"].values()
+                 if json.loads(r["document"]).get("event_type") == "PassengerStatusBatchChanged")
+    assert batch["payload"]["status_groups"] == groups
+    assert batch["payload"]["dwell_items"] == [["p1", 7]]
     # outbox staged at the locked runtime revision
     assert driver.db["outbox"]["f1"]["revision"] == driver.db["runtime"]["revision"]
 
@@ -343,6 +347,9 @@ def test_handle_rebook_command_parse_error_emits_rejection(monkeypatch):
     consumer = _consumer(monkeypatch)
     consumer._state.sim_time = SIM_TIME
     emitted = []
+    db = importlib.import_module("db.neo4j")
+    driver = Driver()
+    monkeypatch.setattr(db, "get_driver", lambda: driver)
     monkeypatch.setattr(
         consumer, "rebook_passengers_atomic",
         AsyncMock(side_effect=AssertionError("must not execute on parse error")),
@@ -356,8 +363,11 @@ def test_handle_rebook_command_parse_error_emits_rejection(monkeypatch):
         "command_id": "bad-1", "command_type": "RebookPassengers",
         "payload": {"passenger_ids": ["p1"]},
     }))
-    assert [k for k, _ in emitted] == ["CommandRejected"]
-    assert emitted[0][1]["command_id"] == "bad-1"
+    assert emitted == []
+    assert driver.db["receipts"]["bad-1"][0] == "CommandRejected"
+    document = json.loads(next(iter(driver.db["outbox"].values()))["document"])
+    assert document["event_type"] == "CommandRejected"
+    assert document["payload"]["command_id"] == "bad-1"
 
 
 def test_handle_rebook_command_valid_routes_to_atomic(monkeypatch):

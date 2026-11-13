@@ -5,6 +5,8 @@ On each tick: evaluates all active flights through the FSM, assigns runways, res
 """
 
 import asyncio
+from _common.transaction_scope import current as current_tick, run_tick, bind_transaction
+from services import tick_snapshot
 import logging
 import os
 import random
@@ -103,6 +105,7 @@ class FlightConsumerState:
         self.incident_affected_runways: set[str] = set()
         self.active_incident_locations: dict[str, str] = {}
         self.weather_affected_runways: set[str] = set()
+        self.weather_updated_at: datetime | None = None
         self._idempotency = IdempotencyTracker(max_size=10_000)
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
         self.turnaround_plans: dict[str, TurnaroundPlan] = {}  # keyed by aircraft_registration
@@ -293,7 +296,7 @@ def _make_consumer() -> Consumer:
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
         "group.id": "flight-svc",
         "auto.offset.reset": "latest",
-        "enable.auto.commit": True,
+        "enable.auto.commit": False,
         "session.timeout.ms": 10000,
     })
 
@@ -308,6 +311,14 @@ _TOPICS = [
 ]
 
 
+def _bootstrap_clock(envelope: dict) -> None:
+    if _state.sim_time is not None:
+        return
+    kind, _, clock = _validate_envelope(envelope)
+    if kind == "SimClockTick":
+        _state.sim_time = clock
+
+
 async def run_consumer() -> None:
     """Main consumer loop — runs as background asyncio task."""
     global _consumer, _consumer_running
@@ -318,6 +329,8 @@ async def run_consumer() -> None:
     try:
         await kafka_runtime.run_consumer_loop(
             _consumer, _dispatch, lambda: _consumer_running, _consumer_health,
+            manual_commit=True, bootstrap_tick=_bootstrap_clock,
+            commands_ready=lambda: _state.sim_time is not None,
         )
     finally:
         _consumer_running = False
@@ -368,7 +381,7 @@ async def _dispatch(envelope: dict) -> None:
     event_id = envelope.get("event_id", "")
 
     # Idempotency check
-    if _state.check_idempotency(event_id):
+    if event_id and event_id in _state._idempotency:
         return
 
     event_type, payload, sim_time = _validate_envelope(envelope)
@@ -390,6 +403,8 @@ async def _dispatch(envelope: dict) -> None:
             await _on_baggage_flagged(payload, sim_time)
         case _:
             pass
+
+    _state.check_idempotency(envelope.get("event_id", ""))
 
 
 
@@ -423,23 +438,29 @@ async def _handle_command(envelope: dict) -> None:
         return
 
     command_type = envelope.get("command_type")
-    # Validate + read + check preconditions OUTSIDE the write transaction.
-    run = await _plan_command(envelope, sim_time)
     receipt_event_id = f"cmd:{command_id}"
 
     async def apply(tx):
+        revision = await next_outbox_revision(tx)
         existing = await load_receipt_in_tx(tx, command_id)
         if existing is not None:
             # Durable redelivery dedup: do not re-mutate or re-stage.
             return existing, None
-        reason, domain_facts, post = await run(tx)
+        with bind_transaction(tx):
+            run = await _plan_command(envelope, sim_time)
+            reason, domain_facts, post = await run(tx)
+        # Independent commands may affect one flight at the same simulation
+        # instant. Their facts must not share the transition's clock-based ID.
+        for position, fact in enumerate(domain_facts):
+            event_id = f"cmd:{command_id}:domain:{position}"
+            fact["id"] = event_id
+            fact["document"]["event_id"] = event_id
         receipt = (
             "CommandRejected" if reason else "CommandExecuted",
             {"command_id": command_id, "command_type": command_type, "reason": reason},
         )
         receipt_fact = {"id": receipt_event_id, "document": build_fact(
             receipt_event_id, receipt[0], sim_time, receipt[1])}
-        revision = await next_outbox_revision(tx)
         await save_receipt_in_tx(tx, command_id, receipt)
         await outbox_common.stage_outbox(
             tx, "FlightOutbox", [*domain_facts, receipt_fact], revision,
@@ -566,7 +587,20 @@ async def _plan_command(envelope: dict, sim_time: datetime):
     # Unknown command shape — reject without mutating.
     return _reject(command_type, "Unsupported command")
 
+async def _prepare_tick(candidate: FlightConsumerState) -> None:
+    from db.neo4j import get_manual_holds
+    candidate.held_flights = await get_manual_holds()
+    candidate.refresh_incident_impacts()
+
+
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
+    """Commit the entire owner tick, its durable state and facts together."""
+    await run_tick("FlightRuntime", "FlightOutbox", _state, tick_snapshot,
+                   get_driver, _advance_tick, payload, sim_time, _prepare_tick)
+
+
+async def _advance_tick(payload: dict, sim_time: datetime) -> None:
+    _state = current_tick.get().state
     """Process a SimClockTick — advance all active flights through the FSM."""
     _state.sim_time = sim_time
     _state.last_tick_sim_time = sim_time
@@ -598,14 +632,13 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         sim_time_iso = sim_time.isoformat()
         event_id = f"rwy:{assign_flight_id}:{runway_id}:{operation}:{sim_time_iso}"
         facts: list[dict] = []
-        if not is_bulk:
-            facts = [{"id": event_id, "document": build_fact(
-                event_id, "FlightRunwayAssigned", sim_time, {
-                    "flight_id": assign_flight_id,
-                    "flight_number": flight_number,
-                    "runway_id": runway_id,
-                    "operation": operation,
-                })}]
+        facts = [{"id": event_id, "document": build_fact(
+            event_id, "FlightRunwayAssigned", sim_time, {
+                "flight_id": assign_flight_id,
+                "flight_number": flight_number,
+                "runway_id": runway_id,
+                "operation": operation,
+            })}]
 
         async def _assign_runway(tx, _fid=assign_flight_id, _rw=runway_id, _op=operation):
             await assign_flight_to_runway_in_tx(tx, _fid, _rw, _op, sim_time)
@@ -660,6 +693,7 @@ async def _maybe_emit_flight_bulk_snapshot(
     sim_time: datetime,
     status_counts: dict[str, int],
 ) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Emit a BulkStateSnapshot summarising flight state (BULK mode only)."""
     force = _state.last_mode == "BULK" and _state.current_mode != "BULK"
 
@@ -686,11 +720,13 @@ async def _maybe_emit_flight_bulk_snapshot(
 
 
 def _is_peak_hour(sim_time: datetime) -> bool:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Check if current sim hour is a peak hour."""
     return sim_time.hour in _state.peak_hours
 
 
 def _draw_crew_delay(flight_id: str) -> int:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Draw a crew readiness delay for a flight. Returns delay minutes or 0."""
     if flight_id in _state.crew_delay_drawn:
         return 0
@@ -704,6 +740,7 @@ def _draw_crew_delay(flight_id: str) -> int:
 
 
 def _draw_ctot(flight_id: str, sim_time: datetime) -> int:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Draw a CTOT slot delay for a departure during peak hours. Returns delay minutes or 0."""
     if flight_id in _state.ctot_assigned:
         return 0
@@ -719,6 +756,7 @@ def _draw_ctot(flight_id: str, sim_time: datetime) -> int:
 
 
 def _draw_diversion(flight_id: str) -> bool:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Draw whether an arriving flight should be diverted. Returns True if diverted."""
     if flight_id in _state.diversion_drawn:
         return False
@@ -742,6 +780,7 @@ def _track_holding_fuel_burn(
     step_minutes: int,
     is_bulk: bool,
 ) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Track fuel burn for aircraft in holding (approach state waiting for runway).
 
     P1-2-6: After 30 min → MinimumFuelWarning. After 45 min → PAN PAN priority.
@@ -778,15 +817,14 @@ def _track_holding_fuel_burn(
         # MinimumFuelWarning at warn threshold
         if hold_min >= warn_min and fid not in _state.fuel_warned:
             _state.fuel_warned.add(fid)
-            if not is_bulk:
-                emit_minimum_fuel_warning(
-                    flight_id=fid,
-                    flight_number=f.get("flight_number", ""),
-                    holding_minutes=hold_min,
-                    fuel_remaining_kg=fuel_remaining,
-                    is_panpan=False,
-                    sim_time=sim_time,
-                )
+            emit_minimum_fuel_warning(
+                flight_id=fid,
+                flight_number=f.get("flight_number", ""),
+                holding_minutes=hold_min,
+                fuel_remaining_kg=fuel_remaining,
+                is_panpan=False,
+                sim_time=sim_time,
+            )
             logger.warning("MinimumFuelWarning: %s holding %d min", f.get("flight_number"), hold_min)
 
         # PAN PAN at panpan threshold — give priority landing
@@ -794,19 +832,19 @@ def _track_holding_fuel_burn(
             _state.fuel_panpan.add(fid)
             # Re-enqueue as emergency to get priority
             _state.runway_queue.enqueue_arrival(fid, sim_time.isoformat(), is_emergency=True)
-            if not is_bulk:
-                emit_minimum_fuel_warning(
-                    flight_id=fid,
-                    flight_number=f.get("flight_number", ""),
-                    holding_minutes=hold_min,
-                    fuel_remaining_kg=fuel_remaining,
-                    is_panpan=True,
-                    sim_time=sim_time,
-                )
+            emit_minimum_fuel_warning(
+                flight_id=fid,
+                flight_number=f.get("flight_number", ""),
+                holding_minutes=hold_min,
+                fuel_remaining_kg=fuel_remaining,
+                is_panpan=True,
+                sim_time=sim_time,
+            )
             logger.warning("PAN PAN declared: %s holding %d min", f.get("flight_number"), hold_min)
 
 
 def _check_equipment_failures(sim_time: datetime) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """P1-2-4: Stochastic equipment failure on active turnaround tasks.
 
     1% chance per flight — checked once when the turnaround plan starts.
@@ -843,6 +881,7 @@ def _check_equipment_failures(sim_time: datetime) -> None:
 
 
 def _advance_turnaround_plans(sim_time: datetime, step_minutes: int = 1) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Advance all active turnaround plans and emit events for changed tasks.
 
     When step_minutes > 1 (BULK mode), advance the plan multiple times to
@@ -858,29 +897,27 @@ def _advance_turnaround_plans(sim_time: datetime, step_minutes: int = 1) -> None
                 intermediate = sim_time - timedelta(minutes=step_minutes - 1 - offset)
                 changed = plan.advance(intermediate)
                 _handle_task_vehicles(reg, plan, changed, intermediate, is_bulk)
-                if not is_bulk:
-                    for task in changed:
-                        emit_turnaround_task_changed(
-                            flight_id=plan.arrival_flight_id,
-                            aircraft_registration=reg,
-                            task_name=task.name,
-                            new_status=task.status.value,
-                            sim_time=intermediate,
-                            duration_min=task.duration_min,
-                        )
-        else:
-            changed = plan.advance(sim_time)
-            _handle_task_vehicles(reg, plan, changed, sim_time, is_bulk)
-            if not is_bulk:
                 for task in changed:
                     emit_turnaround_task_changed(
                         flight_id=plan.arrival_flight_id,
                         aircraft_registration=reg,
                         task_name=task.name,
                         new_status=task.status.value,
-                        sim_time=sim_time,
+                        sim_time=intermediate,
                         duration_min=task.duration_min,
                     )
+        else:
+            changed = plan.advance(sim_time)
+            _handle_task_vehicles(reg, plan, changed, sim_time, is_bulk)
+            for task in changed:
+                emit_turnaround_task_changed(
+                    flight_id=plan.arrival_flight_id,
+                    aircraft_registration=reg,
+                    task_name=task.name,
+                    new_status=task.status.value,
+                    sim_time=sim_time,
+                    duration_min=task.duration_min,
+                )
         if plan.is_complete:
             completed_regs.append(reg)
     # Don't remove completed plans here — they'll be cleaned up when 'arrived' fires
@@ -893,6 +930,7 @@ def _handle_task_vehicles(
     sim_time: datetime,
     is_bulk: bool,
 ) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Dispatch or release ground vehicles based on turnaround task changes."""
     gate_id = plan.gate_id or ""
 
@@ -909,16 +947,15 @@ def _handle_task_vehicles(
                 if transit > 0:
                     # Extend task duration by transit time
                     plan.extend_task(task.name, transit)
-                if not is_bulk:
-                    emit_ground_vehicle_dispatched(
-                        vehicle_id=vehicle.id,
-                        vehicle_type=vehicle.vehicle_type,
-                        gate_id=gate_id,
-                        flight_id=plan.arrival_flight_id,
-                        task_name=task.name,
-                        transit_minutes=transit,
-                        sim_time=sim_time,
-                    )
+                emit_ground_vehicle_dispatched(
+                    vehicle_id=vehicle.id,
+                    vehicle_type=vehicle.vehicle_type,
+                    gate_id=gate_id,
+                    flight_id=plan.arrival_flight_id,
+                    task_name=task.name,
+                    transit_minutes=transit,
+                    sim_time=sim_time,
+                )
             else:
                 # Contention — delay task until vehicle becomes available
                 vehicle_type = VEHICLE_TASK_MAP[task.name]
@@ -930,7 +967,7 @@ def _handle_task_vehicles(
             # Release the vehicle
             vid = _state.task_vehicles.pop(task_key)
             released, return_transit = _state.vehicle_pool.release_vehicle(vid, sim_time)
-            if released and not is_bulk:
+            if released:
                 v = _state.vehicle_pool.vehicles.get(vid)
                 if v:
                     emit_ground_vehicle_returned(
@@ -941,10 +978,9 @@ def _handle_task_vehicles(
 
 
 def _advance_ground_vehicles(sim_time: datetime, is_bulk: bool) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Advance ground vehicle pool — transit arrivals, returns, and pending dispatch."""
     events = _state.vehicle_pool.advance(sim_time)
-    if is_bulk:
-        return
     for event_type, vehicle in events:
         if event_type == "dispatched":
             emit_ground_vehicle_dispatched(
@@ -970,6 +1006,7 @@ def get_turnaround_plan(aircraft_registration: str) -> TurnaroundPlan | None:
 
 
 async def _process_flight(flight: dict, sim_time: datetime) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Evaluate and execute FSM transition for a single flight."""
     flight_id = flight["id"]
     current_status = flight["status"]
@@ -1088,8 +1125,6 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
 
     # ── Noise model draws (Phase 1.2) ──
 
-    is_bulk = _state.current_mode == "BULK"
-
     # P1-2-5: Diversion — arriving flights in approach may be diverted
     if (current_status == "approach" and direction == "arrival"
             and new_status != "landed"):
@@ -1105,30 +1140,29 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
                       if _state.runway_queue.weather_category in ("LIFR", "IMC")
                       else "medical_emergency")
             facts: list[dict] = []
-            if not is_bulk:
-                diverted_id = event_id
-                fsc_id = f"fsc:{flight_id}:{current_status}:diverted:{sim_time_iso}"
-                facts = [
-                    {"id": diverted_id, "document": build_fact(
-                        diverted_id, "FlightDiverted", sim_time, {
-                            "flight_id": flight_id,
-                            "flight_number": flight["flight_number"],
-                            "reason": reason,
-                        })},
-                    {"id": fsc_id, "document": build_fact(
-                        fsc_id, "FlightStatusChanged", sim_time, {
-                            "flight_id": flight_id,
-                            "flight_number": flight["flight_number"],
-                            "previous_status": current_status,
-                            "new_status": "diverted",
-                            "gate_id": flight.get("gate_id"),
-                            "runway_id": flight.get("runway_id"),
-                            "delay_minutes": flight.get("delay_minutes", 0),
-                            "reason": "diverted",
-                            "direction": direction,
-                            "destination_iata": flight.get("destination_iata"),
-                        })},
-                ]
+            diverted_id = event_id
+            fsc_id = f"fsc:{flight_id}:{current_status}:diverted:{sim_time_iso}"
+            facts = [
+                {"id": diverted_id, "document": build_fact(
+                    diverted_id, "FlightDiverted", sim_time, {
+                        "flight_id": flight_id,
+                        "flight_number": flight["flight_number"],
+                        "reason": reason,
+                    })},
+                {"id": fsc_id, "document": build_fact(
+                    fsc_id, "FlightStatusChanged", sim_time, {
+                        "flight_id": flight_id,
+                        "flight_number": flight["flight_number"],
+                        "previous_status": current_status,
+                        "new_status": "diverted",
+                        "gate_id": flight.get("gate_id"),
+                        "runway_id": flight.get("runway_id"),
+                        "delay_minutes": flight.get("delay_minutes", 0),
+                        "reason": "diverted",
+                        "direction": direction,
+                        "destination_iata": flight.get("destination_iata"),
+                    })},
+            ]
 
             async def _divert(tx, _fid=flight_id):
                 await update_flight_status_in_tx(
@@ -1165,21 +1199,20 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
             sim_time_iso = sim_time.isoformat()
             event_id = f"crew:{flight_id}:{sim_time_iso}"
             facts: list[dict] = []
-            if not is_bulk:
-                fsc_id = f"fsc:{flight_id}:boarding:boarding:crew:{sim_time_iso}"
-                facts = [{"id": fsc_id, "document": build_fact(
-                    fsc_id, "FlightStatusChanged", sim_time, {
-                        "flight_id": flight_id,
-                        "flight_number": flight["flight_number"],
-                        "previous_status": "boarding",
-                        "new_status": "boarding",
-                        "gate_id": flight.get("gate_id"),
-                        "runway_id": flight.get("runway_id"),
-                        "delay_minutes": new_delay,
-                        "reason": "crew_readiness",
-                        "direction": direction,
-                        "destination_iata": flight.get("destination_iata"),
-                    })}]
+            fsc_id = f"fsc:{flight_id}:boarding:boarding:crew:{sim_time_iso}"
+            facts = [{"id": fsc_id, "document": build_fact(
+                fsc_id, "FlightStatusChanged", sim_time, {
+                    "flight_id": flight_id,
+                    "flight_number": flight["flight_number"],
+                    "previous_status": "boarding",
+                    "new_status": "boarding",
+                    "gate_id": flight.get("gate_id"),
+                    "runway_id": flight.get("runway_id"),
+                    "delay_minutes": new_delay,
+                    "reason": "crew_readiness",
+                    "direction": direction,
+                    "destination_iata": flight.get("destination_iata"),
+                })}]
 
             async def _crew_delay(tx, _fid=flight_id, _d=new_delay, _est=new_est_str):
                 await update_flight_status_in_tx(
@@ -1211,13 +1244,12 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
             sim_time_iso = sim_time.isoformat()
             event_id = f"ctot:{flight_id}:{sim_time_iso}"
             facts: list[dict] = []
-            if not is_bulk:
-                facts = [{"id": event_id, "document": build_fact(
-                    event_id, "FlightCTOTAssigned", sim_time, {
-                        "flight_id": flight_id,
-                        "flight_number": flight["flight_number"],
-                        "ctot_delay_minutes": ctot_delay,
-                    })}]
+            facts = [{"id": event_id, "document": build_fact(
+                event_id, "FlightCTOTAssigned", sim_time, {
+                    "flight_id": flight_id,
+                    "flight_number": flight["flight_number"],
+                    "ctot_delay_minutes": ctot_delay,
+                })}]
 
             async def _ctot(tx, _fid=flight_id, _d=new_delay, _est=new_est_str):
                 await update_flight_status_in_tx(
@@ -1311,20 +1343,25 @@ async def _commit_transition(
     writes = list(extra_writes or [])
 
     async def apply(tx) -> bool:
-        if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
+        scope = current_tick.get()
+        if scope is None and await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
             return False
-        revision = await next_outbox_revision(tx)
+        revision = await next_outbox_revision(tx) if scope is None else 0
         await update_flight_status_in_tx(
             tx, flight_id, new_status,
             delay_minutes=update_kwargs.get("delay_minutes", delay_minutes),
             delay_reason=update_kwargs.get("delay_reason"),
             estimated_time=update_kwargs.get("estimated_time"),
             actual_time=update_kwargs.get("actual_time"),
+            arrival_estimated_time=update_kwargs.get("arrival_estimated_time"),
         )
         for write in writes:
             await write(tx)
-        await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
-        await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
+        if scope is not None:
+            scope.facts.extend(facts)
+        else:
+            await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
+            await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
         return True
 
     async with get_driver().session() as session:
@@ -1352,13 +1389,17 @@ async def _commit_flight_writes(
     sim_time_iso = sim_time.isoformat()
 
     async def apply(tx) -> bool:
-        if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
+        scope = current_tick.get()
+        if scope is None and await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
             return False
-        revision = await next_outbox_revision(tx)
+        revision = await next_outbox_revision(tx) if scope is None else 0
         for write in writes:
             await write(tx)
-        await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
-        await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
+        if scope is not None:
+            scope.facts.extend(facts)
+        else:
+            await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
+            await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
         return True
 
     async with get_driver().session() as session:
@@ -1371,6 +1412,7 @@ async def _execute_transition(
     new_status: str,
     sim_time: datetime,
 ) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Execute a flight state transition — update Neo4j, emit events, handle side effects."""
     flight_id = flight["id"]
     flight_number = flight["flight_number"]
@@ -1569,7 +1611,7 @@ async def _execute_transition(
     # Broadcast to WebSocket
     if _state.ws_broadcast:
         try:
-            asyncio.create_task(_state.ws_broadcast({
+            await _state.ws_broadcast({
                 "type": "FlightStatusChanged",
                 "flight_id": flight_id,
                 "flight_number": flight_number,
@@ -1577,7 +1619,7 @@ async def _execute_transition(
                 "new_status": new_status,
                 "gate_id": flight.get("gate_id"),
                 "sim_time": sim_time.isoformat(),
-            }))
+            })
         except Exception:
             pass
 
@@ -1612,6 +1654,7 @@ async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
     """Handle WeatherStateChanged — update runway capacity."""
     _state.sim_time = sim_time
 
+    _state.weather_updated_at = sim_time
     category = payload.get("new_category", "CAVOK")
     arrival_rate = payload.get("recommended_arrival_rate", _cavok.arrival)
     departure_rate = payload.get("recommended_departure_rate", _cavok.departure)
@@ -1763,54 +1806,66 @@ def _hold_post_commit(flight: dict, reason: str, duration_min: int, updated: dic
 
 
 async def hold_flight(flight_id: str, reason: str, duration_min: int, sim_time: datetime) -> dict | None:
-    """Place a manual hold on a flight (REST path) — atomic write + staged fact."""
-    flight = await get_flight_by_id(flight_id)
-    if flight is None:
-        return None
+    """Read, hold and stage a fact under the same owner transaction lock."""
+    event_id = f"rest-hold:{flight_id}:{sim_time.isoformat()}:{duration_min}:{reason}"
 
     async def apply(tx):
+        revision = await next_outbox_revision(tx)
+        with bind_transaction(tx):
+            flight = await get_flight_by_id(flight_id)
+        if flight is None:
+            return None
+        if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
+            return flight
         updated, facts = await _apply_hold_in_tx(tx, flight, reason, duration_min, sim_time)
         if updated is None:
             return None
-        revision = await next_outbox_revision(tx)
+        facts[0]["id"] = event_id
+        facts[0]["document"]["event_id"] = event_id
+        await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time.isoformat())
         await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
         return updated
 
     async with get_driver().session() as session:
         updated = await session.execute_write(apply)
     if updated:
-        _hold_post_commit(flight, reason, duration_min, updated, sim_time)
+        _hold_post_commit(updated, reason, duration_min, updated, sim_time)
     return updated
 
 
 async def release_flight(flight_id: str, sim_time: datetime) -> dict | None:
     """Release a manual hold on a flight (REST path) — atomic write + staged fact."""
-    flight = await get_flight_by_id(flight_id)
-    if not flight:
-        return None
-
-    direction = flight.get("direction", "departure")
-    new_status = "boarding" if direction == "departure" else "approach"
     event_id = f"release:{flight_id}:{sim_time.isoformat()}"
-    fact = {"id": event_id, "document": build_fact(
-        event_id, "FlightStatusChanged", sim_time, {
-            "flight_id": flight_id,
-            "flight_number": flight.get("flight_number", ""),
-            "previous_status": "delayed",
-            "new_status": new_status,
-            "gate_id": flight.get("gate_id"),
-            "runway_id": flight.get("runway_id"),
-            "delay_minutes": flight.get("delay_minutes", 0),
-            "reason": None,
-            "direction": direction,
-            "destination_iata": flight.get("destination_iata"),
-        })}
 
     async def apply(tx):
+        revision = await next_outbox_revision(tx)
+        with bind_transaction(tx):
+            flight = await get_flight_by_id(flight_id)
+        if not flight:
+            return None
+        if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
+            return flight
+
+        direction = flight.get("direction", "departure")
+        new_status = "boarding" if direction == "departure" else "approach"
+        fact = {"id": event_id, "document": build_fact(
+            event_id, "FlightStatusChanged", sim_time, {
+                "flight_id": flight_id,
+                "flight_number": flight.get("flight_number", ""),
+                "previous_status": "delayed",
+                "new_status": new_status,
+                "gate_id": flight.get("gate_id"),
+                "runway_id": flight.get("runway_id"),
+                "delay_minutes": flight.get("delay_minutes", 0),
+                "reason": None,
+                "direction": direction,
+                "destination_iata": flight.get("destination_iata"),
+            })}
+
         updated = await update_flight_status_in_tx(tx, flight_id, new_status)
         if updated is None:
             return None
-        revision = await next_outbox_revision(tx)
+        await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time.isoformat())
         await outbox_common.stage_outbox(tx, "FlightOutbox", [fact], revision)
         return updated
 
@@ -1882,12 +1937,12 @@ async def reassign_gate(flight_id: str, gate_id: str, sim_time: datetime) -> dic
     event_id, _ = _reassign_fact(flight_id, flight_number, gate_id, sim_time)
 
     async def apply(tx) -> str | None:
+        revision = await next_outbox_revision(tx)
         if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
             return "duplicate"
         ok, facts = await _apply_reassign_in_tx(tx, flight_id, gate_id, sim_time, flight_number)
         if not ok:
             return None  # gate taken concurrently — nothing staged
-        revision = await next_outbox_revision(tx)
         await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
         await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
         return "ok"

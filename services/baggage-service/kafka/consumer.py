@@ -5,8 +5,10 @@ Consumes: SimClockTick, FlightStatusChanged, FlightCancelled,
 On each tick: advances conveyor pipeline, inducts new bags, screens items.
 """
 
-import asyncio
-import json
+from _common.transaction_scope import current as current_tick, run_tick, bind_transaction
+from _common.checkpoint import SnapshotCodec
+from services.conveyor import TransitBag, ZoneState
+from _common import kafka_runtime
 import logging
 import os
 from copy import deepcopy
@@ -14,7 +16,6 @@ from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
 from _common.idempotency import IdempotencyTracker
-from _common.commands import CommandReceipts
 from _common.consumer_health import ConsumerHealthTracker
 from _common import outbox
 
@@ -81,6 +82,7 @@ class BaggageConsumerState:
     MAX_PROCESSED = 20000
 
     def __init__(self) -> None:
+        self.tick_counter = 0
         self.sim_time: datetime | None = None
         self.last_tick_sim_time: datetime | None = None
         self.conveyor = ConveyorSystem()
@@ -162,14 +164,17 @@ FAILURE_IMPACT: dict[str, list[str]] = {
 
 
 def set_ws_broadcast(fn):
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     _state.ws_broadcast = fn
 
 
 def get_sim_time() -> datetime | None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     return _state.sim_time
 
 
 def get_conveyor() -> ConveyorSystem:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     return _state.conveyor
 
 
@@ -192,76 +197,41 @@ def _make_consumer() -> Consumer:
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
         "group.id": "bag-svc",
         "auto.offset.reset": "latest",
-        "enable.auto.commit": True,
+        "enable.auto.commit": False,
         "session.timeout.ms": 10000,
     })
 
 
+def _bootstrap_clock(envelope: dict) -> None:
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    if _state.sim_time is not None:
+        return
+    validated = _validate_envelope(envelope)
+    if validated is not None and validated[0] == "SimClockTick":
+        _state.sim_time = validated[1]
+
+
 async def run_consumer() -> None:
     """Main consumer loop — runs as background asyncio task."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     global _consumer, _consumer_running
 
     _consumer = _make_consumer()
     _consumer.subscribe(["sim.clock", "flights.events", "incidents.events", "baggage.commands"])
     _consumer_running = True
 
-    loop = asyncio.get_event_loop()
     logger.info(
         "Kafka consumer started (topics: sim.clock, flights.events, incidents.events, baggage.commands)"
     )
 
-    deferred_commands: list[dict] = []
     try:
-        while _consumer_running:
-            msgs = await loop.run_in_executor(None, lambda: _consumer.consume(200, timeout=1.0))
-            if not msgs:
-                continue
-
-            latest_tick_envelope = None
-            other_envelopes: list[dict] = []
-            skipped_ticks = 0
-
-            for msg in msgs:
-                if msg is None or msg.error():
-                    continue
-                try:
-                    envelope = json.loads(msg.value().decode("utf-8"))
-                except Exception:
-                    continue
-                if envelope.get("event_type") == "SimClockTick":
-                    if latest_tick_envelope is not None:
-                        skipped_ticks += 1
-                    latest_tick_envelope = envelope
-                else:
-                    other_envelopes.append(envelope)
-
-            if skipped_ticks > 0:
-                logger.debug("Skipped %d stale clock ticks", skipped_ticks)
-
-            if _state.sim_time is None and latest_tick_envelope is not None:
-                validated = _validate_envelope(latest_tick_envelope)
-                if validated is not None:
-                    _state.sim_time = validated[1]
-            other_envelopes = deferred_commands + other_envelopes
-            deferred_commands = []
-            for envelope in other_envelopes:
-                if envelope.get("command_type") and _state.sim_time is None:
-                    deferred_commands.append(envelope)
-                    continue
-                try:
-                    await _dispatch(envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            if latest_tick_envelope is not None:
-                try:
-                    await _dispatch(latest_tick_envelope)
-                except Exception as e:
-                    logger.error("Processing error: %s", e, exc_info=True)
-
-            _consumer_health.mark_message()
+        await kafka_runtime.run_consumer_loop(
+            _consumer, _dispatch, lambda: _consumer_running, _consumer_health,
+            batch_size=5000, timeout=0.1, manual_commit=True,
+            bootstrap_tick=_bootstrap_clock,
+            commands_ready=lambda: _state.sim_time is not None,
+        )
     finally:
-        _consumer.close()
         _consumer_running = False
         logger.info("Kafka consumer stopped")
 
@@ -301,6 +271,7 @@ async def _dispatch(envelope: dict) -> None:
     Command envelopes (keyed on ``command_type``, from ``baggage.commands``)
     are imperatives, not facts — they take a separate path.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     # Commands are keyed on command_type (no event_type / sim_time).
     if envelope.get("command_type") is not None:
         await _handle_command(envelope)
@@ -314,7 +285,7 @@ async def _dispatch(envelope: dict) -> None:
     # Idempotency check (skip for clock ticks — they're always unique)
     event_id = envelope.get("event_id", "")
     if event_type != "SimClockTick":
-        if _state.check_idempotency(event_id):
+        if event_id and event_id in _state._idempotency:
             return
 
     match event_type:
@@ -331,39 +302,32 @@ async def _dispatch(envelope: dict) -> None:
         case _:
             pass
 
+    _state.check_idempotency(envelope.get("event_id", ""))
 
 
-_command_receipts = CommandReceipts()
+
 
 
 async def _handle_command(envelope: dict) -> None:
-    """Dispatch a ``baggage.commands`` command through the receipt lifecycle.
+    """The mutation and every receipt delivery use the durable outbox."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    command_id = envelope.get("command_id")
+    if not isinstance(command_id, str) or not command_id:
+        raise ValueError("command_id is required")
+    if _state.sim_time is None:
+        raise RuntimeError("Simulation clock not available")
+    await _execute_command(envelope)
 
-    G1-b: the domain mutation, the durable ``CommandReceipt`` node and the
-    ``BaggageStatusChanged`` fact all commit in ONE ``execute_write`` inside
-    ``_execute_command``. ``save`` is therefore ``None`` (the receipt is written
-    in-tx, not after). ``load`` reads the durable receipt so a redelivery (same
-    process cache *or* post-restart) re-emits the ``CommandExecuted`` /
-    ``CommandRejected`` fact via ``emit`` **without** re-mutating the graph.
-    """
-    from kafka.producer import _produce_event
-    from db.neo4j import get_driver
-    from _common.command_store import load_receipt
 
-    await _command_receipts.handle(
-        envelope, _state.sim_time, _execute_command,
-        lambda kind, clock, payload, key: _produce_event(kind, clock, payload, key=key),
-        load=lambda key: load_receipt(get_driver(), key),
-        save=None,
-    )
+async def _stage_receipt(tx, receipt, sim_time, revision):
+    document = kafka_runtime.build_envelope(receipt[0], sim_time, receipt[1], "baggage-service")
+    await outbox.stage_outbox(tx, "BaggageOutbox", [
+        {"id": document["event_id"], "document": document},
+    ], revision)
 
 
 def _command_receipt(command_id, command_type, reason) -> tuple[str, dict]:
-    """Receipt tuple identical to the one ``CommandReceipts.handle`` builds.
-
-    Written durably in-tx so a redelivery loads and re-emits exactly what the
-    first delivery emitted.
-    """
+    """Durable owner outcome; redelivery stages this same outcome without mutation."""
     return (
         "CommandRejected" if reason else "CommandExecuted",
         {"command_id": command_id, "command_type": command_type, "reason": reason},
@@ -372,12 +336,15 @@ def _command_receipt(command_id, command_type, reason) -> tuple[str, dict]:
 
 async def _commit_receipt_only(command_id: str, receipt: tuple[str, dict]) -> None:
     """Persist a rejection receipt atomically (no domain mutation, no fact)."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     from _common.command_store import load_receipt_in_tx, save_receipt_in_tx
 
     async def apply(tx) -> None:
-        if await load_receipt_in_tx(tx, command_id) is not None:
-            return
-        await save_receipt_in_tx(tx, command_id, receipt)
+        revision = await next_outbox_revision_tx(tx)
+        existing = await load_receipt_in_tx(tx, command_id)
+        if existing is None:
+            await save_receipt_in_tx(tx, command_id, receipt)
+        await _stage_receipt(tx, existing or receipt, _state.sim_time, revision)
 
     async with get_driver().session() as session:
         await session.execute_write(apply)
@@ -389,9 +356,10 @@ async def _execute_command(envelope: dict) -> str | None:
     Parses/validates, then — for ``RedirectBaggage`` — re-assigns the LOADED_ON
     relationship, stages the ``BaggageStatusChanged`` fact and writes the command
     receipt in ONE transaction. The conveyor eviction (rebuildable cache) and
-    metrics run only after the commit. Returns the rejection reason, or ``None``
-    on success (``CommandReceipts.handle`` turns that into the receipt fact).
+    receipt fact in ONE transaction. Metrics/cache eviction follow commit.
+    Returns the rejection reason, or ``None`` on success.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     from _common.command_store import load_receipt_in_tx, save_receipt_in_tx
 
     command_type = envelope.get("command_type")
@@ -407,27 +375,30 @@ async def _execute_command(envelope: dict) -> str | None:
     sim_time = _state.sim_time
 
     assert isinstance(cmd, RedirectBaggage)
-    bag = await get_baggage_by_id(cmd.bag_id)
-    if bag is None:
-        reason = "Baggage not found"
-        await _commit_receipt_only(command_id, _command_receipt(command_id, command_type, reason))
-        m_commands.labels(command_type=command_type, outcome="rejected").inc()
-        logger.warning("Rejected RedirectBaggage: bag %s not found", cmd.bag_id)
-        return reason
-
-    prev_status = bag.get("status", "unknown")
-    passenger_id = (bag.get("passenger") or {}).get("id")
-    tag = bag.get("tag", "")
-    suppress = is_bulk_mode()
     outcome: dict = {"reason": None, "result": None}
 
     async def apply(tx) -> None:
+        revision = await next_outbox_revision_tx(tx)
         existing = await load_receipt_in_tx(tx, command_id)
         if existing is not None:
             # Durable redelivery raced past handle()'s load — re-emit, don't re-mutate.
             outcome["reason"] = existing[1].get("reason")
             outcome["result"] = "seen"
+            await _stage_receipt(tx, existing, sim_time, revision)
             return
+        with bind_transaction(tx):
+            bag = await get_baggage_by_id(cmd.bag_id)
+        if bag is None:
+            reason = "Baggage not found"
+            receipt = _command_receipt(command_id, command_type, reason)
+            await save_receipt_in_tx(tx, command_id, receipt)
+            await _stage_receipt(tx, receipt, sim_time, revision)
+            outcome.update(reason=reason, result="rejected")
+            return
+        prev_status = bag.get("status", "unknown")
+        passenger_id = (bag.get("passenger") or {}).get("id")
+        tag = bag.get("tag", "")
+        outcome["previous_status"] = prev_status
         ok = await redirect_baggage_to_flight_tx(
             tx, cmd.bag_id, cmd.target_flight_id, sim_time
         )
@@ -438,9 +409,9 @@ async def _execute_command(envelope: dict) -> str | None:
             )
             outcome["reason"] = reason
             outcome["result"] = "rejected"
+            await _stage_receipt(tx, _command_receipt(command_id, command_type, reason), sim_time, revision)
             return
-        revision = await next_outbox_revision_tx(tx)
-        facts = [] if suppress else [
+        facts = [
             _status_changed_fact(
                 event_id=command_id,
                 baggage_id=cmd.bag_id,
@@ -453,6 +424,9 @@ async def _execute_command(envelope: dict) -> str | None:
                 flight_id=cmd.target_flight_id,
             )
         ]
+        document = kafka_runtime.build_envelope("CommandExecuted", sim_time,
+            _command_receipt(command_id, command_type, None)[1], "baggage-service")
+        facts.append({"id": document["event_id"], "document": document})
         await outbox.stage_outbox(tx, "BaggageOutbox", facts, revision)
         await save_receipt_in_tx(
             tx, command_id, _command_receipt(command_id, command_type, None)
@@ -470,7 +444,7 @@ async def _execute_command(envelope: dict) -> str | None:
     elif outcome["result"] == "executed":
         # Post-commit only: evict from the rebuildable conveyor cache + metric.
         _state.conveyor.remove_bag_from_all_zones(cmd.bag_id)
-        _track_transition(prev_status, "redirected")
+        _track_transition(outcome["previous_status"], "redirected")
         m_commands.labels(command_type=command_type, outcome="accepted").inc()
         logger.info(
             "Executed RedirectBaggage: bag %s → flight %s",
@@ -480,7 +454,6 @@ async def _execute_command(envelope: dict) -> str | None:
 
 
 BULK_SNAPSHOT_INTERVAL_SIM_MIN = int(os.getenv("BULK_SNAPSHOT_INTERVAL_MIN", "60"))
-_baggage_tick_n: int = 0
 
 
 class _TickPlan:
@@ -553,7 +526,14 @@ async def _apply_tick(plan: _TickPlan, sim_time: datetime) -> bool:
                 tx, flag["baggage_id"], flag["flag_reason"], flag["scan_zone"], sim_time
             )
         await set_loaded_on_timestamps_tx(tx, plan.loaded_rows, sim_time)
-        await outbox.stage_outbox(tx, "BaggageOutbox", plan.facts, revision)
+        facts = list(plan.facts)
+        if plan.status_changes or plan.flags or plan.loaded_rows:
+            document = kafka_runtime.build_envelope("BaggageStatusBatchChanged", sim_time, {
+                "status_changes": plan.status_changes, "flags": plan.flags,
+                "loaded_rows": plan.loaded_rows,
+            }, "baggage-service")
+            facts.append({"id": document["event_id"], "document": document})
+        await outbox.stage_outbox(tx, "BaggageOutbox", facts, revision)
         return True
 
     async with get_driver().session() as session:
@@ -572,7 +552,37 @@ def _apply_tick_metrics(plan: _TickPlan) -> None:
             m_false_pos.inc()
 
 
+
+_TICK_CODEC = SnapshotCodec(
+    [ConveyorSystem, BagInZone, TransitBag, ZoneState],
+    (
+        "last_tick_sim_time", "conveyor", "inducted_bag_ids", "current_mode",
+        "last_mode", "last_sync_sim_time", "tick_counter",
+    ),
+)
+
+
+async def _prepare_tick(candidate: BaggageConsumerState) -> None:
+    # External redirects/offloads may have removed a checkpointed queued bag.
+    bags = {b["id"] for b in await get_baggage_in_pipeline()}
+    for zone in candidate.conveyor.get_all_zones().values():
+        zone.queue = type(zone.queue)(b for b in zone.queue if b.baggage_id in bags)
+        zone.status = "normal"
+    candidate.conveyor._transit_queue = [
+        b for b in candidate.conveyor._transit_queue if b.bag.baggage_id in bags
+    ]
+    for location in candidate.active_failures.values():
+        for zone_id in FAILURE_IMPACT.get(location, []):
+            candidate.conveyor.set_zone_status(zone_id, "offline")
+
+
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
+    from db.neo4j import get_driver
+    await run_tick("BaggageOutboxSeq", "BaggageOutbox", _state,
+                   _TICK_CODEC, get_driver, _advance_tick, payload, sim_time, _prepare_tick)
+
+
+async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     """Process SimClockTick — induct new bags and advance conveyor pipeline.
 
     G1-a: the whole tick's domain writes + facts + checkpoint commit in one
@@ -581,8 +591,9 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     replayed tick it is rolled back to that snapshot so the cache never drifts
     ahead of the committed graph.
     """
-    global _baggage_tick_n
-    _baggage_tick_n += 1
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    _state.tick_counter += 1
+    _baggage_tick_n = _state.tick_counter
     _state.sim_time = sim_time
 
     # In-memory replay guard; the durable backstop is begin_tick_tx in the tx.
@@ -684,6 +695,7 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
 
 async def _maybe_emit_baggage_bulk_snapshot(sim_time: datetime) -> None:
     """Emit a BulkStateSnapshot summarising baggage state (BULK mode only)."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     force = _state.last_mode == "BULK" and _state.current_mode != "BULK"
 
     if not force and _state.last_sync_sim_time is not None:
@@ -717,11 +729,12 @@ async def _plan_induction(plan: _TickPlan, sim_time: datetime, delta_minutes: in
     under ``_on_clock_tick``'s snapshot; the ``inducted_ids`` are added to the
     cache only after the tick commits.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     try:
         bags = await get_dropped_off_baggage_for_departures(sim_time)
     except Exception as e:
         logger.error("Failed to query dropped_off bags: %s", e)
-        return
+        raise
 
     sim_time_str = sim_time.isoformat()
     suppress = is_bulk_mode()
@@ -817,6 +830,7 @@ def _plan_bag_exit(
     mutation is the flag eviction from the conveyor (compute-phase, covered by
     ``_on_clock_tick``'s rollback snapshot).
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     suppress = is_bulk_mode()
 
     if from_zone.startswith("induction"):
@@ -891,6 +905,7 @@ def _plan_bag_exit(
 
 def _find_bag_current_zone(baggage_id: str) -> str | None:
     """Find which zone a bag is currently in (in-memory lookup)."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     for zone_id, zone in _state.conveyor.get_all_zones().items():
         for bag in zone.queue:
             if bag.baggage_id == baggage_id:
@@ -975,6 +990,7 @@ async def _apply_departure_in_hold(
     in-memory conveyor (a Neo4j-derived, rebuildable cache per rule #3) and the
     WebSocket fan-out run only *after* the commit succeeds.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     from db.neo4j import get_flight_baggage
     bags = await get_flight_baggage(
         flight_id,
@@ -1044,6 +1060,7 @@ async def _apply_arrival_at_gate(
     Placing bags on the in-memory arrival belt (a rebuildable cache) + WS fan-out
     + metrics run only *after* the commit succeeds.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     from db.neo4j import get_flight_baggage
     from services.spatial import arrival_carousel_for_terminal
 
@@ -1118,6 +1135,7 @@ async def _apply_arrival_at_gate(
 
 async def _on_flight_cancelled(payload: dict, sim_time: datetime) -> None:
     """Handle FlightCancelled — offload all loaded baggage (G1-c atomic path)."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     flight_id = payload.get("flight_id")
     if not flight_id:
         return
@@ -1134,6 +1152,7 @@ async def _on_flight_cancelled(payload: dict, sim_time: datetime) -> None:
 
 async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
     """Handle IncidentCreated — halt affected conveyor zones."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     incident_type = payload.get("type")
     if incident_type != "system_failure":
         return
@@ -1155,6 +1174,7 @@ async def _on_incident_created(payload: dict, sim_time: datetime) -> None:
 
 async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None:
     """Handle IncidentStatusChanged — resume zones when incident resolved."""
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     new_status = payload.get("new_status") or payload.get("status")
     if new_status != "resolved":
         return

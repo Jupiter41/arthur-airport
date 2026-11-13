@@ -62,7 +62,9 @@ async def inbox_seen(tx: _Tx, inbox_label: str, event_id: str) -> bool:
         return False
     label = _check_label(inbox_label)
     result = await tx.run(
-        f"MATCH (i:{label} {{id: $id}}) RETURN i.id AS id", id=event_id
+        f"MERGE (i:{label} {{id: $id}}) "
+        "SET i.lock = coalesce(i.lock, 0) + 1 "
+        "WITH i WHERE i.sim_time IS NOT NULL RETURN i.id AS id", id=event_id
     )
     return (await result.single()) is not None
 
@@ -73,7 +75,7 @@ async def mark_inbox(tx: _Tx, inbox_label: str, event_id: str, sim_time: Any) ->
         return
     label = _check_label(inbox_label)
     result = await tx.run(
-        f"MERGE (i:{label} {{id: $id}}) ON CREATE SET i.sim_time = $sim_time",
+        f"MERGE (i:{label} {{id: $id}}) SET i.sim_time = $sim_time",
         id=event_id,
         sim_time=sim_time,
     )
@@ -90,6 +92,11 @@ async def stage_outbox(
     stable ``id`` is retained until broker ack, so redelivery keeps the same
     event_id (at-least-once with stable IDs, not exactly-once).
     """
+    from _common.transaction_scope import current
+    scope = current.get()
+    if scope is not None and not scope.flushing:
+        scope.facts.extend(facts)
+        return
     if not facts:
         return
     label = _check_label(outbox_label)

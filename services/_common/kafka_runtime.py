@@ -155,6 +155,9 @@ async def run_consumer_loop(
     health: object | None = None,
     *,
     batch_size: int = 200,
+    manual_commit: bool = False,
+    bootstrap_tick: Callable[[dict], None] | None = None,
+    commands_ready: Callable[[], bool] | None = None,
     timeout: float = 1.0,
 ) -> None:
     """Poll Kafka, dedup clock ticks, and dispatch each batch.
@@ -171,12 +174,15 @@ async def run_consumer_loop(
     The caller owns the running flag: set it to False (via ``stop_consumer()``)
     to exit the loop after the current poll cycle.
 
-    Not suitable for consumers that need per-message retry, manual offset commit,
-    or a separate command-consumer task (cost-service, analysis-service,
-    passenger-service command consumer).
+    With manual_commit=True, retry failed dispatch without acknowledging input;
+    commit the consumed batch only after every retained fact/latest tick succeeds.
+    A deferred command prevents that batch's acknowledgement until its clock is
+    available. Consumers must disable auto-commit. Separate command consumers and
+    the financial/analysis adapters retain their specialized loops.
     """
     import asyncio
     loop = asyncio.get_event_loop()
+    deferred: list[dict] = []
     try:
         while should_run():
             msgs = await loop.run_in_executor(
@@ -185,7 +191,8 @@ async def run_consumer_loop(
             if not msgs:
                 continue
             latest_tick: dict | None = None
-            others: list[dict] = []
+            others: list[dict] = deferred
+            deferred = []
             skipped = 0
             for msg in msgs:
                 if msg is None or msg.error():
@@ -202,16 +209,25 @@ async def run_consumer_loop(
                     others.append(envelope)
             if skipped:
                 logger.debug("Skipped %d stale SimClockTick(s)", skipped)
-            for envelope in others:
-                try:
-                    await dispatch(envelope)
-                except Exception:
-                    logger.error("Consumer dispatch error", exc_info=True)
-            if latest_tick is not None:
-                try:
-                    await dispatch(latest_tick)
-                except Exception:
-                    logger.error("Consumer dispatch error (SimClockTick)", exc_info=True)
+            if latest_tick is not None and bootstrap_tick is not None:
+                bootstrap_tick(latest_tick)
+            for envelope in [*others, *([latest_tick] if latest_tick is not None else [])]:
+                if envelope.get("command_type") and commands_ready and not commands_ready():
+                    deferred.append(envelope)
+                    continue
+                while True:
+                    try:
+                        await dispatch(envelope)
+                        break
+                    except Exception:
+                        logger.error("Consumer dispatch error; input remains unacknowledged", exc_info=True)
+                        if not manual_commit:
+                            break
+                        if not should_run():
+                            return
+                        await asyncio.sleep(0.1)
+            if manual_commit and not deferred:
+                await loop.run_in_executor(None, lambda: consumer.commit(asynchronous=False))
             if health is not None:
                 health.mark_message()
     finally:
