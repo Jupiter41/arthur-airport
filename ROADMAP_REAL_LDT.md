@@ -3018,3 +3018,49 @@ venv), verified identical on a clean tree; **zero regressions**. Ruff clean on a
 flight/passenger leftovers remain, and the roadmap's closure bar — CI live-stack (Neo4j+Kafka)
 validation (crash-mid-tick resume, competing-worker fencing, Kafka replay) — has not run (no container
 stack in this environment).
+
+## 46. A53 — Home sync, transactional-owner integration and replay repair (2026-11-13)
+
+Fetched origin/main through `9fada06` (five new commits) and merged it with the
+18 local validated commits as `c6d6b61`. Backup branch
+`codex/pre-home-sync-20261113` and the safety stash preserve the prior state;
+the pre-existing Raspberry Pi/access-control work was restored and remains
+unstaged. Docker Desktop's Linux engine was started locally. No graph reset,
+external data import, history rewrite or push was performed.
+
+The merge retains the remote shared outbox, transactional owner paths and G10
+frontend state cleanup together with local indexed paging, security observations,
+financial reporting and boarding filtering. New transactional baggage batch,
+flag and redirect writers now remove the derived unscanned label with the scan
+write. The isolated Neo4j regression covers real commit/rollback of those paths.
+Legacy rebooking remains advisory-only: an atomic rejection receipt/outbox
+commits without inventing a replacement itinerary or unsupported passenger state.
+
+Live GDP replay exposed a protocol regression in remote command dedup: it
+suppressed the saved receipt after acknowledgement. Flight commands now retain
+their receipt event document and requeue only that document on redelivery, with
+the original event ID/time, no repeated domain mutation and no duplicate pending
+outbox entry. Unit replay checks cover both pending and already-acknowledged
+receipts. The broker-level execution/restart group plus transactional baggage
+regression pass: **6 checks in 74.47 seconds**. Legacy receipts without a saved
+event document retain their first reconstructed replay document going forward.
+
+Passenger tick rollback also now restores tentative queues, membership sets,
+zone density and local clock/counter after transaction failure or a fenced tick.
+An independently committed lane count is retained; failures after successful
+commit do not revert the committed projection. Three new failure-injection cases
+exercise these distinctions. This does not claim cluster replica certification
+or resolve unrelated flight full-tick/wheelchair/warm-start boundaries.
+
+Final merged Python units: **1,201 pass**, three dependency warnings, 59.44s.
+Gateway **29/29** and dashboard **40/40** tests pass; the reduced dashboard count
+reflects deleted duplicate passenger-store tests. Dashboard production build
+passes. All changed owner images were rebuilt. The complete live gate is being
+recorded below, and historical G1 closure claims are not treated as deployment
+proof. G11 remains open under the supplied fake-data-only instruction; the
+remote narrative of an owner decision is not substituted for that instruction.
+
+Evidence: `.pytest_cache/ldt-home-final-python.txt`, `ldt-home-gateway-tests.txt`,
+`ldt-home-dashboard-tests.txt`, `ldt-home-dashboard-build.txt`,
+`ldt-home-live-focused-final.txt`, `ldt-home-replay-units.txt`,
+`ldt-home-tick-rollback.txt`, and `ldt-home-full-tests.txt`.

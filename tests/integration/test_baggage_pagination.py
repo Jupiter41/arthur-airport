@@ -24,6 +24,7 @@ async def main():
         # Execute the production queries on a unique label. This tests actual
         # Neo4j index/null semantics without a linear deep offset through history.
         class ScopedSession:
+            def __init__(self, connection=session): self.connection=connection
             async def __aenter__(self): return self
             async def __aexit__(self,*args): pass
             def run(self, query, **params):
@@ -31,7 +32,7 @@ async def main():
                 query=query.replace(':UnscannedBaggage', ':'+label+'Unscanned')
                 for kind in ['Passenger','Flight','ScanEvent']:
                     query=query.replace(':'+kind, ':'+label+kind)
-                return session.run(query.replace(':Baggage', ':'+label), **params)
+                return self.connection.run(query.replace(':Baggage', ':'+label), **params)
         scoped=ScopedSession()
         class ScopedDriver:
             def session(self): return scoped
@@ -77,6 +78,22 @@ async def main():
             assert await db['redirect_baggage_to_flight'](label+'-5',label,now)
             count=await (await scoped.run('MATCH (b:UnscannedBaggage) RETURN count(b) AS n')).single()
             assert count['n']==0,count
+            # The merged transactional owner paths must preserve the same index
+            # invariant on both commit and rollback, using real Neo4j transactions.
+            await seed['_persist_baggage']([dict(template,id=label+'-'+str(n),tag=label+'-'+str(n)) for n in range(6,10)])
+            async with await session.begin_transaction() as tx:
+                target=ScopedSession(tx)
+                await db['write_baggage_statuses_tx'](target,[{'id':label+'-6','status':'sorting','zone':'sorting-matrix'}],now)
+                await db['flag_baggage_tx'](target,label+'-7','synthetic-test','screening-unit-1',now)
+                assert await db['redirect_baggage_to_flight_tx'](target,label+'-8',label,now)
+                await tx.commit()
+            async with await session.begin_transaction() as tx:
+                await db['write_baggage_statuses_tx'](ScopedSession(tx),[{'id':label+'-9','status':'sorting','zone':'sorting-matrix'}],now)
+                await tx.rollback()
+            record=await (await scoped.run('MATCH(b:Baggage {id:$id}) RETURN b.status AS status, b.last_scan_at AS scan, b:UnscannedBaggage AS unscanned',id=label+'-9')).single()
+            assert dict(record)=={'status':'dropped_off','scan':None,'unscanned':True},record
+            count=await (await scoped.run('MATCH(b:UnscannedBaggage) RETURN count(b) AS n')).single()
+            assert count['n']==1,count
         finally:
             for suffix in ['','Unscanned','Migration','Passenger','Flight','ScanEvent']:
                 await (await session.run(f'MATCH (b:{label}{suffix}) DETACH DELETE b')).consume()

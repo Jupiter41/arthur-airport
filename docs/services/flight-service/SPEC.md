@@ -366,12 +366,18 @@ Maintains a map of `aircraft_registration → (inbound_flight, outbound_flight)`
 
 ### Command execution receipts (Real LDT correction)
 
+Flight mutations, command receipts and their initial outbox facts commit in one
+transaction. A receipt's event document is retained with its durable receipt.
+Redelivery requeues only that stored receipt, with its original event ID and
+simulation timestamp; a pending receipt is not duplicated, and no flight
+mutation or domain fact is repeated.
+
 `GroundDelayProgram` accepts a non-empty list of concrete flight IDs and a
 positive `stagger_minutes`. Duplicate IDs are applied once. Only departures in
 `scheduled` or `boarding` can be ground-held; arrivals and other states are
 skipped. The current command applies the same hold duration to each eligible
 flight; it does not allocate staggered runway slots. An entirely ineligible batch
-is rejected. Batch mutation and receipt atomicity remain G1 work.
+is rejected. These command writes and their receipt/outbox records are atomic.
 
 Accepted commands emit the existing domain fact plus `CommandExecuted`; rejected
 commands emit `CommandRejected` with a reason. Both receipts carry `command_id`

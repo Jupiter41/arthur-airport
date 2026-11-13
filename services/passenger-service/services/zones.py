@@ -32,6 +32,12 @@ def get_density() -> dict[str, int]:
     return dict(_zone_density)
 
 
+def restore_density(snapshot: dict[str, int]) -> None:
+    """Restore tentative tick bookkeeping after its graph transaction rolls back."""
+    _zone_density.clear()
+    _zone_density.update(snapshot)
+
+
 def get_zone_count(zone: str) -> int:
     return _zone_density.get(zone, 0)
 

@@ -107,6 +107,14 @@ class _Tx:
         if "MERGE (s:FlightRuntime" in query:
             db["runtime_rev"] += 1
             return _FakeResult([{"revision": db["runtime_rev"]}])
+        if "RETURN r.receipt_document AS document" in query:
+            return _FakeResult([{"document": db.get("receipt_documents", {}).get(p["id"])}])
+        if "SET r.receipt_document=" in query:
+            db.setdefault("receipt_documents", {})[p["id"]] = p["document"]
+            return _FakeResult()
+        if "MERGE (e:FlightOutbox" in query:
+            db["outbox"].setdefault(p["id"], json.loads(p["document"]))
+            return _FakeResult()
         if "MATCH (r:CommandReceipt" in query:
             rec = db["receipts"].get(p["id"])
             return _FakeResult([{"event_type": rec[0], "payload": rec[1]}] if rec else [])
@@ -175,6 +183,11 @@ def test_flight_command_executes_once_and_dedupes_redelivery(monkeypatch):
     asyncio.run(consumer._handle_command(command))
     assert driver.db["flights"]["f1"]["status"] == "sentinel"   # not re-held
     assert driver.db["outbox"] == outbox_before                 # nothing re-staged
+    driver.db["outbox"].clear()  # prior receipt acknowledged by Kafka
+    asyncio.run(consumer._handle_command(command))
+    assert _outbox_types(driver) == ["CommandExecuted"]
+    assert driver.db["outbox"]["cmd:hold-1"] == outbox_before["cmd:hold-1"]
+    assert driver.db["flights"]["f1"]["status"] == "sentinel"
 
 
 def test_flight_precondition_failure_stages_rejection_receipt(monkeypatch):
@@ -204,73 +217,82 @@ def test_flight_precondition_failure_stages_rejection_receipt(monkeypatch):
 
 
 def test_gdp_handles_batch_once_skips_arrivals_and_confirms_redelivery(monkeypatch):
-    consumer, _, _, documents, events = context("flight", monkeypatch)
+    consumer, _, _, _, _ = context("flight", monkeypatch)
     flights = {
         "f1": {"id": "f1", "direction": "departure", "status": "scheduled"},
         "f2": {"id": "f2", "direction": "departure", "status": "boarding"},
         "arrival": {"id": "arrival", "direction": "arrival", "status": "approach"},
         "gone": {"id": "gone", "direction": "departure", "status": "airborne"},
     }
-    holds = []
+    for flight in flights.values():
+        flight.update(flight_number=flight["id"], estimated_time="2024-06-15T12:10:00")
+    driver = _FakeDriver(flights)
 
     async def get_flight(key):
         return flights.get(key)
 
-    async def hold(*args):
-        holds.append(args)
-        return {"id": args[0]}
-
+    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
     monkeypatch.setattr(consumer, "get_flight_by_id", get_flight)
-    monkeypatch.setattr(consumer, "hold_flight", hold)
+    consumer._command_results.clear()
     command = {
         "command_id": "gdp-1", "command_type": "GroundDelayProgram",
         "payload": {"flight_ids": ["f1", "arrival", "missing", "f1", "gone", "f2"],
                     "stagger_minutes": 5},
     }
     asyncio.run(consumer._handle_command(command))
-    consumer._command_receipts.results.clear()
+    before = dict(driver.db["outbox"])
+    consumer._command_results.clear()
     asyncio.run(consumer._handle_command(command))
-    assert holds == [(fid, "ground_delay_program", 5, NOW) for fid in ("f1", "f2")]
-    assert [kind for kind, _ in events] == ["CommandExecuted", "CommandExecuted"]
-    assert "gdp-1" in documents
+    assert driver.db["outbox"] == before
+    assert driver.db["flights"]["f1"]["delay_minutes"] == 5
+    assert driver.db["flights"]["f2"]["delay_minutes"] == 5
+    assert driver.db["flights"]["arrival"]["status"] == "approach"
+    assert driver.db["flights"]["gone"]["status"] == "airborne"
+    assert _outbox_types(driver).count("FlightStatusChanged") == 2
+    assert _outbox_types(driver).count("CommandExecuted") == 1
+    assert "gdp-1" in driver.db["receipts"]
 
 
 def test_gdp_rejects_batch_with_no_eligible_departures(monkeypatch):
-    consumer, _, _, _, events = context("flight", monkeypatch)
+    import json
+    consumer, _, _, _, _ = context("flight", monkeypatch)
+    driver = _FakeDriver({})
 
     async def arrival(key):
         return {"id": key, "direction": "arrival", "status": "approach"}
 
-    async def never_hold(*args):
-        raise AssertionError("An arrival cannot be ground-held")
-
+    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
     monkeypatch.setattr(consumer, "get_flight_by_id", arrival)
-    monkeypatch.setattr(consumer, "hold_flight", never_hold)
+    consumer._command_results.clear()
     asyncio.run(consumer._handle_command({
         "command_id": "gdp-arrival", "command_type": "GroundDelayProgram",
         "payload": {"flight_ids": ["arrival"], "stagger_minutes": 5},
     }))
-    assert events[0][0] == "CommandRejected"
-    assert "no flights held" in events[0][1]["reason"]
+    kind, payload = driver.db["receipts"]["gdp-arrival"]
+    payload = json.loads(payload)
+    assert kind == "CommandRejected" and "no flights held" in payload["reason"]
+    assert _outbox_types(driver) == ["CommandRejected"]
 
 
 def test_rebooking_without_replacement_itinerary_rejects_without_writes(monkeypatch):
-    consumer, _, db, documents, events = context("passenger", monkeypatch)
+    import json
+    from tests.unit.test_passenger_g1_closeout import Driver
 
-    async def never_write(*args, **kwargs):
-        raise AssertionError("Advisory rebooking must not mutate passengers")
-
-    monkeypatch.setattr(db, "update_passenger_status", never_write)
+    consumer, _, db, _, _ = context("passenger", monkeypatch)
+    driver = Driver()
+    driver.db["pax"]["p1"] = {"status": "at_gate", "zone": "gate-1"}
+    monkeypatch.setattr(db, "get_driver", lambda: driver)
     command = {
         "command_id": "rebook-1", "command_type": "RebookPassengers",
         "payload": {"inbound_flight": "inbound", "passenger_ids": ["p1"]},
     }
     asyncio.run(consumer._handle_command(command))
-    consumer._command_receipts.results.clear()
     asyncio.run(consumer._handle_command(command))
-    assert [kind for kind, _ in events] == ["CommandRejected", "CommandRejected"]
-    assert "replacement itinerary" in events[0][1]["reason"]
-    assert "rebook-1" in documents
+    assert driver.db["pax"]["p1"]["status"] == "at_gate"
+    assert driver.db["receipts"]["rebook-1"][0] == "CommandRejected"
+    docs = [json.loads(row["document"]) for row in driver.db["outbox"].values()]
+    assert all(d["event_type"] == "CommandRejected" for d in docs)
+    assert all("replacement itinerary" in d["payload"]["reason"] for d in docs)
 
 
 def test_passenger_lane_change_is_saved_emitted_and_rebuilt(monkeypatch):

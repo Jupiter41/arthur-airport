@@ -9,6 +9,15 @@
 
 ## 1. Domain responsibilities
 
+Legacy `RebookPassengers` commands are advisory-only until replacement itinerary
+execution exists. The rejection receipt and its outbox fact commit atomically;
+replay delivers the stored receipt without changing passenger status or flight.
+
+If a passenger tick's managed transaction fails or loses the checkpoint race,
+restore its tentative queues, membership sets, zone density and local tick time.
+Keep any independently committed lane-setting command. Failures after a
+successful commit must not undo the committed runtime projection.
+
 Status summaries count non-null persisted statuses through the existing status
 index, avoiding full node/property scans as synthetic history accumulates.
 

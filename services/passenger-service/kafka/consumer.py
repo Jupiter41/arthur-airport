@@ -7,6 +7,7 @@ On each tick: advance departure FSM, drain security queues, check congestion,
 """
 
 import asyncio
+from copy import deepcopy
 import json
 import logging
 import os
@@ -815,6 +816,26 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         logger.debug("Skipping replayed tick %s (<= checkpoint %s)", sim_time, durable_last)
         return
 
+    from services import zones
+
+    excluded = {"ws_broadcast", "source_registry", "_bts_adapter", "_idempotency",
+                "gate_positions", "walking_zones"}
+    snapshot = {name: deepcopy(value) for name, value in vars(_state).items() if name not in excluded}
+    zone_snapshot = zones.get_density()
+    previous_counter = _tick_counter
+    committed = False
+
+    def restore_tentative_state() -> None:
+        global _tick_counter
+        lanes = {terminal: cp.lanes_open for terminal, cp in _state.security.checkpoints.items()}
+        for name, value in snapshot.items():
+            setattr(_state, name, value)
+        for terminal, count in lanes.items():
+            _state.security.checkpoints[terminal].lanes_open = count
+        zones.restore_density(zone_snapshot)
+        _tick_counter = previous_counter
+        set_bulk_mode(_state.current_mode == "BULK")
+
     _tick_counter += 1
     _state.sim_time = sim_time
     _state.sim_day = payload.get("day_of_sim", 0)
@@ -872,11 +893,10 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             facts=plan.facts,
         )
         if not applied:
-            # Single serial consumer: reaching here means the durable checkpoint
-            # advanced between the pre-read and the locked write (unexpected).
-            # In-memory bookkeeping already ran; it is derived and rebuilt from
-            # Neo4j on the next _sync_security_from_db / restart.
+            restore_tentative_state()
             logger.warning("Tick %s not applied (checkpoint already advanced)", sim_time)
+            return
+        committed = True
 
         # === Non-critical path (reduced frequency) ===
 
@@ -951,6 +971,8 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
             await _maybe_emit_bulk_snapshot(sim_time)
 
     except Exception as e:
+        if not committed:
+            restore_tentative_state()
         logger.error("Error in clock tick processing: %s", e, exc_info=True)
     finally:
         set_tick_batch_mode(False)

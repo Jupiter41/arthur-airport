@@ -5,6 +5,7 @@ On each tick: evaluates all active flights through the FSM, assigns runways, res
 """
 
 import asyncio
+import json
 import logging
 import os
 import random
@@ -407,9 +408,9 @@ async def _handle_command(envelope: dict) -> None:
     domain fact(s) staged to the outbox, the command receipt node
     (``save_receipt_in_tx``) and the ``CommandExecuted``/``CommandRejected``
     receipt fact staged to the outbox — all commit together or none do. A
-    redelivered command finds the receipt and re-mutates nothing; the receipt
-    fact is delivered by the outbox (at-least-once, stable id), so no separate
-    re-emit is needed. In-memory caches / WS / metrics run only post-commit.
+    redelivered command finds the receipt and re-mutates nothing; only its
+    retained event document is requeued (stable ID and original simulation time).
+    In-memory caches / WS / metrics run only post-commit.
     """
     command_id = envelope.get("command_id")
     if not isinstance(command_id, str) or not command_id:
@@ -417,10 +418,6 @@ async def _handle_command(envelope: dict) -> None:
     sim_time = _state.sim_time
     if sim_time is None:
         raise RuntimeError("Simulation clock not available")
-
-    # Hot-path dedup: already committed in this process → outbox owns delivery.
-    if command_id in _command_results:
-        return
 
     command_type = envelope.get("command_type")
     # Validate + read + check preconditions OUTSIDE the write transaction.
@@ -430,7 +427,24 @@ async def _handle_command(envelope: dict) -> None:
     async def apply(tx):
         existing = await load_receipt_in_tx(tx, command_id)
         if existing is not None:
-            # Durable redelivery dedup: do not re-mutate or re-stage.
+            saved = await (await tx.run(
+                "MATCH (r:CommandReceipt {id:$id}) RETURN r.receipt_document AS document",
+                id=command_id,
+            )).single()
+            document = saved["document"] if saved else None
+            if document is None:
+                # Legacy receipts predate retained event documents.
+                document = json.dumps(build_fact(receipt_event_id, existing[0], sim_time, existing[1]))
+                await (await tx.run(
+                    "MATCH (r:CommandReceipt {id:$id}) SET r.receipt_document=$document",
+                    id=command_id, document=document,
+                )).consume()
+            revision = await next_outbox_revision(tx)
+            await (await tx.run(
+                "MERGE (e:FlightOutbox {id:$id}) ON CREATE SET "
+                "e.document=$document, e.revision=$revision, e.position=0",
+                id=receipt_event_id, document=document, revision=revision,
+            )).consume()
             return existing, None
         reason, domain_facts, post = await run(tx)
         receipt = (
@@ -441,6 +455,10 @@ async def _handle_command(envelope: dict) -> None:
             receipt_event_id, receipt[0], sim_time, receipt[1])}
         revision = await next_outbox_revision(tx)
         await save_receipt_in_tx(tx, command_id, receipt)
+        await (await tx.run(
+            "MATCH (r:CommandReceipt {id:$id}) SET r.receipt_document=$document",
+            id=command_id, document=json.dumps(receipt_fact["document"]),
+        )).consume()
         await outbox_common.stage_outbox(
             tx, "FlightOutbox", [*domain_facts, receipt_fact], revision,
         )

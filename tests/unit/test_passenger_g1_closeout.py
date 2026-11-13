@@ -191,6 +191,57 @@ def _consumer(monkeypatch):
     return importlib.import_module("kafka.consumer")
 
 
+@pytest.mark.parametrize("outcome", ["storage_failure", "checkpoint_race", "post_commit_failure"])
+def test_tick_restores_tentative_caches_only_before_commit(monkeypatch, outcome):
+    from collections import defaultdict
+
+    consumer = _consumer(monkeypatch)
+    zones = importlib.import_module("services.zones")
+    monkeypatch.setattr(consumer, "_state", consumer.PassengerConsumerState())
+    previous_counter = 9 if outcome == "post_commit_failure" else 1
+    monkeypatch.setattr(consumer, "_tick_counter", previous_counter)
+    monkeypatch.setattr(zones, "_zone_density", defaultdict(int, {"security-A": 1}))
+    state = consumer._state
+    state.sim_time = EARLIER
+    state.last_tick_sim_time = EARLIER
+    state.security.checkpoints["A"].queue = ["p1"]
+    state.security.checkpoints["A"]._queue_set = {"p1"}
+    state.security_enqueued = {"p1"}
+    monkeypatch.setattr(consumer, "read_tick_checkpoint", AsyncMock(return_value=EARLIER))
+    for name in ["_warm_start_departures", "_ml_tick", "_wheelchair_tick"]:
+        monkeypatch.setattr(consumer, name, AsyncMock())
+    for name in ["_advance_checkin_to_security", "_drain_security_queues",
+                 "_advance_airside_to_gate", "_advance_boarding", "_advance_arrivals"]:
+        monkeypatch.setattr(consumer, name, AsyncMock(return_value=consumer.TickContribution()))
+
+    async def compute(*args):
+        state.security.checkpoints["A"].queue.clear()
+        state.security.checkpoints["A"]._queue_set.clear()
+        state.security_enqueued.clear()
+        state.noshow_drawn_flights.add("f1")
+        zones.move_passenger("security-A", "airside-A")
+        state.security.checkpoints["A"].lanes_open = 7  # independent accepted command
+        return consumer.TickContribution()
+
+    monkeypatch.setattr(consumer, "_advance_booked_to_checkin", compute)
+    apply = AsyncMock(side_effect=RuntimeError("storage")) if outcome == "storage_failure" else AsyncMock(return_value=outcome == "post_commit_failure")
+    monkeypatch.setattr(consumer, "apply_tick_atomic", apply)
+    monkeypatch.setattr(consumer, "_check_connections", AsyncMock(side_effect=RuntimeError("post-commit")))
+    asyncio.run(consumer._on_clock_tick({"day_of_sim": 1}, SIM_TIME))
+    assert state.security.checkpoints["A"].lanes_open == 7
+    if outcome == "post_commit_failure":
+        assert state.security.checkpoints["A"].queue == []
+        assert state.last_tick_sim_time == SIM_TIME and consumer._tick_counter == 10
+        assert zones.get_zone_count("airside-A") == 1
+    else:
+        assert state.security.checkpoints["A"].queue == ["p1"]
+        assert state.security.checkpoints["A"]._queue_set == state.security_enqueued == {"p1"}
+        assert state.noshow_drawn_flights == set()
+        assert state.last_tick_sim_time == EARLIER and state.sim_time == EARLIER
+        assert consumer._tick_counter == previous_counter
+        assert zones.get_density() == {"security-A": 1}
+
+
 # ===========================================================================
 # G1-a — per-tick, per-owner atomic FSM advancement + checkpoint
 # ===========================================================================
@@ -278,7 +329,7 @@ def test_read_tick_checkpoint_roundtrips(db_mod):
 # ===========================================================================
 
 
-def test_rebook_mutates_stages_domain_facts_and_receipt_atomically(db_mod):
+def test_rebook_advisory_rejection_and_receipt_are_atomic(db_mod):
     mod, driver = db_mod
     driver.db["pax"]["p1"] = {"status": "at_gate", "zone": "gate-1", "name": "A"}
     driver.db["pax"]["p2"] = {"status": "departed_airport", "zone": "hall"}  # terminal → skipped
@@ -286,14 +337,14 @@ def test_rebook_mutates_stages_domain_facts_and_receipt_atomically(db_mod):
     event_type, payload, mutated = asyncio.run(mod.rebook_passengers_atomic(
         "cmd-1", "RebookPassengers", ["p1", "p2", "ghost"], SIM_TIME,
     ))
-    assert (event_type, mutated) == ("CommandExecuted", True)
-    assert payload["rebooked"] == 1 and payload["skipped"] == 2  # p2 terminal + ghost unknown
-    assert driver.db["pax"]["p1"]["status"] == "rebooking"
+    assert (event_type, mutated) == ("CommandRejected", True)
+    assert "replacement itinerary is not implemented" in payload["reason"]
+    assert driver.db["pax"]["p1"]["status"] == "at_gate"
     assert driver.db["pax"]["p2"]["status"] == "departed_airport"  # untouched
-    assert driver.db["receipts"]["cmd-1"][0] == "CommandExecuted"
+    assert driver.db["receipts"]["cmd-1"][0] == "CommandRejected"
     docs = [json.loads(r["document"]) for r in driver.db["outbox"].values()]
     kinds = sorted(d["event_type"] for d in docs)
-    assert kinds == ["CommandExecuted", "PassengerStatusChanged"]
+    assert kinds == ["CommandRejected"]
 
 
 def test_rebook_redelivery_reemits_receipt_without_remutating(db_mod):
@@ -307,10 +358,10 @@ def test_rebook_redelivery_reemits_receipt_without_remutating(db_mod):
     event_type, payload, mutated = asyncio.run(mod.rebook_passengers_atomic(
         "cmd-2", "RebookPassengers", ["p1"], SIM_TIME,
     ))
-    assert (event_type, mutated) == ("CommandExecuted", False)  # receipt re-emit only
+    assert (event_type, mutated) == ("CommandRejected", False)  # receipt re-emit only
     assert driver.db["pax"] == pax_before  # no re-mutation
     docs = [json.loads(r["document"]) for r in driver.db["outbox"].values()]
-    assert [d["event_type"] for d in docs] == ["CommandExecuted"]  # only the receipt
+    assert [d["event_type"] for d in docs] == ["CommandRejected"]  # only the receipt
     assert docs[0]["payload"]["command_id"] == "cmd-2"
 
 
@@ -321,7 +372,7 @@ def test_rebook_no_eligible_passengers_rejects(db_mod):
         "cmd-3", "RebookPassengers", ["p1"], SIM_TIME,
     ))
     assert (event_type, mutated) == ("CommandRejected", True)
-    assert "no passengers rebooked" in payload["reason"]
+    assert "replacement itinerary is not implemented" in payload["reason"]
     assert driver.db["pax"]["p1"]["status"] == "departed"  # untouched
     docs = [json.loads(r["document"]) for r in driver.db["outbox"].values()]
     assert [d["event_type"] for d in docs] == ["CommandRejected"]  # receipt only, no domain fact
