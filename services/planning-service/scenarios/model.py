@@ -177,4 +177,7 @@ def store_completion(scenario: PlanningScenario, results: dict) -> None:
 
 
 def get_results(scenario_id: str) -> dict | None:
-    return get_repository().get("PlanningResult", scenario_id)
+    result = get_repository().get("PlanningResult", scenario_id)
+    if result is not None:
+        result.setdefault("accounting_policy", "legacy-mixed")
+    return result

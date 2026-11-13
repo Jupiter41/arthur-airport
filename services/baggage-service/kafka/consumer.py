@@ -100,6 +100,13 @@ class BaggageConsumerState:
 
     async def rebuild_from_neo4j(self) -> None:
         """Rebuild in-memory state from Neo4j on startup (catch-up)."""
+        from db.neo4j import get_driver
+        from _common.transaction_scope import restore_owner_checkpoint
+        restored = await restore_owner_checkpoint("BaggageOutboxSeq", self, _TICK_CODEC, get_driver)
+        self.active_failures = await get_active_system_failures()
+        if restored:
+            await _prepare_tick(self)
+            return
         bags = await get_baggage_in_pipeline()
         self.conveyor = ConveyorSystem()
         self.inducted_bag_ids.clear()

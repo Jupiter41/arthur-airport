@@ -128,8 +128,8 @@ def test_graph_loader_reads_all_sections_from_one_driver_transaction(monkeypatch
 
     monkeypatch.setattr(module, "get_driver", lambda: MagicMock(session=Session))
     snapshot = asyncio.run(module.load_operational_projection())
-    assert set(snapshot) == {"flights", "gates", "incidents", "weather", "baggage"}
-    assert len(queries) == 5
+    assert set(snapshot) == {"flights", "gates", "incidents", "weather", "baggage", "security", "vehicles", "cost"}
+    assert len(queries) == 8
     assert all("SET " not in query and "CREATE " not in query for query in queries)
 
 
@@ -141,3 +141,37 @@ def test_clock_rewind_releases_baggage_snapshot_timestamp_guard():
     assert state.baggage_snapshot_at is None
     state.on_baggage_zone_snapshot({"zones": [], "at": "2026-01-01T09:01:00"})
     assert state.baggage_snapshot_at == datetime(2026, 1, 1, 9, 1)
+
+
+def test_full_graph_replacement_restores_security_vehicles_and_clears_deleted_entities():
+    module = import_service_module("analysis", "services.state")
+    state = module.OperationalState()
+    graph = {key: [] for key in ("flights", "gates", "incidents", "weather", "baggage")}
+    graph.update(security=[{"terminal": "B", "checkpoint": {
+        "queue_depth": 99, "lanes_open": 3, "wait_minutes": 11,
+        "sa_queue_depth": 2, "frozen": False, "at": NOW.isoformat()}}],
+        vehicles=[{"vehicle": {"id": str(i), "type": "fuel_truck", "status": status}}
+                  for i, status in enumerate(("available", "at_gate", "returning"))])
+    state.restore_graph(graph)
+    assert state.sim_time is None
+    assert state.security["Terminal B"].open_lanes == 3
+    assert state.security["Terminal B"].sa_queue_depth == 2
+    assert state.vehicles["fuel_truck"].dispatched == 2
+    assert state.vehicles["fuel_truck"].total == 3
+    state.on_ground_vehicle_dispatched({"vehicle_type": "fuel_truck"})
+    state.on_ground_vehicle_returned({"vehicle_type": "fuel_truck"})
+    state.on_passenger_status_changed({"new_zone": "security-B", "terminal": "Terminal B"})
+    assert state.vehicles["fuel_truck"].dispatched == 2
+    assert state.security["Terminal B"].queue_depth == 99
+    graph.update(security=[], vehicles=[])
+    state.restore_graph(graph)
+    assert not state.vehicles and state.security["Terminal B"].queue_depth == 0
+
+
+def test_invalid_graph_replacement_never_publishes_partial_state():
+    state = import_service_module("analysis", "services.state").OperationalState()
+    state.on_flight_status_changed({"flight_id": "keep", "new_status": "boarding"})
+    with pytest.raises(KeyError):
+        state.restore_graph({"flights": [], "gates": [], "incidents": [], "weather": [],
+                             "baggage": [{"document": '{"at":"2026-01-01T12:00:00Z"}'}]})
+    assert "keep" in state.flights and not state.graph_loaded

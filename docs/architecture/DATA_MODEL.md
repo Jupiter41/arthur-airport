@@ -182,6 +182,15 @@ A snapshot of current weather conditions at KART. One active node at any time; h
 
 ### `CostRecord`
 
+G2 accounting policy (`airport-v1`): revenue records belong to the airport;
+expense records in `staffing`, `incident_direct` and `incident_response` belong
+to the airport. Other expense categories belong to airlines/handling agents.
+Ownership is derived on read, including for legacy records. Fee expense/revenue
+pairs represent separate parties and never cancel in airport operating profit.
+`CostRuntime.document.accounting_policy` versions rebuilt cached projections;
+migration commits a `FinancialAccountingUpdated` outbox event. Stored ledger
+amounts remain unchanged.
+
 One record per cost or revenue event. Written by cost-service.
 
 | Property      | Type          | Description                                                                                                                                                                                                |

@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from typing import Iterable, Literal
 
+from _common.accounting import AIRPORT_EXPENSES
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -36,11 +38,7 @@ REVENUE_STREAMS: list[str] = [
 ]
 
 # Categories the airport pays itself.
-AIRPORT_OPEX_STREAMS: list[str] = [
-    "staffing",
-    "incident_direct",
-    "incident_response",
-]
+AIRPORT_OPEX_STREAMS: list[str] = list(AIRPORT_EXPENSES)
 
 # Categories an airline (or its handling agent) pays — pass-through, shown
 # alongside the EBITDA waterfall but excluded from it.
@@ -73,7 +71,7 @@ def build_ebitda(daily_pnl: dict, horizon: Horizon = "day") -> dict:
         raise ValueError(f"unknown horizon: {horizon!r}")
 
     rev_by_cat: dict[str, float] = {r["category"]: r["total"] for r in daily_pnl.get("revenues", [])}
-    cost_by_cat: dict[str, float] = {c["category"]: c["total"] for c in daily_pnl.get("costs", [])}
+    cost_by_cat: dict[str, float] = {c["category"]: c["total"] for c in daily_pnl.get("costs", []) + daily_pnl.get("airline_costs", [])}
 
     revenue_streams = _zero_filled(REVENUE_STREAMS, rev_by_cat)
     opex_streams = _zero_filled(AIRPORT_OPEX_STREAMS, cost_by_cat)

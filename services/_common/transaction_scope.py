@@ -61,6 +61,25 @@ class TransactionDriver:
         return await callback(self.scope.tx, *args, **kwargs)
 
 
+async def restore_owner_checkpoint(
+    runtime_label: str, state: Any, codec: Checkpoint, get_driver: Callable[[], Any],
+) -> bool:
+    """Restore committed tick progress at startup, before serving owner reads."""
+    from _common.outbox import _check_label
+    _check_label(runtime_label)
+    async with get_driver().session() as session:
+        row = await (await session.run(
+            f"MATCH (s:{runtime_label} {{id: 'latest'}}) "
+            "RETURN s.document AS document, s.last_tick_sim_time AS last_tick",
+        )).single()
+    if not row or not row["document"]:
+        return False
+    codec.restore(state, row["document"])
+    if row["last_tick"]:
+        state.sim_time = datetime.fromisoformat(row["last_tick"])
+    return True
+
+
 async def run_tick(
     runtime_label: str, outbox_label: str, state: Any, codec: Checkpoint,
     get_driver: Callable[[], Any], advance: Callable[[dict, datetime], Awaitable[None]],

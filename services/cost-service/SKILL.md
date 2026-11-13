@@ -45,6 +45,15 @@ _running_totals = {
 }
 ```
 
+### Accounting perspective
+
+The shared `_common.accounting` policy owns category classification. Airport profit
+includes only airport revenue and expenses; airline expenses remain in separate
+`airline_cost_eur`/`airline_by_category` fields. Never net fees across parties.
+Legacy records are classified on read; checkpoints migrate under the owner lock
+with a `FinancialAccountingUpdated` outbox event. Compensation is full eligible
+synthetic liability in both live and planning models.
+
 ### Dual-entry accounting
 
 For fees that are both a cost to airlines and revenue to the airport (landing fees, passenger

@@ -20,6 +20,7 @@ from datetime import date, datetime, time as dt_time, timedelta
 
 from adapters.base import AbstractAdapter
 from _common.financial_rates import load_default_rates, resolve_rates_for_airline
+from _common.accounting import compensation_liability
 
 from .infrastructure import InfrastructureConfig
 from .interventions import Disruption, Intervention, aggregate_capacity_factor
@@ -174,7 +175,7 @@ class SimFlight:
 class PlanningSimState:
     """Full airport state at one sim-minute. Mutable during tick processing."""
 
-    sim_time: datetime = field(default_factory=datetime.now)
+    sim_time: datetime = field(default_factory=lambda: datetime(2026, 1, 1))
     flights: dict[str, SimFlight] = field(default_factory=dict)
     gate_occupancy: dict[str, str | None] = field(default_factory=dict)
     runway_departures_this_hour: int = 0
@@ -193,7 +194,7 @@ class PlanningSimState:
 
     # Financial accumulators
     costs: dict[str, float] = field(default_factory=lambda: {
-        "delay": 0.0, "eu261": 0.0, "landing_fees": 0.0,
+        "delay": 0.0, "eu261": 0.0, "landing_fees": 0.0, "pax_fees": 0.0,
         "gate_fees": 0.0, "incident": 0.0,
     })
     revenues: dict[str, float] = field(default_factory=lambda: {
@@ -362,11 +363,6 @@ class PlanningSimEngine:
             )
             state.flights[flight.id] = flight
 
-            # Revenue from passenger fees
-            rates = resolve_rates_for_airline(self.financial_rates, flight.airline_code)
-            state.revenues["pax_fees"] += (
-                flight.pax_count * rates["airport_fees"]["passenger_departure_fee_eur"]
-            )
 
         return state
 
@@ -451,7 +447,7 @@ class PlanningSimEngine:
                         mtow_tonnes = rates["mtow_kg"].get(flight.aircraft_type, 78_000) / 1000
                         fee = round(mtow_tonnes * rates["airport_fees"]["landing_rate_per_tonne_eur"], 2)
                         state.revenues["landing_fees"] += fee
-                        state.costs["landing_fees"] += fee * 0.3  # airport cost p + extra_lanesortion
+                        state.costs["landing_fees"] += fee  # airline expense; separate from airport profit
                     else:
                         # No gate available — gate conflict
                         state.gate_conflicts += 1
@@ -486,6 +482,10 @@ class PlanningSimEngine:
                         flight.status = "departed"
                         flight.departed_at = sim_time
                         state.runway_departures_this_hour += 1
+                        rates = resolve_rates_for_airline(self.financial_rates, flight.airline_code)
+                        passenger_fee = flight.pax_count * rates["airport_fees"]["passenger_departure_fee_eur"]
+                        state.revenues["pax_fees"] += passenger_fee
+                        state.costs["pax_fees"] += passenger_fee
 
                         # Free gate
                         if flight.gate and state.gate_occupancy.get(flight.gate) == flight.id:
@@ -563,19 +563,8 @@ class PlanningSimEngine:
     @staticmethod
     def _compute_eu261(delay_minutes: float, distance_km: float, pax_count: int, rates: dict | None = None) -> float:
         """Compute EU261 compensation liability for a delayed flight."""
-        compensation = 0.0
         table = rates if rates is not None else load_default_rates()
-        for tier in table["eu261"]:
-            if tier.get("assistance_only"):
-                continue
-            if delay_minutes >= tier["min_delay_minutes"] and distance_km <= tier["max_distance_km"]:
-                compensation = tier["compensation_eur"]
-                break
-        if compensation > 0:
-            # Assume ~30% of pax claim
-            claiming_pax = int(pax_count * 0.30)
-            return claiming_pax * compensation
-        return 0.0
+        return compensation_liability(delay_minutes, distance_km, pax_count, table)
 
     def _build_result(
         self,
@@ -609,7 +598,8 @@ class PlanningSimEngine:
         # Baggage utilisation
         bag_util = (state.baggage_throughput / max(1, infra.sorting_capacity_per_hour)) * 100
 
-        total_cost = sum(state.costs.values())
+        total_cost = state.costs["incident"]
+        airline_cost = sum(state.costs.values()) - total_cost
         total_revenue = sum(state.revenues.values())
 
         return DayResult(
@@ -630,6 +620,7 @@ class PlanningSimEngine:
             security_utilisation_pct=min(100.0, sec_util),
             baggage_utilisation_pct=min(100.0, bag_util),
             total_cost_eur=total_cost,
+            airline_cost_eur=airline_cost,
             total_revenue_eur=total_revenue,
             net_eur=total_revenue - total_cost,
             eu261_liability_eur=state.costs["eu261"],

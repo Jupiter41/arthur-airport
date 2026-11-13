@@ -40,6 +40,7 @@ with open(FIXTURES_PATH) as f:
 @pytest.fixture(autouse=True)
 def reset_running_totals():
     """Reset running totals before each test to avoid state leakage."""
+    init_running_totals({})
     _running_totals["total_cost_eur"] = 0.0
     _running_totals["total_revenue_eur"] = 0.0
     _running_totals["net_eur"] = 0.0
@@ -328,7 +329,8 @@ class TestRunningTotals:
         _record_cost(100.0, "landing_fee", is_revenue=False)
         _record_cost(200.0, "landing_fee", is_revenue=False)
         totals = get_running_totals()
-        assert totals["total_cost_eur"] == 300.0
+        assert totals["total_cost_eur"] == 0.0
+        assert totals["airline_cost_eur"] == 300.0
 
     def test_revenue_accumulates(self):
         _record_cost(500.0, "landing_fee", is_revenue=True)
@@ -340,15 +342,16 @@ class TestRunningTotals:
         _record_cost(1000.0, "landing_fee", is_revenue=True)
         _record_cost(400.0, "landing_fee", is_revenue=False)
         totals = get_running_totals()
-        assert totals["net_eur"] == 600.0
+        assert totals["net_eur"] == 1000.0
+        assert totals["airline_cost_eur"] == 400.0
 
     def test_by_category_bucketing(self):
         _record_cost(100.0, "landing_fee", is_revenue=False)
         _record_cost(200.0, "ground_handling", is_revenue=False)
         _record_cost(50.0, "landing_fee", is_revenue=False)
         totals = get_running_totals()
-        assert totals["by_category"]["landing_fee"] == 150.0
-        assert totals["by_category"]["ground_handling"] == 200.0
+        assert totals["airline_by_category"]["landing_fee"] == 150.0
+        assert totals["airline_by_category"]["ground_handling"] == 200.0
 
     def test_eu261_exposure_tracked(self):
         _record_cost(25000.0, "eu261_compensation", is_revenue=False)
@@ -374,15 +377,17 @@ class TestRunningTotals:
     def test_init_from_neo4j_restore(self):
         """init_running_totals restores from persisted state."""
         init_running_totals({
-            "total_cost_eur": 50000.0,
+            "total_cost_eur": 30000.0,
+            "airline_cost_eur": 20000.0,
+            "airline_by_category": {"landing_fee": 20000.0},
             "total_revenue_eur": 80000.0,
-            "net_eur": 30000.0,
-            "by_category": {"landing_fee": 20000.0, "staffing": 30000.0},
+            "net_eur": 50000.0,
+            "by_category": {"staffing": 30000.0},
         })
         totals = get_running_totals()
-        assert totals["total_cost_eur"] == 50000.0
+        assert totals["total_cost_eur"] == 30000.0
         assert totals["total_revenue_eur"] == 80000.0
-        assert totals["by_category"]["landing_fee"] == 20000.0
+        assert totals["airline_by_category"]["landing_fee"] == 20000.0
 
     def test_init_handles_missing_keys(self):
         """init_running_totals handles missing keys gracefully."""
@@ -395,14 +400,16 @@ class TestRunningTotals:
         _record_cost(5000.0, "landing_fee", is_revenue=False, sim_day=1)
         _record_cost(3000.0, "ground_handling", is_revenue=False, sim_day=1)
         totals = get_running_totals()
-        assert totals["total_cost_eur"] == 8000.0
+        assert totals["airline_cost_eur"] == 8000.0
+        assert totals["total_cost_eur"] == 0.0
 
         # New day — totals should reset
         _record_cost(100.0, "landing_fee", is_revenue=False, sim_day=2)
         totals = get_running_totals()
-        assert totals["total_cost_eur"] == 100.0
+        assert totals["airline_cost_eur"] == 100.0
+        assert totals["total_cost_eur"] == 0.0
         assert totals["sim_day"] == 2
-        assert totals["by_category"]["landing_fee"] == 100.0
+        assert totals["airline_by_category"]["landing_fee"] == 100.0
         assert totals["by_category"].get("ground_handling", 0.0) == 0.0
 
     def test_none_sim_day_does_not_reset(self):
@@ -410,5 +417,6 @@ class TestRunningTotals:
         _record_cost(500.0, "landing_fee", is_revenue=False, sim_day=1)
         _record_cost(300.0, "landing_fee", is_revenue=False)
         totals = get_running_totals()
-        assert totals["total_cost_eur"] == 800.0
+        assert totals["airline_cost_eur"] == 800.0
+        assert totals["total_cost_eur"] == 0.0
         assert totals["sim_day"] == 1

@@ -266,11 +266,13 @@ async def emit_congestion_detected(
 def emit_security_queue_updated(
     terminal: str, queue_depth: int, lanes_open: int,
     wait_minutes: float, sim_time: datetime,
+    *, sa_queue_depth: int = 0, frozen: bool = False,
 ) -> None:
     """An authoritative aggregate; never sample individual queue snapshots."""
     _produce_event("SecurityQueueUpdated", sim_time, {
         "terminal": terminal, "queue_depth": queue_depth,
         "lanes_open": lanes_open, "wait_minutes": round(wait_minutes, 1),
+        "sa_queue_depth": sa_queue_depth, "frozen": frozen,
         "at": sim_time.isoformat(),
     }, key=terminal)
 

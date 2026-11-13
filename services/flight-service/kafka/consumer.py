@@ -155,7 +155,9 @@ class FlightConsumerState:
 
     async def rebuild_from_neo4j(self) -> None:
         """Rebuild manual holds and incident impact sets from Neo4j."""
-        from db.neo4j import get_manual_holds
+        from db.neo4j import get_manual_holds, get_driver
+        from _common.transaction_scope import restore_owner_checkpoint
+        await restore_owner_checkpoint("FlightRuntime", self, tick_snapshot, get_driver)
         self.held_flights = await get_manual_holds()
         try:
             self.active_incident_locations = await get_active_incident_impacts()
@@ -222,12 +224,16 @@ class FlightConsumerState:
             logger.warning("Failed to load spatial positions (using defaults): %s", e)
 
         # Initialize ground vehicle fleet (Phase 1.3)
-        if not self.vehicles_initialized:
+        if not self.vehicles_initialized and not self.vehicle_pool.vehicles:
             await self._initialize_vehicles()
 
     async def _initialize_vehicles(self) -> None:
         """Create ground vehicle fleet and persist to Neo4j."""
         try:
+            # A committed checkpoint can already contain an active fleet.
+            if self.vehicle_pool.vehicles:
+                self.vehicles_initialized = True
+                return
             vehicles = self.vehicle_pool.initialize_fleet()
             vehicle_dicts = [
                 {
@@ -662,6 +668,15 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
 
     # 3d. Advance ground vehicle pool (Phase 1.3)
     _advance_ground_vehicles(sim_time, is_bulk)
+
+    from db.neo4j import save_ground_vehicle_projection
+    from kafka.producer import emit_ground_vehicle_snapshot
+    vehicles = [dict(v.to_dict(), at=sim_time.isoformat(),
+                     dispatched_at=v.dispatched_at.isoformat() if v.dispatched_at else None,
+                     arrives_at=v.arrives_at.isoformat() if v.arrives_at else None)
+                for v in _state.vehicle_pool.vehicles.values()]
+    await save_ground_vehicle_projection(vehicles)
+    emit_ground_vehicle_snapshot(vehicles, sim_time)
 
     # 4. Update Prometheus gauges
     status_counts: dict[str, int] = {}

@@ -27,7 +27,7 @@ coding alone (they need a decision from the owner or a running cluster).
 | ID | Pri | Title | Status | Note / blocked-on |
 |----|-----|-------|--------|-------------------|
 | G1  | P0   | Transactional domain-write + outbox/inbox boundaries | ✅ closed (2026-11-13) | A43: complete locked owner ticks, atomic command receipts/facts, auxiliary fact outboxes and post-success Kafka acknowledgement; 26 real Neo4j/Kafka checks pass; strict `domain-transactions` CI gate added |
-| G2  | P0–P1| Shared financial rates + accounting perspective | ⚠ partial | **Blocked on owner decision:** airport-vs-airline accounting perspective (30% landing/compensation assumptions) |
+| G2  | P0–P1| Shared financial rates + accounting perspective | ✅ closed (2026-11-13) | A22 shared/versioned rates + A44 airport operating profit policy; airline expenses separate, live/planning full liability aligned, legacy projections migrated and old planning results labelled |
 | G3  | P1   | Transport/logging/consumer consolidation into `_common` | ✅ closed | A27/A33/A34/A39 |
 | G4  | P1   | Unify the 3 what-if simulators → one effect core | ☐ open | Largest remaining coding item; needs design + historical validation |
 | G5  | P1   | Unified impact×confidence÷cost ranking + cost signals | ✅ closed | A25/A36/A37 |
@@ -37,12 +37,12 @@ coding alone (they need a decision from the owner or a running cluster).
 | G9  | P1   | Graph-based projection rebuild (all domains) | ⚠ partial | Analysis security/vehicle + transit-progress recovery remain |
 | G10 | P2   | Remove Zustand/WS vs React-Query/REST duplication | ✅ closed | Closed 2026-11-13 — passenger + analysis dedup; build/tests green (2 vestigial unread WS stores noted for follow-up) |
 | G11 | P2   | Reconcile data policy with fake-data contract | ✅ closed | Closed 2026-11-13 — two-tier policy reconciled (CLAUDE.md r#5, ADR-006, DATA.md). Owner decision: **keep** real-world data as labelled opt-in reference/calibration input; generated operational data stays 100% synthetic, no real personal data |
-| G12 | P2   | Sustained load + crash/replica validation | ⚠ partial | **Blocked on cluster:** needs real cluster time + RBAC; not a code task |
+| G12 | P2   | Sustained load + crash/replica validation | ✅ closed (2026-11-13) | **Owner decision:** no Kubernetes cluster is available; the initial goal is to keep the project local. Existing local validation is accepted for this scope; cluster validation is deferred until Kubernetes deployment becomes a goal. |
 
 **Honest summary:** the LDT-defining gaps (action loop, ranking, concrete commands) are closed
-(G3/G5/G6). The largest remaining *coding* item is **G4**; A43 closes G1. G2/G8/G12 are
-blocked on decisions or infrastructure, not on more code, and should be treated as explicitly parked
-rather than unfinished.
+(G3/G5/G6). The largest remaining *coding* item is **G4**; A43 closes G1. G12 is closed
+by the owner's local-first scope decision; A44 closes G2. G8 needs measured outcomes
+from a running system and remains explicitly parked pending that evidence.
 
 ---
 
@@ -384,7 +384,7 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
   dual-entry). *Affected:* `cost-service/kafka/consumer.py`, `cost_engine.py`. *(A1)*
 - ✅ Fix planning trust bugs: runway capacity scaling (`simulation.py:392`),
   `missed_connections`/cascade increments or stop monetizing them (`benefit_extractor.py:88`). *(A2)*
-- ✅ Reconcile `WIDE_BODY_TYPES` (D3) and financial rate sources (D2). A22 adds one shared loader, durable effective rates and frozen planning snapshots beyond A3's equality guards. **G2 remains partial:** mixed accounting perspectives still require migration. *(A3/A22, §10 G2)*
+- ✅ Reconcile `WIDE_BODY_TYPES` (D3) and financial rate sources (D2). A22 adds one shared loader, durable effective rates and frozen planning snapshots beyond A3's equality guards. **G2 closed by A44:** accounting ownership and planning/live liability are aligned. *(A3/A22/A44, §10 G2)*
 - ✅ CI gaps: cost/planning deps missing from `unit-tests`; remove `|| true` on integration; add gateway
   tests; scrape cost/planning `/metrics`. *(A4)*
 - ✅ Delete committed Azurite artifacts; gitignore caches; archive doc sprawl. *(A4)*
@@ -1255,7 +1255,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | ID / priority | Remaining gap and evidence | What completion actually requires |
 |---|---|---|
 | G1 / P0 — **closed** (A43, 2026-11-13) | A20 makes financial writes/checkpoints/inbox/outbox atomic; A24 does the same for analysis actions. A40/A42 began flight/passenger/baggage conversion. **A43 completes those owners:** one locked transaction restores and advances each entire tick, persists the owner runtime checkpoint and all domain/aggregate/auxiliary facts, then exposes committed cache/WS state. Commands commit their domain mutation, receipt and receipt fact together, with locking before durable dedup. Flight REST writes share the owner lock. Input offsets follow successful processing; failed dispatch retries without acknowledging. Passenger/baggage display sampling is backed by unsampled transition-batch audit facts. | **Validated:** 26 live Neo4j/Kafka checks cover rollback after actual writes, abrupt process exit before/after commit, competing tick/command workers, command rollback, broker failure/ack-delete replay with stable IDs, real Kafka input replay and flight turnaround/vehicle/fuel/BULK facts. The dedicated `domain-transactions` CI job runs this fail-closed gate; the existing full-stack gate remains. Delivery is at-least-once with stable fact IDs, not exactly once. Broader cluster/load validation remains G12. |
-| G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
+| G2 / P0–P1 — **closed** (2026-11-13) | A22 supplies shared defaults, durable/versioned effective rates and frozen planning rate snapshots. A44 adopts `airport-v1`: airport revenue minus airport expenses, with airline fees/fuel/handling/compensation separate. Live summaries, historical/flight/terminal/hourly reports and valuation agree on ownership. Planning removes the 30% landing expense and claimant discounts; full eligible synthetic compensation uses the same tier function as live accounting. Airport investment benefit excludes airline savings. Legacy runtime projections rebuild transactionally with a versioned outbox fact; old planning results retain their numbers and are labelled `legacy-mixed` until rerun. | Maintain the shared policy and immutable rate snapshots. Validated with 1,173 Python unit tests, four real Neo4j/Kafka accounting/rate checks, dashboard build + 40 tests, and affected Python lint. G4/G8 still cover model fidelity and calibration; this does not assert calibrated financial returns. |
 | G3 / P1 — **closed** | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies; A33 deletes 7× `db/neo4j.py` driver-lifecycle boilerplate; A34 deletes 7× `kafka/producer.py` producer-lifecycle boilerplate; A39 adds `run_consumer_loop()` to `_common.kafka_runtime` and applies it to flight-service, incident-service, and weather-service, replacing ~45 lines of identical while-loop boilerplate per service. Baggage and passenger retain their deferred-command loops (command-before-clock recovery requires per-batch mutation). Analysis and cost retain manual-commit/retry loops. `kafka_runtime` moved to `TYPE_CHECKING` imports so it is importable without `confluent_kafka`. Consumer god-module pattern (domain logic + transport in one file) is intentionally left — domain inversion is a larger P2 refactor. | Invert application orchestration so domain handlers live in `application/` and consumers are thin adapters. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 — **closed** | A25 replaces the confidence-only sort with impact × confidence ÷ cost. A36 injects cost financial signals into the one ranking path: cost-service publishes `CostSignalSnapshot` every 5 ticks to `cost.events`; analysis-service subscribes and stores them in `OperationalState.cost_signals`; new `_detect_financial_pressure` detector fires four bottleneck sub-signals; `_recs_financial_pressure` maps each to executable action types with scoring rules in `ranking.py`. A37 adds `OPEN_MAKEUP_CAROUSEL` for the `total_cost_eur` sub-signal + scoring rule; deprecates cost-service `/recommendations` endpoint (analysis-service now serves the unified ranked list). Dashboard `AutonomousPanel` already unified in A36. Impact/cost weights remain heuristic (G8 still open). | Calibrate the impact/cost scale against measured outcomes (G8). |
@@ -1265,7 +1265,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, analysis projection ownership and broader recovery remain partial; A43 closes the owner tick/aggregate publication crash window and checkpoints conveyor transit/vehicle/turnaround progress. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
 | G10 / P2 — **closed** (2026-11-13) | Hand-synchronized duplication removed for the two domains where it actually occurred: **passenger flow** (store was a pure React-Query mirror) and **analysis bottlenecks/recommendations** (RQ-preferred-with-WS-fallback dual read). `passengerStore`/`analysisStore` deleted, types moved to `src/types.ts`, consumers repointed; OVERVIEW rewritten to "one source of truth per domain" (WS-fed Zustand for live operational domains; React Query/REST for request-response domains). Build (`tsc -b && vite build`) + 40 tests green. | Two vestigial WS-fed-but-unread stores (`costStore`, `groundVehicleStore`) remain as a minor non-duplicating follow-up cleanup. Live seed-then-patch domains (flights/weather/incidents/sim clock) are a single source already and were left as-is. |
 | G11 / P2 — **closed** (2026-11-13) | The data policy is now consistent and honest across `CLAUDE.md` rule #5, `OVERVIEW.md` ADR-006, `DATA.md`, `DATA_SOURCES.md` and `data/README.md` — generated operational entities (passengers, names/IDs, flight numbers, registrations, baggage, incidents) are 100% synthetic and no real personal data ever exists; per-mode UI/adapter labels were already honest; defaults remain synthetic. **Owner decision (2026-11-13):** the genuine real-world integrations — OurAirports infra + OpenFlights airline identities (default path), and opt-in live APIs (adsb.lol/OpenSky, aviationweather.gov) + BTS/historical-METAR datasets — are **kept** as clearly-labelled, opt-in reference/calibration/overlay inputs, never presented as the twin's own operational state. No external data was imported, no fixtures deleted, no defaults changed. | Maintain the two-tier contract going forward: generated operational data stays synthetic; new real-world sources must be opt-in, off-by-default and labelled reference. |
-| G12 / P2 — partial | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. A26 adds the missing `cost-service`/`planning-service` k8s manifests and the gateway's cost/planning service URLs (`kustomize build` + offline validation; no live apply — cluster RBAC denies it here). Sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate and validate the remaining load/crash/replica behavior on a cluster. Functional integration success is not complete fidelity or deployment certification. |
+| G12 / P2 — **closed** (2026-11-13) | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. A26 adds the missing `cost-service`/`planning-service` k8s manifests and the gateway's cost/planning service URLs (`kustomize build` + offline validation; no live apply — cluster RBAC denied it at the time). **Owner decision (2026-11-13):** no Kubernetes cluster is available, and the initial goal is to keep the project local. Existing local validation is accepted for this scope. | Retain the strict full-stack CI gate. Sustained-load and broader cluster crash/replica validation remain unproved and are deferred until Kubernetes deployment becomes a goal; this scope closure does not claim cluster certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -2615,3 +2615,37 @@ that live status is authoritative for the latest branch revision.
 
 This closes G1's owner transaction/delivery boundary, not G12's sustained-load or
 cluster certification, nor the other open §10 modelling/recovery gaps.
+
+
+## A44 — Close G2: airport accounting perspective (2026-11-13)
+
+**Owner decision:** use airport operating profit as the main financial view,
+with airline expenses and savings displayed separately. `_common.accounting`
+defines `airport-v1`: revenues belong to the airport; staffing and incident
+expenses are airport operating costs; airline fee, handling, fuel and compensation
+expenses never reduce airport profit. Existing fee pairs remain audit records.
+
+Live summaries, daily/flight/terminal reports, hourly curves and valuation apply
+that policy. Legacy checkpoint days rebuild from unchanged ledger records under
+the owner lock; the checkpoint, policy version and `FinancialAccountingUpdated`
+outbox fact commit together. Restart, replay and migration rollback are covered.
+
+Planning removes the unsupported 30% landing-cost and 30% claimant assumptions.
+Both models use the same full eligible synthetic compensation calculation.
+Planning reports airline costs separately; airport NPV uses revenue uplift and
+airport operating cost savings, while airline savings remain informational.
+Completed legacy planning results preserve their numbers and are labelled
+`legacy-mixed`; rerun them for airport-perspective financial results. Dashboard
+labels and investment methodology now explain the accounting perspective.
+
+**Validation:** all 1,173 Python unit tests pass (four existing warnings), affected
+Python lint passes, the dashboard production build passes and all 40 dashboard
+tests pass. Two new integration checks pass on the isolated local
+`art-g2-validation` Compose stack with real Neo4j/Kafka: known fee pairs, summary /
+P&L / flight / terminal / hourly / valuation agreement, input replay, legacy
+checkpoint migration/restart, acknowledged stable-ID Kafka redelivery, planning
+full liability, airport-only investment benefit and legacy result labelling.
+Both existing durable-rate integration checks also pass, covering competing rate
+updates, frozen planning recovery and rebuilding an evicted day from the ledger.
+G2 is closed. G4/G8 modelling/calibration work remains separate; no calibrated
+payment forecast or validated investment return is claimed.

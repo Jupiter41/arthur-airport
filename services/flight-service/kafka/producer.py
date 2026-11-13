@@ -299,6 +299,12 @@ def emit_flight_diverted(
 # Ground vehicle events → ground.events topic
 # ---------------------------------------------------------------------------
 
+def emit_ground_vehicle_snapshot(vehicles: list[dict], sim_time: datetime) -> None:
+    """Unsampled full fleet, committed with its public graph projection."""
+    _produce_event("GroundVehicleSnapshot", sim_time,
+                   {"vehicles": vehicles, "at": sim_time.isoformat()}, key="fleet", topic=GROUND_TOPIC)
+
+
 def emit_ground_vehicle_dispatched(
     vehicle_id: str,
     vehicle_type: str,

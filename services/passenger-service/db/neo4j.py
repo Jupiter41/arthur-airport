@@ -950,6 +950,15 @@ async def list_recent_assignments(since_iso: str | None = None, limit: int = 500
         return [dict(rec["a"]) async for rec in result]
 
 
+async def save_security_projection(rows: list[dict]) -> None:
+    """Public measured aggregates; the tick-scoped driver shares its transaction."""
+    async with get_driver().session() as session:
+        await (await session.run(
+            "UNWIND $rows AS row MERGE (s:SecurityCheckpoint {terminal: row.terminal}) SET s += row",
+            rows=rows,
+        )).consume()
+
+
 async def save_security_lanes(terminal: str, lanes: int, sim_time: datetime) -> None:
     """Passenger-service owns operational security lane overrides."""
     async with get_driver().session() as session:
@@ -1006,13 +1015,24 @@ async def security_lane_command_atomic(
                     "MERGE (s:SecurityCheckpoint {terminal: $terminal}) "
                     "WITH s, s.lanes_open AS previous "
                     "SET s.lanes_open = $lanes, s.updated_at = $ts "
-                    "RETURN previous",
+                    "RETURN previous, properties(s) AS checkpoint",
                     terminal=terminal, lanes=lanes, ts=sim_time.isoformat(),
                 )).single()
                 document = build_command_receipt_fact("SecurityLanesChanged", sim_time, {
                     "terminal": terminal, "lanes_open": lanes,
                     "previous_lanes_open": checkpoint["previous"],
                 })
+                facts.append({"id": document["event_id"], "document": document})
+                measured = dict(checkpoint.get("checkpoint") or {})
+                depth = measured.get("queue_depth", 0)
+                wait = 999.0 if measured.get("frozen", False) else round(depth / (lanes * 180) * 60, 1)
+                measured.update(terminal=terminal, lanes_open=lanes, queue_depth=depth,
+                                wait_minutes=wait, at=sim_time.isoformat(), updated_at=sim_time.isoformat())
+                await (await tx.run(
+                    "MATCH (s:SecurityCheckpoint {terminal: $terminal}) SET s += $row",
+                    terminal=terminal, row=measured,
+                )).consume()
+                document = build_command_receipt_fact("SecurityQueueUpdated", sim_time, measured)
                 facts.append({"id": document["event_id"], "document": document})
             receipt = ("CommandRejected" if reason else "CommandExecuted", {
                 "command_id": command_id, "command_type": command_type, "reason": reason,

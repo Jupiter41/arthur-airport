@@ -56,20 +56,20 @@ export default function InvestmentTab() {
 
   return (
     <div className="space-y-5">
+      {r && r.accounting_policy !== "airport-v1" && (
+        <p className="text-amber-400 text-sm">Legacy mixed accounting: rerun this scenario for airport profit and investment returns.</p>
+      )}
       {/* Methodology */}
       <div className="bg-slate-800/30 rounded-lg border border-slate-700/50 p-3">
         <p className="text-xs text-slate-400 leading-relaxed">
           <strong className="text-slate-300">DCF Investment Analysis:</strong>{" "}
-          Annual benefit = simulation cost savings × 365 days. Cash flows
+          Airport benefit = revenue uplift + airport operating cost savings, annualised.
+          Airline delay and compensation savings are informational and excluded from NPV. Cash flows
           discounted at WACC.{" "}
           <strong className="text-slate-300">NPV &gt; 0</strong> → investment
           creates value.{" "}
           <strong className="text-slate-300">IRR &gt; WACC</strong> → returns
-          exceed cost of capital. Costs from{" "}
-          <strong className="text-slate-300">
-            Eurocontrol Standard Inputs 2024
-          </strong>{" "}
-          (€102/min delay, €285/pax rebooking).
+          exceed cost of capital. Values use the scenario’s frozen synthetic financial rates.
         </p>
       </div>
 
@@ -211,7 +211,7 @@ export default function InvestmentTab() {
                                   isTotal ? "text-white" : "text-slate-400"
                                 }
                               >
-                                {label}
+                                {label}{["eu261_avoided_annual", "delay_cost_avoided_annual"].includes(key) ? " (airline; excluded from total)" : ""}
                               </span>
                               <span
                                 className={`font-mono ${isTotal ? "text-emerald-400" : "text-slate-300"}`}

@@ -71,6 +71,18 @@ departed_airport
 
 ## 3. Queue and flow model
 
+### Durable security projection (G9)
+
+Every tick persists each terminal's measured main/assistance queue depths, open
+lanes, frozen status, observed wait and simulation timestamp on its
+`SecurityCheckpoint`, within the passenger tick transaction. The matching
+`SecurityQueueUpdated` aggregate is unsampled in REALTIME and BULK modes.
+Lane commands update the checkpoint's lanes and observed wait under the same
+owner lock and emit a full queue snapshot alongside the existing lane fact and
+receipt. Analysis reads these public owner projections, never private runtime
+serialization. Legacy checkpoints without queue fields fall back to graph
+passenger counts until the next owner tick.
+
 ### Security throughput
 
 KART has 3 security checkpoints (one per terminal), each with a configurable number of open lanes.

@@ -71,11 +71,10 @@ async def query_flights_waiting_for_gate() -> int:
     return record["cnt"] if record else 0
 
 
-async def query_connection_clusters(min_cluster_size: int = 5) -> list[dict]:
+async def query_connection_clusters(min_cluster_size: int = 5, *, tx=None) -> list[dict]:
     """Find groups of connecting passengers on the same delayed inbound + outbound."""
-    driver = get_driver()
-    async with driver.session() as session:
-        result = await session.run("""
+    async def read(reader):
+        result = await reader.run("""
             MATCH (p:Passenger {connection: true})-[:ON_FLIGHT]->(inbound:Flight)
             WHERE inbound.direction = 'arrival'
               AND inbound.delay_minutes > 0
@@ -95,7 +94,12 @@ async def query_connection_clusters(min_cluster_size: int = 5) -> list[dict]:
             ORDER BY pax_count DESC
         """, min_size=min_cluster_size)
         records = await result.data()
-    return records
+        return records
+
+    if tx is not None:
+        return await read(tx)
+    async with get_driver().session() as session:
+        return await session.execute_read(read)
 
 
 async def query_runway_capacity() -> dict:
@@ -128,7 +132,7 @@ async def query_active_flights_summary() -> dict:
     return {r["status"]: r["cnt"] for r in records}
 
 
-async def load_operational_projection() -> dict:
+async def load_operational_projection(*, tx=None) -> dict:
     """Read owner data through Neo4j, never through service-to-service HTTP."""
     async def read(tx):
         queries = {
@@ -144,6 +148,17 @@ async def load_operational_projection() -> dict:
                 "RETURN properties(w) AS weather ORDER BY w.timestamp DESC LIMIT 1"
             ),
             "baggage": "MATCH (p:BaggageProjection {id: 'latest'}) RETURN p.document AS document",
+            "security": (
+                "UNWIND ['A', 'B', 'C'] AS terminal "
+                "OPTIONAL MATCH (s:SecurityCheckpoint {terminal: terminal}) "
+                "OPTIONAL MATCH (p:Passenger {status: 'security_queue'}) "
+                "WHERE (p.terminal_id = 'T-' + terminal OR p.terminal = terminal) "
+                "AND coalesce(p.special_assistance, false) = false "
+                "RETURN terminal, properties(s) AS checkpoint, count(p) AS graph_queue"
+            ),
+            "vehicles": "MATCH (v:GroundVehicle) RETURN properties(v) AS vehicle",
+            "cost": "MATCH (s:CostRuntime {id: 'latest'}) RETURN s.document AS document",
+
         }
         snapshot = {}
         for key, query in queries.items():
@@ -151,5 +166,7 @@ async def load_operational_projection() -> dict:
             snapshot[key] = await result.data()
         return snapshot
 
+    if tx is not None:
+        return await read(tx)
     async with get_driver().session() as session:
         return await session.execute_read(read)

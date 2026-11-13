@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
     # Rebuild proposals and confirmed execution audit from Neo4j.
     from db.neo4j import load_operational_projection
     from services import proposal_store, action_outbox
-    from kafka.consumer import get_state
+    from kafka.consumer import get_state, _on_tick
     from services import approval_queue
     from services.autonomous import record_proposal_execution
     from datetime import datetime
@@ -84,6 +84,8 @@ async def lifespan(app: FastAPI):
     clock = await proposal_store.load_clock()
     if clock:
         get_state().on_clock_tick(clock)
+        # Recover a tick accepted before a crash interrupted discovery.
+        await _on_tick(clock)
     for proposal in approval_queue.list_all():
         if proposal.status == approval_queue.EXECUTED and proposal.executed_at:
             record_proposal_execution(

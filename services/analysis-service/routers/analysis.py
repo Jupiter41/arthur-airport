@@ -66,6 +66,8 @@ async def list_bottlenecks(
     type: BottleneckType | None = Query(None, alias="type"),
 ) -> dict[str, Any]:
     """Return all active bottlenecks with optional severity/type filter."""
+    from kafka.consumer import refresh_discovery
+    await refresh_discovery()
     bottlenecks = get_active_bottlenecks()
     items = [
         bn.model_dump(mode="json")
@@ -94,6 +96,8 @@ async def list_bottlenecks(
 @router.get("/recommendations")
 async def list_recommendations() -> dict[str, Any]:
     """Return top 3 ranked recommendations by impact/cost ratio."""
+    from kafka.consumer import refresh_discovery
+    await refresh_discovery()
     recs = get_active_recommendations()
     return {
         "recommendations": [
@@ -114,6 +118,8 @@ async def apply_recommendation_endpoint(recommendation_id: str) -> dict[str, Any
     """Submit a concrete action; only a domain receipt confirms application."""
     sim_time = await _action_clock()
     from services.action_execution import refresh
+    from kafka.consumer import refresh_discovery
+    await refresh_discovery()
     await refresh()
     try:
         entry = apply_recommendation(
@@ -200,6 +206,8 @@ async def what_if_analysis(request: WhatIfRequest) -> WhatIfResponse:
 
     if get_state().sim_time is None:
         raise HTTPException(status_code=503, detail="Simulation clock not available yet")
+    from kafka.consumer import refresh_discovery
+    await refresh_discovery()
     result = run_what_if(get_state(), request)
 
     duration = time.monotonic() - start

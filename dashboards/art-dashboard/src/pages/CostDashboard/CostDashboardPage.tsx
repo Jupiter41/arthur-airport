@@ -48,6 +48,8 @@ export default function CostDashboardPage() {
   const costSummary = summary.data as CostSummary | undefined;
   const pnlData = pnl.data as {
     day?: number;
+    airline_cost_eur?: number;
+    eu261_exposure_eur?: number;
     total_cost_eur?: number;
     total_revenue_eur?: number;
     net_eur?: number;
@@ -90,11 +92,12 @@ export default function CostDashboardPage() {
     ? (costSummary?.net_eur ?? 0)
     : (pnlData?.net_eur ?? 0);
   const margin = totalRevenue > 0 ? (net / totalRevenue) * 100 : 0;
-  const eu261 = costSummary?.eu261_exposure_eur ?? 0;
+  const eu261 = (isLive ? costSummary?.eu261_exposure_eur : pnlData?.eu261_exposure_eur) ?? 0;
+  const airlineCost = (isLive ? costSummary?.airline_cost_eur : pnlData?.airline_cost_eur) ?? 0;
   const byCategory = isLive
     ? (costSummary?.by_category ?? {})
     : (pnlData?.by_category ?? {});
-  const noData = totalCost === 0 && totalRevenue === 0;
+  const noData = totalCost === 0 && totalRevenue === 0 && airlineCost === 0;
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
@@ -103,7 +106,7 @@ export default function CostDashboardPage() {
         <div>
           <h1 className="text-xl font-bold text-white">💰 Cost Dashboard</h1>
           <p className="text-xs text-gray-400 mt-0.5">
-            Financial overview — Day {day}
+            Airport finances — Day {day}. Airline costs are shown separately.
             {costSummary?.sim_time
               ? ` · ${new Date(costSummary.sim_time).toLocaleTimeString()}`
               : ""}
@@ -195,28 +198,29 @@ export default function CostDashboardPage() {
       )}
 
       {/* KPI Row */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <KpiCard
-          label="Total Cost"
+          label="Airport Operating Cost"
           value={formatEur(totalCost)}
           color="text-red-400"
         />
         <KpiCard
-          label="Total Revenue"
+          label="Airport Revenue"
           value={formatEur(totalRevenue)}
           color="text-green-400"
         />
         <KpiCard
-          label="Net P&L"
+          label="Airport Operating Profit"
           value={formatEur(net)}
           color={net >= 0 ? "text-green-400" : "text-red-400"}
           sub={`Margin: ${margin.toFixed(1)}%`}
         />
         <KpiCard
-          label="EU261 Exposure"
+          label="Airline EU261 Liability"
           value={formatEur(eu261)}
           color={eu261 > 50_000 ? "text-red-400" : "text-amber-400"}
         />
+        <KpiCard label="Airline Costs" value={formatEur(airlineCost)} sub="Excluded from airport profit" />
         <KpiCard
           label="Cost Categories"
           value={String(Object.keys(byCategory).length)}

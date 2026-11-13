@@ -186,6 +186,16 @@ async def main():
     mode = ARGS["mode"]
     if mode == "seed":
         await seed()
+    elif mode == "startup":
+        if OWNER == "passenger":
+            await consumer.rebuild_security_from_neo4j()
+        else:
+            await consumer._state.rebuild_from_neo4j()
+        codec = consumer.tick_snapshot if OWNER == "flight" else consumer._TICK_CODEC
+        print(json.dumps({"checkpoint": json.loads(codec.dump(consumer._state)),
+                          "sim_time": consumer._state.sim_time.isoformat()}), flush=True)
+        await db.close_neo4j()
+        return
     elif mode == "snapshot":
         pass
     elif mode in ("fail", "fail-command", "exit-before-commit"):

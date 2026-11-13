@@ -131,7 +131,8 @@ class TestRecommendationSchema:
             "expiry_sim_time", "saving_eur_ci",
         }
         for rec in recs:
-            assert set(rec.keys()) == required, f"Missing keys in {rec['action']}"
+            assert rec["accounting_scope"] == "cross-party operational impact; not airport profit"
+            assert set(rec.keys()) == required | {"accounting_scope"}, f"Missing keys in {rec['action']}"
             # CI is None unless ≥2 historical days are available; when present
             # it must expose low/high/sample_days as numerics.
             ci = rec["saving_eur_ci"]

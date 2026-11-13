@@ -81,19 +81,35 @@ retained inputs from the earliest offset.
 
 `SecurityQueueUpdated` is an unsampled aggregate on `passengers.events` with
 `terminal`, `queue_depth`, `lanes_open`, `wait_minutes` and `at`. Passenger-service
-publishes it on each normal tick (every 20 ticks in BULK mode). Analysis uses
+persists it on `SecurityCheckpoint` and publishes it on every tick, including BULK. Analysis uses
 these measured snapshots to detect and resolve observed congestion. It does
 not invent forecast confidence from an observed wait. This also avoids trying
 to reconstruct exact queue counts from sampled per-passenger events.
 
 ## Projection recovery and input contracts
 
-Before starting its consumer, analysis reads flights, gates, current weather,
-active incidents and the latest baggage aggregate from Neo4j. It reconciles
-these projections every ten ticks. This read-only snapshot does not advance the
-simulation clock; only `SimClockTick` does that. Domain facts update the cache
-between reconciliations. Security and ground-vehicle recovery remain separate
-roadmap work.
+Before starting its consumer and before each discovery evaluation, analysis reads
+flights, gates, current weather, active incidents, the latest baggage aggregate,
+security checkpoints, ground vehicles, connection clusters and cost totals from
+Neo4j. Security counts/waits are owner snapshots, and vehicle utilisation counts
+all non-available vehicles by identity. Sampled passenger/vehicle transitions do
+not increment these authoritative aggregates. Replacing a projection clears
+removed entities and does not advance the simulation clock.
+
+`AnalysisRuntime {id: 'discovery'}` owns versioned discovery state: input graph,
+clock offset, active bottlenecks, recommendations and baggage threshold timers.
+The existing analysis transaction lock serializes evaluation across workers.
+The last validated `SimClockTick` (including a rewind at a newer broker offset)
+is the only clock source. Discovery state and detected/resolved/recommendation
+facts commit atomically in `AnalysisOutbox`; caches become visible after commit.
+Replaying an evaluated offset restores the committed identities rather than
+discovering duplicates. Startup evaluates an accepted but interrupted tick before
+consumption resumes. Other workers refresh the shared result after batches.
+
+Graph inputs are each owner's latest committed data, not a historical global
+snapshot at the analysis clock. Owner facts can arrive after that clock; later
+evaluations reconcile them. Local ephemeral anomaly/narration windows are not
+operational truth. Training recovery remains G7, calibration remains G8.
 
 Weather facts use the producer's `new_category` and recommended arrival/departure
 rates. Capacity is expressed relative to configured CAVOK rates. Baggage occupancy

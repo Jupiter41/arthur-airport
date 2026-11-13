@@ -180,6 +180,7 @@ share similar path segments (e.g. `/flow/summary` exists on both passenger and b
 | `/api/v1/baggage/flagged/*`        | baggage-service:8003   | `/api/v1/flagged/*`     |
 | `/api/v1/baggage/*`                | baggage-service:8003   | `/api/v1/baggage/*`     |
 | `/api/v1/analysis/*`               | analysis-service:8007  | `/api/v1/analysis/*`    |
+| `/api/v1/planning/*`               | planning-service:8009  | `/api/v1/planning/*`    |
 
 ### WebSocket topics
 

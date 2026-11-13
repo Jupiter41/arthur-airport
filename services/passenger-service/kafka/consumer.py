@@ -270,6 +270,10 @@ async def rebuild_security_from_neo4j() -> None:
     are accurate immediately after a restart.
     """
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    from db.neo4j import get_driver
+    from _common.transaction_scope import restore_owner_checkpoint
+    await restore_owner_checkpoint("PassengerRuntime", _state, _TICK_CODEC, get_driver)
+    await _sync_security_from_db()
     try:
         pax_list = await get_passengers_by_status("security_queue")
     except Exception as e:
@@ -890,17 +894,27 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
             except Exception:
                 pass
 
+        # Persist public measured snapshots inside the owner tick transaction.
+        from db.neo4j import save_security_projection
+        security_rows = [{
+            "terminal": terminal, "queue_depth": cp.queue_depth,
+            "sa_queue_depth": cp.sa_queue_depth, "lanes_open": cp.lanes_open,
+            "frozen": cp.frozen, "wait_minutes": round(cp.wait_minutes(0), 1),
+            "at": sim_time.isoformat(), "updated_at": sim_time.isoformat(),
+        } for terminal, cp in _state.security.checkpoints.items()]
+        await save_security_projection(security_rows)
+
         # Security gauges are cheap (in-memory), update every tick
         for terminal in ("A", "B", "C"):
             cp = _state.security.checkpoints.get(terminal)
             if cp:
                 m_sec_queue_depth.labels(terminal=terminal).set(cp.queue_depth)
                 m_sec_wait.labels(terminal=terminal).set(round(cp.wait_minutes(0), 1))
-                if not is_bulk or _state.tick_counter % 20 == 0:
-                    emit_security_queue_updated(
-                        terminal, cp.queue_depth, cp.lanes_open,
-                        cp.wait_minutes(0), sim_time,
-                    )
+                emit_security_queue_updated(
+                    terminal, cp.queue_depth, cp.lanes_open,
+                    cp.wait_minutes(0), sim_time,
+                    sa_queue_depth=cp.sa_queue_depth, frozen=cp.frozen,
+                )
                 m_sec_lanes.labels(terminal=terminal).set(cp.lanes_open)
 
         # 12. BULK mode: emit periodic BulkStateSnapshot

@@ -206,6 +206,8 @@ def test_flight_precondition_failure_stages_rejection_receipt(monkeypatch):
 
 
 def test_passenger_lane_change_is_saved_emitted_and_rebuilt(monkeypatch):
+    from _common import transaction_scope
+    monkeypatch.setattr(transaction_scope, "restore_owner_checkpoint", AsyncMock(return_value=False))
     consumer, _, db, _, events = context("passenger", monkeypatch)
     saved = {}
 

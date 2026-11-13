@@ -896,3 +896,17 @@ Cohorts in `status_groups[].ids` split by member count. All packets from one
 batch share `batch_id`, with zero-based `part` and total `part_count` for audit
 reassembly. Every part is staged with the domain transaction; no members are
 sampled away to satisfy the broker's message-size limit.
+
+### Airport accounting policy (G2, 2026-11-13)
+
+`FinancialAccountingUpdated` on `cost.events` carries
+`{accounting_policy: "airport-v1"}`. A legacy checkpoint migration rebuilds cached
+financial projections from unchanged ledger records and commits its version,
+checkpoint and this outbox fact together under the cost owner lock. It uses the
+latest consumed simulation clock or the fixed synthetic epoch before a tick.
+The publisher uses the `financial-rates` key, retains the fact until broker ack,
+and retries the same event ID. `CostSignalSnapshot.total_cost_eur` now means
+airport expense; holding fuel, handling and compensation signals remain airline
+exposure, not airport profit. Planning results expose `accounting_policy`;
+missing policy metadata is read as `legacy-mixed`, requiring a rerun for new
+financial semantics. Rate snapshot/version behavior is unchanged.

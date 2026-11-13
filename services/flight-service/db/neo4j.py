@@ -895,7 +895,7 @@ async def seed_ground_vehicles(vehicles: list[dict]) -> int:
     query = """
     UNWIND $vehicles AS v
     MERGE (gv:GroundVehicle {id: v.id})
-    SET gv.type = v.type,
+    ON CREATE SET gv.type = v.type,
         gv.status = v.status,
         gv.position_x = v.position_x,
         gv.position_y = v.position_y,
@@ -906,6 +906,15 @@ async def seed_ground_vehicles(vehicles: list[dict]) -> int:
         result = await session.run(query, vehicles=vehicles)
         record = await result.single()
         return record["cnt"] if record else 0
+
+
+async def save_ground_vehicle_projection(vehicles: list[dict]) -> None:
+    """Mirror the tick-owned fleet atomically for graph readers."""
+    async with get_driver().session() as session:
+        await (await session.run(
+            "UNWIND $vehicles AS v MERGE (gv:GroundVehicle {id: v.id}) SET gv += v",
+            vehicles=vehicles,
+        )).consume()
 
 
 async def update_ground_vehicle_status(

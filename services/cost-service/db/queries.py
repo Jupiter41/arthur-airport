@@ -1,5 +1,7 @@
 """Neo4j aggregation queries for cost reporting."""
 
+from _common.accounting import AIRPORT_EXPENSES, add_amount, empty_totals
+
 import structlog
 from neo4j import AsyncDriver
 
@@ -26,10 +28,20 @@ async def daily_pnl(driver: AsyncDriver, sim_day: int) -> dict:
                 revenues.append(entry)
             else:
                 costs.append(entry)
+        airline_costs = [c for c in costs if c["category"] not in AIRPORT_EXPENSES]
+        costs = [c for c in costs if c["category"] in AIRPORT_EXPENSES]
+        totals = empty_totals()
+        for entry in costs + airline_costs:
+            add_amount(totals, entry["category"], entry["total"], False)
         total_cost = sum(c["total"] for c in costs)
         total_revenue = sum(r["total"] for r in revenues)
         return {
             "sim_day": sim_day,
+            "accounting_policy": totals["accounting_policy"],
+            "airline_costs": airline_costs,
+            "airline_cost_eur": totals["airline_cost_eur"],
+            "airline_by_category": totals["airline_by_category"],
+            "eu261_exposure_eur": totals["eu261_exposure"],
             "costs": costs,
             "revenues": revenues,
             "total_cost_eur": round(total_cost, 2),
@@ -52,9 +64,14 @@ async def flight_cost_breakdown(driver: AsyncDriver, flight_id: str) -> dict:
             fid=flight_id,
         )
         items = [dict(r) async for r in result]
-        total_cost = sum(i["amount_eur"] for i in items if not i["is_revenue"])
+        totals = empty_totals()
+        for item in items:
+            add_amount(totals, item["category"], item["amount_eur"], item["is_revenue"])
+            item["accounting_party"] = "airport" if item["is_revenue"] or item["category"] in AIRPORT_EXPENSES else "airline"
+        total_cost = totals["total_cost_eur"]
         total_rev = sum(i["amount_eur"] for i in items if i["is_revenue"])
         return {
+            **totals,
             "flight_id": flight_id,
             "items": items,
             "total_cost_eur": round(total_cost, 2),
@@ -131,12 +148,13 @@ async def hourly_cost_curve(driver: AsyncDriver, sim_day: int) -> list:
             WITH c, substring(c.sim_time, 11, 2) AS hour_str
             WITH c, toInteger(hour_str) AS hour
             RETURN hour,
-                   sum(CASE WHEN c.is_revenue = false THEN c.amount_eur ELSE 0 END) AS cost,
+                   sum(CASE WHEN c.is_revenue = false AND c.category IN $airport_expenses THEN c.amount_eur ELSE 0 END) AS cost,
+                   sum(CASE WHEN c.is_revenue = false AND NOT c.category IN $airport_expenses THEN c.amount_eur ELSE 0 END) AS airline_cost,
                    sum(CASE WHEN c.is_revenue = true THEN c.amount_eur ELSE 0 END) AS revenue,
                    count(c) AS records
             ORDER BY hour
             """,
-            day=sim_day,
+            day=sim_day, airport_expenses=list(AIRPORT_EXPENSES),
         )
         return [dict(r) async for r in result]
 
@@ -155,9 +173,13 @@ async def terminal_pnl(driver: AsyncDriver, terminal_id: str, sim_day: int) -> d
             tid=terminal_id,
         )
         items = [dict(r) async for r in result]
-        total_cost = sum(i["total"] for i in items if not i["is_revenue"])
+        totals = empty_totals()
+        for item in items:
+            add_amount(totals, item["category"], item["total"], item["is_revenue"])
+        total_cost = totals["total_cost_eur"]
         total_rev = sum(i["total"] for i in items if i["is_revenue"])
         return {
+            **totals,
             "terminal_id": terminal_id,
             "sim_day": sim_day,
             "items": items,

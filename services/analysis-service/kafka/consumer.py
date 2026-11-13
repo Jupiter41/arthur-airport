@@ -23,24 +23,17 @@ from _common.consumer_health import ConsumerHealthTracker
 
 from models.domain import Bottleneck
 from services.state import OperationalState
-from services.detectors import check_resolved, detect_all
-from services.recommender import generate_recommendations
-from services.autonomous import evaluate_and_apply, evaluate_rl_agent, should_evaluate, get_settings as get_autonomous_settings, _bottleneck_cooldowns
+from services.autonomous import evaluate_and_apply, evaluate_rl_agent, should_evaluate, get_settings as get_autonomous_settings
 from services import approval_queue
 from services.anomaly import detector as anomaly_detector
 from services.nlp.narration import narration as narration_engine
 from kafka.producer import (
-    emit_bottleneck_detected,
-    emit_bottleneck_resolved,
-    emit_recommendation_generated,
     emit_anomaly_detected,
     emit_narration_generated,
 )
-from db.neo4j import query_connection_clusters, load_operational_projection
 from metrics import (
     bottlenecks_active,
     bottlenecks_detected_total,
-    recommendations_generated_total,
     autonomous_actions_total,
     consumer_lag,
     envelope_invalid_total,
@@ -178,6 +171,8 @@ async def run_consumer() -> None:
 
             # Evaluate the latest operational view once after catching up facts.
             # Per-entity events and receipts above are never sampled or skipped.
+            if latest_tick is None and msgs and state.sim_time is not None:
+                latest_tick = {"sim_time": state.sim_time.isoformat()}
             if latest_tick is not None:
                 while _running:
                     try:
@@ -352,75 +347,42 @@ async def _measure_due_outcomes(now: datetime) -> None:
         logger.warning("Outcome measurement failed this tick", exc_info=True)
 
 
+def _restore_discovery(document: dict) -> None:
+    global active_bottlenecks, active_recommendations
+    from services.projection_store import restore
+    restored, bottlenecks, recommendations = restore(document)
+    state.__dict__.update(restored.__dict__)
+    active_bottlenecks = bottlenecks
+    active_recommendations = recommendations
+
+
+async def refresh_discovery() -> None:
+    """Endpoints read the shared committed discovery, including on idle replicas."""
+    from services import projection_store
+    document = await projection_store.load()
+    if document is not None:
+        _restore_discovery(document)
+
+
 async def _on_tick(payload: dict) -> None:
     """Run bottleneck detection and recommendation generation on each tick."""
-    global _neo4j_tick_counter, active_recommendations
 
-    now = state.sim_time
-    if now is None:
-        return
-
+    from services import projection_store
     from services.action_execution import refresh
     await refresh()
-    _neo4j_tick_counter += 1
-
-    # G8: measure outcomes of actions executed ~30 sim-min ago.
+    document, new_bottlenecks, resolved = await projection_store.evaluate()
+    if document is None:
+        return
+    _restore_discovery(document)
+    now = state.sim_time
+    assert now is not None
     await _measure_due_outcomes(now)
-
-    # Periodically refresh Neo4j data (connection clusters, etc.)
-    if _neo4j_tick_counter >= NEO4J_QUERY_INTERVAL:
-        _neo4j_tick_counter = 0
-        try:
-            state.restore_graph(await load_operational_projection())
-            clusters = await query_connection_clusters()
-            state.connection_clusters = clusters
-        except Exception:
-            logger.warning("Failed to reconcile operational graph projection", exc_info=True)
-
-    # Check for resolved bottlenecks
-    resolved_ids = []
-    for bn_id, bn in active_bottlenecks.items():
-        if check_resolved(state, bn):
-            bn.resolved_at = now
-            resolved_ids.append(bn_id)
-            emit_bottleneck_resolved(bn_id, now)
-            logger.info("Bottleneck resolved: %s (%s)", bn_id, bn.type)
-            # Update metrics
-            bottlenecks_active.labels(
-                type=bn.type.value, severity=bn.severity.value,
-            ).dec()
-
-    for bn_id in resolved_ids:
-        del active_bottlenecks[bn_id]
-
-    # Detect new bottlenecks
-    new_bottlenecks = detect_all(state, active_bottlenecks)
+    resolved_ids = [bn.id for bn in resolved]
+    for bn in resolved:
+        bottlenecks_active.labels(type=bn.type.value, severity=bn.severity.value).dec()
     for bn in new_bottlenecks:
-        active_bottlenecks[bn.id] = bn
-        emit_bottleneck_detected(bn.model_dump(mode="json"), now)
-        logger.info(
-            "Bottleneck detected: %s %s in %s",
-            bn.severity.value, bn.type.value, bn.zone,
-        )
         bottlenecks_detected_total.labels(type=bn.type.value).inc()
-        bottlenecks_active.labels(
-            type=bn.type.value, severity=bn.severity.value,
-        ).inc()
-
-    # Generate recommendations for all active bottlenecks
-    active_list = [bn for bn in active_bottlenecks.values() if bn.resolved_at is None]
-    if active_list:
-        # Pass cooldown info so recommender can mark already-actioned bottlenecks
-        cooled_bn_ids = set(_bottleneck_cooldowns.keys())
-        recs = generate_recommendations(state, active_list, applied_bottleneck_ids=cooled_bn_ids, proposals=approval_queue.list_all())
-        active_recommendations = recs
-        for rec in recs:
-            emit_recommendation_generated(rec.model_dump(mode="json"), now)
-            recommendations_generated_total.labels(
-                action_type=rec.action_type.value,
-            ).inc()
-    else:
-        active_recommendations = []
+        bottlenecks_active.labels(type=bn.type.value, severity=bn.severity.value).inc()
 
     # Autonomous mode evaluation
     if should_evaluate(now):

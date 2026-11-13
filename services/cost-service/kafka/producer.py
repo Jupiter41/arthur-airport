@@ -40,6 +40,7 @@ def emit_cost_signal_snapshot(
     holding_fuel: float,
     ground_handling: float,
     total_cost_eur: float,
+    total_revenue_eur: float = 0.0,
 ) -> None:
     """Publish CostSignalSnapshot to cost.events for analysis-service to consume."""
     if _producer is None:
@@ -56,6 +57,7 @@ def emit_cost_signal_snapshot(
             "holding_fuel": round(holding_fuel, 2),
             "ground_handling": round(ground_handling, 2),
             "total_cost_eur": round(total_cost_eur, 2),
+            "total_revenue_eur": round(total_revenue_eur, 2),
             "at": sim_time.isoformat(),
         },
     }
@@ -73,7 +75,7 @@ def publish_confirmed(envelope: dict) -> None:
         raise RuntimeError("Financial event producer unavailable")
     delivered = []
     payload = envelope["payload"]
-    key = ("financial-rates" if envelope["event_type"] == "CostRatesUpdated" else
+    key = ("financial-rates" if envelope["event_type"] in ("CostRatesUpdated", "FinancialAccountingUpdated") else
            payload.get("cost_record_id") or payload.get("carbon_record_id") or payload["source_event_id"])
     _producer.produce(
         topic=EVENTS_TOPIC, key=key.encode(), value=json.dumps(envelope, allow_nan=False).encode(),

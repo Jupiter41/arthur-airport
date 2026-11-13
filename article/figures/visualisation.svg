@@ -1,0 +1,199 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <title>Neo4j operational graph — Arthur International Airport digital twin</title>
+  <desc>Directed property graph showing airport infrastructure, flights, passengers, runways, and weather state.</desc>
+  <!-- Edges -->
+  <line x1="480.0" y1="64.0" x2="480.0" y2="123.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="480.0,123.0 477.2,116.0 482.8,116.0" fill="#95a5a6"/>
+  <line x1="458.6" y1="47.3" x2="86.4" y2="139.7" stroke="#95a5a6" stroke-width="1.3" stroke-dasharray="5,3"/>
+  <polygon points="86.4,139.7 92.5,135.3 93.8,140.7" fill="#95a5a6"/>
+  <line x1="501.5" y1="46.5" x2="808.5" y2="110.5" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="808.5,110.5 801.0,111.8 802.2,106.3" fill="#95a5a6"/>
+  <line x1="501.7" y1="45.7" x2="888.3" y2="111.3" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="888.3,111.3 880.9,112.9 881.9,107.4" fill="#95a5a6"/>
+  <line x1="500.6" y1="49.8" x2="809.4" y2="167.2" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="809.4,167.2 801.9,167.3 803.9,162.1" fill="#95a5a6"/>
+  <line x1="501.0" y1="48.5" x2="889.0" y2="168.5" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="889.0,168.5 881.5,169.1 883.1,163.8" fill="#95a5a6"/>
+  <line x1="459.4" y1="152.6" x2="120.6" y2="277.4" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="120.6,277.4 126.2,272.3 128.2,277.6" fill="#95a5a6"/>
+  <line x1="460.8" y1="155.7" x2="249.2" y2="274.3" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="249.2,274.3 253.9,268.4 256.7,273.3" fill="#95a5a6"/>
+  <line x1="465.7" y1="161.7" x2="374.3" y2="268.3" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="374.3,268.3 376.7,261.2 381.0,264.8" fill="#95a5a6"/>
+  <line x1="481.6" y1="166.9" x2="488.4" y2="263.1" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="488.4,263.1 485.1,256.3 490.7,255.9" fill="#95a5a6"/>
+  <line x1="495.6" y1="160.6" x2="604.4" y2="269.4" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="604.4,269.4 597.5,266.5 601.5,262.5" fill="#95a5a6"/>
+  <line x1="499.5" y1="155.1" x2="730.5" y2="274.9" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="730.5,274.9 723.0,274.1 725.5,269.2" fill="#95a5a6"/>
+  <line x1="500.8" y1="152.3" x2="859.2" y2="277.7" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="859.2,277.7 851.7,278.1 853.6,272.8" fill="#95a5a6"/>
+  <line x1="100.0" y1="307.0" x2="100.0" y2="368.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="100.0,368.0 97.2,361.0 102.8,361.0" fill="#95a5a6"/>
+  <line x1="230.0" y1="307.0" x2="230.0" y2="368.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="230.0,368.0 227.2,361.0 232.8,361.0" fill="#95a5a6"/>
+  <line x1="360.0" y1="307.0" x2="360.0" y2="368.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="360.0,368.0 357.2,361.0 362.8,361.0" fill="#95a5a6"/>
+  <line x1="490.0" y1="307.0" x2="490.0" y2="368.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="490.0,368.0 487.2,361.0 492.8,361.0" fill="#95a5a6"/>
+  <line x1="620.0" y1="307.0" x2="620.0" y2="368.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="620.0,368.0 617.2,361.0 622.8,361.0" fill="#95a5a6"/>
+  <line x1="750.0" y1="307.0" x2="750.0" y2="368.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="750.0,368.0 747.2,361.0 752.8,361.0" fill="#95a5a6"/>
+  <line x1="880.0" y1="307.0" x2="880.0" y2="368.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="880.0,368.0 877.2,361.0 882.8,361.0" fill="#95a5a6"/>
+  <line x1="91.3" y1="410.2" x2="66.7" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="66.7,467.8 66.9,460.2 72.0,462.4" fill="#95a5a6"/>
+  <line x1="100.0" y1="412.0" x2="100.0" y2="466.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="100.0,466.0 97.2,459.0 102.8,459.0" fill="#95a5a6"/>
+  <line x1="108.7" y1="410.2" x2="133.3" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="133.3,467.8 128.0,462.4 133.1,460.2" fill="#95a5a6"/>
+  <line x1="221.3" y1="410.2" x2="196.7" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="196.7,467.8 196.9,460.2 202.0,462.4" fill="#95a5a6"/>
+  <line x1="230.0" y1="412.0" x2="230.0" y2="466.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="230.0,466.0 227.2,459.0 232.8,459.0" fill="#95a5a6"/>
+  <line x1="238.7" y1="410.2" x2="263.3" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="263.3,467.8 258.0,462.4 263.1,460.2" fill="#95a5a6"/>
+  <line x1="351.3" y1="410.2" x2="326.7" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="326.7,467.8 326.9,460.2 332.0,462.4" fill="#95a5a6"/>
+  <line x1="360.0" y1="412.0" x2="360.0" y2="466.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="360.0,466.0 357.2,459.0 362.8,459.0" fill="#95a5a6"/>
+  <line x1="368.7" y1="410.2" x2="393.3" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="393.3,467.8 388.0,462.4 393.1,460.2" fill="#95a5a6"/>
+  <line x1="481.3" y1="410.2" x2="456.7" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="456.7,467.8 456.9,460.2 462.0,462.4" fill="#95a5a6"/>
+  <line x1="490.0" y1="412.0" x2="490.0" y2="466.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="490.0,466.0 487.2,459.0 492.8,459.0" fill="#95a5a6"/>
+  <line x1="498.7" y1="410.2" x2="523.3" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="523.3,467.8 518.0,462.4 523.1,460.2" fill="#95a5a6"/>
+  <line x1="611.3" y1="410.2" x2="586.7" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="586.7,467.8 586.9,460.2 592.0,462.4" fill="#95a5a6"/>
+  <line x1="620.0" y1="412.0" x2="620.0" y2="466.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="620.0,466.0 617.2,459.0 622.8,459.0" fill="#95a5a6"/>
+  <line x1="628.7" y1="410.2" x2="653.3" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="653.3,467.8 648.0,462.4 653.1,460.2" fill="#95a5a6"/>
+  <line x1="741.3" y1="410.2" x2="716.7" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="716.7,467.8 716.9,460.2 722.0,462.4" fill="#95a5a6"/>
+  <line x1="750.0" y1="412.0" x2="750.0" y2="466.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="750.0,466.0 747.2,459.0 752.8,459.0" fill="#95a5a6"/>
+  <line x1="758.7" y1="410.2" x2="783.3" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="783.3,467.8 778.0,462.4 783.1,460.2" fill="#95a5a6"/>
+  <line x1="871.3" y1="410.2" x2="846.7" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="846.7,467.8 846.9,460.2 852.0,462.4" fill="#95a5a6"/>
+  <line x1="880.0" y1="412.0" x2="880.0" y2="466.0" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="880.0,466.0 877.2,459.0 882.8,459.0" fill="#95a5a6"/>
+  <line x1="888.7" y1="410.2" x2="913.3" y2="467.8" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="913.3,467.8 908.0,462.4 913.1,460.2" fill="#95a5a6"/>
+  <!-- Nodes -->
+  <circle cx="480" cy="42" r="22" fill="#2c3e50" stroke="#ffffff" stroke-width="2"/>
+  <text x="480" y="43" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">Airport</text>
+  <circle cx="65" cy="145" r="22" fill="#1abc9c" stroke="#ffffff" stroke-width="2"/>
+  <text x="65" y="146" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#ffffff">CAVOK</text>
+  <circle cx="480" cy="145" r="22" fill="#3498db" stroke="#ffffff" stroke-width="2"/>
+  <text x="480" y="146" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff">Terminal A</text>
+  <circle cx="830" cy="115" r="22" fill="#e67e22" stroke="#ffffff" stroke-width="2"/>
+  <text x="830" y="116" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">09L</text>
+  <circle cx="910" cy="115" r="22" fill="#e67e22" stroke="#ffffff" stroke-width="2"/>
+  <text x="910" y="116" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">09R</text>
+  <circle cx="830" cy="175" r="22" fill="#e67e22" stroke="#ffffff" stroke-width="2"/>
+  <text x="830" y="176" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">27L</text>
+  <circle cx="910" cy="175" r="22" fill="#e67e22" stroke="#ffffff" stroke-width="2"/>
+  <text x="910" y="176" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">27R</text>
+  <circle cx="100" cy="285" r="22" fill="#27ae60" stroke="#ffffff" stroke-width="2"/>
+  <text x="100" y="286" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">A08</text>
+  <circle cx="230" cy="285" r="22" fill="#27ae60" stroke="#ffffff" stroke-width="2"/>
+  <text x="230" y="286" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">A09</text>
+  <circle cx="360" cy="285" r="22" fill="#27ae60" stroke="#ffffff" stroke-width="2"/>
+  <text x="360" y="286" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">A10</text>
+  <circle cx="490" cy="285" r="22" fill="#27ae60" stroke="#ffffff" stroke-width="2"/>
+  <text x="490" y="286" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">A11</text>
+  <circle cx="620" cy="285" r="22" fill="#27ae60" stroke="#ffffff" stroke-width="2"/>
+  <text x="620" y="286" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">A12</text>
+  <circle cx="750" cy="285" r="22" fill="#27ae60" stroke="#ffffff" stroke-width="2"/>
+  <text x="750" y="286" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">A13</text>
+  <circle cx="880" cy="285" r="22" fill="#27ae60" stroke="#ffffff" stroke-width="2"/>
+  <text x="880" y="286" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">A14</text>
+  <circle cx="100" cy="390" r="22" fill="#c0392b" stroke="#ffffff" stroke-width="2"/>
+  <text x="100" y="391" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#ffffff">AX207</text>
+  <circle cx="230" cy="390" r="22" fill="#c0392b" stroke="#ffffff" stroke-width="2"/>
+  <text x="230" y="391" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#ffffff">AX206</text>
+  <circle cx="360" cy="390" r="22" fill="#c0392b" stroke="#ffffff" stroke-width="2"/>
+  <text x="360" y="391" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#ffffff">AX205</text>
+  <circle cx="490" cy="390" r="22" fill="#c0392b" stroke="#ffffff" stroke-width="2"/>
+  <text x="490" y="391" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#ffffff">AX204</text>
+  <circle cx="620" cy="390" r="22" fill="#c0392b" stroke="#ffffff" stroke-width="2"/>
+  <text x="620" y="391" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#ffffff">AX203</text>
+  <circle cx="750" cy="390" r="22" fill="#c0392b" stroke="#ffffff" stroke-width="2"/>
+  <text x="750" y="391" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#ffffff">AX202</text>
+  <circle cx="880" cy="390" r="22" fill="#c0392b" stroke="#ffffff" stroke-width="2"/>
+  <text x="880" y="391" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#ffffff">AX201</text>
+  <circle cx="58" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="58" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">K. Adeyem</text>
+  <circle cx="100" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="100" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">R. Stone</text>
+  <circle cx="142" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="142" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">L. Miller</text>
+  <circle cx="188" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="188" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff">S. Gray</text>
+  <circle cx="230" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="230" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">H. Cooper</text>
+  <circle cx="272" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="272" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff">P. Das</text>
+  <circle cx="318" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="318" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#ffffff">S. Christine</text>
+  <circle cx="360" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="360" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#ffffff">C. Christine</text>
+  <circle cx="402" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="402" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff">—</text>
+  <circle cx="448" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="448" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">A. Ogawa</text>
+  <circle cx="490" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="490" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">T. Ikeda</text>
+  <circle cx="532" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="532" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">S. Price</text>
+  <circle cx="578" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="578" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">P. White</text>
+  <circle cx="620" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="620" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff">E. Kone</text>
+  <circle cx="662" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="662" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#ffffff">E. Ekaterina</text>
+  <circle cx="708" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="708" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#ffffff">B. Pereira</text>
+  <circle cx="750" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="750" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">D. Popov</text>
+  <circle cx="792" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="792" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#ffffff">L. Nishida</text>
+  <circle cx="838" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="838" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#ffffff">D. Fournier</text>
+  <circle cx="880" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="880" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">K. Nunez</text>
+  <circle cx="922" cy="488" r="16" fill="#8e44ad" stroke="#ffffff" stroke-width="2"/>
+  <text x="922" y="489" text-anchor="middle" dominant-baseline="central" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#ffffff">J. White</text>
+  <rect x="12" y="548" width="936" height="82" rx="5" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
+  <text x="24" y="565" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#2c3e50">Node types</text>
+  <circle cx="29" cy="578" r="5" fill="#2c3e50"/>
+  <text x="38" y="582" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">Airport</text>
+  <circle cx="161" cy="578" r="5" fill="#1abc9c"/>
+  <text x="170" y="582" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">Weather</text>
+  <circle cx="293" cy="578" r="5" fill="#3498db"/>
+  <text x="302" y="582" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">Terminal</text>
+  <circle cx="425" cy="578" r="5" fill="#e67e22"/>
+  <text x="434" y="582" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">Runway</text>
+  <circle cx="557" cy="578" r="5" fill="#27ae60"/>
+  <text x="566" y="582" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">Gate</text>
+  <circle cx="689" cy="578" r="5" fill="#c0392b"/>
+  <text x="698" y="582" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">Flight</text>
+  <circle cx="821" cy="578" r="5" fill="#8e44ad"/>
+  <text x="830" y="582" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">Passenger</text>
+  <text x="24" y="602" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#2c3e50">Relationships</text>
+  <line x1="24" y1="616" x2="52" y2="616" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="52,616 46,613 46,619" fill="#95a5a6"/>
+  <text x="58" y="620" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">HAS_TERMINAL · HAS_GATE · HAS_RUNWAY</text>
+  <line x1="382" y1="616" x2="410" y2="616" stroke="#95a5a6" stroke-width="1.3" stroke-dasharray="5,3"/>
+  <polygon points="410,616 404,613 404,619" fill="#95a5a6"/>
+  <text x="416" y="620" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">CURRENT_WEATHER</text>
+  <line x1="602" y1="616" x2="630" y2="616" stroke="#95a5a6" stroke-width="1.3"/>
+  <polygon points="630,616 624,613 624,619" fill="#95a5a6"/>
+  <text x="636" y="620" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#333333">ASSIGNED_TO · ON_FLIGHT</text>
+</svg>

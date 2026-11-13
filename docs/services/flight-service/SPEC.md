@@ -380,6 +380,14 @@ before deleting the old assignment and must reject unknown/occupied targets.
 
 ### G1 transaction boundary
 
+G9 adds startup restoration of the committed runtime before serving fleet and
+turnaround reads. Seeding creates missing vehicles without overwriting existing
+ones. Every tick mirrors the full fleet (including transit timestamps and busy
+statuses) to public `GroundVehicle` nodes and stages an unsampled
+`GroundVehicleSnapshot` on `ground.events`, inside the same owner transaction
+in both REALTIME and BULK modes. Analysis counts all non-available vehicles by
+identity; it never reconstructs exact utilisation by adding dispatch events.
+
 Each clock tick locks `FlightRuntime` before reading/planning and commits all
 flight/gate/runway writes, turnaround and vehicle progress, fuel tracking,
 facts and its simulation-time checkpoint together. Runtime state is stored as

@@ -100,13 +100,13 @@ def check_resolved(
     elif bottleneck.type == BottleneckType.BAGGAGE_THROUGHPUT:
         zone = bottleneck.zone
         bz = state.baggage_zones.get(zone)
-        if bz and bz.utilisation_pct < MAKEUP_UTIL_WARNING_PCT * 0.9:
+        if (bz is None and state.graph_loaded) or (bz and bz.utilisation_pct < MAKEUP_UTIL_WARNING_PCT * 0.9):
             return True
 
     elif bottleneck.type == BottleneckType.GROUND_VEHICLE:
         vtype = bottleneck.zone
         v = state.vehicles.get(vtype)
-        if v and v.utilisation_pct < VEHICLE_UTIL_WARNING_PCT * 0.9:
+        if (v is None and state.graph_loaded) or (v and v.utilisation_pct < VEHICLE_UTIL_WARNING_PCT * 0.9):
             return True
 
     elif bottleneck.type == BottleneckType.RUNWAY_CAPACITY:

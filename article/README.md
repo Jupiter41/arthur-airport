@@ -19,6 +19,16 @@ pdflatex main.tex
 The result is `main.pdf`. Run `pdflatex` twice after `bibtex` so citations and
 the table of contents resolve.
 
+The architecture figure is a standalone TikZ source. Regenerate it from the
+repository root with:
+
+```powershell
+cd article
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory=figures arch.tex
+```
+
+This writes `figures/arch.pdf`, which is included by `main.tex`.
+
 ## Option B — Docker (no local install)
 
 ```powershell
@@ -36,10 +46,10 @@ Remove-Item main.aux, main.log, main.bbl, main.blg, main.out -ErrorAction Silent
 
 ## Files
 
-| File | Purpose |
-|---|---|
-| `main.tex` | The article source |
-| `refs.bib` | BibTeX references |
-| `llncs.cls` | Springer LNCS document class |
-| `splncs04.bst` | LNCS bibliography style |
-| `screenshots/`, `references/` | Assets for figures |
+| File                          | Purpose                      |
+| ----------------------------- | ---------------------------- |
+| `main.tex`                    | The article source           |
+| `refs.bib`                    | BibTeX references            |
+| `llncs.cls`                   | Springer LNCS document class |
+| `splncs04.bst`                | LNCS bibliography style      |
+| `screenshots/`, `references/` | Assets for figures           |

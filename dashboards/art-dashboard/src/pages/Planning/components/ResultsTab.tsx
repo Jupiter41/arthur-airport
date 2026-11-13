@@ -56,6 +56,9 @@ export default function ResultsTab() {
 
   return (
     <div className="space-y-5">
+      {r && r.accounting_policy !== "airport-v1" && (
+        <p className="text-amber-400 text-sm">Legacy mixed accounting: rerun this scenario for airport financial results.</p>
+      )}
       {/* Methodology */}
       <div className="bg-slate-800/30 rounded-lg border border-slate-700/50 p-3">
         <p className="text-xs text-slate-400 leading-relaxed">

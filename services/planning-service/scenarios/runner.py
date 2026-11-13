@@ -164,6 +164,7 @@ def _collect_kpis(all_runs: list[list[DayResult]]) -> dict[str, KPIDistribution]
     run_gate_util: list[float] = []
     run_runway_util: list[float] = []
     run_eu261: list[float] = []
+    run_airline_cost: list[float] = []
     run_total_cost: list[float] = []
     run_total_revenue: list[float] = []
     run_gate_conflicts: list[float] = []
@@ -180,6 +181,7 @@ def _collect_kpis(all_runs: list[list[DayResult]]) -> dict[str, KPIDistribution]
         run_gate_util.append(sum(d.gate_utilisation_pct for d in run_days) / n)
         run_runway_util.append(sum(d.runway_utilisation_pct for d in run_days) / n)
         run_eu261.append(sum(d.eu261_liability_eur for d in run_days) / n)
+        run_airline_cost.append(sum(d.airline_cost_eur for d in run_days) / n)
         run_total_cost.append(sum(d.total_cost_eur for d in run_days) / n)
         run_total_revenue.append(sum(d.total_revenue_eur for d in run_days) / n)
         run_gate_conflicts.append(sum(d.gate_conflicts for d in run_days) / n)
@@ -193,6 +195,7 @@ def _collect_kpis(all_runs: list[list[DayResult]]) -> dict[str, KPIDistribution]
         "gate_utilisation_pct": aggregate_kpi(run_gate_util),
         "runway_utilisation_pct": aggregate_kpi(run_runway_util),
         "eu261_liability_eur": aggregate_kpi(run_eu261),
+        "airline_cost_eur": aggregate_kpi(run_airline_cost),
         "total_cost_eur": aggregate_kpi(run_total_cost),
         "total_revenue_eur": aggregate_kpi(run_total_revenue),
         "gate_conflicts": aggregate_kpi(run_gate_conflicts),

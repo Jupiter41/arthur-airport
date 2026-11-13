@@ -32,6 +32,7 @@ class FinancialRecommendation:
     payback_sim_minutes: int
     expiry_sim_time: str
     saving_eur_ci: dict | None = field(default=None)
+    accounting_scope: str = "cross-party operational impact; not airport profit"
 
 
 def _ci_for_signal(signal_key: str, saving_factor: float) -> dict | None:
@@ -85,7 +86,7 @@ def generate_recommendations(
         )))
 
     # 2. Ground delay program if holding costs are high
-    holding_cost = running_totals.get("by_category", {}).get("holding_fuel", 0.0)
+    holding_cost = running_totals.get("airline_by_category", running_totals.get("by_category", {})).get("holding_fuel", 0.0)
     if holding_cost > 5_000:
         gdp_cost = 500.0  # admin overhead
         fuel_saving = holding_cost * 0.5
@@ -102,7 +103,7 @@ def generate_recommendations(
         )))
 
     # 3. Gate reassignment if ground handling costs are high
-    handling_cost = running_totals.get("by_category", {}).get("ground_handling", 0.0)
+    handling_cost = running_totals.get("airline_by_category", running_totals.get("by_category", {})).get("ground_handling", 0.0)
     if handling_cost > 50_000:
         reassign_cost = 200.0  # pax walk time cost
         saving = handling_cost * 0.1

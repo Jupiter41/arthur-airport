@@ -1,0 +1,39 @@
+1
+00:00:00,000 --> 00:00:04,065
+A synthetic airport day: 420 flights, with operations updating live.
+
+2
+00:00:04,065 --> 00:00:08,130
+The simulation clock drives flight states and runway throughput.
+
+3
+00:00:08,130 --> 00:00:12,137
+L1 adds physical context: gates, runways and ground vehicles.
+
+4
+00:00:12,137 --> 00:00:16,144
+The ground view brings aircraft and vehicle activity together.
+
+5
+00:00:16,144 --> 00:00:21,157
+We inject a critical runway incursion on runway 09L.
+
+6
+00:00:21,157 --> 00:00:26,178
+The runway incursion triggers a closure and an arrival holding stack.
+
+7
+00:00:26,178 --> 00:00:31,199
+The cascade then stops departures and congests gates.
+
+8
+00:00:31,199 --> 00:00:35,252
+L3 connects operational events to costs, revenue and P&L.
+
+9
+00:00:35,252 --> 00:00:39,305
+The injected runway incident adds EUR 25,000 in direct costs.
+
+10
+00:00:39,305 --> 00:00:46,372
+Recommendations estimate the cost and savings of possible responses.
