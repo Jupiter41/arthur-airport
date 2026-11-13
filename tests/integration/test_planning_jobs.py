@@ -65,7 +65,7 @@ try:
         assert replacement['random_seed'] == document['random_seed']
         assert replacement['attempt_count'] == 2
         completed = dict(replacement, status='completed', progress_pct=100)
-        results = {'scenario_id': sid, 'kpis': {'synthetic': {'mean': 1}}}
+        results = {'scenario_id': sid, 'accounting_policy': 'airport-v1', 'kpis': {'synthetic': {'mean': 1}}}
         for action in (lambda: old.save(document), lambda: old.finish(completed, results)):
             try:
                 action()
@@ -76,7 +76,7 @@ try:
         assert model.get_results(sid) == results
     if mode == 'atomic':
         completed = dict(document, status='completed', progress_pct=100)
-        results = {'scenario_id': sid, 'kpis': {'synthetic': {'mean': 1}}}
+        results = {'scenario_id': sid, 'accounting_policy': 'airport-v1', 'kpis': {'synthetic': {'mean': 1}}}
         original = repository.write_outbox
         def fail(tx, event):
             original(tx, event)
