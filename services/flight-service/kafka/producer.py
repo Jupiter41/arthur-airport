@@ -5,9 +5,11 @@ Producer lifecycle and the standard event-envelope build/emit are owned by
 keeps only the flight-domain ``emit_*`` helpers and the topic names.
 """
 
+import json
 import logging
 import os
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient
@@ -32,6 +34,50 @@ def init_kafka_producer() -> None:
 def close_kafka_producer() -> None:
     """Flush pending messages and shut down the producer."""
     kafka_runtime.close_producer(_producer)
+
+
+def build_fact(event_id: str, event_type: str, sim_time, payload: dict) -> dict:
+    """Build a flight fact envelope with a caller-supplied *stable* event_id.
+
+    Used by the G1 atomic path: the staged outbox row carries exactly the
+    envelope that would otherwise be produced, but with a deterministic
+    event_id so a redelivery keeps the same ID (at-least-once, stable IDs).
+    """
+    return {
+        "event_id": event_id,
+        "event_type": event_type,
+        "schema_version": "1.0",
+        "produced_at": datetime.now(timezone.utc).isoformat(),
+        "sim_time": sim_time.isoformat() if hasattr(sim_time, "isoformat") else sim_time,
+        "producer": PRODUCER_NAME,
+        "payload": payload,
+    }
+
+
+def publish_confirmed(envelope: dict) -> None:
+    """Blocking produce to ``flights.events`` that RAISES unless the broker acks.
+
+    The outbox delivery loop deletes a row only after this returns, so a
+    non-delivery (producer unavailable, no ack within the deadline, or an error
+    callback) must raise to keep the row for retry. Mirrors cost-service's
+    ``publish_confirmed`` exactly.
+    """
+    if _producer is None:
+        raise RuntimeError("Flight event producer unavailable")
+    delivered: list = []
+    payload = envelope.get("payload") or {}
+    key = payload.get("flight_id") or envelope["event_id"]
+    _producer.produce(
+        topic=TOPIC,
+        key=key.encode("utf-8"),
+        value=json.dumps(envelope).encode("utf-8"),
+        callback=lambda error, message: delivered.append(error),
+    )
+    deadline = time.monotonic() + 10
+    while not delivered and time.monotonic() < deadline:
+        _producer.poll(0.1)
+    if not delivered or delivered[0] is not None:
+        raise RuntimeError("Flight broker acknowledgement unavailable; outbox retained")
 
 
 def _produce_event(

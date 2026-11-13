@@ -1,6 +1,8 @@
 """Kafka producer for baggage-service — baggage events to baggage.events topic."""
 
+import json
 import logging
+import time
 from datetime import datetime
 
 from confluent_kafka import Producer
@@ -29,6 +31,37 @@ def set_bulk_mode(enabled: bool) -> None:
     """Toggle BULK mode — suppresses per-bag event emission."""
     global _bulk_mode
     _bulk_mode = enabled
+
+
+def is_bulk_mode() -> bool:
+    """Whether per-bag facts are currently suppressed (BULK speed mode)."""
+    return _bulk_mode
+
+
+def publish_confirmed(document: dict) -> None:
+    """Deliver one staged outbox fact to ``baggage.events``, blocking for the ack.
+
+    Mirrors cost-service's ``publish_confirmed``: ``document`` is the full,
+    already-built event envelope staged in ``BaggageOutbox``. Raises if the
+    broker does not acknowledge within the deadline so the outbox row is retained
+    (at-least-once with a stable ``event_id``) rather than silently dropped.
+    """
+    if _producer is None:
+        raise RuntimeError("Baggage event producer unavailable; outbox retained")
+    delivered: list = []
+    payload = document.get("payload") or {}
+    key = (payload.get("tag") or document.get("event_id") or "").encode("utf-8")
+    _producer.produce(
+        topic=TOPIC,
+        key=key or None,
+        value=json.dumps(document).encode("utf-8"),
+        callback=lambda error, message: delivered.append(error),
+    )
+    deadline = time.monotonic() + 10
+    while not delivered and time.monotonic() < deadline:
+        _producer.poll(0.1)
+    if not delivered or delivered[0] is not None:
+        raise RuntimeError("Baggage broker acknowledgement unavailable; outbox retained")
 
 
 def _produce_event(

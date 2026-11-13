@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+import json
 import sys
 from datetime import datetime
 from types import ModuleType
@@ -71,6 +72,10 @@ def test_failed_induction_write_leaves_bags_eligible_for_retry(monkeypatch):
 
 
 def test_departure_removes_fast_tracked_bags_from_conveyor(monkeypatch):
+    """G1: departure now writes status + inbox + outbox in one tx, then clears
+    the (Neo4j-derived) conveyor cache and stages facts rather than emitting."""
+    from tests.unit.test_baggage_outbox import Driver  # container-free fake driver
+
     consumer = context(monkeypatch)
     database = sys.modules["db.neo4j"]
     consumer._state = consumer.BaggageConsumerState()
@@ -78,16 +83,20 @@ def test_departure_removes_fast_tracked_bags_from_conveyor(monkeypatch):
                             is_dg=False, dg_class=None, passenger_id=None,
                             terminal="B", entered_at=NOW.isoformat())
     consumer._state.conveyor.induct_bag(bag, NOW.isoformat())
+    driver = Driver()
+    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
     monkeypatch.setattr(database, "get_flight_baggage", AsyncMock(return_value=[
         {"id": "b1", "tag": "fake-1", "status": "inducted"}]))
-    save = AsyncMock()
-    emit = AsyncMock()
-    monkeypatch.setattr(consumer, "update_baggage_statuses", save)
-    monkeypatch.setattr(consumer, "_emit_status_changed_with_metric", emit)
-    asyncio.run(consumer._on_flight_status_changed({"flight_id": "f1", "new_status": "departed"}, NOW))
+    asyncio.run(consumer._on_flight_status_changed(
+        {"flight_id": "f1", "new_status": "departed"}, NOW, "evt-dep"))
+    # Conveyor cache cleared only after the commit succeeded.
     assert consumer._state.conveyor.get_zone("induction-B").items == 0
-    save.assert_awaited_once_with([{"id": "b1", "status": "in_hold", "zone": "aircraft-hold"}], NOW)
-    assert emit.await_args.kwargs["previous_status"] == "inducted"
+    # Domain write + durable inbox + one staged fact all committed atomically.
+    assert driver.db["baggage"]["b1"]["status"] == "in_hold"
+    assert driver.db["inbox"] == {"evt-dep"}
+    fact = json.loads(next(iter(driver.db["outbox"].values()))["document"])
+    assert fact["payload"]["previous_status"] == "inducted"
+    assert fact["payload"]["new_status"] == "in_hold"
 
 
 def test_recovery_preserves_screening_metadata_arrivals_and_repeated_rebuild(monkeypatch):

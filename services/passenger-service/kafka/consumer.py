@@ -32,9 +32,11 @@ from db.neo4j import (
     get_departure_flights_in_window,
     get_status_counts,
     update_passenger_location,
+    apply_status_change_atomic,
 )
 from kafka.producer import (
     emit_passenger_status_changed,
+    build_passenger_status_changed_fact,
     emit_passenger_alert,
     emit_congestion_detected,
     emit_security_queue_updated,
@@ -565,7 +567,7 @@ async def _dispatch(envelope: dict) -> None:
         case "SimClockTick":
             await _on_clock_tick(payload, sim_time)
         case "FlightStatusChanged":
-            await _on_flight_status_changed(payload, sim_time)
+            await _on_flight_status_changed(payload, sim_time, envelope.get("event_id", ""))
         case "FlightGateAssigned":
             await _on_flight_gate_assigned(payload, sim_time)
         case "FlightCancelled":
@@ -1628,12 +1630,25 @@ async def _ml_tick(sim_time: datetime) -> None:
 
 # --- Flight event handlers ---
 
-async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
-    """React to flight status changes — handle arrivals and delays."""
+async def _on_flight_status_changed(payload: dict, sim_time: datetime, event_id: str = "") -> None:
+    """React to flight status changes — handle arrivals and delays.
+
+    G1 canonical atomic path: the passenger-state domain write and the
+    PassengerStatusChanged fact delivery now commit together via
+    ``apply_status_change_atomic`` (durable inbox dedup + outbox staging),
+    replacing the previous ``bulk_update_status`` + direct ``emit_*`` pair.
+    In-memory zone-density bookkeeping (derived, rebuildable per rule #3) is
+    applied only after the transaction commits, and skipped on a deduped redelivery.
+    """
     new_status = payload.get("new_status")
     flight_id = payload.get("flight_id")
     if not flight_id:
         return
+
+    groups: list[dict] = []
+    facts: list[dict] = []
+    bookkeeping: list[tuple] = []  # ("move", old, new) / ("remove", old) — after commit
+    departed_count = 0
 
     # Arrival: flight at_gate → passengers deplaning
     if new_status == "at_gate" and payload.get("previous_status") in ("taxiing", "landed"):
@@ -1646,18 +1661,14 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
         terminal = get_terminal_for_flight(gate_id, None, flight_id)
         new_zone = zone_for_status("deplaning", terminal, gate_id)
 
-        # Collect eligible passengers and batch-update
         eligible = [
             pax for pax in pax_list
             if pax.get("status") in ("checked_in", "airborne", "booked", "boarded")
         ]
         if eligible:
-            ids = [pax["id"] for pax in eligible]
-            await bulk_update_status(ids, "deplaning", new_zone, sim_time)
+            groups.append({"ids": [p["id"] for p in eligible], "status": "deplaning", "zone": new_zone})
             for pax in eligible:
-                old_zone = pax.get("location_zone")
-                move_passenger(old_zone, new_zone)
-                await emit_passenger_status_changed(
+                fact = build_passenger_status_changed_fact(
                     passenger_id=pax["id"],
                     name=pax.get("name", ""),
                     previous_status=pax.get("status", "airborne"),
@@ -1666,6 +1677,8 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
                     sim_time=sim_time,
                     flight_id=flight_id,
                 )
+                facts.append({"id": fact["event_id"], "document": fact})
+                bookkeeping.append(("move", pax.get("location_zone"), new_zone))
 
     # Departure: flight departed → boarded passengers become departed_airport
     if new_status == "departed" and payload.get("direction") == "departure":
@@ -1674,17 +1687,12 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
         except Exception:
             pax_list = []
 
-        eligible = [
-            pax for pax in pax_list
-            if pax.get("status") == "boarded"
-        ]
+        eligible = [pax for pax in pax_list if pax.get("status") == "boarded"]
         if eligible:
-            ids = [pax["id"] for pax in eligible]
-            await bulk_update_status(ids, "departed_airport", "departed", sim_time)
+            departed_count = len(eligible)
+            groups.append({"ids": [p["id"] for p in eligible], "status": "departed_airport", "zone": "departed"})
             for pax in eligible:
-                old_zone = pax.get("location_zone") or ""
-                remove_passenger(old_zone)
-                await emit_passenger_status_changed(
+                fact = build_passenger_status_changed_fact(
                     passenger_id=pax["id"],
                     name=pax.get("name", ""),
                     previous_status="boarded",
@@ -1693,7 +1701,21 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
                     sim_time=sim_time,
                     flight_id=flight_id,
                 )
-            logger.info("Flight %s departed: %d passengers departed_airport", flight_id, len(eligible))
+                facts.append({"id": fact["event_id"], "document": fact})
+                bookkeeping.append(("remove", pax.get("location_zone") or ""))
+
+    if groups:
+        applied = await apply_status_change_atomic(event_id, groups, facts, sim_time)
+        if applied:
+            for item in bookkeeping:
+                if item[0] == "move":
+                    move_passenger(item[1], item[2])
+                else:
+                    remove_passenger(item[1])
+            if departed_count:
+                logger.info(
+                    "Flight %s departed: %d passengers departed_airport", flight_id, departed_count
+                )
 
     # Delay: update load factor
     if new_status == "delayed":

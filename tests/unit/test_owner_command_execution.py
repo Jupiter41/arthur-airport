@@ -193,11 +193,41 @@ def test_rejected_gate_assignment_never_emits_gate_assigned(monkeypatch):
     async def unoccupied(*args, **kwargs):
         return False
 
-    async def reject(*args):
+    async def reject(tx, *args):
         return False
+
+    # G1: reassign_gate now rejects inside the managed transaction via
+    # assign_flight_to_gate_in_tx; a rejected write must stage no outbox fact
+    # and emit nothing. Provide a minimal fake driver so apply(tx) runs, with
+    # inbox_seen -> not-seen so the reject path is exercised.
+    class _Result:
+        async def single(self):
+            return None
+
+        async def consume(self):
+            return None
+
+    class _Tx:
+        async def run(self, *a, **k):
+            return _Result()
+
+    class _Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def execute_write(self, fn):
+            return await fn(_Tx())
+
+    class _Driver:
+        def session(self):
+            return _Session()
 
     monkeypatch.setattr(consumer, "get_flight_by_id", flight)
     monkeypatch.setattr(consumer, "is_gate_occupied", unoccupied)
-    monkeypatch.setattr(consumer, "assign_flight_to_gate", reject)
+    monkeypatch.setattr(consumer, "assign_flight_to_gate_in_tx", reject)
+    monkeypatch.setattr(consumer, "get_driver", lambda: _Driver())
     assert asyncio.run(consumer.reassign_gate("f1", "missing", NOW)) is None
     assert events == []

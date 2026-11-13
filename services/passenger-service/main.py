@@ -10,6 +10,7 @@ from db.neo4j import (
     check_neo4j,
     close_neo4j,
     create_constraints_and_indexes,
+    get_driver,
     wait_for_neo4j,
 )
 from kafka.consumer import (
@@ -25,8 +26,10 @@ from kafka.producer import (
     check_kafka,
     close_kafka_producer,
     init_kafka_producer,
+    publish_confirmed,
     wait_for_kafka,
 )
+from _common import outbox as _outbox
 from _common._logging import setup_logging
 from _common.airport_config import load_airport_runtime_config
 
@@ -111,13 +114,27 @@ async def lifespan(app: FastAPI):
 
     consumer_task.add_done_callback(_consumer_done)
 
+    # 9. Start the transactional outbox delivery loop (G1) — drains
+    #    PassengerOutbox to Kafka, deleting each row only after broker ack.
+    outbox_stop = asyncio.Event()
+    import structlog
+    outbox_task = asyncio.create_task(
+        _outbox.run(
+            "PassengerOutbox", get_driver, publish_confirmed, outbox_stop,
+            logger=structlog.get_logger("passenger-service.outbox"),
+        )
+    )
+
     logger.info("passenger-service startup complete")
     yield
 
     # Shutdown
     stop_consumer()
+    outbox_stop.set()
     with suppress(asyncio.TimeoutError):
         await asyncio.wait_for(asyncio.gather(consumer_task, return_exceptions=True), timeout=5)
+    with suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.gather(outbox_task, return_exceptions=True), timeout=5)
     close_kafka_producer()
     await close_neo4j()
     from _common._tracing import shutdown_tracing

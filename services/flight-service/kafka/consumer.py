@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
 from _common import kafka_runtime
+from _common import outbox as outbox_common
 from _common.idempotency import IdempotencyTracker
 from _common.commands import CommandReceipts
 from _common.consumer_health import ConsumerHealthTracker
@@ -23,9 +24,12 @@ from db.neo4j import (
     get_active_flights,
     get_active_incident_impacts,
     update_flight_status,
+    update_flight_status_in_tx,
+    assign_flight_to_gate_in_tx,
+    next_outbox_revision,
+    get_driver,
     get_boarded_percentage,
     assign_flight_to_runway,
-    assign_flight_to_gate,
     is_gate_occupied,
     get_flight_by_id,
     release_gate,
@@ -34,6 +38,7 @@ from db.neo4j import (
     seed_ground_vehicles,
 )
 from kafka.producer import (
+    build_fact,
     emit_flight_status_changed,
     emit_flight_gate_assigned,
     emit_flight_runway_assigned,
@@ -1128,6 +1133,64 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
     await _execute_transition(flight, current_status, new_status, sim_time)
 
 
+async def _commit_transition(
+    flight: dict,
+    previous_status: str,
+    new_status: str,
+    sim_time: datetime,
+    update_kwargs: dict,
+    delay_minutes: int,
+) -> bool:
+    """Atomically commit a status transition + its FlightStatusChanged fact (G1).
+
+    Within ONE ``session.execute_write`` managed transaction: durable inbox
+    dedup, the status domain write, the inbox marker, and the staged
+    FlightStatusChanged outbox fact — all commit together or none do. The
+    background outbox loop later delivers the fact to ``flights.events`` with a
+    stable event_id (at-least-once, stable IDs). Returns True when newly
+    applied, False when this exact transition was already committed (replay),
+    in which case the caller must not re-run its in-memory side effects.
+    """
+    flight_id = flight["id"]
+    direction = flight.get("direction", "departure")
+    sim_time_iso = sim_time.isoformat()
+    # Deterministic id: a redelivered tick that recomputes the same transition
+    # dedups against the persistent inbox instead of re-applying/re-emitting.
+    event_id = f"fsc:{flight_id}:{previous_status}:{new_status}:{sim_time_iso}"
+    payload = {
+        "flight_id": flight_id,
+        "flight_number": flight["flight_number"],
+        "previous_status": previous_status,
+        "new_status": new_status,
+        "gate_id": flight.get("gate_id"),
+        "runway_id": flight.get("runway_id"),
+        "delay_minutes": delay_minutes,
+        "reason": None,
+        "direction": direction,
+        "destination_iata": flight.get("destination_iata"),
+    }
+    fact = build_fact(event_id, "FlightStatusChanged", sim_time, payload)
+    facts = [{"id": event_id, "document": fact}]
+
+    async def apply(tx) -> bool:
+        if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
+            return False
+        revision = await next_outbox_revision(tx)
+        await update_flight_status_in_tx(
+            tx, flight_id, new_status,
+            delay_minutes=update_kwargs.get("delay_minutes", delay_minutes),
+            delay_reason=update_kwargs.get("delay_reason"),
+            estimated_time=update_kwargs.get("estimated_time"),
+            actual_time=update_kwargs.get("actual_time"),
+        )
+        await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
+        await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
+        return True
+
+    async with get_driver().session() as session:
+        return await session.execute_write(apply)
+
+
 async def _execute_transition(
     flight: dict,
     previous_status: str,
@@ -1287,30 +1350,20 @@ async def _execute_transition(
                     if plan.is_complete:
                         del _state.turnaround_plans[reg]
 
-    # Update Neo4j
-    await update_flight_status(
-        flight_id=flight_id,
-        new_status=new_status,
-        sim_time=sim_time,
-        delay_minutes=update_kwargs.get("delay_minutes", delay_minutes),
-        delay_reason=update_kwargs.get("delay_reason"),
-        estimated_time=update_kwargs.get("estimated_time"),
-        actual_time=update_kwargs.get("actual_time"),
+    # Atomic domain write + staged FlightStatusChanged fact (G1). The old direct
+    # update_flight_status + emit_flight_status_changed pair is replaced by one
+    # managed transaction; the outbox loop delivers the fact. A False result
+    # means this exact transition was already committed (durable replay dedup) —
+    # skip the in-memory/metric side effects so nothing is double-counted.
+    processed = await _commit_transition(
+        flight, previous_status, new_status, sim_time, update_kwargs, delay_minutes,
     )
-
-    # Emit status change event
-    emit_flight_status_changed(
-        flight_id=flight_id,
-        flight_number=flight_number,
-        previous_status=previous_status,
-        new_status=new_status,
-        sim_time=sim_time,
-        gate_id=flight.get("gate_id"),
-        runway_id=flight.get("runway_id"),
-        delay_minutes=delay_minutes,
-        direction=direction,
-        destination_iata=flight.get("destination_iata"),
-    )
+    if not processed:
+        logger.debug(
+            "Flight %s transition %s -> %s already committed (inbox dedup)",
+            flight_number, previous_status, new_status,
+        )
+        return
 
     # Update Prometheus counters
     m_transitions.labels(from_status=previous_status, to_status=new_status).inc()
@@ -1549,20 +1602,38 @@ async def reassign_gate(flight_id: str, gate_id: str, sim_time: datetime) -> dic
         logger.warning("ReassignGate: gate %s occupied — refusing to reassign %s", gate_id, flight_id)
         return None
 
-    if not await assign_flight_to_gate(flight_id, gate_id, sim_time):
+    flight_number = flight.get("flight_number", "")
+    sim_time_iso = sim_time.isoformat()
+    # G1: the ASSIGNED_TO write and the FlightGateAssigned fact commit atomically
+    # (inbox dedup + staged outbox), replacing the old assign-then-emit pair.
+    event_id = f"fga:{flight_id}:{gate_id}:{sim_time_iso}:reassignment"
+    fact = build_fact(event_id, "FlightGateAssigned", sim_time, {
+        "flight_id": flight_id,
+        "flight_number": flight_number,
+        "gate_id": gate_id,
+        "reason": "reassignment",
+    })
+
+    async def apply(tx) -> str | None:
+        if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
+            return "duplicate"
+        if not await assign_flight_to_gate_in_tx(tx, flight_id, gate_id, sim_time):
+            return None  # gate taken concurrently — nothing staged
+        revision = await next_outbox_revision(tx)
+        await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
+        await outbox_common.stage_outbox(
+            tx, "FlightOutbox", [{"id": event_id, "document": fact}], revision,
+        )
+        return "ok"
+
+    async with get_driver().session() as session:
+        outcome = await session.execute_write(apply)
+
+    if outcome is None:
         return None
 
-    flight_number = flight.get("flight_number", "")
-    emit_flight_gate_assigned(
-        flight_id=flight_id,
-        flight_number=flight_number,
-        gate_id=gate_id,
-        sim_time=sim_time,
-        reason="reassignment",
-    )
-
-    # Broadcast to WebSocket
-    if _state.ws_broadcast:
+    # Broadcast to WebSocket only for a freshly applied reassignment.
+    if outcome == "ok" and _state.ws_broadcast:
         try:
             asyncio.create_task(_state.ws_broadcast({
                 "type": "FlightGateAssigned",

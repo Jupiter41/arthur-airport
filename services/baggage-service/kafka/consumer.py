@@ -15,13 +15,18 @@ from typing import Callable, Awaitable
 from _common.idempotency import IdempotencyTracker
 from _common.commands import CommandReceipts
 from _common.consumer_health import ConsumerHealthTracker
+from _common import outbox
+from _common.kafka_runtime import build_envelope
 
 from confluent_kafka import Consumer
 
 from db.neo4j import (
     get_dropped_off_baggage_for_departures,
+    get_driver,
     update_baggage_status,
     update_baggage_statuses,
+    write_baggage_statuses_tx,
+    next_outbox_revision_tx,
     flag_baggage,
     get_baggage_counts_by_status,
     get_baggage_in_pipeline,
@@ -35,6 +40,7 @@ from kafka.producer import (
     emit_conveyor_delay,
     emit_bulk_state_snapshot,
     set_bulk_mode,
+    is_bulk_mode,
 )
 from services.conveyor import (
     ConveyorSystem,
@@ -315,8 +321,8 @@ async def _dispatch(envelope: dict) -> None:
     event_type, sim_time, payload = validated
 
     # Idempotency check (skip for clock ticks — they're always unique)
+    event_id = envelope.get("event_id", "")
     if event_type != "SimClockTick":
-        event_id = envelope.get("event_id", "")
         if _state.check_idempotency(event_id):
             return
 
@@ -324,7 +330,7 @@ async def _dispatch(envelope: dict) -> None:
         case "SimClockTick":
             await _on_clock_tick(payload, sim_time)
         case "FlightStatusChanged":
-            await _on_flight_status_changed(payload, sim_time)
+            await _on_flight_status_changed(payload, sim_time, event_id)
         case "FlightCancelled":
             await _on_flight_cancelled(payload, sim_time)
         case "IncidentCreated":
@@ -837,7 +843,9 @@ def _find_bag_current_zone(baggage_id: str) -> str | None:
     return None
 
 
-async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
+async def _on_flight_status_changed(
+    payload: dict, sim_time: datetime, event_id: str = ""
+) -> None:
     """React to flight status changes — handle departures and arrivals."""
     new_status = payload.get("new_status")
     flight_id = payload.get("flight_id")
@@ -845,36 +853,9 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
         return
 
     if new_status == "departed":
-        # Flight departed — all bags on this flight → 'in_hold'
-        # Bags still in conveyor (inducted/screening/sorting) or not yet
-        # inducted (dropped_off) are fast-tracked: in reality they would
-        # have been processed before departure.
-        from db.neo4j import get_flight_baggage
-        bags = await get_flight_baggage(
-            flight_id,
-            statuses=["loaded", "sorting", "screening", "inducted", "dropped_off"],
-        )
-        await update_baggage_statuses([
-            {"id": bag["id"], "status": "in_hold", "zone": "aircraft-hold"}
-            for bag in bags
-        ], sim_time)
-        for bag in bags:
-            _state.conveyor.remove_bag_from_all_zones(bag["id"])
-            event_payload = await _emit_status_changed_with_metric(
-                baggage_id=bag["id"],
-                tag=bag["tag"],
-                previous_status=bag.get("status", "loaded"),
-                new_status="in_hold",
-                scan_zone="aircraft-hold",
-                sim_time=sim_time,
-                passenger_id=bag.get("passenger_id"),
-                flight_id=flight_id,
-            )
-            if _state.ws_broadcast:
-                await _state.ws_broadcast({
-                    "event_type": "BaggageStatusChanged",
-                    "payload": event_payload,
-                })
+        # Flight departed — all bags on this flight → 'in_hold' (canonical G1
+        # atomic path: see _apply_departure_in_hold).
+        await _apply_departure_in_hold(flight_id, sim_time, event_id)
 
     elif new_status == "at_gate" and payload.get("previous_status") in (
         "taxiing", "landed"
@@ -932,6 +913,113 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime) -> None:
     elif new_status == "cancelled":
         # Flight cancelled — offload all baggage
         await _on_flight_cancelled(payload, sim_time)
+
+
+def _status_changed_fact(
+    *,
+    event_id: str,
+    baggage_id: str,
+    tag: str,
+    previous_status: str,
+    new_status: str,
+    scan_zone: str,
+    sim_time: datetime,
+    passenger_id: str | None,
+    flight_id: str | None,
+) -> dict:
+    """Build one BaggageStatusChanged outbox fact: ``{"id", "document"}``.
+
+    ``document`` is the full event envelope that ``publish_confirmed`` will
+    produce verbatim. The envelope's ``event_id`` is a *stable*, deterministic id
+    (derived from the input event) so a Kafka redelivery of the input re-stages
+    the identical fact id — at-least-once with stable IDs, not exactly-once.
+    """
+    payload = {
+        "baggage_id": baggage_id,
+        "tag": tag,
+        "passenger_id": passenger_id,
+        "flight_id": flight_id,
+        "previous_status": previous_status,
+        "new_status": new_status,
+        "scan_zone": scan_zone,
+        "at": sim_time.isoformat(),
+    }
+    envelope = build_envelope("BaggageStatusChanged", sim_time, payload, "baggage-service")
+    stable_id = f"{event_id or tag}:{baggage_id}:{new_status}"
+    envelope["event_id"] = stable_id
+    return {"id": stable_id, "document": envelope}
+
+
+async def _apply_departure_in_hold(
+    flight_id: str, sim_time: datetime, event_id: str
+) -> None:
+    """Flight departed → all its bags go to 'in_hold', atomically (gap G1).
+
+    Bags still in the conveyor (inducted/screening/sorting) or not yet inducted
+    (dropped_off) are fast-tracked: in reality they would have been processed
+    before departure. Within ONE ``session.execute_write`` we (a) check the
+    durable BaggageInbox and skip if this input was already applied, (b) write
+    the bag status + ScanEvent trail, (c) mark the inbox, and (d) stage the
+    BaggageStatusChanged facts in the outbox — so a crash can never leave the
+    domain mutated without the facts staged, nor re-apply on redelivery. The
+    in-memory conveyor (a Neo4j-derived, rebuildable cache per rule #3) and the
+    WebSocket fan-out run only *after* the commit succeeds.
+    """
+    from db.neo4j import get_flight_baggage
+    bags = await get_flight_baggage(
+        flight_id,
+        statuses=["loaded", "sorting", "screening", "inducted", "dropped_off"],
+    )
+    if not bags:
+        return
+
+    changes = [
+        {"id": bag["id"], "status": "in_hold", "zone": "aircraft-hold"} for bag in bags
+    ]
+    # BULK speed mode suppresses per-bag facts (aggregated via BulkStateSnapshot),
+    # matching emit_baggage_status_changed; the domain write + inbox stay atomic.
+    suppress = is_bulk_mode()
+    facts = [] if suppress else [
+        _status_changed_fact(
+            event_id=event_id,
+            baggage_id=bag["id"],
+            tag=bag["tag"],
+            previous_status=bag.get("status", "loaded"),
+            new_status="in_hold",
+            scan_zone="aircraft-hold",
+            sim_time=sim_time,
+            passenger_id=bag.get("passenger_id"),
+            flight_id=flight_id,
+        )
+        for bag in bags
+    ]
+
+    async def apply(tx) -> bool:
+        if await outbox.inbox_seen(tx, "BaggageInbox", event_id):
+            return False  # durable dedup: already applied — no re-write, no re-stage
+        revision = await next_outbox_revision_tx(tx)
+        await write_baggage_statuses_tx(tx, changes, sim_time)
+        await outbox.mark_inbox(tx, "BaggageInbox", event_id, sim_time.isoformat())
+        await outbox.stage_outbox(tx, "BaggageOutbox", facts, revision)
+        return True
+
+    async with get_driver().session() as session:
+        applied = await session.execute_write(apply)
+
+    if not applied:
+        return
+
+    # Post-commit only: derived cache + fan-out + metrics. Safe to re-run on a
+    # redelivery whose commit ack was lost (the write above is idempotent).
+    for bag in bags:
+        _state.conveyor.remove_bag_from_all_zones(bag["id"])
+        _track_transition(bag.get("status", "loaded"), "in_hold")
+    if _state.ws_broadcast and not suppress:
+        for fact in facts:
+            await _state.ws_broadcast({
+                "event_type": "BaggageStatusChanged",
+                "payload": fact["document"]["payload"],
+            })
 
 
 async def _on_flight_cancelled(payload: dict, sim_time: datetime) -> None:

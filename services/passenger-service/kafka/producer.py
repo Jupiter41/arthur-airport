@@ -1,12 +1,15 @@
 """Kafka producer for passenger-service — events to passengers.events topic."""
 
+import json
 import logging
 import random
+import time
 from datetime import datetime
 
 from confluent_kafka import Producer
 
 from _common import kafka_runtime
+from _common.kafka_runtime import build_envelope
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,60 @@ def _produce_event(
         _producer, event_type, sim_time, payload,
         producer_name=PRODUCER_NAME, topic=TOPIC, key=key,
     )
+
+
+def build_passenger_status_changed_fact(
+    passenger_id: str,
+    name: str,
+    previous_status: str,
+    new_status: str,
+    location_zone: str,
+    sim_time: datetime,
+    flight_id: str | None = None,
+    flight_number: str | None = None,
+) -> dict:
+    """Build a full PassengerStatusChanged envelope for the transactional outbox.
+
+    Identical payload shape to ``emit_passenger_status_changed`` but produces no
+    Kafka message — the envelope is persisted in ``PassengerOutbox`` and later
+    delivered by ``_common.outbox.run`` via ``publish_confirmed`` (G1).
+    """
+    payload = {
+        "passenger_id": passenger_id,
+        "name": name,
+        "flight_id": flight_id,
+        "flight_number": flight_number,
+        "previous_status": previous_status,
+        "new_status": new_status,
+        "location_zone": location_zone,
+        "at": sim_time.isoformat(),
+    }
+    return build_envelope("PassengerStatusChanged", sim_time, payload, PRODUCER_NAME)
+
+
+def publish_confirmed(document: dict) -> None:
+    """Blocking produce of one outbox fact; RAISE unless the broker acks in time.
+
+    Mirrors cost-service's ``publish_confirmed``: the outbox delivery loop calls
+    this off-loop (``asyncio.to_thread``) and keeps the row when it raises, so an
+    unconfirmed fact is retained rather than silently dropped.
+    """
+    if _producer is None:
+        raise RuntimeError("Passenger event producer unavailable; outbox retained")
+    delivered: list = []
+    payload = document.get("payload") or {}
+    key = payload.get("passenger_id") or payload.get("terminal") or document.get("event_id") or ""
+    _producer.produce(
+        topic=TOPIC,
+        key=key.encode("utf-8") if key else None,
+        value=json.dumps(document).encode("utf-8"),
+        callback=lambda error, message: delivered.append(error),
+    )
+    deadline = time.monotonic() + 10
+    while not delivered and time.monotonic() < deadline:
+        _producer.poll(0.1)
+    if not delivered or delivered[0] is not None:
+        raise RuntimeError("Passenger broker acknowledgement unavailable; outbox retained")
 
 
 async def emit_passenger_status_changed(

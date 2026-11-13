@@ -11,12 +11,19 @@ CONSTRAINTS = [
     "CREATE CONSTRAINT baggage_projection_id IF NOT EXISTS FOR (p:BaggageProjection) REQUIRE p.id IS UNIQUE",
     "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_tag IF NOT EXISTS FOR (b:Baggage) REQUIRE b.tag IS UNIQUE",
+    # G1: durable inbox/outbox for the atomic domain-write + fact-delivery boundary
+    # (mirrors cost-service db/neo4j.py CostInbox/CostOutbox).
+    "CREATE CONSTRAINT baggage_inbox_id IF NOT EXISTS FOR (i:BaggageInbox) REQUIRE i.id IS UNIQUE",
+    "CREATE CONSTRAINT baggage_outbox_id IF NOT EXISTS FOR (o:BaggageOutbox) REQUIRE o.id IS UNIQUE",
+    "CREATE CONSTRAINT baggage_outbox_seq_id IF NOT EXISTS FOR (s:BaggageOutboxSeq) REQUIRE s.id IS UNIQUE",
 ]
 
 INDEXES = [
     "CREATE INDEX baggage_status IF NOT EXISTS FOR (b:Baggage) ON (b.status)",
     "CREATE INDEX baggage_id IF NOT EXISTS FOR (b:Baggage) ON (b.id)",
     "CREATE INDEX scan_event_baggage_tag IF NOT EXISTS FOR (s:ScanEvent) ON (s.baggage_tag)",
+    # G1: deterministic (revision, position) delivery order for the outbox drainer.
+    "CREATE INDEX baggage_outbox_order IF NOT EXISTS FOR (o:BaggageOutbox) ON (o.revision, o.position)",
 ]
 
 
@@ -209,6 +216,54 @@ async def update_baggage_statuses(changes: list[dict], sim_time: datetime) -> No
             changes=changes, at=sim_time.isoformat(),
         )
         await result.consume()
+
+
+# ---------------------------------------------------------------------------
+# G1 — transaction-scoped writes (run INSIDE session.execute_write, alongside
+# the BaggageInbox marker + BaggageOutbox staging, so the domain mutation and
+# the facts to publish commit together or not at all).
+# ---------------------------------------------------------------------------
+
+async def write_baggage_statuses_tx(tx, changes: list[dict], sim_time: datetime) -> None:
+    """Same batch mutation as ``update_baggage_statuses`` but on a managed tx.
+
+    Writing the status + ScanEvent trail through the caller's transaction lets it
+    be committed atomically with the inbox marker and the outbox facts.
+    """
+    if not changes:
+        return
+    result = await tx.run(
+        """
+        UNWIND $changes AS change
+        MATCH (b:Baggage {id: change.id})
+        SET b.status = change.status, b.last_scan_zone = change.zone,
+            b.last_scan_at = $at,
+            b.carousel = coalesce(change.carousel, b.carousel)
+        CREATE (s:ScanEvent {baggage_tag: b.tag, zone: change.zone,
+                             status: change.status, at: $at})
+        CREATE (b)-[:SCANNED_AT]->(s)
+        """,
+        changes=changes, at=sim_time.isoformat(),
+    )
+    await result.consume()
+
+
+async def next_outbox_revision_tx(tx) -> int:
+    """Return the next monotonic outbox revision, bumped inside the caller's tx.
+
+    A single ``BaggageOutboxSeq`` counter (mirroring cost-service's locked
+    ``CostRuntime.revision``) gives every processed input a strictly increasing
+    revision, so facts from different events never interleave in the drainer's
+    ``ORDER BY revision, position``. The bump shares the caller's transaction, so
+    a rolled-back event consumes no revision.
+    """
+    result = await tx.run(
+        "MERGE (s:BaggageOutboxSeq {id: 'latest'}) "
+        "SET s.revision = coalesce(s.revision, 0) + 1 "
+        "RETURN s.revision AS revision"
+    )
+    row = await result.single()
+    return row["revision"]
 
 
 async def update_baggage_status(
