@@ -39,7 +39,7 @@ def publish_confirmed(envelope: dict) -> None:
         raise RuntimeError("Financial event producer unavailable")
     delivered = []
     payload = envelope["payload"]
-    key = ("financial-rates" if envelope["event_type"] == "CostRatesUpdated" else
+    key = ("financial-rates" if envelope["event_type"] in ("CostRatesUpdated", "FinancialAccountingUpdated") else
            "cost-signal" if envelope["event_type"] == "CostSignalSnapshot" else
            payload.get("cost_record_id") or payload.get("carbon_record_id") or payload["source_event_id"])
     _producer.produce(

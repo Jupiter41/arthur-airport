@@ -1,0 +1,66 @@
+{
+  "duration_seconds": 46.372,
+  "viewport": [
+    1920,
+    900
+  ],
+  "output": [
+    1920,
+    1080
+  ],
+  "audio": "silent",
+  "scenes": [
+    {
+      "scene": "01-flight-board",
+      "start": 0.0,
+      "duration": 8.13,
+      "captured_frames": 75,
+      "crop": null
+    },
+    {
+      "scene": "02-ground-operations",
+      "start": 8.13,
+      "duration": 8.014,
+      "captured_frames": 71,
+      "crop": null
+    },
+    {
+      "scene": "03-injection-preview",
+      "start": 16.144,
+      "duration": 5.013,
+      "captured_frames": 58,
+      "crop": [
+        480,
+        225,
+        1440,
+        675
+      ]
+    },
+    {
+      "scene": "04-cascade",
+      "start": 21.156999999999996,
+      "duration": 10.042,
+      "captured_frames": 92,
+      "crop": [
+        640,
+        155,
+        1920,
+        755
+      ]
+    },
+    {
+      "scene": "05-financial-impact",
+      "start": 31.198999999999998,
+      "duration": 8.106,
+      "captured_frames": 75,
+      "crop": null
+    },
+    {
+      "scene": "06-recommendations",
+      "start": 39.305,
+      "duration": 7.067,
+      "captured_frames": 64,
+      "crop": null
+    }
+  ]
+}

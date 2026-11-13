@@ -24,6 +24,7 @@ from kafka.producer import emit_cost_recorded
 from _common.aircraft import WIDE_BODY_TYPES, aircraft_family as _aircraft_family
 from services.ledger import current_batch
 from _common.financial_rates import resolve_rates_for_airline
+from _common.accounting import add_amount, empty_totals, compensation_liability
 
 logger = structlog.get_logger(__name__)
 
@@ -69,6 +70,7 @@ def get_running_totals() -> dict:
     """Return the current running totals for the REST API."""
     totals = dict(_running_totals)
     totals["by_category"] = dict(totals["by_category"])
+    totals["airline_by_category"] = dict(totals.get("airline_by_category", {}))
     return totals
 
 
@@ -80,6 +82,9 @@ def init_running_totals(totals: dict) -> None:
     _running_totals["sim_day"] = totals.get("sim_day", 1)
     _running_totals["eu261_exposure"] = totals.get("eu261_exposure", 0.0)
     _running_totals["last_updated"] = totals.get("last_updated")
+    _running_totals["accounting_policy"] = empty_totals()["accounting_policy"]
+    _running_totals["airline_cost_eur"] = totals.get("airline_cost_eur", 0.0)
+    _running_totals["airline_by_category"] = dict(totals.get("airline_by_category", {}))
     _running_totals["by_category"].clear()
     for cat, val in totals.get("by_category", {}).items():
         _running_totals["by_category"][cat] = val
@@ -98,9 +103,10 @@ def reset_for_new_day(new_day: int) -> None:
     _daily_history["total_cost_eur"].append(float(_running_totals["total_cost_eur"]))
     _daily_history["total_revenue_eur"].append(float(_running_totals["total_revenue_eur"]))
     _daily_history["eu261_exposure"].append(float(_running_totals["eu261_exposure"]))
-    for cat, val in _running_totals["by_category"].items():
+    for cat, val in {**_running_totals.get("airline_by_category", {}), **_running_totals["by_category"]}.items():
         _daily_history[f"by_category.{cat}"].append(float(val))
 
+    _running_totals.update(empty_totals())
     _running_totals["total_cost_eur"] = 0.0
     _running_totals["total_revenue_eur"] = 0.0
     _running_totals["net_eur"] = 0.0
@@ -116,16 +122,7 @@ def _record_cost(amount: float, category: str, is_revenue: bool = False, *, sim_
     if sim_day is not None and sim_day != _running_totals["sim_day"]:
         reset_for_new_day(sim_day)
 
-    if is_revenue:
-        _running_totals["total_revenue_eur"] += amount
-    else:
-        _running_totals["total_cost_eur"] += amount
-        _running_totals["by_category"][category] += amount
-    if category == "eu261_compensation" and not is_revenue:
-        _running_totals["eu261_exposure"] += amount
-    _running_totals["net_eur"] = (
-        _running_totals["total_revenue_eur"] - _running_totals["total_cost_eur"]
-    )
+    add_amount(_running_totals, category, amount, is_revenue)
     _running_totals["last_updated"] = sim_time or _running_totals["last_updated"]
 
 
@@ -165,22 +162,10 @@ def compute_eu261(
     pax_count: int,
     rates: dict,
 ) -> tuple[float, str]:
-    if delay_minutes < 180:
-        return 0.0, "below EU261 threshold"
-
-    for tier in sorted(rates["eu261"], key=lambda t: t["min_delay_minutes"], reverse=True):
-        if (
-            delay_minutes >= tier["min_delay_minutes"]
-            and distance_km <= tier["max_distance_km"]
-            and not tier.get("assistance_only", False)
-        ):
-            amount = tier["compensation_eur"] * pax_count
-            desc = (
-                f"EU261 — {pax_count} pax × €{tier['compensation_eur']} "
-                f"({distance_km:.0f} km, delay {delay_minutes}min)"
-            )
-            return round(amount, 2), desc
-    return 0.0, "EU261 not applicable"
+    amount = compensation_liability(delay_minutes, distance_km, pax_count, rates)
+    if not amount:
+        return 0.0, "below EU261 threshold or not applicable"
+    return amount, f"EU261 — {pax_count} pax, €{amount:.2f} ({distance_km:.0f} km, delay {delay_minutes}min)"
 
 
 def compute_holding_cost_per_tick(

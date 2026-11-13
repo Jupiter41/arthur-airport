@@ -48,7 +48,9 @@ async def close_neo4j() -> None:
 
 def get_driver() -> AsyncDriver:
     """Return the initialised async Neo4j driver, or raise if not yet initialised."""
-    return neo4j_client.get_driver()
+    from _common.transaction_scope import current, borrowed, TransactionDriver
+    scope = current.get() or borrowed.get()
+    return TransactionDriver(scope) if scope is not None else neo4j_client.get_driver()
 
 
 async def check_neo4j() -> bool:
@@ -86,6 +88,7 @@ async def create_constraints_and_indexes() -> None:
     async with driver.session() as session:
         for stmt in CONSTRAINTS + INDEXES:
             await session.run(stmt)
+        await (await session.run("MERGE (s:FlightRuntime {id: 'latest'})")).consume()
     logger.info("Flight constraints and indexes created")
 
 
@@ -447,7 +450,8 @@ async def next_outbox_revision(tx) -> int:
     delivery order across all transitions, even when a tick commits several.
     """
     result = await tx.run(
-        "MERGE (s:FlightRuntime {id: 'latest'}) "
+        "MATCH (s:FlightRuntime {id: 'latest'}) "
+        "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
         "SET s.revision = coalesce(s.revision, 0) + 1 "
         "RETURN s.revision AS revision"
     )
@@ -891,7 +895,7 @@ async def seed_ground_vehicles(vehicles: list[dict]) -> int:
     query = """
     UNWIND $vehicles AS v
     MERGE (gv:GroundVehicle {id: v.id})
-    SET gv.type = v.type,
+    ON CREATE SET gv.type = v.type,
         gv.status = v.status,
         gv.position_x = v.position_x,
         gv.position_y = v.position_y,
@@ -902,6 +906,15 @@ async def seed_ground_vehicles(vehicles: list[dict]) -> int:
         result = await session.run(query, vehicles=vehicles)
         record = await result.single()
         return record["cnt"] if record else 0
+
+
+async def save_ground_vehicle_projection(vehicles: list[dict]) -> None:
+    """Mirror the tick-owned fleet atomically for graph readers."""
+    async with get_driver().session() as session:
+        await (await session.run(
+            "UNWIND $vehicles AS v MERGE (gv:GroundVehicle {id: v.id}) SET gv += v",
+            vehicles=vehicles,
+        )).consume()
 
 
 async def update_ground_vehicle_status(

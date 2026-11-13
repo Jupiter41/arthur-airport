@@ -383,7 +383,7 @@ UI (§4.3). That is the single highest-leverage product move in this repo.
   dual-entry). *Affected:* `cost-service/kafka/consumer.py`, `cost_engine.py`. *(A1)*
 - ✅ Fix planning trust bugs: runway capacity scaling (`simulation.py:392`),
   `missed_connections`/cascade increments or stop monetizing them (`benefit_extractor.py:88`). *(A2)*
-- ✅ Reconcile `WIDE_BODY_TYPES` (D3) and financial rate sources (D2). A22 adds one shared loader, durable effective rates and frozen planning snapshots beyond A3's equality guards. **G2 remains partial:** mixed accounting perspectives still require migration. *(A3/A22, §10 G2)*
+- ✅ Reconcile `WIDE_BODY_TYPES` (D3) and financial rate sources (D2). A22 adds one shared loader, durable effective rates and frozen planning snapshots beyond A3's equality guards. **G2 closed by A44:** accounting ownership and planning/live liability are aligned. *(A3/A22/A44, §10 G2)*
 - ✅ CI gaps: cost/planning deps missing from `unit-tests`; remove `|| true` on integration; add gateway
   tests; scrape cost/planning `/metrics`. *(A4)*
 - ✅ Delete committed Azurite artifacts; gitignore caches; archive doc sprawl. *(A4)*
@@ -3096,3 +3096,109 @@ including all six restart checks. Post-gate concurrency: **40/40 HTTP requests**
 passed with the unchanged ten-second deadline. Source parity verified 33 Python
 files across six running services. Evidence: `ldt-home-postgate-concurrent.json`
 and `ldt-home-source-parity.txt`. These results precede the G9 branch integration.
+
+
+## 36. A43 — G1 complete owner boundaries and strict live CI gate (2026-11-13)
+
+**Closed scope.** Flight, passenger and baggage now lock their owner runtime before
+planning a tick. `_common/transaction_scope.py` borrows that transaction for every
+nested repository call; ContextVars isolate concurrent REST, command and outbox
+tasks. Tick-owned state is a private copy, restored from a versioned Neo4j JSON
+checkpoint using `_common/checkpoint.py`'s explicit local type whitelist. Failed
+or retried attempts discard state/facts; successful commits expose caches and
+WebSocket notifications afterward. Competing processes plan from the winning
+checkpoint; ticks at/before its simulation time perform no domain work.
+
+- Flight includes initial/conflict gate assignment, runway and status changes,
+  turnaround propagation/tasks, ground vehicles, holding fuel warnings and BULK
+  summaries. Weather capacity survives restart while newer weather inputs take
+  precedence. REST hold/release/reassign use the owner boundary. Independent
+  commands at one clock instant get command-specific domain fact IDs.
+- Passenger includes warm-start and FSM writes, queue state, lane overrides,
+  rebooking, durable rejection receipts, and auxiliary tick facts. Zone-count
+  effects and cache publication follow commit. Sampled display notifications are
+  backed by unsampled `PassengerStatusBatchChanged` audit cohorts.
+- Baggage includes conveyor/transit progress, scan history, projection snapshots,
+  facts and its checkpoint. Redirect and rejection receipt facts use the outbox;
+  unsampled `BaggageStatusBatchChanged` preserves BULK transitions. External
+  redirects/offloads and active failures reconcile against checkpointed queues.
+- Inbox and receipt reads lock before checking completion, closing concurrent
+  check-then-write races. All three input consumers disable auto-commit and retry
+  failed dispatch; they acknowledge a batch only after retained facts/latest tick
+  succeed. Outbox deletion still follows broker acknowledgement, with stable IDs
+  across an ack/delete crash window (at-least-once delivery).
+
+**Validation.** `pytest tests/unit`: **1,161 passed**, no failures/skips (local
+Python 3.12; four existing ML/deprecation warnings). Ruff passes for every Python
+service and the new live harness. `G1_DISPOSABLE_STACK=1 REQUIRE_LIVE_STACK=1
+pytest tests/live_transactions`: **26 passed in 756.08 s**, no skips, using real
+Neo4j 5/Kafka and independent Python 3.11 owner containers. The suite verifies
+partial-write rollback, abrupt process exit before/after commit, fresh-worker
+resume, competing tick/command workers, command rollback, broker failure and
+stable-ID replay across the ack/delete gap, real Kafka input replay/offset
+acknowledgement, and flight auxiliary facts in REALTIME and BULK modes.
+
+**CI.** `.github/workflows/ci.yml` adds the dedicated `domain-transactions` job:
+build the three owners, require disposable Neo4j/Kafka readiness and topic init,
+run all live transaction checks with strict no-skip policy, upload JUnit/status/
+logs on success or failure, and tear down volumes unconditionally. Shared Python
+code and the live harness join the Ruff gate. The existing all-service readiness
+and full integration gate stays mandatory. Reproduction and disposable-stack
+requirements are in `tests/live_transactions/README.md`.
+
+The initial hosted run passed the dedicated 26-case transaction gate, unit,
+Python/Node and gateway jobs; its existing full-stack receipt test exposed two
+additional interactions under normal event flow. The correction initializes
+runtime nodes separately and takes a constant-write owner lock before reads or
+revision increments, and uses ordered producer batches instead of one broker
+round trip/Neo4j deletion per fact. A partially acknowledged batch stays intact
+for stable-ID replay; idempotent producers preserve partition order during
+client retries. The same committed domain/receipt boundary is retained.
+
+The live gate now has **28 cases**, adding concurrent passenger ticks/lane
+commands and projection reconciliation on a replayed tick; production batch delivery is exercised by the broker-failure/replay
+cases. Seven more unit cases prove full-batch acknowledgement/retention, bounded large-cohort audit packets, replay input reconciliation and security queue recovery.
+The formerly failing full-stack owner-receipt case passes locally after these
+corrections. Catch-up audit packets are bounded to 500 entity IDs/updates with
+`batch_id`/`part`/`part_count`, preserving all mutations below Kafka's message
+limit. Replayed ticks reconcile newer incident, arrival and lane inputs before
+publishing restored projections. Financial integration workers use the public
+Neo4j lifecycle after G3 removed their stale private initialization method. Final hosted evidence is linked from [PR #2 checks](https://github.com/Jupiter41/arthur-airport/pull/2/checks);
+that live status is authoritative for the latest branch revision.
+
+This closes G1's owner transaction/delivery boundary, not G12's sustained-load or
+cluster certification, nor the other open §10 modelling/recovery gaps.
+
+
+## A44 — Close G2: airport accounting perspective (2026-11-13)
+
+**Owner decision:** use airport operating profit as the main financial view,
+with airline expenses and savings displayed separately. `_common.accounting`
+defines `airport-v1`: revenues belong to the airport; staffing and incident
+expenses are airport operating costs; airline fee, handling, fuel and compensation
+expenses never reduce airport profit. Existing fee pairs remain audit records.
+
+Live summaries, daily/flight/terminal reports, hourly curves and valuation apply
+that policy. Legacy checkpoint days rebuild from unchanged ledger records under
+the owner lock; the checkpoint, policy version and `FinancialAccountingUpdated`
+outbox fact commit together. Restart, replay and migration rollback are covered.
+
+Planning removes the unsupported 30% landing-cost and 30% claimant assumptions.
+Both models use the same full eligible synthetic compensation calculation.
+Planning reports airline costs separately; airport NPV uses revenue uplift and
+airport operating cost savings, while airline savings remain informational.
+Completed legacy planning results preserve their numbers and are labelled
+`legacy-mixed`; rerun them for airport-perspective financial results. Dashboard
+labels and investment methodology now explain the accounting perspective.
+
+**Validation:** all 1,173 Python unit tests pass (four existing warnings), affected
+Python lint passes, the dashboard production build passes and all 40 dashboard
+tests pass. Two new integration checks pass on the isolated local
+`art-g2-validation` Compose stack with real Neo4j/Kafka: known fee pairs, summary /
+P&L / flight / terminal / hourly / valuation agreement, input replay, legacy
+checkpoint migration/restart, acknowledged stable-ID Kafka redelivery, planning
+full liability, airport-only investment benefit and legacy result labelling.
+Both existing durable-rate integration checks also pass, covering competing rate
+updates, frozen planning recovery and rebuilding an evicted day from the ledger.
+G2 is closed. G4/G8 modelling/calibration work remains separate; no calibrated
+payment forecast or validated investment return is claimed.

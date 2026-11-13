@@ -62,7 +62,9 @@ async def inbox_seen(tx: _Tx, inbox_label: str, event_id: str) -> bool:
         return False
     label = _check_label(inbox_label)
     result = await tx.run(
-        f"MATCH (i:{label} {{id: $id}}) RETURN i.id AS id", id=event_id
+        f"MERGE (i:{label} {{id: $id}}) "
+        "SET i.lock = coalesce(i.lock, 0) + 1 "
+        "WITH i WHERE i.sim_time IS NOT NULL RETURN i.id AS id", id=event_id
     )
     return (await result.single()) is not None
 
@@ -73,7 +75,7 @@ async def mark_inbox(tx: _Tx, inbox_label: str, event_id: str, sim_time: Any) ->
         return
     label = _check_label(inbox_label)
     result = await tx.run(
-        f"MERGE (i:{label} {{id: $id}}) ON CREATE SET i.sim_time = $sim_time",
+        f"MERGE (i:{label} {{id: $id}}) SET i.sim_time = $sim_time",
         id=event_id,
         sim_time=sim_time,
     )
@@ -90,6 +92,11 @@ async def stage_outbox(
     stable ``id`` is retained until broker ack, so redelivery keeps the same
     event_id (at-least-once with stable IDs, not exactly-once).
     """
+    from _common.transaction_scope import current
+    scope = current.get()
+    if scope is not None and not scope.flushing:
+        scope.facts.extend(facts)
+        return
     if not facts:
         return
     label = _check_label(outbox_label)
@@ -117,6 +124,7 @@ async def publish_pending(
     publish_confirmed: Callable[[dict], None],
     *,
     batch: int = 100,
+    publish_batch_confirmed: Callable[[list[dict]], None] | None = None,
 ) -> int:
     """Deliver up to ``batch`` pending facts in order; delete each only on ack.
 
@@ -131,6 +139,17 @@ async def publish_pending(
             batch=batch,
         )
         pending = await result.data()
+    if pending and publish_batch_confirmed is not None:
+        await asyncio.to_thread(
+            publish_batch_confirmed, [json.loads(row["document"]) for row in pending],
+        )
+        async with get_driver().session() as session:
+            result = await session.run(
+                f"UNWIND $ids AS id MATCH (e:{label} {{id: id}}) DELETE e",
+                ids=[row["id"] for row in pending],
+            )
+            await result.consume()
+        return len(pending)
     count = 0
     for row in pending:
         await asyncio.to_thread(publish_confirmed, json.loads(row["document"]))
@@ -151,19 +170,77 @@ async def run(
     *,
     logger: Any | None = None,
     poll_interval_s: float = 1.0,
+    publish_batch_confirmed: Callable[[list[dict]], None] | None = None,
 ) -> None:
     """Background loop: drain the outbox, retaining anything not yet confirmed."""
     while not stop.is_set():
         try:
-            count = await publish_pending(outbox_label, get_driver, publish_confirmed)
+            count = await publish_pending(
+                outbox_label, get_driver, publish_confirmed,
+                publish_batch_confirmed=publish_batch_confirmed,
+            )
             if count:
                 continue
         except Exception:
             if logger is not None:
-                logger.exception(
-                    "outbox delivery unavailable; retaining events", label=outbox_label
-                )
+                logger.exception(f"outbox delivery unavailable; retaining {outbox_label} events")
         try:
             await asyncio.wait_for(stop.wait(), timeout=poll_interval_s)
         except asyncio.TimeoutError:
             pass
+
+
+def transition_batch_facts(
+    event_type: str, sim_time: Any, producer: str, payload: dict[str, list],
+    *, grouped_ids: dict[str, str] | None = None, max_items: int = 500,
+) -> list[dict]:
+    """Bound audit packets by entity/update count, preserving every transition.
+
+    ``grouped_ids`` identifies cohort lists such as status_groups[].ids. Cohorts
+    are split by their member IDs rather than counted as a single item. Generated
+    UUIDs/zone codes therefore stay well below Kafka's default message ceiling,
+    even after a long catch-up tick. Parts share an audit batch identity.
+    """
+    from uuid import uuid4
+    from _common.kafka_runtime import build_envelope
+    if max_items < 1:
+        raise ValueError("max_items must be positive")
+    grouped_ids = grouped_ids or {}
+    parts: list[dict] = []
+    current_part = {key: [] for key in payload}
+    remaining = max_items
+
+    def flush() -> None:
+        nonlocal current_part, remaining
+        if any(current_part.values()):
+            parts.append(current_part)
+        current_part = {key: [] for key in payload}
+        remaining = max_items
+
+    for key, items in payload.items():
+        member_key = grouped_ids.get(key)
+        for item in items:
+            if member_key:
+                members = item[member_key]
+                offset = 0
+                while offset < len(members):
+                    if remaining == 0:
+                        flush()
+                    count = min(remaining, len(members) - offset)
+                    current_part[key].append({**item, member_key: members[offset:offset + count]})
+                    remaining -= count
+                    offset += count
+            else:
+                if remaining == 0:
+                    flush()
+                current_part[key].append(item)
+                remaining -= 1
+    flush()
+    batch_id = str(uuid4())
+    facts = []
+    for index, part in enumerate(parts):
+        document = build_envelope(event_type, sim_time, {
+            **part, "batch_id": batch_id, "part": index, "part_count": len(parts),
+        }, producer)
+        facts.append({"id": document["event_id"], "document": document})
+    return facts

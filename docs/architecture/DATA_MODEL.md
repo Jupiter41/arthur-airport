@@ -193,6 +193,15 @@ A snapshot of current weather conditions at KART. One active node at any time; h
 
 ### `CostRecord`
 
+G2 accounting policy (`airport-v1`): revenue records belong to the airport;
+expense records in `staffing`, `incident_direct` and `incident_response` belong
+to the airport. Other expense categories belong to airlines/handling agents.
+Ownership is derived on read, including for legacy records. Fee expense/revenue
+pairs represent separate parties and never cancel in airport operating profit.
+`CostRuntime.document.accounting_policy` versions rebuilt cached projections;
+migration commits a `FinancialAccountingUpdated` outbox event. Stored ledger
+amounts remain unchanged.
+
 One record per cost or revenue event. Written by cost-service.
 
 | Property      | Type          | Description                                                                                                                                                                                                |
@@ -440,12 +449,18 @@ one transaction; the publisher removes entries only after broker confirmation.
 No domain-owner node is written by analysis. Stored event IDs and proposal-based
 command IDs provide stable at-least-once delivery identities.
 
-### Security observation recovery (2026-10-29)
+### Security observation recovery (updated 2026-11-13)
 
-Passenger-service owns `SecurityProjection`, unique on `terminal` (`A`, `B`, `C`).
-Its `document` is the validated `SecurityQueueUpdated` payload: `terminal`,
-`queue_depth`, `lanes_open`, `wait_minutes`, and simulation timestamp `at`.
-The owner writes it before publishing the same unsampled aggregate. Analysis
-reads it alongside the other operational projections without mutating it.
-This stores observations, not passenger queue membership or a simulation epoch;
-it does not close the owner mutation/outbox atomicity gap.
+Passenger-service owns `SecurityCheckpoint`, unique on `terminal` (`A`, `B`, `C`).
+Its public observations include `queue_depth`, `lanes_open`, `wait_minutes`,
+`sa_queue_depth`, `frozen` and simulation timestamp `at`. Observations commit
+with `PassengerRuntime` and outbox facts. Legacy `SecurityProjection` documents
+are retained; new writers and analysis use the checkpoint observations. Queue
+membership and service progress remain in the versioned owner runtime document.
+
+`GroundVehicle` nodes mirror the full flight-owned fleet with identity, status,
+position, dispatch/arrival timestamps and `at`, in the same transaction as the
+flight runtime and fleet snapshot fact. Analysis owns versioned
+`AnalysisRuntime {id: 'discovery'}` containing its graph inputs, broker clock
+offset, stable bottleneck/recommendation identities and threshold timers. Its
+replacement and all discovery facts share the analysis transaction/outbox.

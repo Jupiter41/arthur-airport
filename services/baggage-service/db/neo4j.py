@@ -43,7 +43,9 @@ async def close_neo4j() -> None:
 
 
 def get_driver():
-    return neo4j_client.get_driver()
+    from _common.transaction_scope import current, borrowed, TransactionDriver
+    scope = current.get() or borrowed.get()
+    return TransactionDriver(scope) if scope is not None else neo4j_client.get_driver()
 
 
 async def check_neo4j() -> bool:
@@ -61,6 +63,7 @@ async def create_constraints_and_indexes() -> None:
             await (await session.run(stmt)).consume()
         await _backfill_unscanned_index(session)
         await _backfill_review_index(session)
+        await (await session.run("MERGE (s:BaggageOutboxSeq {id: 'latest'})")).consume()
     logger.info("Baggage constraints and indexes created")
 
 
@@ -446,7 +449,7 @@ async def begin_tick_tx(tx, sim_time_iso: str) -> tuple[bool, int]:
     Generalises cost-service's locked ``CostRuntime`` to the baggage tick FSM
     (A41 "per-tick, per-owner atomicity"). The single ``BaggageOutboxSeq`` node
     carries both the monotonic outbox ``revision`` and ``last_tick_sim_time``.
-    MERGE takes the write lock. If ``sim_time_iso`` is not strictly after the
+    An explicit property write takes the owner lock. If ``sim_time_iso`` is not strictly after the
     recorded ``last_tick_sim_time`` the tick is a replay/crash-resume and the
     caller must early-return (``(False, 0)``) — nothing is mutated. Otherwise the
     revision is bumped and ``last_tick_sim_time`` advanced in the same tx, so a
@@ -455,7 +458,9 @@ async def begin_tick_tx(tx, sim_time_iso: str) -> tuple[bool, int]:
     ISO-8601 naive timestamps compare correctly as strings (fixed format).
     """
     result = await tx.run(
-        "MERGE (s:BaggageOutboxSeq {id: 'latest'}) "
+        "MATCH (s:BaggageOutboxSeq {id: 'latest'}) "
+        "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
+        "SET s.lock = coalesce(s.lock, 0) + 1 "
         "RETURN s.last_tick_sim_time AS last_tick, coalesce(s.revision, 0) AS revision"
     )
     row = await result.single()
@@ -464,6 +469,7 @@ async def begin_tick_tx(tx, sim_time_iso: str) -> tuple[bool, int]:
         return False, 0
     result = await tx.run(
         "MATCH (s:BaggageOutboxSeq {id: 'latest'}) "
+        "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
         "SET s.revision = coalesce(s.revision, 0) + 1, "
         "    s.last_tick_sim_time = $last_tick "
         "RETURN s.revision AS revision",
@@ -483,7 +489,8 @@ async def next_outbox_revision_tx(tx) -> int:
     a rolled-back event consumes no revision.
     """
     result = await tx.run(
-        "MERGE (s:BaggageOutboxSeq {id: 'latest'}) "
+        "MATCH (s:BaggageOutboxSeq {id: 'latest'}) "
+        "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
         "SET s.revision = coalesce(s.revision, 0) + 1 "
         "RETURN s.revision AS revision"
     )
@@ -766,7 +773,7 @@ async def get_baggage_in_pipeline() -> list[dict]:
     driver = get_driver()
     query = """
     MATCH (b:Baggage)
-    WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived']
+    WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived', 'offloaded']
     OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)

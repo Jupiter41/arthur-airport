@@ -131,7 +131,7 @@ def test_expired_claim_restarts_with_same_seed_and_fences_old_owner(context):
     with pytest.raises(jobs.LeaseLost):
         old.finish(completed, results)
     assert model.get_scenario(scenario.id).status == "completed"
-    assert model.get_results(scenario.id) == results
+    assert model.get_results(scenario.id) == {**results, "accounting_policy": "legacy-mixed"}
     assert jobs.claim(scenario.id) is None
 
 
@@ -158,7 +158,7 @@ def test_result_status_and_outbox_roll_back_together(context):
     assert model.get_results(scenario.id) is None
     lease.finish(document, results)
     assert model.get_scenario(scenario.id).status == "completed"
-    assert model.get_results(scenario.id) == results
+    assert model.get_results(scenario.id) == {**results, "accounting_policy": "legacy-mixed"}
 
 
 def test_shutdown_releases_job_without_losing_seed(context):

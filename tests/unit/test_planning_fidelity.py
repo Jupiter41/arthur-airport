@@ -133,7 +133,7 @@ class TestBenefitExtractorHonesty:
         assert breakdown.total_annual_benefit == 0.0
 
     def test_real_benefits_still_counted(self):
-        """EU261 + delay + revenue improvements still flow into the total."""
+        """Airport revenue counts; airline savings remain informational."""
         baseline = {
             "eu261_liability_eur": aggregate_kpi([10_000.0]),
             "avg_delay_minutes": aggregate_kpi([20.0]),
@@ -156,8 +156,7 @@ class TestBenefitExtractorHonesty:
         assert breakdown.revenue_uplift_annual > 0
         assert breakdown.missed_connections_avoided_annual == 0.0
         expected = (
-            breakdown.eu261_avoided_annual
-            + breakdown.delay_cost_avoided_annual
+            breakdown.airport_cost_avoided_annual
             + breakdown.revenue_uplift_annual
         )
         assert breakdown.total_annual_benefit == expected

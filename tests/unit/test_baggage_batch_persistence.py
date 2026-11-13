@@ -16,6 +16,8 @@ NOW = datetime(2026, 1, 1, 10)
 
 
 def context(monkeypatch):
+    from _common import transaction_scope
+    monkeypatch.setattr(transaction_scope, "restore_owner_checkpoint", AsyncMock(return_value=False))
     import_service_module("baggage", "application.commands")
     metrics = ModuleType("metrics")
     metrics.__getattr__ = lambda name: MagicMock()
@@ -61,7 +63,10 @@ def test_induction_plans_batch_then_commits_atomically_with_per_bag_facts(monkey
     assert asyncio.run(consumer._apply_tick(plan, NOW)) is True
     assert driver.db["baggage"]["b1"]["status"] == "inducted"
     assert driver.db["baggage"]["b2"]["status"] == "in_hold"
-    assert len(driver.db["outbox"]) == 2
+    assert len(driver.db["outbox"]) == 3  # two per-bag facts + unsampled batch
+    batch = next(json.loads(r["document"]) for r in driver.db["outbox"].values()
+                 if json.loads(r["document"])["event_type"] == "BaggageStatusBatchChanged")
+    assert len(batch["payload"]["status_changes"]) == 2
     assert driver.db["last_tick"] == NOW.isoformat()
 
 
@@ -75,7 +80,12 @@ def test_failed_tick_write_rolls_back_and_leaves_bags_eligible_for_retry(monkeyp
         return_value=[{"id": "b1", "tag": "fake-1", "terminal_id": "T-B"}]))
     driver = Driver()
     driver.fail_on = "UNWIND $changes AS change"  # the tick's domain write fails
-    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
+    from _common.transaction_scope import current, TransactionDriver
+    def scoped_driver():
+        return TransactionDriver(current.get()) if current.get() else driver
+    monkeypatch.setattr(consumer, "get_driver", scoped_driver)
+    monkeypatch.setattr(sys.modules["db.neo4j"], "get_driver", scoped_driver)
+    monkeypatch.setattr(consumer, "_prepare_tick", AsyncMock())
 
     with pytest.raises(RuntimeError, match="Injected"):
         asyncio.run(consumer._on_clock_tick({}, NOW))

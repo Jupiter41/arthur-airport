@@ -63,12 +63,28 @@ def tick_emit_decision() -> bool:
     return True
 
 
+
+def publish_batch_confirmed(documents: list[dict]) -> None:
+    kafka_runtime.publish_confirmed_batch(
+        _producer, documents, lambda doc: TOPIC,
+        lambda doc: str(doc.get("payload", {}).get("passenger_id")
+                        or doc.get("payload", {}).get("terminal")
+                        or doc.get("payload", {}).get("command_id") or doc["event_id"]),
+    )
+
+
 def _produce_event(
     event_type: str,
     sim_time: datetime,
     payload: dict,
     key: str | None = None,
 ) -> None:
+    from _common.transaction_scope import current
+    scope = current.get()
+    if scope is not None:
+        document = kafka_runtime.build_envelope(event_type, sim_time, payload, PRODUCER_NAME)
+        scope.facts.append({"id": document["event_id"], "document": document})
+        return
     kafka_runtime.produce_event(
         _producer, event_type, sim_time, payload,
         producer_name=PRODUCER_NAME, topic=TOPIC, key=key,
@@ -158,7 +174,7 @@ def publish_confirmed(document: dict) -> None:
         raise RuntimeError("Passenger event producer unavailable; outbox retained")
     delivered: list = []
     payload = document.get("payload") or {}
-    key = payload.get("passenger_id") or payload.get("terminal") or document.get("event_id") or ""
+    key = payload.get("passenger_id") or payload.get("terminal") or payload.get("command_id") or document.get("event_id") or ""
     _producer.produce(
         topic=TOPIC,
         key=key.encode("utf-8") if key else None,
@@ -250,6 +266,7 @@ async def emit_congestion_detected(
 def emit_security_queue_updated(
     terminal: str, queue_depth: int, lanes_open: int,
     wait_minutes: float, sim_time: datetime,
+    *, sa_queue_depth: int = 0, frozen: bool = False,
 ) -> None:
     """An authoritative aggregate; never sample individual queue snapshots."""
     from _common.events import SecurityQueueUpdatedPayload
@@ -257,6 +274,7 @@ def emit_security_queue_updated(
     payload = SecurityQueueUpdatedPayload.model_validate({
         "terminal": terminal, "queue_depth": queue_depth,
         "lanes_open": lanes_open, "wait_minutes": round(wait_minutes, 1),
+        "sa_queue_depth": sa_queue_depth, "frozen": frozen,
         "at": sim_time.isoformat(),
     }).model_dump(mode="json")
     _produce_event("SecurityQueueUpdated", sim_time, payload, key=terminal)

@@ -90,7 +90,7 @@ class Tx:
         db = self.db
 
         # --- PassengerRuntime checkpoint (G1-a) ---
-        if "MERGE (s:PassengerRuntime" in query and "SET s.revision" in query:
+        if "s:PassengerRuntime" in query and "SET s.revision" in query:
             db["runtime"]["revision"] += 1
             return Result([{
                 "last_tick": db["runtime"]["last_tick"],
@@ -103,7 +103,7 @@ class Tx:
             return Result([{"last_tick": db["runtime"]["last_tick"]}])
 
         # --- CommandReceipt (G1-b) ---
-        if "MATCH (r:CommandReceipt" in query and "RETURN" in query:
+        if "RETURN r.event_type" in query and "RETURN" in query:
             rec = db["receipts"].get(params["id"])
             if rec is None:
                 return Result([])
@@ -115,7 +115,7 @@ class Tx:
             return Result()
 
         # --- inbox / revision ---
-        if "MATCH (i:PassengerInbox" in query and "RETURN" in query:
+        if "i:PassengerInbox" in query and "RETURN i.id" in query and "RETURN" in query:
             return Result([{"id": params["id"]}] if params["id"] in db["inbox"] else [])
         if "coalesce(max(o.revision)" in query:
             revs = [row["revision"] for row in db["outbox"].values()]
@@ -191,57 +191,50 @@ def _consumer(monkeypatch):
     return importlib.import_module("kafka.consumer")
 
 
-@pytest.mark.parametrize("outcome", ["storage_failure", "checkpoint_race", "post_commit_failure"])
-def test_tick_restores_tentative_caches_only_before_commit(monkeypatch, outcome):
-    from collections import defaultdict
+@pytest.mark.parametrize("outcome", ["storage_failure", "replay", "post_commit_failure"])
+def test_tick_keeps_live_security_private_until_commit(monkeypatch, outcome):
+    from tests.unit.test_owner_transaction_scope import Driver
+    from _common.transaction_scope import current, run_tick
 
     consumer = _consumer(monkeypatch)
-    zones = importlib.import_module("services.zones")
-    monkeypatch.setattr(consumer, "_state", consumer.PassengerConsumerState())
-    previous_counter = 9 if outcome == "post_commit_failure" else 1
-    monkeypatch.setattr(consumer, "_tick_counter", previous_counter)
-    monkeypatch.setattr(zones, "_zone_density", defaultdict(int, {"security-A": 1}))
-    state = consumer._state
-    state.sim_time = EARLIER
-    state.last_tick_sim_time = EARLIER
-    state.security.checkpoints["A"].queue = ["p1"]
-    state.security.checkpoints["A"]._queue_set = {"p1"}
-    checkpoint = state.security.checkpoints["A"]
-    state.security_enqueued = {"p1"}
-    monkeypatch.setattr(consumer, "read_tick_checkpoint", AsyncMock(return_value=EARLIER))
-    for name in ["_warm_start_departures", "_ml_tick", "_wheelchair_tick"]:
-        monkeypatch.setattr(consumer, name, AsyncMock())
-    for name in ["_advance_checkin_to_security", "_drain_security_queues",
-                 "_advance_airside_to_gate", "_advance_boarding", "_advance_arrivals"]:
-        monkeypatch.setattr(consumer, name, AsyncMock(return_value=consumer.TickContribution()))
+    original = consumer.PassengerConsumerState()
+    original.security.checkpoints["A"].enqueue("p1")
+    original.security_enqueued = {"p1"}
+    original.last_tick_sim_time = EARLIER
+    original.sim_time = EARLIER
+    driver = Driver()
+    if outcome == "replay":
+        driver.data.update(last_tick=SIM_TIME.isoformat(), document=consumer._TICK_CODEC.dump(original))
+    driver.fail = outcome == "storage_failure"
+    async def broadcast(message):
+        raise RuntimeError("after commit")
+    original.ws_broadcast = broadcast
 
-    async def compute(*args):
-        state.security.checkpoints["A"].queue.clear()
-        state.security.checkpoints["A"]._queue_set.clear()
-        state.security_enqueued.clear()
-        state.noshow_drawn_flights.add("f1")
-        zones.move_passenger("security-A", "airside-A")
-        state.security.checkpoints["A"].lanes_open = 7  # independent accepted command
-        return consumer.TickContribution()
+    async def advance(payload, clock):
+        candidate = current.get().state
+        candidate.security.checkpoints["A"].queue.clear()
+        candidate.security_enqueued.clear()
+        candidate.last_tick_sim_time = clock
+        candidate.sim_time = clock
+        assert original.security.checkpoints["A"].queue == ["p1"]
+        current.get().facts.append({"id": "fact", "document": {"event_id": "fact"}})
+        current.get().broadcasts.append({"event": "committed"})
 
-    monkeypatch.setattr(consumer, "_advance_booked_to_checkin", compute)
-    apply = AsyncMock(side_effect=RuntimeError("storage")) if outcome == "storage_failure" else AsyncMock(return_value=outcome == "post_commit_failure")
-    monkeypatch.setattr(consumer, "apply_tick_atomic", apply)
-    monkeypatch.setattr(consumer, "_check_connections", AsyncMock(side_effect=RuntimeError("post-commit")))
-    asyncio.run(consumer._on_clock_tick({"day_of_sim": 1}, SIM_TIME))
-    assert state.security.checkpoints["A"].lanes_open == 7
-    assert state.security.checkpoints["A"] is checkpoint
-    if outcome == "post_commit_failure":
-        assert state.security.checkpoints["A"].queue == []
-        assert state.last_tick_sim_time == SIM_TIME and consumer._tick_counter == 10
-        assert zones.get_zone_count("airside-A") == 1
+    async def exercise():
+        await run_tick("TestRuntime", "TestOutbox", original, consumer._TICK_CODEC,
+                       lambda: driver, advance, {}, SIM_TIME)
+    if outcome == "replay":
+        asyncio.run(exercise())
     else:
-        assert state.security.checkpoints["A"].queue == ["p1"]
-        assert state.security.checkpoints["A"]._queue_set == state.security_enqueued == {"p1"}
-        assert state.noshow_drawn_flights == set()
-        assert state.last_tick_sim_time == EARLIER and state.sim_time == EARLIER
-        assert consumer._tick_counter == previous_counter
-        assert zones.get_density() == {"security-A": 1}
+        with pytest.raises(RuntimeError):
+            asyncio.run(exercise())
+    if outcome == "post_commit_failure":
+        assert original.security.checkpoints["A"].queue == []
+        assert original.last_tick_sim_time == SIM_TIME and driver.data["facts"]
+    else:
+        assert original.security.checkpoints["A"].queue == ["p1"]
+        assert original.security_enqueued == {"p1"}
+        assert not driver.data["facts"]
 
 
 # ===========================================================================
@@ -262,7 +255,11 @@ def test_tick_applies_transitions_stages_facts_and_advances_checkpoint(db_mod):
     assert driver.db["pax"]["p1"]["status"] == "checked_in"
     assert driver.db["pax"]["p1"]["dwell"] == 7
     assert driver.db["runtime"]["last_tick"] == SIM_TIME.isoformat()
-    assert set(driver.db["outbox"]) == {"f1"}
+    assert "f1" in driver.db["outbox"] and len(driver.db["outbox"]) == 2
+    batch = next(json.loads(r["document"]) for r in driver.db["outbox"].values()
+                 if json.loads(r["document"]).get("event_type") == "PassengerStatusBatchChanged")
+    assert batch["payload"]["status_groups"] == groups
+    assert batch["payload"]["dwell_items"] == [["p1", 7]]
     # outbox staged at the locked runtime revision
     assert driver.db["outbox"]["f1"]["revision"] == driver.db["runtime"]["revision"]
 
@@ -396,6 +393,9 @@ def test_handle_rebook_command_parse_error_emits_rejection(monkeypatch):
     consumer = _consumer(monkeypatch)
     consumer._state.sim_time = SIM_TIME
     emitted = []
+    db = importlib.import_module("db.neo4j")
+    driver = Driver()
+    monkeypatch.setattr(db, "get_driver", lambda: driver)
     monkeypatch.setattr(
         consumer, "rebook_passengers_atomic",
         AsyncMock(side_effect=AssertionError("must not execute on parse error")),
@@ -409,8 +409,11 @@ def test_handle_rebook_command_parse_error_emits_rejection(monkeypatch):
         "command_id": "bad-1", "command_type": "RebookPassengers",
         "payload": {"passenger_ids": ["p1"]},
     }))
-    assert [k for k, _ in emitted] == ["CommandRejected"]
-    assert emitted[0][1]["command_id"] == "bad-1"
+    assert emitted == []
+    assert driver.db["receipts"]["bad-1"][0] == "CommandRejected"
+    document = json.loads(next(iter(driver.db["outbox"].values()))["document"])
+    assert document["event_type"] == "CommandRejected"
+    assert document["payload"]["command_id"] == "bad-1"
 
 
 def test_handle_rebook_command_valid_routes_to_atomic(monkeypatch):
@@ -519,3 +522,18 @@ def test_check_connections_stages_missed_risk_and_alerts_atomically(monkeypatch)
     docs = [json.loads(r["document"]) for r in driver.db["outbox"].values()]
     assert sorted(d["event_type"] for d in docs) == ["PassengerAlert", "PassengerAlert"]
     assert {d["payload"]["type"] for d in docs} == {"connection_missed", "connection_at_risk"}
+
+
+def test_security_reconciliation_uses_graph_status_over_stale_checkpoint_flags(monkeypatch):
+    consumer = _consumer(monkeypatch)
+    checkpoint = consumer._state.security.checkpoints["B"]
+    checkpoint.enqueue("stale")
+    consumer._state.security_enqueued.update({"stale", "new"})
+    consumer._state.airside_transitioned.add("new")
+    monkeypatch.setattr(consumer, "get_passengers_by_status", AsyncMock(return_value=[{
+        "id": "new", "status": "security_queue", "location_zone": "security-B",
+    }]))
+    asyncio.run(consumer._sync_security_from_db())
+    assert checkpoint.queue == ["new"]
+    assert consumer._state.security_enqueued == {"new"}
+    assert "new" not in consumer._state.airside_transitioned

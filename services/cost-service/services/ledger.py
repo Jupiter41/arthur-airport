@@ -13,6 +13,7 @@ from neo4j import AsyncManagedTransaction
 from pydantic import BaseModel, Field
 
 from _common.financial_rates import load_default_rates, rates_version
+from _common.accounting import ACCOUNTING_POLICY, add_amount, empty_totals
 
 
 class FinancialEnvelope(BaseModel):
@@ -36,8 +37,7 @@ current_batch: ContextVar[LedgerBatch | None] = ContextVar("financial_batch", de
 
 def empty_day(day: int) -> dict:
     return {
-        "cost": {"sim_day": day, "total_cost_eur": 0.0, "total_revenue_eur": 0.0,
-                 "net_eur": 0.0, "by_category": {}, "eu261_exposure": 0.0, "last_updated": None},
+        "cost": {**empty_totals(), "sim_day": day, "last_updated": None},
         "carbon": {"sim_day": day, "total_kg": 0.0, "by_source": {}, "last_updated": None},
     }
 
@@ -51,16 +51,8 @@ def add_record(state: dict, record: dict, kind: str) -> None:
         totals["total_kg"] += kg
         source = record["source"]
         totals["by_source"][source] = totals["by_source"].get(source, 0) + kg
-    elif record["is_revenue"]:
-        totals["total_revenue_eur"] += record["amount_eur"]
     else:
-        amount, category = record["amount_eur"], record["category"]
-        totals["total_cost_eur"] += amount
-        totals["by_category"][category] = totals["by_category"].get(category, 0) + amount
-        if category == "eu261_compensation":
-            totals["eu261_exposure"] += amount
-    if kind == "cost":
-        totals["net_eur"] = totals["total_revenue_eur"] - totals["total_cost_eur"]
+        add_amount(totals, record["category"], record["amount_eur"], record["is_revenue"])
 
 
 async def _locked_state(tx: AsyncManagedTransaction) -> tuple[dict, int]:
@@ -75,6 +67,7 @@ async def _locked_state(tx: AsyncManagedTransaction) -> tuple[dict, int]:
         if "rates" not in state:
             state["rates"] = load_default_rates()
             state["rates_version"] = rates_version(state["rates"])
+        await _migrate_accounting(tx, state, row["revision"])
         return state, row["revision"]
 
     # One-time migration, under the same lock: preserve existing ledger totals.
@@ -94,7 +87,30 @@ async def _locked_state(tx: AsyncManagedTransaction) -> tuple[dict, int]:
     async for record in carbon:
         add_record(state, dict(record), "carbon")
     state["sim_day"] = max([int(day) for day in state["days"]] or [1])
+    if not state["days"]:
+        state["accounting_policy"] = ACCOUNTING_POLICY
+    await _migrate_accounting(tx, state, row["revision"])
     return state, row["revision"]
+
+
+async def _migrate_accounting(tx: AsyncManagedTransaction, state: dict, revision: int) -> None:
+    if state.get("accounting_policy") == ACCOUNTING_POLICY:
+        return
+    days = {int(key) for key in state["days"]} | {state["sim_day"]}
+    state["days"] = {}
+    for day in sorted(days):
+        await _restore_day(tx, state, day)
+    state["accounting_policy"] = ACCOUNTING_POLICY
+    result = await tx.run("MATCH (s:CostRuntime {id: 'latest'}) SET s.document = $document",
+                          document=json.dumps(state, allow_nan=False))
+    await result.consume()
+    fact = event("FinancialAccountingUpdated", state.get("clock_date", "2026-01-01T00:00:00Z"),
+                 {"accounting_policy": ACCOUNTING_POLICY})
+    result = await tx.run(
+        "CREATE (e:CostOutbox {id: $id, document: $document, revision: $revision, position: -1})",
+        id=fact["event_id"], document=json.dumps(fact, allow_nan=False), revision=revision,
+    )
+    await result.consume()
 
 
 def event(kind: str, clock: str, payload: dict) -> dict:
@@ -224,7 +240,7 @@ def publish_state(state: dict) -> None:
         cost = state["days"][key]["cost"]
         for signal in ("total_cost_eur", "total_revenue_eur", "eu261_exposure"):
             cost_engine._daily_history[signal].append(cost[signal])
-        for category, amount in cost["by_category"].items():
+        for category, amount in {**cost.get("airline_by_category", {}), **cost["by_category"]}.items():
             cost_engine._daily_history[f"by_category.{category}"].append(amount)
 
 

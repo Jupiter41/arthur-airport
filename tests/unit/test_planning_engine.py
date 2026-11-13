@@ -309,4 +309,4 @@ def test_planning_compensation_uses_selected_tiers():
     from _common.financial_rates import load_default_rates
     rates = load_default_rates()
     rates["eu261"][1]["compensation_eur"] = 500
-    assert PlanningSimEngine._compute_eu261(180, 1200, 100, rates) == 30 * 500
+    assert PlanningSimEngine._compute_eu261(180, 1200, 100, rates) == 100 * 500

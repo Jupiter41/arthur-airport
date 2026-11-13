@@ -127,11 +127,31 @@ class PassengerAlertPayload(BaseModel):
     at: Optional[datetime] = None
 
 
+class GroundVehicleObservation(BaseModel):
+    id: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    status: Literal["available", "dispatched", "at_gate", "returning"]
+
+
+class GroundVehicleSnapshotPayload(BaseModel):
+    vehicles: list[GroundVehicleObservation]
+    at: datetime
+
+    @field_validator("vehicles")
+    @classmethod
+    def distinct_ids(cls, value: list[GroundVehicleObservation]) -> list[GroundVehicleObservation]:
+        if len({v.id for v in value}) != len(value):
+            raise ValueError("Duplicate vehicle identity in fleet snapshot")
+        return value
+
+
 class SecurityQueueUpdatedPayload(BaseModel):
     terminal: Literal["A", "B", "C", "Terminal A", "Terminal B", "Terminal C"]
     queue_depth: int = Field(ge=0, strict=True)
     lanes_open: int = Field(ge=0, le=20, strict=True)
     wait_minutes: float = Field(ge=0, allow_inf_nan=False)
+    sa_queue_depth: int = Field(0, ge=0, strict=True)
+    frozen: bool = Field(False, strict=True)
     at: datetime
 
     @field_validator("at")

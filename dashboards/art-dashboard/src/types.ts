@@ -332,6 +332,9 @@ export type CostCategory =
   | "slot_revenue";
 
 export interface CostSummary {
+  accounting_policy?: string;
+  airline_cost_eur?: number;
+  airline_by_category?: Record<string, number>;
   sim_time: string | null;
   sim_day: number;
   total_cost_eur: number;
@@ -343,6 +346,9 @@ export interface CostSummary {
 }
 
 export interface CostPnL {
+  accounting_policy?: string;
+  airline_cost_eur?: number;
+  airline_by_category?: Record<string, number>;
   day: number;
   total_cost_eur: number;
   total_revenue_eur: number;

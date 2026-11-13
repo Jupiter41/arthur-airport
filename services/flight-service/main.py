@@ -26,6 +26,7 @@ from kafka.producer import (  # noqa: E402
     close_kafka_producer,
     init_kafka_producer,
     publish_confirmed,
+    publish_batch_confirmed,
     wait_for_kafka,
 )
 from routers.flights import router as flights_router  # noqa: E402
@@ -105,7 +106,10 @@ async def lifespan(app: FastAPI):
     #     between the domain commit and publish.
     outbox_stop = asyncio.Event()
     outbox_task = asyncio.create_task(
-        outbox_common.run("FlightOutbox", get_driver, publish_confirmed, outbox_stop, logger=logger)
+        outbox_common.run(
+            "FlightOutbox", get_driver, publish_confirmed, outbox_stop, logger=logger,
+            publish_batch_confirmed=publish_batch_confirmed,
+        )
     )
 
     def _outbox_done(task: asyncio.Task) -> None:

@@ -128,8 +128,8 @@ def test_graph_loader_reads_all_sections_from_one_driver_transaction(monkeypatch
 
     monkeypatch.setattr(module, "get_driver", lambda: MagicMock(session=Session))
     snapshot = asyncio.run(module.load_operational_projection())
-    assert set(snapshot) == {"flights", "gates", "incidents", "weather", "baggage", "security"}
-    assert len(queries) == 6
+    assert set(snapshot) == {"flights", "gates", "incidents", "weather", "baggage", "security", "vehicles", "cost"}
+    assert len(queries) == 8
     assert all("SET " not in query and "CREATE " not in query for query in queries)
 
 
@@ -159,7 +159,7 @@ def test_security_owner_payload_persists_and_restores_without_clock_or_forecast(
         async def __aexit__(self, *args):
             pass
         async def run(self, query, **params):
-            assert "SecurityProjection" in query
+            assert "SecurityCheckpoint" in query
             saved.update(params)
             return Result()
 
@@ -167,13 +167,13 @@ def test_security_owner_payload_persists_and_restores_without_clock_or_forecast(
     monkeypatch.setattr(producer, "_produce_event", lambda kind, clock, payload, **kw: emitted.append(payload))
     payload = {"terminal": "B", "queue_depth": 180, "lanes_open": 3,
                "wait_minutes": 25, "at": NOW.isoformat()}
-    asyncio.run(db.save_security_projection(payload))
+    asyncio.run(db.save_security_projection([payload]))
     producer.set_bulk_mode(True)
     producer.emit_security_queue_updated("B", 180, 3, 25, NOW)
-    assert json.loads(saved["document"]) == emitted[0]
+    assert saved["rows"][0] == emitted[0]
     recovered = state_type()
     recovered.restore_graph({**dict.fromkeys(("flights", "gates", "incidents", "weather", "baggage"), []),
-                             "security": [{"document": saved["document"]}]})
+                             "security": [{"terminal": "B", "checkpoint": saved["rows"][0]}]})
     assert recovered.sim_time is None
     security = recovered.security["Terminal B"]
     assert (security.queue_depth, security.open_lanes, security.observed_wait_minutes) == (180, 3, 25)
@@ -202,3 +202,35 @@ def test_invalid_security_observation_has_no_partial_effect(invalid):
                                      "wait_minutes": 25, "at": NOW.isoformat(), **invalid})
     assert state.security["Terminal B"].last_updated is None
     assert state.security["Terminal B"].queue_depth == 0
+def test_full_graph_replacement_restores_security_vehicles_and_clears_deleted_entities():
+    module = import_service_module("analysis", "services.state")
+    state = module.OperationalState()
+    graph = {key: [] for key in ("flights", "gates", "incidents", "weather", "baggage")}
+    graph.update(security=[{"terminal": "B", "checkpoint": {
+        "queue_depth": 99, "lanes_open": 3, "wait_minutes": 11,
+        "sa_queue_depth": 2, "frozen": False, "at": NOW.isoformat()}}],
+        vehicles=[{"vehicle": {"id": str(i), "type": "fuel_truck", "status": status}}
+                  for i, status in enumerate(("available", "at_gate", "returning"))])
+    state.restore_graph(graph)
+    assert state.sim_time is None
+    assert state.security["Terminal B"].open_lanes == 3
+    assert state.security["Terminal B"].sa_queue_depth == 2
+    assert state.vehicles["fuel_truck"].dispatched == 2
+    assert state.vehicles["fuel_truck"].total == 3
+    state.on_ground_vehicle_dispatched({"vehicle_type": "fuel_truck"})
+    state.on_ground_vehicle_returned({"vehicle_type": "fuel_truck"})
+    state.on_passenger_status_changed({"new_zone": "security-B", "terminal": "Terminal B"})
+    assert state.vehicles["fuel_truck"].dispatched == 2
+    assert state.security["Terminal B"].queue_depth == 99
+    graph.update(security=[], vehicles=[])
+    state.restore_graph(graph)
+    assert not state.vehicles and state.security["Terminal B"].queue_depth == 0
+
+
+def test_invalid_graph_replacement_never_publishes_partial_state():
+    state = import_service_module("analysis", "services.state").OperationalState()
+    state.on_flight_status_changed({"flight_id": "keep", "new_status": "boarding"})
+    with pytest.raises(KeyError):
+        state.restore_graph({"flights": [], "gates": [], "incidents": [], "weather": [],
+                             "baggage": [{"document": '{"at":"2026-01-01T12:00:00Z"}'}]})
+    assert "keep" in state.flights and not state.graph_loaded

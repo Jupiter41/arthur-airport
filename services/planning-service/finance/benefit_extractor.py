@@ -41,6 +41,7 @@ class AnnualBenefitBreakdown:
     delay_cost_avoided_annual: float = 0.0
     missed_connections_avoided_annual: float = 0.0
     revenue_uplift_annual: float = 0.0
+    airport_cost_avoided_annual: float = 0.0
     total_annual_benefit: float = 0.0
 
     def to_dict(self) -> dict:
@@ -49,6 +50,7 @@ class AnnualBenefitBreakdown:
             "delay_cost_avoided_annual": round(self.delay_cost_avoided_annual, 2),
             "missed_connections_avoided_annual": round(self.missed_connections_avoided_annual, 2),
             "revenue_uplift_annual": round(self.revenue_uplift_annual, 2),
+            "airport_cost_avoided_annual": round(self.airport_cost_avoided_annual, 2),
             "total_annual_benefit": round(self.total_annual_benefit, 2),
         }
 
@@ -108,12 +110,15 @@ def extract_annual_benefit(
     revenue_daily = -_delta_mean("total_revenue_eur")  # scenario > baseline = positive
     revenue_annual = revenue_daily * operating_days_per_year
 
-    total = eu261_annual + delay_annual + revenue_annual
+    airport_cost_annual = _delta_mean("total_cost_eur") * operating_days_per_year
+    # Airline savings are context only; they cannot fund an airport investment.
+    total = airport_cost_annual + revenue_annual
 
     return AnnualBenefitBreakdown(
         eu261_avoided_annual=eu261_annual,
         delay_cost_avoided_annual=delay_annual,
         missed_connections_avoided_annual=missed_annual,
         revenue_uplift_annual=revenue_annual,
+        airport_cost_avoided_annual=airport_cost_annual,
         total_annual_benefit=total,
     )

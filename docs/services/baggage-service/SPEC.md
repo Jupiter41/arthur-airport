@@ -419,3 +419,16 @@ commands emit `CommandRejected` with a reason. Both receipts carry `command_id`
 and `command_type`, use the current simulation clock, and are stored in Neo4j
 for restart-safe redelivery. See `EVENT_BUS.md`, “Real LDT execution and planning
 corrections”, for the lifecycle and transaction-boundary limitation.
+
+### G1 transaction boundary
+
+A clock tick locks `BaggageOutboxSeq` before planning. Conveyor/transit progress,
+domain writes, scan history, aggregate projection, checkpoint and facts commit
+in one transaction. Failed attempts discard private state; competing workers
+restore the winning checkpoint before planning. Redirect commands commit their
+receipt fact with the redirect. Kafka inputs are acknowledged after successful
+processing; pending facts are deleted only after broker acknowledgement.
+
+`BaggageStatusBatchChanged` is an unsampled tick audit fact. Its payload contains
+`status_changes` (`id`, `status`, `zone`), `flags` and `loaded_rows`, including
+BULK mode; individual display notifications may still be suppressed.

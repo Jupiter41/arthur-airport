@@ -353,6 +353,7 @@ async def get_scenario_investment(scenario_id: str):
     return {
         "scenario_id": scenario_id,
         "financials": results.get("financials", {}),
+        "accounting_policy": results.get("accounting_policy", "legacy-mixed"),
         "annual_benefit_breakdown": results.get("annual_benefit_breakdown", {}),
     }
 

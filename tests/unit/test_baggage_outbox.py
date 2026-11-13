@@ -48,9 +48,19 @@ class Tx:
             self.driver.fail_on = None
             raise RuntimeError("Injected storage failure")
         db = self.db
+        if query == "MERGE (s:BaggageOutboxSeq {id: 'latest'})":
+            return Result()
+        if "BaggageProjection" in query:
+            db["projection"] = params.get("document")
+            return Result()
+        if "BaggageOutboxSeq" in query and "s.document = $document" in query:
+            db["revision"] += 1
+            db["last_tick"] = params["ts"]
+            db["document"] = params["document"]
+            return Result([{"revision": db["revision"], "document": db.get("document")}])
         # begin_tick_tx: lock + read checkpoint (no mutation on the read).
         if "BaggageOutboxSeq" in query and "RETURN s.last_tick_sim_time" in query:
-            return Result([{"last_tick": db.get("last_tick"), "revision": db["revision"]}])
+            return Result([{"last_tick": db.get("last_tick"), "revision": db["revision"], "document": db.get("document")}])
         # begin_tick_tx: advance revision + last_tick together.
         if "BaggageOutboxSeq" in query and "s.last_tick_sim_time = $last_tick" in query:
             db["revision"] += 1

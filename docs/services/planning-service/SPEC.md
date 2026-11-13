@@ -13,6 +13,27 @@ events through its durable outbox.
 
 ## 1. Domain responsibilities
 
+### Financial perspective — G2 (2026-11-13)
+
+New results use `accounting_policy=airport-v1`: `total_cost_eur` contains airport
+expenses, revenues belong to the airport, and `net_eur` is airport operating
+profit. Airline landing/gate/passenger fees, delay costs and full eligible
+compensation liability are separate `airline_cost_eur` context. Remove the former
+30% landing expense and 30% compensation claimant assumptions. Tier selection is
+shared with the live cost owner. Financial rate snapshots remain immutable.
+
+Investment benefit is annual airport revenue uplift plus airport operating cost
+savings. Airline delay/compensation savings remain visible in the breakdown but
+are excluded from airport benefit and NPV. Planning remains a simplified model:
+categories it does not simulate contribute zero; this does not assert identical
+operational trajectories or close G4/G8.
+
+Existing completed results without an accounting policy are labelled
+`legacy-mixed` when read, retain their original numbers and must be rerun to
+produce airport-perspective results. Never relabel old mixed totals as airport
+profit. Recovery/replay computations use the new policy and publish new results
+through the existing lifecycle outbox.
+
 - Manage `PlanningScenario`, `PlanningResult`, and `RecommendationLog` entities
   (see §2 for storage model)
 - Run isolated in-memory planning simulations (no live Kafka, no operational Neo4j writes)

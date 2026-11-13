@@ -763,8 +763,8 @@ Owning services publish `CommandExecuted` or `CommandRejected` on their existing
 `{command_id, command_type, reason}`. `reason` is null on success. Receipts use
 the owner's current simulation clock. Receipt records are stored in Neo4j;
 redelivery re-emits the saved result without repeating the operation. A crash
-between a domain write and receipt persistence is still a transaction-boundary
-gap; this is not an exactly-once guarantee.
+between a domain write and receipt persistence is closed for flight, passenger
+and baggage owners by their transactional outbox boundaries (G1/A43); this is not an exactly-once guarantee.
 
 `SecurityLanesChanged` on `passengers.events` carries `terminal`, `lanes_open`
 and `previous_lanes_open`. Passenger-service persists each lane override in
@@ -896,10 +896,54 @@ batches reject. `RebookPassengers` remains a recognized legacy command but
 receives a rejection until replacement itinerary/capacity validation exists.
 Analysis leaves rebooking advisory rather than emitting this command.
 
-`SecurityQueueUpdated` keeps its existing fields and cadence (each normal tick,
-every 20 BULK ticks), with a shared validated payload schema. Passenger-service
-persists the identical observation in its per-terminal `SecurityProjection`
-before publication. Analysis restores it from Neo4j and compares source `at`
-timestamps in UTC, so replay cannot regress a newer queue observation. Restoring
-an observation does not advance the simulation clock or synthesize a forecast.
-Persistence/publication atomicity and simulation epochs remain separate gaps.
+`SecurityQueueUpdated` is unsampled in REALTIME and BULK. Its validated payload
+includes `terminal`, `queue_depth`, `lanes_open`, `wait_minutes`, `sa_queue_depth`,
+`frozen` and `at`. Passenger-service persists the observation on
+`SecurityCheckpoint` with its tick checkpoint and outbox facts. Analysis compares
+source timestamps in UTC and leaves missing legacy observations unmeasured.
+`SecurityProjection` documents are retained as legacy metadata, no longer written.
+
+`GroundVehicleSnapshot` on `ground.events` carries the complete `vehicles` array
+and simulation timestamp `at`. It replaces analysis fleet counts by vehicle ID,
+including empty fleets, with stale timestamp rejection. Flight-service commits
+the public fleet graph, tick progress and unsampled outbox snapshot together in
+both REALTIME and BULK. Individual dispatch/return facts cannot increment a fleet
+already reconstructed from authoritative snapshots. A newer-offset clock rewind
+clears observation guards and threshold timers; older clock offsets stay fenced.
+
+### G1 unsampled transition batches
+
+`PassengerStatusBatchChanged` (`passengers.events`) contains `status_groups`
+(`ids`, `status`, `zone`), `dwell_items` (`[passenger_id, minutes]`),
+`location_updates` and `risk_updates`. `BaggageStatusBatchChanged`
+(`baggage.events`) contains `status_changes` (`id`, `status`, `zone`), `flags`
+and `loaded_rows`. Both use the standard envelope and tick `sim_time`, are
+staged atomically with all corresponding writes/checkpoint, and remain unsampled
+in BULK mode. Individual per-entity display notifications retain their existing
+sampling policy. Delivery is at-least-once with stable outbox event IDs.
+
+Owner outboxes enqueue bounded batches in `(revision, position)` order and
+retain every row until all broker callbacks for that batch confirm delivery.
+A partial acknowledgement failure retains the whole batch for stable-ID replay.
+Idempotent producer sessions preserve partition ordering through broker retries;
+process restarts still give at-least-once delivery, not exactly once.
+
+Transition-audit packets contain at most 500 entity IDs/updates per envelope.
+Cohorts in `status_groups[].ids` split by member count. All packets from one
+batch share `batch_id`, with zero-based `part` and total `part_count` for audit
+reassembly. Every part is staged with the domain transaction; no members are
+sampled away to satisfy the broker's message-size limit.
+
+### Airport accounting policy (G2, 2026-11-13)
+
+`FinancialAccountingUpdated` on `cost.events` carries
+`{accounting_policy: "airport-v1"}`. A legacy checkpoint migration rebuilds cached
+financial projections from unchanged ledger records and commits its version,
+checkpoint and this outbox fact together under the cost owner lock. It uses the
+latest consumed simulation clock or the fixed synthetic epoch before a tick.
+The publisher uses the `financial-rates` key, retains the fact until broker ack,
+and retries the same event ID. `CostSignalSnapshot.total_cost_eur` now means
+airport expense; holding fuel, handling and compensation signals remain airline
+exposure, not airport profit. Planning results expose `accounting_policy`;
+missing policy metadata is read as `legacy-mixed`, requiring a rerun for new
+financial semantics. Rate snapshot/version behavior is unchanged.

@@ -90,6 +90,18 @@ departed_airport
 
 ## 3. Queue and flow model
 
+### Durable security projection (G9)
+
+Every tick persists each terminal's measured main/assistance queue depths, open
+lanes, frozen status, observed wait and simulation timestamp on its
+`SecurityCheckpoint`, within the passenger tick transaction. The matching
+`SecurityQueueUpdated` aggregate is unsampled in REALTIME and BULK modes.
+Lane commands update the checkpoint's lanes and observed wait under the same
+owner lock and emit a full queue snapshot alongside the existing lane fact and
+receipt. Analysis reads these public owner projections, never private runtime
+serialization. Legacy checkpoints without queue fields fall back to graph
+passenger counts until the next owner tick.
+
 ### Security throughput
 
 KART has 3 security checkpoints (one per terminal), each with a configurable number of open lanes.
@@ -580,19 +592,19 @@ overrides on restart, and emits `SecurityLanesChanged` with the previous count.
 
 
 `SecurityQueueUpdated` is an unsampled aggregate on `passengers.events` with
-`terminal`, `queue_depth`, `lanes_open`, `wait_minutes` and `at`. Passenger-service
-publishes it on each normal tick (every 20 ticks in BULK mode). Analysis uses
+`terminal`, `queue_depth`, `lanes_open`, `wait_minutes`, `sa_queue_depth`,
+`frozen` and `at`. Passenger-service publishes it on every tick in REALTIME and BULK. Analysis uses
 these measured snapshots to detect and resolve observed congestion. It does
 not invent forecast confidence from an observed wait. This also avoids trying
 to reconstruct exact queue counts from sampled per-passenger events.
 
 Before publishing each aggregate, passenger-service saves the validated payload
-as `SecurityProjection {terminal}` in Neo4j. The snapshot preserves its own
+on `SecurityCheckpoint {terminal}` in Neo4j. The snapshot preserves its own
 simulation timestamp `at`, queue depth, lane count and observed wait. It is
-unsampled in normal and BULK modes at the publication cadence above. Analysis
+unsampled in normal and BULK modes. Analysis
 reads these owner snapshots at startup and reconciliation, without advancing its
-clock. Persistence precedes publication; atomic domain/outbox delivery remains G1
-work. Epoch-aware rewind fencing and vehicle recovery remain separate gaps.
+clock. Observation, tick checkpoint and outbox delivery entries share the owner
+transaction. Legacy `SecurityProjection` documents are retained but not updated.
 
 
 ### Forecast correctness verification (2026-10-17)
@@ -629,3 +641,16 @@ commands. Commands wait for a validated simulation clock, retain partition order
 and retry transient failures. Offsets are committed after durable receipt handling;
 receipts remain replayable from Neo4j. This does not close the domain-write/receipt
 transaction gap or provide a transactional Kafka outbox.
+
+### G1 transaction boundary
+
+A clock tick locks `PassengerRuntime` before planning. Its domain writes, durable
+runtime checkpoint and pending facts commit in one Neo4j transaction. A failed
+attempt discards private queue/cache state; replay at or before the checkpoint
+is a no-op. Lane overrides and rebooking commit their receipt and receipt fact
+with the domain mutation. Inputs are acknowledged only after successful processing.
+
+Individual tick status notifications remain sampled for display throughput.
+`PassengerStatusBatchChanged` is the unsampled audit fact: `status_groups`
+(`ids`, `status`, `zone`), `dwell_items`, `location_updates` and `risk_updates`
+carry all FSM writes for that tick. Warm-start status cohorts use the same event.

@@ -12,6 +12,7 @@ durable dedup marker / receipt and staged facts together or not at all:
 """
 
 import asyncio
+import json
 import importlib
 import sys
 from copy import deepcopy
@@ -36,9 +37,13 @@ def _ctx(monkeypatch, driver):
     monkeypatch.setitem(sys.modules, "metrics", metrics)
     consumer = importlib.import_module("kafka.consumer")
     consumer._state = consumer.BaggageConsumerState()
-    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
+    from _common.transaction_scope import current, TransactionDriver
+    def scoped_driver():
+        return TransactionDriver(current.get()) if current.get() else driver
+    monkeypatch.setattr(consumer, "get_driver", scoped_driver)
+    monkeypatch.setattr(consumer, "_prepare_tick", AsyncMock())
     # _handle_command re-imports get_driver from db.neo4j for the receipt load.
-    monkeypatch.setattr(sys.modules["db.neo4j"], "get_driver", lambda: driver)
+    monkeypatch.setattr(sys.modules["db.neo4j"], "get_driver", scoped_driver)
     offload = sys.modules["services.offload"]
     monkeypatch.setattr(offload, "get_driver", lambda: driver)
     return consumer
@@ -166,20 +171,21 @@ def test_redirect_commits_write_receipt_and_fact_in_one_tx(monkeypatch):
     asyncio.run(consumer._handle_command(CMD))
     assert driver.db["baggage"]["BAG-1"]["loaded_on"] == "AX999"   # domain write
     assert driver.db["receipts"]["cmd-1"]["event_type"] == "CommandExecuted"  # receipt node
-    assert len(driver.db["outbox"]) == 1                            # staged BaggageStatusChanged
-    assert [k for k, _ in events] == ["CommandExecuted"]            # receipt fact emitted once
+    assert len(driver.db["outbox"]) == 2  # domain + receipt facts staged together
+    assert events == []  # Delivery belongs to the durable outbox
 
 
 def test_redirect_redelivery_reemits_receipt_without_remutating(monkeypatch):
     consumer, driver, events = _redirect_ctx(monkeypatch)
     asyncio.run(consumer._handle_command(CMD))
-    consumer._command_receipts.results.clear()  # simulate process restart
     scans = driver.db["baggage"]["BAG-1"]["scans"]
     outbox_n = len(driver.db["outbox"])
     asyncio.run(consumer._handle_command(CMD))
-    assert [k for k, _ in events] == ["CommandExecuted", "CommandExecuted"]  # re-emitted
+    assert events == []
+    assert sum(json.loads(row["document"])["event_type"] == "CommandExecuted"
+               for row in driver.db["outbox"].values()) == 2
     assert driver.db["baggage"]["BAG-1"]["scans"] == scans           # no re-mutation
-    assert len(driver.db["outbox"]) == outbox_n                      # no new fact staged
+    assert len(driver.db["outbox"]) == outbox_n + 1  # receipt retry, no new domain fact
 
 
 @pytest.mark.parametrize("failure", ["CREATE (b)-[:LOADED_ON {redirected_at", "CREATE (e:BaggageOutbox", "MERGE (r:CommandReceipt"])
@@ -198,8 +204,9 @@ def test_redirect_rejected_when_target_flight_missing(monkeypatch):
     driver.db["flights"].clear()          # target flight does not exist
     asyncio.run(consumer._handle_command(CMD))
     assert driver.db["receipts"]["cmd-1"]["event_type"] == "CommandRejected"
-    assert [k for k, _ in events] == ["CommandRejected"]
-    assert driver.db["outbox"] == {}      # no domain fact
+    assert events == []
+    assert json.loads(next(iter(driver.db["outbox"].values()))["document"])["event_type"] == "CommandRejected"
+    assert len(driver.db["outbox"]) == 1  # rejection receipt only
     assert "loaded_on" not in driver.db["baggage"]["BAG-1"]
 
 
@@ -215,7 +222,7 @@ def test_full_tick_commits_advancement_and_checkpoint_atomically(monkeypatch):
     asyncio.run(consumer._on_clock_tick({}, NOW))
     assert driver.db["baggage"]["b1"]["status"] == "in_hold"
     assert driver.db["last_tick"] == NOW.isoformat()      # checkpoint advanced in-tx
-    assert len(driver.db["outbox"]) == 1
+    assert len(driver.db["outbox"]) == 2  # entity fact + complete transition batch
     assert consumer._state.last_tick_sim_time == NOW      # cache advanced post-commit
     assert consumer._state.inducted_bag_ids == {"b1"}
 
@@ -270,7 +277,7 @@ def test_plan_bag_exit_flag_stages_flagged_fact_evicts_and_commits(monkeypatch):
     # The flag commits through flag_baggage_tx in the per-tick transaction.
     assert asyncio.run(consumer._apply_tick(plan, NOW)) is True
     assert driver.db["baggage"]["b1"]["status"] == "flagged"
-    assert len(driver.db["outbox"]) == 1
+    assert len(driver.db["outbox"]) == 2  # flagged fact + complete batch
 
 
 def test_tick_rollback_leaves_conveyor_and_checkpoint_unchanged(monkeypatch):

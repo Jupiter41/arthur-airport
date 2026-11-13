@@ -98,7 +98,7 @@ export const KPI_META: Record<
     format: (v) => `${v.toFixed(1)}%`,
   },
   eu261_liability_eur: {
-    label: "EU261 Liability",
+    label: "Airline EU261 Liability",
     unit: "€/day",
     description:
       "Daily compensation liability under EU Regulation 261/2004. €250-600 per qualifying passenger. Lower is better.",
@@ -106,15 +106,15 @@ export const KPI_META: Record<
     format: (v) => formatEur(v),
   },
   total_cost_eur: {
-    label: "Total Cost",
+    label: "Airport Operating Cost",
     unit: "€/day",
     description:
-      "Total daily operating cost including delay costs, EU261, landing fees, and gate fees. Lower is better.",
+      "Daily airport operating expenses modelled in this scenario. Airline fees, delay costs and compensation are reported separately. Lower is better.",
     lowerIsBetter: true,
     format: (v) => formatEur(v),
   },
   total_revenue_eur: {
-    label: "Total Revenue",
+    label: "Airport Revenue",
     unit: "€/day",
     description:
       "Total daily revenue from passenger fees, landing fees, and gate fees. Higher is better.",

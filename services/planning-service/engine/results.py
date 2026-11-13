@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
+from _common.accounting import ACCOUNTING_POLICY
+
 
 @dataclass
 class DayResult:
@@ -39,6 +41,7 @@ class DayResult:
     baggage_utilisation_pct: float = 0.0
 
     # Financial KPIs (from cost model)
+    airline_cost_eur: float = 0.0
     total_cost_eur: float = 0.0
     total_revenue_eur: float = 0.0
     net_eur: float = 0.0
@@ -69,6 +72,8 @@ class DayResult:
             "gate_utilisation_pct": round(self.gate_utilisation_pct, 1),
             "security_utilisation_pct": round(self.security_utilisation_pct, 1),
             "baggage_utilisation_pct": round(self.baggage_utilisation_pct, 1),
+            "accounting_policy": ACCOUNTING_POLICY,
+            "airline_cost_eur": round(self.airline_cost_eur, 2),
             "total_cost_eur": round(self.total_cost_eur, 2),
             "total_revenue_eur": round(self.total_revenue_eur, 2),
             "net_eur": round(self.net_eur, 2),
@@ -155,6 +160,7 @@ class ScenarioResults:
 
     def to_dict(self) -> dict:
         return {
+            "accounting_policy": ACCOUNTING_POLICY,
             "scenario_id": self.scenario_id,
             "scenario_name": self.scenario_name,
             "baseline_id": self.baseline_id,

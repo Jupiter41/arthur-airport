@@ -31,6 +31,17 @@ async def run():
             from services import cost_engine, carbon_tracker
             async def no_effects(event):
                 pass
+            # Seed a known airport expense through the owner transaction so
+            # this check is meaningful on an otherwise empty local stack too.
+            async def seed_expense(event):
+                await cost_engine._write_and_emit({
+                    'id': str(uuid4()), 'category': 'staffing', 'amount_eur': 123,
+                    'is_revenue': False, 'sim_day': 1,
+                    'sim_time': '2026-01-01T12:00:00Z',
+                    'description': 'Synthetic projection rebuild check',
+                })
+            await ledger.process({'event_id': str(uuid4()), 'event_type': 'FinancialValidation',
+                'sim_time': '2026-01-01T12:00:00Z', 'payload': {}}, seed_expense)
             # Select a distant day, then return to day one without inventing
             # new financial effects. Both are durable ledger transactions.
             for day in (1000, 1):
@@ -39,7 +50,7 @@ async def run():
             async with db.get_driver().session() as session:
                 row = await (await session.run(
                     "MATCH (c:CostRecord) WHERE c.sim_day = 1 "
-                    "RETURN sum(CASE WHEN c.is_revenue THEN 0 ELSE c.amount_eur END) AS cost, "
+                    "RETURN sum(CASE WHEN NOT c.is_revenue AND c.category IN ['staffing', 'incident_direct', 'incident_response'] THEN c.amount_eur ELSE 0 END) AS cost, "
                     "sum(CASE WHEN c.is_revenue THEN c.amount_eur ELSE 0 END) AS revenue")).single()
                 totals = cost_engine.get_running_totals()
                 assert row['cost'] > 0

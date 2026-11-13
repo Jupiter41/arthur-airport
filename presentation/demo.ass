@@ -1,0 +1,27 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 0
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Chapter,Lato,23,&H00D4E1F2,&H00FFFFFF,&H00101A27,&H00101A27,-1,0,0,0,100,100,1.5,0,1,0,0,7,44,44,926,1
+Style: Subtitle,Lato,34,&H00FFFFFF,&H00FFFFFF,&H00101A27,&H00101A27,0,0,0,0,100,100,0,0,1,0,0,2,70,70,55,1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:08.13,Chapter,,0,0,0,,01 / AIRPORT OPERATIONS
+Dialogue: 1,0:00:00.00,0:00:04.06,Subtitle,,0,0,0,,A synthetic airport day: 420 flights, with operations updating live.
+Dialogue: 1,0:00:04.06,0:00:08.13,Subtitle,,0,0,0,,The simulation clock drives flight states and runway throughput.
+Dialogue: 0,0:00:08.13,0:00:16.14,Chapter,,0,0,0,,02 / PHYSICAL CONTEXT
+Dialogue: 1,0:00:08.13,0:00:12.13,Subtitle,,0,0,0,,L1 adds physical context: gates, runways and ground vehicles.
+Dialogue: 1,0:00:12.13,0:00:16.14,Subtitle,,0,0,0,,The ground view brings aircraft and vehicle activity together.
+Dialogue: 0,0:00:16.14,0:00:21.15,Chapter,,0,0,0,,03 / DISRUPTION INJECTION
+Dialogue: 1,0:00:16.14,0:00:21.15,Subtitle,,0,0,0,,We inject a critical runway incursion on runway 09L.
+Dialogue: 0,0:00:21.15,0:00:31.19,Chapter,,0,0,0,,04 / CASCADE ANALYSIS
+Dialogue: 1,0:00:21.15,0:00:26.17,Subtitle,,0,0,0,,The runway incursion triggers a closure and an arrival holding stack.
+Dialogue: 1,0:00:26.17,0:00:31.19,Subtitle,,0,0,0,,The cascade then stops departures and congests gates.
+Dialogue: 0,0:00:31.19,0:00:39.30,Chapter,,0,0,0,,05 / FINANCIAL IMPACT
+Dialogue: 1,0:00:31.19,0:00:35.25,Subtitle,,0,0,0,,L3 connects operational events to costs, revenue and P&L.
+Dialogue: 1,0:00:35.25,0:00:39.30,Subtitle,,0,0,0,,The injected runway incident adds EUR 25,000 in direct costs.
+Dialogue: 0,0:00:39.30,0:00:46.37,Chapter,,0,0,0,,06 / DECISION SUPPORT
+Dialogue: 1,0:00:39.30,0:00:46.37,Subtitle,,0,0,0,,Recommendations estimate the cost and savings of possible responses.

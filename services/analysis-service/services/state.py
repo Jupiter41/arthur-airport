@@ -41,6 +41,8 @@ class SecurityState:
     forecast_wait_minutes: float = 0.0
     forecast_confidence: float = 0.0
     last_updated: datetime | None = None
+    sa_queue_depth: int = 0
+    frozen: bool = False
 
 
 @dataclass
@@ -107,6 +109,7 @@ class OperationalState:
 
         # Ground vehicles
         self.vehicles: dict[str, VehicleTypeState] = {}
+        self.vehicle_snapshot_at: datetime | None = None
 
         # Weather
         self.weather: WeatherSnapshot = WeatherSnapshot()
@@ -129,7 +132,20 @@ class OperationalState:
     # ── Event handlers ───────────────────────────────────────
 
     def restore_graph(self, snapshot: dict) -> None:
-        """Build replacement dictionaries before swapping the visible cache."""
+        """Validate a complete replacement before publishing any part of it."""
+        replacement = OperationalState()
+        replacement.sim_time = self.sim_time
+        replacement.speed_multiplier = self.speed_multiplier
+        replacement.tick_number = self.tick_number
+        replacement.makeup_over_threshold_since.update(self.makeup_over_threshold_since)
+        replacement._restore_graph(snapshot)
+        replacement.makeup_over_threshold_since = defaultdict(lambda: None, {
+            key: value for key, value in replacement.makeup_over_threshold_since.items()
+            if key in replacement.baggage_zones
+        })
+        self.__dict__.update(replacement.__dict__)
+
+    def _restore_graph(self, snapshot: dict) -> None:
         import json
 
         flights = {}
@@ -168,7 +184,35 @@ class OperationalState:
         for row in snapshot["baggage"]:
             self.on_baggage_zone_snapshot(json.loads(row["document"]))
         for row in snapshot.get("security", []):
-            self.on_security_queue_updated(json.loads(row["document"]))
+            if row.get("document"):
+                self.on_security_queue_updated(json.loads(row["document"]))
+                continue
+            measured = row.get("checkpoint") or {}
+            if measured.get("at"):
+                self.on_security_queue_updated({**measured, "terminal": row["terminal"]})
+        for row in snapshot.get("vehicles", []):
+            raw = row["vehicle"]
+            kind = raw["type"]
+            vehicle = self.vehicles.setdefault(kind, VehicleTypeState(vehicle_type=kind))
+            vehicle.total += 1
+            vehicle.dispatched += int(raw.get("status") != "available")
+            vehicle.utilisation_pct = vehicle.dispatched / vehicle.total * 100
+            at = _parse_dt(raw.get("at"))
+            if at and (self.vehicle_snapshot_at is None or _utc(at) > _utc(self.vehicle_snapshot_at)):
+                self.vehicle_snapshot_at = at
+        for row in snapshot.get("cost", []):
+            runtime = json.loads(row["document"])
+            totals = runtime.get("days", {}).get(str(runtime.get("sim_day", 1)), {}).get("cost", {})
+            categories = totals.get("airline_by_category", totals.get("by_category", {}))
+            self.on_cost_signal_snapshot({
+                "eu261_exposure": totals.get("eu261_exposure", 0),
+                "holding_fuel": categories.get("holding_fuel", 0),
+                "ground_handling": categories.get("ground_handling", 0),
+                "total_cost_eur": totals.get("total_cost_eur", 0),
+                "total_revenue_eur": totals.get("total_revenue_eur", 0),
+                "at": totals.get("last_updated"),
+            })
+        self.connection_clusters = snapshot.get("connections", [])
 
     def on_clock_tick(self, payload: dict) -> None:
         """Process SimClockTick."""
@@ -177,6 +221,7 @@ class OperationalState:
             # A simulation rewind must not pin aggregates to a future timestamp.
             self.baggage_zones.clear()
             self.baggage_snapshot_at = None
+            self.vehicle_snapshot_at = None
             self.makeup_over_threshold_since.clear()
             for sec in self.security.values():
                 sec.last_updated = None
@@ -215,7 +260,9 @@ class OperationalState:
             self.flights[fid].status = "cancelled"
 
     def on_passenger_status_changed(self, payload: dict) -> None:
-        """Process PassengerStatusChanged — track queue depths."""
+        """Legacy estimate only; owner snapshots supersede sampled transitions."""
+        if self.graph_loaded:
+            return
         zone = payload.get("new_zone", "")
         terminal = payload.get("terminal", "")
         if "security" in zone.lower() and terminal in self.security:
@@ -271,6 +318,8 @@ class OperationalState:
         sec.open_lanes = observation.lanes_open
         sec.observed_wait_minutes = observation.wait_minutes
         sec.last_updated = observation.at
+        sec.sa_queue_depth = observation.sa_queue_depth
+        sec.frozen = observation.frozen
 
     def on_baggage_status_changed(self, payload: dict) -> None:
         """Process BaggageStatusChanged — track zone occupancy."""
@@ -351,6 +400,7 @@ class OperationalState:
             "holding_fuel": float(payload.get("holding_fuel", 0.0)),
             "ground_handling": float(payload.get("ground_handling", 0.0)),
             "total_cost_eur": float(payload.get("total_cost_eur", 0.0)),
+            "total_revenue_eur": float(payload.get("total_revenue_eur", 0.0)),
             "updated_at": payload.get("at", ""),
         }
 
@@ -365,7 +415,9 @@ class OperationalState:
                 self.active_incidents[iid]["status"] = new_status
 
     def on_ground_vehicle_dispatched(self, payload: dict) -> None:
-        """Process GroundVehicleDispatched."""
+        """Legacy estimate; authoritative graphs count vehicles by identity."""
+        if self.graph_loaded or self.vehicle_snapshot_at is not None:
+            return
         vtype = payload.get("vehicle_type", "")
         if vtype not in self.vehicles:
             self.vehicles[vtype] = VehicleTypeState(vehicle_type=vtype)
@@ -375,12 +427,29 @@ class OperationalState:
         v.utilisation_pct = (v.dispatched / v.total * 100) if v.total else 0
 
     def on_ground_vehicle_returned(self, payload: dict) -> None:
-        """Process GroundVehicleReturned."""
+        """Legacy estimate; authoritative graphs count vehicles by identity."""
+        if self.graph_loaded or self.vehicle_snapshot_at is not None:
+            return
         vtype = payload.get("vehicle_type", "")
         if vtype in self.vehicles:
             v = self.vehicles[vtype]
             v.dispatched = max(0, v.dispatched - 1)
             v.utilisation_pct = (v.dispatched / v.total * 100) if v.total else 0
+
+    def on_ground_vehicle_snapshot(self, payload: dict) -> None:
+        from _common.events import GroundVehicleSnapshotPayload
+
+        observation = GroundVehicleSnapshotPayload.model_validate(payload)
+        if self.vehicle_snapshot_at and _utc(observation.at) < _utc(self.vehicle_snapshot_at):
+            return
+        replacement: dict[str, VehicleTypeState] = {}
+        for raw in observation.vehicles:
+            vehicle = replacement.setdefault(raw.type, VehicleTypeState(vehicle_type=raw.type))
+            vehicle.total += 1
+            vehicle.dispatched += int(raw.status != "available")
+            vehicle.utilisation_pct = vehicle.dispatched / vehicle.total * 100
+        self.vehicles = replacement
+        self.vehicle_snapshot_at = observation.at
 
     # ── Convenience queries ──────────────────────────────────
 

@@ -2,7 +2,7 @@
 
 **Port:** 8008  
 **Language:** Python 3.11 / FastAPI  
-**Status:** Functional ledger; remaining accounting/intelligence gaps in `ROADMAP_REAL_LDT.md`
+**Status:** Durable airport-perspective ledger; G2 closed (2026-11-13); remaining intelligence gaps in `ROADMAP_REAL_LDT.md`
 
 ---
 
@@ -50,8 +50,8 @@ Kafka delivery or atomicity in the other domain services.
 
 Existing ledger records are preserved: the first durable runtime checkpoint
 initializes its summaries from Neo4j. Older in-memory gate starts cannot be
-reconstructed by this migration; new starts survive restart. Fee cost/revenue
-perspectives remain as currently exposed pending the separate G2 accounting work.
+reconstructed by this migration; new starts survive restart. The G2 policy below
+classifies fee cost/revenue records by party without repricing them.
 No historical data loss/duplication from the old implementation is repaired
 automatically. Per-process summary caches reflect their latest committed input;
 they are not a cross-replica coherent read cache. Kafka redelivery is supported;
@@ -79,6 +79,30 @@ Core capabilities:
 ---
 
 ## 2. Cost categories
+
+### Accounting policy — G2 (2026-11-13)
+
+The primary perspective is **airport operating profit** (`airport-v1`). All revenue
+records belong to the airport. Only `staffing`, `incident_direct` and
+`incident_response` are airport expenses. All other expense records belong to
+airlines/handling agents and are reported separately as `airline_cost_eur` and
+`airline_by_category`. Fee expense/revenue pairs remain in the ledger: they
+represent different parties and must never cancel in airport profit.
+`total_cost_eur`, `by_category` and `net_eur` consistently describe the airport
+in summaries, daily/terminal/flight reports and hourly curves. Valuation retains
+airline expenses as informational context. Incident reports explicitly separate
+airport direct/response costs from airline compensation exposure.
+
+Ownership is derived from category and `is_revenue`, including legacy records;
+no charges are deleted or repriced. Old runtime projections are rebuilt under
+the owner lock, versioned and accompanied by `FinancialAccountingUpdated` in the
+transactional outbox. Historical reads apply the same classification directly.
+Deploy cost and planning together; mixed policy versions are unsupported.
+
+Compensation is **full eligible synthetic liability**, not expected cash claims:
+100% of eligible passengers, with the same shared tier selection in live and
+planning. There is no implicit 30% claim rate. This is a simulation convention,
+not a legal eligibility model or calibrated payment forecast.
 
 | Category               | Trigger                                        | Calculation                                                         |
 | ---------------------- | ---------------------------------------------- | ------------------------------------------------------------------- |
@@ -156,7 +180,8 @@ Planning reads this graph snapshot once on first job claim (shared defaults if
 cost has not initialized). It persists the full table and content version in its
 scenario before computing. Recovery and replay children retain these rates;
 new independent scenarios select the current committed table. This freezes rate
-inputs, not schedule/weather/model files or accounting perspectives. Default
+inputs, not schedule/weather/model files. New results also identify the shared
+`airport-v1` accounting policy; legacy mixed results require a rerun. Default
 reference constants are derived from the same shared table.
 Overrides held only in memory by pre-A22 deployments cannot be recovered on
 upgrade; operators must reapply them. Existing committed charges remain intact.

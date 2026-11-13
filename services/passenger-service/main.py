@@ -27,6 +27,7 @@ from kafka.producer import (
     close_kafka_producer,
     init_kafka_producer,
     publish_confirmed,
+    publish_batch_confirmed,
     wait_for_kafka,
 )
 from _common import outbox as _outbox
@@ -122,6 +123,7 @@ async def lifespan(app: FastAPI):
         _outbox.run(
             "PassengerOutbox", get_driver, publish_confirmed, outbox_stop,
             logger=structlog.get_logger("passenger-service.outbox"),
+            publish_batch_confirmed=publish_batch_confirmed,
         )
     )
 

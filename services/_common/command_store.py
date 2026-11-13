@@ -35,13 +35,18 @@ async def load_receipt_in_tx(tx, command_id: str) -> tuple[str, dict] | None:
     Lets a command executor check for an existing receipt and write its domain
     state + receipt + outbox facts in one atomic unit, keyed on ``command_id``.
     """
+    # Lock before checking. Concurrent deliveries must not both see "missing"
+    # and apply the domain mutation twice. A placeholder exists only in this tx;
+    # failures roll it back with the mutation and outbox.
     result = await tx.run(
-        "MATCH (r:CommandReceipt {id: $id}) "
+        "MERGE (r:CommandReceipt {id: $id}) "
+        "SET r.lock = coalesce(r.lock, 0) + 1 "
         "RETURN r.event_type AS event_type, r.payload AS payload",
         id=command_id,
     )
     row = await result.single()
-    return (row["event_type"], json.loads(row["payload"])) if row else None
+    return (row["event_type"], json.loads(row["payload"])) if row and row["event_type"] else None
+
 
 
 async def save_receipt_in_tx(

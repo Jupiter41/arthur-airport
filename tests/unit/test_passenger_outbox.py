@@ -72,8 +72,11 @@ class Tx:
             self.driver.fail_once = None
             raise RuntimeError("Injected storage failure")
         db = self.db
-        if "MATCH (i:PassengerInbox" in query and "RETURN" in query:
+        if "i:PassengerInbox" in query and "RETURN i.id" in query and "RETURN" in query:
             return Result([{"id": params["id"]}] if params["id"] in db["inbox"] else [])
+        if "s:PassengerRuntime" in query:
+            db["revision"] = db.get("revision", 0) + 1
+            return Result([{"revision": db["revision"]}])
         if "coalesce(max(o.revision)" in query:
             revs = [row["revision"] for row in db["outbox"].values()]
             return Result([{"rev": max(revs) if revs else 0}])

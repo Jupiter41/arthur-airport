@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import time
+from uuid import uuid4
 from datetime import datetime, timezone
 
 from confluent_kafka import Producer
@@ -66,9 +67,9 @@ def publish_confirmed(envelope: dict) -> None:
         raise RuntimeError("Flight event producer unavailable")
     delivered: list = []
     payload = envelope.get("payload") or {}
-    key = payload.get("flight_id") or envelope["event_id"]
+    key = payload.get("vehicle_id") or payload.get("flight_id") or envelope["event_id"]
     _producer.produce(
-        topic=TOPIC,
+        topic=GROUND_TOPIC if envelope["event_type"].startswith("GroundVehicle") else TOPIC,
         key=key.encode("utf-8"),
         value=json.dumps(envelope).encode("utf-8"),
         callback=lambda error, message: delivered.append(error),
@@ -78,6 +79,15 @@ def publish_confirmed(envelope: dict) -> None:
         _producer.poll(0.1)
     if not delivered or delivered[0] is not None:
         raise RuntimeError("Flight broker acknowledgement unavailable; outbox retained")
+
+def publish_batch_confirmed(documents: list[dict]) -> None:
+    kafka_runtime.publish_confirmed_batch(
+        _producer, documents,
+        lambda doc: GROUND_TOPIC if doc["event_type"].startswith("GroundVehicle") else TOPIC,
+        lambda doc: str(doc.get("payload", {}).get("vehicle_id")
+                        or doc.get("payload", {}).get("flight_id") or doc["event_id"]),
+    )
+
 
 
 def _produce_event(
@@ -96,6 +106,14 @@ def _produce_event(
         key: Optional Kafka message key (typically flight_id) for partition affinity.
         topic: Target topic, defaults to ``flights.events``.
     """
+    from _common.transaction_scope import current
+    scope = current.get()
+    if scope is not None:
+        event_id = str(uuid4())
+        scope.facts.append({"id": event_id, "document": build_fact(
+            event_id, event_type, sim_time, payload,
+        )})
+        return
     kafka_runtime.produce_event(
         _producer,
         event_type,
@@ -280,6 +298,12 @@ def emit_flight_diverted(
 # ---------------------------------------------------------------------------
 # Ground vehicle events → ground.events topic
 # ---------------------------------------------------------------------------
+
+def emit_ground_vehicle_snapshot(vehicles: list[dict], sim_time: datetime) -> None:
+    """Unsampled full fleet, committed with its public graph projection."""
+    _produce_event("GroundVehicleSnapshot", sim_time,
+                   {"vehicles": vehicles, "at": sim_time.isoformat()}, key="fleet", topic=GROUND_TOPIC)
+
 
 def emit_ground_vehicle_dispatched(
     vehicle_id: str,

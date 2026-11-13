@@ -190,19 +190,10 @@ async def rebuild_running_totals() -> dict:
             """,
             day=latest_day,
         )
-        totals: dict = {
-            "total_cost_eur": 0.0,
-            "total_revenue_eur": 0.0,
-            "by_category": {},
-            "sim_day": latest_day,
-        }
+        from _common.accounting import add_amount, empty_totals
+        totals = {**empty_totals(), "sim_day": latest_day}
         async for r in result:
-            if r["is_revenue"]:
-                totals["total_revenue_eur"] += r["total"]
-            else:
-                totals["total_cost_eur"] += r["total"]
-                totals["by_category"][r["category"]] = r["total"]
-        totals["net_eur"] = totals["total_revenue_eur"] - totals["total_cost_eur"]
+            add_amount(totals, r["category"], r["total"], r["is_revenue"])
         return totals
 
 

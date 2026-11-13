@@ -55,6 +55,9 @@ def test_command_received_before_clock_is_retained_until_valid_tick(service, mon
         def subscribe(self, topics):
             pass
 
+        def commit(self, asynchronous):
+            assert asynchronous is False
+
         def consume(self, *args, **kwargs):
             if batches:
                 return batches.pop(0)
@@ -131,6 +134,9 @@ def test_passenger_command_executes_while_fact_tick_is_waiting(monkeypatch):
         class Facts:
             def subscribe(self, topics):
                 assert "passengers.commands" not in topics
+
+            def commit(self, asynchronous):
+                assert asynchronous is False
 
             def consume(self, *args, **kwargs):
                 return [Message(tick)]

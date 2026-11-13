@@ -15,6 +15,8 @@ NOW = datetime(2026, 1, 1, 10)
 
 
 def context(service, monkeypatch):
+    from _common import transaction_scope
+    monkeypatch.setattr(transaction_scope, "restore_owner_checkpoint", AsyncMock(return_value=False))
     import_service_module(service, "application.commands")
     metrics = ModuleType("metrics")
     metrics.__getattr__ = lambda name: MagicMock()

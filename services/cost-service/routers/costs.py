@@ -51,6 +51,9 @@ async def cost_summary():
     net = totals.get("net_eur", 0.0)
     margin = round(net / total_rev * 100, 1) if total_rev > 0 else 0.0
     return {
+        "accounting_policy": totals["accounting_policy"],
+        "airline_cost_eur": round(totals.get("airline_cost_eur", 0.0), 2),
+        "airline_by_category": totals.get("airline_by_category", {}),
         "sim_time": totals.get("last_updated"),
         "sim_day": totals.get("sim_day", 1),
         "total_cost_eur": round(total_cost, 2),
@@ -74,9 +77,13 @@ async def get_pnl(day: int = Query(1, ge=1)):
         by_category[entry["category"]] = entry["total"]
         total_records += entry.get("count", 0)
     for entry in raw.get("revenues", []):
-        by_category[entry["category"]] = entry["total"]
         total_records += entry.get("count", 0)
+    total_records += sum(entry.get("count", 0) for entry in raw.get("airline_costs", []))
     return {
+        "accounting_policy": raw.get("accounting_policy"),
+        "airline_cost_eur": raw.get("airline_cost_eur", 0),
+        "airline_by_category": raw.get("airline_by_category", {}),
+        "eu261_exposure_eur": raw.get("eu261_exposure_eur", 0),
         "day": raw.get("sim_day", day),
         "total_cost_eur": raw.get("total_cost_eur", 0),
         "total_revenue_eur": raw.get("total_revenue_eur", 0),
@@ -135,6 +142,7 @@ async def get_hourly_curve(day: int = Query(1, ge=1)):
         revenue = r.get("revenue", 0.0)
         by_hour[h] = {
             "hour": h,
+            "airline_cost_eur": round(r.get("airline_cost", 0.0), 2),
             "cost_eur": round(cost, 2),
             "revenue_eur": round(revenue, 2),
             "net_eur": round(revenue - cost, 2),

@@ -48,7 +48,9 @@ async def close_neo4j() -> None:
 
 
 def get_driver():
-    return neo4j_client.get_driver()
+    from _common.transaction_scope import current, borrowed, TransactionDriver
+    scope = current.get() or borrowed.get()
+    return TransactionDriver(scope) if scope is not None else neo4j_client.get_driver()
 
 
 async def check_neo4j() -> bool:
@@ -64,6 +66,7 @@ async def create_constraints_and_indexes() -> None:
     async with driver.session() as session:
         for stmt in CONSTRAINTS + INDEXES:
             await session.run(stmt)
+        await (await session.run("MERGE (s:PassengerRuntime {id: 'latest'})")).consume()
     logger.info("Passenger constraints and indexes created")
 
 
@@ -292,12 +295,22 @@ async def bulk_update_status(
         p.{ts_field} = $ts
     RETURN count(p) AS cnt
     """
+    from _common.transaction_scope import current
+    scope = current.get()
+    if scope is not None and passenger_ids:
+        scope.facts.extend(_outbox.transition_batch_facts(
+            "PassengerStatusBatchChanged", sim_time, "passenger-service", {
+                "status_groups": [{"ids": passenger_ids, "status": new_status, "zone": new_zone}],
+                "dwell_items": [], "location_updates": [], "risk_updates": [],
+            }, grouped_ids={"status_groups": "ids"},
+        ))
     async with driver.session() as session:
         result = await session.run(
             query, ids=passenger_ids, status=new_status, zone=new_zone, ts=sim_str,
         )
         record = await result.single()
         return record["cnt"] if record else 0
+
 
 
 async def apply_status_change_atomic(
@@ -328,14 +341,9 @@ async def apply_status_change_atomic(
 
     Returns True if applied, False if ``event_id`` was already processed.
 
-    Ordering/revision choice: passenger-service has no single runtime node to
-    carry a monotonic revision (unlike cost-service's ``CostRuntime``). We derive
-    ``revision = coalesce(max(o.revision), 0) + 1`` over the *still-pending*
-    outbox rows, inside the same transaction. Delivery order only matters among
-    rows not yet confirmed+deleted, so a counter relative to the live backlog is
-    sufficient and deterministic; per-fact ``position`` orders facts within one
-    event. The single consumer loop processes events serially (``await _dispatch``
-    one at a time), so no two applies contend for the same revision.
+    A locked PassengerRuntime counter supplies a monotonic outbox revision
+    shared with tick and command transactions; per-fact position orders the
+    facts inside one committed input.
     """
     for group in groups:
         if group["status"] not in _VALID_STATUSES:
@@ -345,11 +353,7 @@ async def apply_status_change_atomic(
     async def apply(tx) -> bool:
         if await _outbox.inbox_seen(tx, "PassengerInbox", event_id):
             return False
-        rev_result = await tx.run(
-            "MATCH (o:PassengerOutbox) RETURN coalesce(max(o.revision), 0) AS rev"
-        )
-        rev_row = await rev_result.single()
-        revision = (rev_row["rev"] if rev_row else 0) + 1
+        revision = await next_outbox_revision(tx)
         for group in groups:
             ids = group["ids"]
             if not ids:
@@ -429,7 +433,7 @@ async def apply_changes_atomic(
     connection-risk property writes, and allows ``facts`` to carry non-status
     envelopes (e.g. ``PassengerAlert``). Everything commits in ONE
     ``execute_write``: durable inbox dedup on ``event_id`` → status/location/risk
-    writes → inbox marker → outbox facts at ``max(pending)+1``. Returns True if
+    writes → inbox marker → outbox facts at the locked owner runtime revision. Returns True if
     applied, False if ``event_id`` was already processed (durable dedup).
     """
     status_groups = status_groups or []
@@ -444,11 +448,7 @@ async def apply_changes_atomic(
     async def apply(tx) -> bool:
         if await _outbox.inbox_seen(tx, "PassengerInbox", event_id):
             return False
-        rev_result = await tx.run(
-            "MATCH (o:PassengerOutbox) RETURN coalesce(max(o.revision), 0) AS rev"
-        )
-        rev_row = await rev_result.single()
-        revision = (rev_row["rev"] if rev_row else 0) + 1
+        revision = await next_outbox_revision(tx)
         await _write_status_groups(tx, status_groups, sim_str)
         await _write_location_updates(tx, location_updates)
         await _write_risk_updates(tx, risk_updates)
@@ -502,7 +502,8 @@ async def apply_tick_atomic(
 
     async def apply(tx) -> bool:
         result = await tx.run(
-            "MERGE (s:PassengerRuntime {id: 'latest'}) "
+            "MATCH (s:PassengerRuntime {id: 'latest'}) "
+            "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
             "SET s.revision = coalesce(s.revision, 0) + 1 "
             "RETURN s.last_tick_sim_time AS last_tick, s.revision AS revision"
         )
@@ -525,7 +526,13 @@ async def apply_tick_atomic(
             await dwell_result.consume()
         await _write_location_updates(tx, location_updates)
         await _write_risk_updates(tx, risk_updates)
-        await _outbox.stage_outbox(tx, "PassengerOutbox", facts, revision)
+        staged_facts = [*facts, *_outbox.transition_batch_facts(
+            "PassengerStatusBatchChanged", tick_sim_time, "passenger-service", {
+                "status_groups": status_groups, "dwell_items": dwell_items,
+                "location_updates": location_updates, "risk_updates": risk_updates,
+            }, grouped_ids={"status_groups": "ids"},
+        )]
+        await _outbox.stage_outbox(tx, "PassengerOutbox", staged_facts, revision)
         advance = await tx.run(
             "MATCH (s:PassengerRuntime {id: 'latest'}) SET s.last_tick_sim_time = $ts",
             ts=sim_str,
@@ -555,11 +562,7 @@ async def rebook_passengers_atomic(
     )
 
     async def apply(tx) -> tuple[str, dict, bool]:
-        rev_result = await tx.run(
-            "MATCH (o:PassengerOutbox) RETURN coalesce(max(o.revision), 0) AS rev"
-        )
-        rev_row = await rev_result.single()
-        revision = (rev_row["rev"] if rev_row else 0) + 1
+        revision = await next_outbox_revision(tx)
 
         existing = await load_receipt_in_tx(tx, command_id)
         if existing is not None:
@@ -888,18 +891,16 @@ async def list_recent_assignments(since_iso: str | None = None, limit: int = 500
         return [dict(rec["a"]) async for rec in result]
 
 
-async def save_security_projection(payload: dict) -> None:
-    """Persist the same unsampled observation that the owner publishes."""
+async def save_security_projection(rows: list[dict]) -> None:
+    """Public measured aggregates; the tick-scoped driver shares its transaction."""
     from _common.events import SecurityQueueUpdatedPayload
 
-    snapshot = SecurityQueueUpdatedPayload.model_validate(payload)
-    terminal = snapshot.terminal.removeprefix("Terminal ")
+    rows = [SecurityQueueUpdatedPayload.model_validate(row).model_dump(mode="json") for row in rows]
     async with get_driver().session() as session:
-        result = await session.run(
-            "MERGE (s:SecurityProjection {terminal: $terminal}) SET s.document = $document",
-            terminal=terminal, document=snapshot.model_dump_json(),
-        )
-        await result.consume()
+        await (await session.run(
+            "UNWIND $rows AS row MERGE (s:SecurityCheckpoint {terminal: row.terminal}) SET s += row",
+            rows=rows,
+        )).consume()
 
 
 async def save_security_lanes(terminal: str, lanes: int, sim_time: datetime) -> None:
@@ -929,3 +930,74 @@ async def load_security_lanes() -> dict[str, int]:
             "MATCH (s:SecurityCheckpoint) RETURN s.terminal AS terminal, s.lanes_open AS lanes"
         )
         return {row["terminal"]: row["lanes"] async for row in result}
+
+
+async def security_lane_command_atomic(
+    command_id: str, command_type: str, terminal: str | None,
+    lanes: int | None, sim_time: datetime, rejection: str | None = None,
+) -> tuple[str, dict, bool]:
+    """Lane override, domain fact and receipt/fact commit together, even on rejection."""
+    from _common.command_store import load_receipt_in_tx, save_receipt_in_tx
+    from kafka.producer import build_command_receipt_fact
+    from uuid import uuid4
+
+    async def apply(tx):
+        # Shared ordering lock also serializes lane commands against ticks.
+        row = await (await tx.run(
+            "MATCH (s:PassengerRuntime {id: 'latest'}) "
+            "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
+            "SET s.revision = coalesce(s.revision, 0) + 1 RETURN s.revision AS revision"
+        )).single()
+        revision = row["revision"]
+        receipt = await load_receipt_in_tx(tx, command_id)
+        mutated = receipt is None
+        facts = []
+        if receipt is None:
+            reason = rejection
+            if reason is None:
+                checkpoint = await (await tx.run(
+                    "MERGE (s:SecurityCheckpoint {terminal: $terminal}) "
+                    "WITH s, s.lanes_open AS previous "
+                    "SET s.lanes_open = $lanes, s.updated_at = $ts "
+                    "RETURN previous, properties(s) AS checkpoint",
+                    terminal=terminal, lanes=lanes, ts=sim_time.isoformat(),
+                )).single()
+                document = build_command_receipt_fact("SecurityLanesChanged", sim_time, {
+                    "terminal": terminal, "lanes_open": lanes,
+                    "previous_lanes_open": checkpoint["previous"],
+                })
+                facts.append({"id": document["event_id"], "document": document})
+                measured = dict(checkpoint.get("checkpoint") or {})
+                depth = measured.get("queue_depth", 0)
+                wait = 999.0 if measured.get("frozen", False) else round(depth / (lanes * 180) * 60, 1)
+                measured.update(terminal=terminal, lanes_open=lanes, queue_depth=depth,
+                                wait_minutes=wait, at=sim_time.isoformat(), updated_at=sim_time.isoformat())
+                await (await tx.run(
+                    "MATCH (s:SecurityCheckpoint {terminal: $terminal}) SET s += $row",
+                    terminal=terminal, row=measured,
+                )).consume()
+                document = build_command_receipt_fact("SecurityQueueUpdated", sim_time, measured)
+                facts.append({"id": document["event_id"], "document": document})
+            receipt = ("CommandRejected" if reason else "CommandExecuted", {
+                "command_id": command_id, "command_type": command_type, "reason": reason,
+            })
+            await save_receipt_in_tx(tx, command_id, receipt)
+        document = build_command_receipt_fact(receipt[0], sim_time, receipt[1])
+        # Receipt retries are separate deliveries of the stored outcome.
+        document["event_id"] = str(uuid4())
+        facts.append({"id": document["event_id"], "document": document})
+        await _outbox.stage_outbox(tx, "PassengerOutbox", facts, revision)
+        return receipt[0], receipt[1], mutated
+
+    async with get_driver().session() as session:
+        return await session.execute_write(apply)
+
+
+async def next_outbox_revision(tx) -> int:
+    row = await (await tx.run(
+        "MATCH (s:PassengerRuntime {id: 'latest'}) "
+        "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
+        "SET s.revision = coalesce(s.revision, 0) + 1 "
+        "RETURN s.revision AS revision"
+    )).single()
+    return row["revision"]

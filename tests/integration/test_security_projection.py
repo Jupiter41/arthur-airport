@@ -25,7 +25,7 @@ async def main():
         state.restore_graph(snapshot)
         assert state.sim_time is None
         for row in snapshot['security']:
-            observation = json.loads(row['document'])
+            observation = row['checkpoint']
             key = 'Terminal ' + observation['terminal'].removeprefix('Terminal ')
             security = state.security[key]
             assert security.queue_depth == observation['queue_depth']

@@ -96,6 +96,8 @@ class Tx:
             return Result([{"document": db["document"]}])
         elif "UNWIND $rows" in query:
             db["cost" if "CostRecord" in query else "carbon"].extend(params["rows"])
+        elif query.startswith("CREATE (e:CostOutbox"):
+            db["outbox"][params["id"]] = dict(params)
         elif "UNWIND $events" in query:
             db["outbox"].update({row["id"]: row for row in params["events"]})
         elif "MATCH (e:CostOutbox) RETURN" in query:
@@ -138,7 +140,7 @@ def test_redelivery_and_cache_loss_use_durable_inbox(cost_ctx):
     consumer, engine, carbon, driver = cost_ctx
     assert asyncio.run(consumer.process_envelope(departed())) is True
     saved_cost, saved_carbon = engine.get_running_totals(), carbon.get_carbon_totals()
-    assert saved_cost["total_cost_eur"] > 0 and saved_carbon["total_kg"] > 0
+    assert saved_cost["airline_cost_eur"] > 0 and saved_carbon["total_kg"] > 0
     assert len(driver.db["cost"]) == 3 and len(driver.db["carbon"]) == 3
     engine.init_running_totals({})
     carbon.init_carbon_totals({})
@@ -167,7 +169,7 @@ def test_lost_commit_ack_recovers_cache_without_second_charge(cost_ctx):
     consumer, engine, _, driver = cost_ctx
     driver.lose_commit_ack = True
     assert asyncio.run(consumer.process_envelope(departed())) is False
-    assert engine.get_running_totals()["total_cost_eur"] > 0
+    assert engine.get_running_totals()["airline_cost_eur"] > 0
     assert len(driver.db["cost"]) == 3
 
 
@@ -199,9 +201,9 @@ def test_invalid_identity_rejected_and_distinct_events_remain_distinct(cost_ctx)
         asyncio.run(consumer.process_envelope(departed("")))
     assert not driver.db["inbox"]
     asyncio.run(consumer.process_envelope(departed("one")))
-    first = engine.get_running_totals()["total_cost_eur"]
+    first = engine.get_running_totals()["airline_cost_eur"]
     asyncio.run(consumer.process_envelope(departed("two")))
-    assert engine.get_running_totals()["total_cost_eur"] == pytest.approx(first * 2)
+    assert engine.get_running_totals()["airline_cost_eur"] == pytest.approx(first * 2)
 
 
 def test_broker_failure_retains_outbox_and_retries_identical_event_ids(cost_ctx, monkeypatch):
@@ -231,11 +233,13 @@ def test_initial_checkpoint_preserves_legacy_ledger_and_eu261_exposure(cost_ctx)
     driver.db["carbon"] = [{"record": {"sim_day": 3, "source": "terminal", "co2_kg": 8,
                                        "sim_time": "2026-01-03T12:00:00Z"}}]
     asyncio.run(consumer.ledger.initialize())
-    assert engine.get_running_totals()["total_cost_eur"] == 500
+    assert engine.get_running_totals()["total_cost_eur"] == 0
+    assert engine.get_running_totals()["airline_cost_eur"] == 500
     assert engine.get_running_totals()["eu261_exposure"] == 500
     assert carbon.get_carbon_totals()["total_kg"] == 8
     asyncio.run(consumer.ledger.initialize())
-    assert engine.get_running_totals()["total_cost_eur"] == 500
+    assert engine.get_running_totals()["total_cost_eur"] == 0
+    assert engine.get_running_totals()["airline_cost_eur"] == 500
 
 
 def test_late_fact_is_charged_to_its_day_without_rewinding_current_summary(cost_ctx):
@@ -397,7 +401,8 @@ def test_cost_snapshot_uses_committed_day_and_current_tick_charges(cost_ctx):
     day_two = snapshots(driver)[-1]["payload"]
     assert day_two["sim_day"] == 2
     assert day_two["total_cost_eur"] == round(engine.get_running_totals()["total_cost_eur"], 2)
-    assert day_two["total_cost_eur"] < signal["payload"]["total_cost_eur"]
+    assert day_two["total_cost_eur"] == state["days"]["1"]["cost"]["by_category"]["staffing"]
+    assert state["days"]["1"]["cost"]["airline_cost_eur"] > 0
 
 
 def test_cost_snapshot_rolls_back_then_retries_via_acknowledged_outbox(cost_ctx, monkeypatch):
@@ -454,7 +459,7 @@ def test_invalid_snapshot_clock_rejects_without_effects(cost_ctx):
 def test_evicted_days_rebuild_from_ledger_without_losing_or_doubling_charges(cost_ctx, mode):
     consumer, engine, carbon, driver = cost_ctx
     asyncio.run(consumer.process_envelope(departed()))
-    original_cost = engine.get_running_totals()["total_cost_eur"]
+    original_cost = engine.get_running_totals()["airline_cost_eur"]
     original_carbon = carbon.get_carbon_totals()["total_kg"]
 
     async def select_day(day):
@@ -480,6 +485,35 @@ def test_evicted_days_rebuild_from_ledger_without_losing_or_doubling_charges(cos
         asyncio.run(consumer.process_envelope(late))
         asyncio.run(select_day(1))
     multiplier = 2 if mode == "late" else 1
-    assert engine.get_running_totals()["total_cost_eur"] == original_cost * multiplier
+    assert engine.get_running_totals()["airline_cost_eur"] == original_cost * multiplier
     assert carbon.get_carbon_totals()["total_kg"] == original_carbon * multiplier
     assert len(json.loads(driver.db["document"])["days"]) <= 8
+
+
+@pytest.mark.parametrize("rollback", [False, True])
+def test_mixed_checkpoint_migrates_all_cached_days_once_atomically(cost_ctx, rollback):
+    consumer, engine, _, driver = cost_ctx
+    asyncio.run(consumer.process_envelope(departed()))
+    original_records = deepcopy(driver.db["cost"])
+    state = json.loads(driver.db["document"])
+    state.pop("accounting_policy")
+    state["days"]["1"]["cost"]["total_cost_eur"] = 999999
+    state["days"]["2"] = consumer.ledger.empty_day(2)
+    state["days"]["2"]["cost"]["total_cost_eur"] = 999999
+    driver.db["document"] = json.dumps(state)
+    if rollback:
+        before = deepcopy(driver.db)
+        driver.fail_once = "CREATE (e:CostOutbox"
+        with pytest.raises(RuntimeError, match="Injected"):
+            asyncio.run(consumer.ledger.initialize())
+        assert driver.db == before
+    asyncio.run(consumer.ledger.initialize())
+    asyncio.run(consumer.ledger.initialize())
+    migrated = json.loads(driver.db["document"])
+    assert migrated["accounting_policy"] == "airport-v1"
+    assert migrated["days"]["1"]["cost"]["total_cost_eur"] == 0
+    assert migrated["days"]["2"]["cost"]["total_cost_eur"] == 0
+    assert engine.get_running_totals()["airline_cost_eur"] > 0
+    assert driver.db["cost"] == original_records
+    facts = [json.loads(row["document"]) for row in driver.db["outbox"].values()]
+    assert sum(fact["event_type"] == "FinancialAccountingUpdated" for fact in facts) == 1
