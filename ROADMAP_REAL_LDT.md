@@ -3291,3 +3291,23 @@ Group membership establishes readiness; broker heartbeats keep paused-clock
 readiness fresh without changing the last domain-message timestamp. Gateway
 build and **33 tests** pass, including four new lifecycle regressions. The
 complete restart/REST group is rerun in `g9-restarts-rest.txt` against this build.
+
+Final consolidated validation: **52/52 restart, REST and security-recovery checks
+pass in 129.12s**, including all six restart cases and automatic gateway recovery.
+Together with the 86 preceding accounting/execution/planning integration cases,
+all **138 integration cases** have passing grouped-run evidence. The earlier
+single-command full runs exposed the defects above; an uninterrupted 138-case
+local run is not claimed. CI retains the strict full-suite gate.
+
+Final units: **1,241 Python**, **33 gateway**, **40 dashboard**; production builds
+and Python lint pass. All ten readiness endpoints are ready. After the complete
+restart group, **40/40 concurrent requests** pass, with flow summary at most
+**0.071s**. Source parity verifies **60 Python files across seven services** and
+**11 compiled gateway JavaScript files**. The recovery-only infrastructure was
+stopped with its volumes retained; the application validation stack stays up.
+
+Evidence: `g9-restarts-rest.txt`, `g9-release-units.txt`, `g9-kafka-tests.txt`,
+`g9-push-readiness.json`, `g9-push-concurrent.json`,
+`g9-push-source-parity.txt`, and `g9-push-gateway-parity.txt` in `.pytest_cache/`.
+All branch heads are incorporated in main, including the restored Pi/access
+work. Safety stashes and the pre-sync backup branch remain available locally.
