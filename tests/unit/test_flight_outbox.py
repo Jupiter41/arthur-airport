@@ -117,6 +117,19 @@ class Tx:
             db["gates"][gid] = fid
             db["flights"].setdefault(fid, {})["gate_id"] = gid
             return Result([{"gate_id": gid}])
+        if "MERGE (f)-[rel:USES_RUNWAY]->(r)" in query:  # assign_flight_to_runway_in_tx
+            db["runways"] = db.get("runways", {})
+            db["runways"][p["flight_id"]] = p["runway_id"]
+            return Result()
+        if "-[r:ASSIGNED_TO]->(g:Gate)" in query and "DELETE r" in query:  # release_gate_in_tx
+            fid = p["flight_id"]
+            gid = db["flights"].get(fid, {}).get("gate_id")
+            freed = None
+            for g, holder in list(db["gates"].items()):
+                if holder == fid:
+                    freed = g
+                    del db["gates"][g]
+            return Result([{"gate_id": freed}] if freed else [])
         if "SET f.status" in query:  # update_flight_status_in_tx
             fid = p["id"]
             f = db["flights"].get(fid)
@@ -287,3 +300,132 @@ def test_reassign_gate_is_atomic_and_dedupes(flight_ctx, monkeypatch):
     # Replaying the same reassignment does not stage a second fact.
     asyncio.run(consumer.reassign_gate("F1", "B05", SIM_TIME))
     assert len(driver.db["outbox"]) == 1
+
+
+# ── G1-c / G1-a: discrete tick-handler atomic commits ────────────
+
+import json  # noqa: E402
+
+
+def _facts(driver):
+    return {json.loads(r["document"])["event_type"]
+            for r in driver.db["outbox"].values()}
+
+
+def test_commit_flight_writes_rolls_back_on_partial_failure(flight_ctx):
+    consumer, _, driver = flight_ctx
+    driver.db["flights"]["F1"] = {"status": "approach"}
+    driver.fail_on = "SET f.status"
+    facts = [{"id": "div:F1:t", "document": '{"event_id":"div:F1:t"}'}]
+
+    async def _w(tx):
+        await consumer.update_flight_status_in_tx(tx, "F1", "diverted",
+                                                  delay_reason="diversion")
+
+    before = deepcopy(driver.db)
+    with pytest.raises(RuntimeError, match="Injected"):
+        asyncio.run(consumer._commit_flight_writes("div:F1:t", SIM_TIME, facts, [_w]))
+    assert driver.db == before
+    assert driver.db["inbox"] == set()
+    assert driver.db["outbox"] == {}
+    assert driver.db["runtime_rev"] == 0
+    assert driver.db["flights"]["F1"]["status"] == "approach"
+
+
+def test_commit_flight_writes_replay_is_deduped(flight_ctx):
+    consumer, _, driver = flight_ctx
+    driver.db["flights"]["F1"] = {"status": "approach"}
+    facts = [{"id": "div:F1:t", "document": '{"event_id":"div:F1:t"}'}]
+
+    async def _w(tx):
+        await consumer.update_flight_status_in_tx(tx, "F1", "diverted")
+
+    first = asyncio.run(consumer._commit_flight_writes("div:F1:t", SIM_TIME, facts, [_w]))
+    assert first is True
+    assert driver.db["flights"]["F1"]["status"] == "diverted"
+    assert len(driver.db["outbox"]) == 1 and driver.db["runtime_rev"] == 1
+
+    # Mutate the status to detect any illegal re-apply on replay.
+    driver.db["flights"]["F1"]["status"] = "sentinel"
+    second = asyncio.run(consumer._commit_flight_writes("div:F1:t", SIM_TIME, facts, [_w]))
+    assert second is False
+    assert driver.db["flights"]["F1"]["status"] == "sentinel"   # not re-applied
+    assert len(driver.db["outbox"]) == 1                         # not re-staged
+    assert driver.db["runtime_rev"] == 1                         # revision not bumped
+
+
+def test_commit_flight_writes_bulk_no_facts_still_dedupes(flight_ctx):
+    """BULK suppresses the fact, but the domain write + inbox marker still commit."""
+    consumer, _, driver = flight_ctx
+    driver.db["flights"]["F1"] = {"status": "approach"}
+
+    async def _w(tx):
+        await consumer.update_flight_status_in_tx(tx, "F1", "diverted")
+
+    applied = asyncio.run(consumer._commit_flight_writes("div:F1:t", SIM_TIME, [], [_w]))
+    assert applied is True
+    assert driver.db["flights"]["F1"]["status"] == "diverted"
+    assert driver.db["outbox"] == {}                 # no fact emitted in BULK
+    assert "div:F1:t" in driver.db["inbox"]          # but still deduped
+    replay = asyncio.run(consumer._commit_flight_writes("div:F1:t", SIM_TIME, [], [_w]))
+    assert replay is False
+
+
+def test_cancellation_folds_gate_release_and_stages_flight_cancelled(flight_ctx, monkeypatch):
+    consumer, _, driver = flight_ctx
+    monkeypatch.setattr(consumer, "_state", consumer.FlightConsumerState())
+    consumer._state.runway_queue.enqueue_departure("F1", SIM_TIME.isoformat())
+    consumer._state.held_flights["F1"] = {"reason": "x"}
+    driver.db["flights"]["F1"] = {"status": "delayed", "gate_id": "A01"}
+    driver.db["gates"]["A01"] = "F1"
+
+    asyncio.run(consumer._execute_transition(
+        flight(status="delayed", gate_id="A01"), "delayed", "cancelled", SIM_TIME,
+    ))
+    # One transaction: status->cancelled, gate released, FlightStatusChanged +
+    # FlightCancelled both staged.
+    assert driver.db["flights"]["F1"]["status"] == "cancelled"
+    assert "A01" not in driver.db["gates"]                     # gate released in-tx
+    assert _facts(driver) == {"FlightStatusChanged", "FlightCancelled"}
+    # In-memory cleanup ran post-commit.
+    assert "F1" not in consumer._state.held_flights
+
+    # Replay of the identical transition stages nothing new and does not error.
+    n_before = len(driver.db["outbox"])
+    asyncio.run(consumer._execute_transition(
+        flight(status="cancelled", gate_id="A01"), "delayed", "cancelled", SIM_TIME,
+    ))
+    assert len(driver.db["outbox"]) == n_before
+
+
+def test_cancellation_rolls_back_gate_release_and_fact_together(flight_ctx, monkeypatch):
+    consumer, _, driver = flight_ctx
+    monkeypatch.setattr(consumer, "_state", consumer.FlightConsumerState())
+    driver.db["flights"]["F1"] = {"status": "delayed", "gate_id": "A01"}
+    driver.db["gates"]["A01"] = "F1"
+    driver.fail_on = "SET f.status"
+    before = deepcopy(driver.db)
+    with pytest.raises(RuntimeError, match="Injected"):
+        asyncio.run(consumer._execute_transition(
+            flight(status="delayed", gate_id="A01"), "delayed", "cancelled", SIM_TIME,
+        ))
+    # Nothing committed: gate still held, no facts, status unchanged.
+    assert driver.db == before
+    assert driver.db["gates"]["A01"] == "F1"
+    assert driver.db["outbox"] == {}
+
+
+def test_runway_assignment_in_tx_is_atomic(flight_ctx):
+    consumer, _, driver = flight_ctx
+
+    async def _w(tx):
+        await consumer.assign_flight_to_runway_in_tx(tx, "F1", "09L", "departure", SIM_TIME)
+
+    event_id = "rwy:F1:09L:departure:t"
+    facts = [{"id": event_id, "document":
+              {"event_id": event_id, "event_type": "FlightRunwayAssigned"}}]
+    applied = asyncio.run(consumer._commit_flight_writes(event_id, SIM_TIME, facts, [_w]))
+    assert applied is True
+    assert driver.db["runways"]["F1"] == "09L"
+    assert _facts(driver) == {"FlightRunwayAssigned"}
+    assert asyncio.run(consumer._commit_flight_writes(event_id, SIM_TIME, facts, [_w])) is False

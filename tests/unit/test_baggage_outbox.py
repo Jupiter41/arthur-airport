@@ -48,7 +48,15 @@ class Tx:
             self.driver.fail_on = None
             raise RuntimeError("Injected storage failure")
         db = self.db
-        if "BaggageOutboxSeq" in query:
+        # begin_tick_tx: lock + read checkpoint (no mutation on the read).
+        if "BaggageOutboxSeq" in query and "RETURN s.last_tick_sim_time" in query:
+            return Result([{"last_tick": db.get("last_tick"), "revision": db["revision"]}])
+        # begin_tick_tx: advance revision + last_tick together.
+        if "BaggageOutboxSeq" in query and "s.last_tick_sim_time = $last_tick" in query:
+            db["revision"] += 1
+            db["last_tick"] = params["last_tick"]
+            return Result([{"revision": db["revision"]}])
+        if "BaggageOutboxSeq" in query:  # next_outbox_revision_tx
             db["revision"] += 1
             return Result([{"revision": db["revision"]}])
         if "BaggageInbox" in query and "RETURN i.id" in query:
@@ -56,12 +64,36 @@ class Tx:
         if "MERGE (i:BaggageInbox" in query:
             db["inbox"].add(params["id"])
             return Result()
+        if "r:CommandReceipt" in query and "RETURN r.event_type" in query:
+            receipt = db["receipts"].get(params["id"])
+            return Result([receipt] if receipt else [])
+        if "MERGE (r:CommandReceipt" in query:
+            db["receipts"][params["id"]] = {
+                "event_type": params["event_type"], "payload": params["payload"],
+            }
+            return Result()
         if "UNWIND $changes AS change" in query:
             for change in params["changes"]:
                 bag = db["baggage"].setdefault(change["id"], {"scans": 0})
                 bag["status"] = change["status"]
                 bag["zone"] = change["zone"]
                 bag["scans"] += 1
+            return Result()
+        if "SET b.status = 'flagged'" in query:  # flag_baggage_tx
+            bag = db["baggage"].setdefault(params["id"], {"scans": 0})
+            bag["status"] = "flagged"
+            bag["flag_reason"] = params["flag_reason"]
+            bag["scans"] += 1
+            return Result()
+        if "MERGE (b)-[r:LOADED_ON]->(f)" in query:  # set_loaded_on_timestamps_tx
+            for row in params["rows"]:
+                db["loaded_on"][row["baggage_id"]] = row["flight_id"]
+            return Result()
+        if "CREATE (b)-[:LOADED_ON {redirected_at" in query:  # redirect_baggage_to_flight_tx
+            if params["bid"] in db["baggage"] and params["fid"] in db.get("flights", set()):
+                db["baggage"][params["bid"]]["loaded_on"] = params["fid"]
+                db["baggage"][params["bid"]]["zone"] = "redirected"
+                return Result([{"id": params["bid"]}])
             return Result()
         if "CREATE (e:BaggageOutbox" in query:
             for row in params["rows"]:
@@ -82,7 +114,10 @@ class Tx:
 
 class Driver:
     def __init__(self):
-        self.db = {"baggage": {}, "inbox": set(), "outbox": {}, "revision": 0}
+        self.db = {
+            "baggage": {}, "inbox": set(), "outbox": {}, "revision": 0,
+            "last_tick": None, "receipts": {}, "loaded_on": {}, "flights": set(),
+        }
         self.fail_on = None
 
     def session(self):

@@ -47,6 +47,22 @@ def set_bulk_mode(enabled: bool) -> None:
     _bulk_mode = enabled
 
 
+def tick_emit_decision() -> bool:
+    """Whether one per-passenger tick fact should be materialised now (G1-a).
+
+    Honours the same BULK / tick-batch sampling as ``emit_passenger_status_changed``
+    so the atomic tick path stages only the fraction of ``PassengerStatusChanged``
+    facts that the direct-emit path used to produce. The authoritative domain
+    write is always applied in full; the per-passenger event stream stays sampled
+    to keep Kafka throughput manageable during fast-forward.
+    """
+    if _bulk_mode:
+        return False
+    if _tick_batch_mode and random.random() > _TICK_EMIT_SAMPLE_RATE:
+        return False
+    return True
+
+
 def _produce_event(
     event_type: str,
     sim_time: datetime,
@@ -86,6 +102,49 @@ def build_passenger_status_changed_fact(
         "at": sim_time.isoformat(),
     }
     return build_envelope("PassengerStatusChanged", sim_time, payload, PRODUCER_NAME)
+
+
+def build_passenger_alert_fact(
+    alert_type: str,
+    message: str,
+    sim_time: datetime,
+    passenger_id: str | None = None,
+    flight_id: str | None = None,
+    urgency: str = "info",
+) -> dict:
+    """Build a full PassengerAlert envelope for the transactional outbox (G1-c).
+
+    Same payload shape as ``emit_passenger_alert`` but produces no Kafka message —
+    the envelope is staged in ``PassengerOutbox`` alongside the domain
+    ``PassengerStatusChanged`` fact so that the state change and its alert commit
+    (or roll back) together, then deliver via ``_common.outbox.run``.
+    """
+    payload = {
+        "type": alert_type,
+        "message": message,
+        "passenger_id": passenger_id,
+        "flight_id": flight_id,
+        "urgency": urgency,
+        "at": sim_time.isoformat(),
+    }
+    return build_envelope("PassengerAlert", sim_time, payload, PRODUCER_NAME)
+
+
+def build_command_receipt_fact(
+    event_type: str,
+    sim_time: datetime,
+    payload: dict,
+) -> dict:
+    """Build an owner command-receipt envelope for the outbox (G1-b).
+
+    ``event_type`` is ``CommandExecuted`` or ``CommandRejected``. The receipt
+    fact is staged in the same transaction as the command's domain write and
+    domain fact, so an owner receipt is never emitted without the state change
+    it describes (and vice versa). The envelope gets a fresh ``event_id`` on
+    every call; downstream consumers dedup on the stable ``command_id`` carried
+    in the payload, so re-emitting on redelivery is safe.
+    """
+    return build_envelope(event_type, sim_time, dict(payload), PRODUCER_NAME)
 
 
 def publish_confirmed(document: dict) -> None:

@@ -14,7 +14,7 @@ from typing import Callable, Awaitable
 from _common import kafka_runtime
 from _common import outbox as outbox_common
 from _common.idempotency import IdempotencyTracker
-from _common.commands import CommandReceipts
+from _common.command_store import load_receipt_in_tx, save_receipt_in_tx
 from _common.consumer_health import ConsumerHealthTracker
 from _common.airport_config import load_airport_runtime_config
 
@@ -23,16 +23,16 @@ from confluent_kafka import Consumer
 from db.neo4j import (
     get_active_flights,
     get_active_incident_impacts,
-    update_flight_status,
     update_flight_status_in_tx,
     assign_flight_to_gate_in_tx,
+    set_manual_hold_in_tx,
     next_outbox_revision,
     get_driver,
     get_boarded_percentage,
-    assign_flight_to_runway,
+    assign_flight_to_runway_in_tx,
     is_gate_occupied,
     get_flight_by_id,
-    release_gate,
+    release_gate_in_tx,
     get_open_runway,
     get_paired_flight,
     seed_ground_vehicles,
@@ -41,13 +41,9 @@ from kafka.producer import (
     build_fact,
     emit_flight_status_changed,
     emit_flight_gate_assigned,
-    emit_flight_runway_assigned,
-    emit_flight_cancelled,
     emit_turnaround_task_changed,
     emit_bulk_state_snapshot,
-    emit_flight_ctot_assigned,
     emit_minimum_fuel_warning,
-    emit_flight_diverted,
     emit_ground_vehicle_dispatched,
     emit_ground_vehicle_returned,
 )
@@ -397,96 +393,178 @@ async def _dispatch(envelope: dict) -> None:
 
 
 
-_command_receipts = CommandReceipts()
+# Bounded process-local fast dedup. The durable guard is the CommandReceipt
+# node read via load_receipt_in_tx inside the command transaction; this cache
+# only spares a re-read on a hot in-process redelivery.
+_command_results: dict[str, tuple[str, dict]] = {}
 
 
 async def _handle_command(envelope: dict) -> None:
-    from kafka.producer import _produce_event
-    from db.neo4j import get_driver
-    from _common.command_store import load_receipt, save_receipt
+    """Execute an operator/agent command from ``flights.commands`` atomically (G1-b).
 
-    await _command_receipts.handle(
-        envelope, _state.sim_time, _execute_command,
-        lambda kind, clock, payload, key: _produce_event(kind, clock, payload, key=key),
-        load=lambda key: load_receipt(get_driver(), key),
-        save=lambda key, receipt: save_receipt(get_driver(), key, receipt),
-    )
+    One ``session.execute_write`` per command covers: the durable redelivery
+    check (``load_receipt_in_tx`` on ``command_id``), the domain write(s), the
+    domain fact(s) staged to the outbox, the command receipt node
+    (``save_receipt_in_tx``) and the ``CommandExecuted``/``CommandRejected``
+    receipt fact staged to the outbox — all commit together or none do. A
+    redelivered command finds the receipt and re-mutates nothing; the receipt
+    fact is delivered by the outbox (at-least-once, stable id), so no separate
+    re-emit is needed. In-memory caches / WS / metrics run only post-commit.
+    """
+    command_id = envelope.get("command_id")
+    if not isinstance(command_id, str) or not command_id:
+        raise ValueError("command_id is required")
+    sim_time = _state.sim_time
+    if sim_time is None:
+        raise RuntimeError("Simulation clock not available")
+
+    # Hot-path dedup: already committed in this process → outbox owns delivery.
+    if command_id in _command_results:
+        return
+
+    command_type = envelope.get("command_type")
+    # Validate + read + check preconditions OUTSIDE the write transaction.
+    run = await _plan_command(envelope, sim_time)
+    receipt_event_id = f"cmd:{command_id}"
+
+    async def apply(tx):
+        existing = await load_receipt_in_tx(tx, command_id)
+        if existing is not None:
+            # Durable redelivery dedup: do not re-mutate or re-stage.
+            return existing, None
+        reason, domain_facts, post = await run(tx)
+        receipt = (
+            "CommandRejected" if reason else "CommandExecuted",
+            {"command_id": command_id, "command_type": command_type, "reason": reason},
+        )
+        receipt_fact = {"id": receipt_event_id, "document": build_fact(
+            receipt_event_id, receipt[0], sim_time, receipt[1])}
+        revision = await next_outbox_revision(tx)
+        await save_receipt_in_tx(tx, command_id, receipt)
+        await outbox_common.stage_outbox(
+            tx, "FlightOutbox", [*domain_facts, receipt_fact], revision,
+        )
+        return receipt, post
+
+    async with get_driver().session() as session:
+        receipt, post = await session.execute_write(apply)
+
+    _command_results[command_id] = receipt
+    if len(_command_results) > 10_000:
+        del _command_results[next(iter(_command_results))]
+    if post is not None:
+        post()
 
 
-async def _execute_command(envelope: dict) -> str | None:
-    """Execute an operator/agent command from ``flights.commands``.
+def _reject(command_type, reason: str, log: str | None = None):
+    """A planned command that only records a rejection receipt (no domain write)."""
+    async def run(tx):
+        if log:
+            logger.warning(log)
 
-    Validates and dedupes the command, loads the target flight, enforces
-    preconditions, then executes via the existing hold/reassign executors — each
-    of which emits the normal fact on ``flights.events``. A rejected command
-    produces no fact.
+        def post():
+            m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
+        return reason, [], post
+    return run
+
+
+async def _plan_command(envelope: dict, sim_time: datetime):
+    """Validate + read + build the in-transaction executor for a command.
+
+    Returns an async ``run(tx) -> (reason, domain_facts, post_commit)``: on the
+    accepted path it performs the domain write(s) on ``tx`` and returns the
+    staged domain facts; on the rejected path it writes nothing and returns a
+    reason string. ``post_commit`` applies in-memory/WS/metric side effects.
     """
     command_type = envelope.get("command_type")
     cmd, error = parse_command(command_type, envelope.get("payload"))
     if error is not None:
-        m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
-        logger.warning("Rejected command %s: %s", command_type, error)
-        return error
+        return _reject(command_type, error, f"Rejected command {command_type}: {error}")
 
-    # Commands carry no sim time — stamp resulting facts with the current clock.
-    sim_time = _state.sim_time
-    if sim_time is None:
-        m_commands.labels(command_type=command_type, outcome="rejected").inc()
-        logger.warning("Rejected command %s: no sim_time yet (clock not started)", command_type)
-        return "Simulation clock not available"
+    if isinstance(cmd, (HoldFlight, ReassignGate)):
+        flight = await get_flight_by_id(cmd.flight_id)
+        if not flight:
+            return _reject(command_type, "Flight not found",
+                           f"Rejected command {command_type}: flight {cmd.flight_id} not found")
 
-    flight = await get_flight_by_id(cmd.flight_id)
-    if not flight:
-        m_commands.labels(command_type=command_type, outcome="rejected").inc()
-        logger.warning("Rejected command %s: flight %s not found", command_type, cmd.flight_id)
-        return "Flight not found"
+        if isinstance(cmd, HoldFlight):
+            precondition_error = validate_hold_precondition(flight.get("status", ""))
+            if precondition_error is not None:
+                return _reject(command_type, precondition_error,
+                               f"Rejected HoldFlight {cmd.flight_id}: {precondition_error}")
 
-    if isinstance(cmd, HoldFlight):
-        precondition_error = validate_hold_precondition(flight.get("status", ""))
-        if precondition_error is not None:
-            m_commands.labels(command_type=command_type, outcome="rejected").inc()
-            logger.warning("Rejected HoldFlight %s: %s", cmd.flight_id, precondition_error)
-            return precondition_error
-        updated = await hold_flight(cmd.flight_id, cmd.reason, cmd.duration_min, sim_time)
-        if updated is None:
-            return "Flight hold could not be saved"
-        m_commands.labels(command_type=command_type, outcome="accepted").inc()
-        logger.info("Executed HoldFlight for %s (%s, %dmin)", cmd.flight_id, cmd.reason, cmd.duration_min)
+            async def run(tx):
+                updated, facts = await _apply_hold_in_tx(
+                    tx, flight, cmd.reason, cmd.duration_min, sim_time)
+                if updated is None:
+                    return "Flight hold could not be saved", [], lambda: (
+                        m_commands.labels(command_type=command_type, outcome="rejected").inc())
 
-    elif isinstance(cmd, ReassignGate):
-        ok = await reassign_gate(cmd.flight_id, cmd.gate_id, sim_time)
-        outcome = "accepted" if ok else "rejected"
-        m_commands.labels(command_type=command_type, outcome=outcome).inc()
-        logger.info("ReassignGate for %s → gate %s: %s", cmd.flight_id, cmd.gate_id, outcome)
-        if not ok:
-            return "Gate reassignment rejected"
+                def post():
+                    _hold_post_commit(flight, cmd.reason, cmd.duration_min, updated, sim_time)
+                    m_commands.labels(command_type=command_type, outcome="accepted").inc()
+                    logger.info("Executed HoldFlight for %s (%s, %dmin)",
+                                cmd.flight_id, cmd.reason, cmd.duration_min)
+                return None, facts, post
+            return run
 
-    elif isinstance(cmd, GroundDelayProgram):
-        held, skipped = 0, 0
+        # ReassignGate
+        if await is_gate_occupied(cmd.gate_id, exclude_flight_id=cmd.flight_id):
+            return _reject(command_type, "Gate reassignment rejected",
+                           f"ReassignGate {cmd.flight_id} → {cmd.gate_id}: gate occupied")
+        flight_number = flight.get("flight_number", "")
+
+        async def run(tx):
+            ok, facts = await _apply_reassign_in_tx(
+                tx, cmd.flight_id, cmd.gate_id, sim_time, flight_number)
+            if not ok:
+                return "Gate reassignment rejected", [], lambda: (
+                    m_commands.labels(command_type=command_type, outcome="rejected").inc())
+
+            def post():
+                _reassign_post_commit(cmd.flight_id, flight_number, cmd.gate_id, sim_time)
+                m_commands.labels(command_type=command_type, outcome="accepted").inc()
+                logger.info("ReassignGate for %s → gate %s: accepted", cmd.flight_id, cmd.gate_id)
+            return None, facts, post
+        return run
+
+    if isinstance(cmd, GroundDelayProgram):
+        eligible: list[dict] = []
+        skipped = 0
         for fid in cmd.flight_ids:
             flight = await get_flight_by_id(fid)
-            if flight is None:
+            if flight is None or validate_hold_precondition(flight.get("status", "")):
                 skipped += 1
                 continue
-            precondition_error = validate_hold_precondition(flight.get("status", ""))
-            if precondition_error:
-                skipped += 1
-                continue
-            updated = await hold_flight(fid, cmd.reason, cmd.stagger_minutes, sim_time)
-            if updated is not None:
-                held += 1
-            else:
-                skipped += 1
-        if held == 0:
-            m_commands.labels(command_type=command_type, outcome="rejected").inc()
-            return f"GroundDelayProgram: no flights held ({skipped} skipped)"
-        m_commands.labels(command_type=command_type, outcome="accepted").inc()
-        logger.info(
-            "GroundDelayProgram: held %d flights, skipped %d (stagger=%dmin)",
-            held, skipped, cmd.stagger_minutes,
-        )
+            eligible.append(flight)
 
-    return None
+        async def run(tx):
+            held_facts: list[dict] = []
+            held_posts: list = []
+            held = 0
+            for flight in eligible:
+                updated, facts = await _apply_hold_in_tx(
+                    tx, flight, cmd.reason, cmd.stagger_minutes, sim_time)
+                if updated is None:
+                    continue
+                held += 1
+                held_facts.extend(facts)
+                held_posts.append((flight, updated))
+            if held == 0:
+                return (f"GroundDelayProgram: no flights held ({skipped} skipped)", [],
+                        lambda: m_commands.labels(command_type=command_type, outcome="rejected").inc())
+
+            def post():
+                for flight, updated in held_posts:
+                    _hold_post_commit(flight, cmd.reason, cmd.stagger_minutes, updated, sim_time)
+                m_commands.labels(command_type=command_type, outcome="accepted").inc()
+                logger.info("GroundDelayProgram: held %d flights, skipped %d (stagger=%dmin)",
+                            held, skipped + (len(eligible) - held), cmd.stagger_minutes)
+            return None, held_facts, post
+        return run
+
+    # Unknown command shape — reject without mutating.
+    return _reject(command_type, "Unsupported command")
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Process a SimClockTick — advance all active flights through the FSM."""
@@ -504,30 +582,37 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     # 1. Get all active flights
     flights = await get_active_flights(sim_time)
 
-    # 2. Assign runway slots from the queue
+    # 2. Assign runway slots from the queue. G1: each USES_RUNWAY write + its
+    #    FlightRunwayAssigned fact commit atomically (durable inbox dedup +
+    #    staged outbox); the in-memory runway_id is refreshed after commit.
     runway_assignments = _state.runway_queue.assign_slots(sim_time)
     for assignment in runway_assignments:
         runway_id = await get_open_runway(ils_required=_state.runway_queue.ils_required)
-        if runway_id:
-            await assign_flight_to_runway(
-                assignment["flight_id"],
-                runway_id,
-                assignment["operation"],
-                sim_time,
-            )
-            # Find flight info for event
-            for f in flights:
-                if f["id"] == assignment["flight_id"]:
-                    if not is_bulk:
-                        emit_flight_runway_assigned(
-                            flight_id=f["id"],
-                            flight_number=f["flight_number"],
-                            runway_id=runway_id,
-                            operation=assignment["operation"],
-                            sim_time=sim_time,
-                        )
-                    f["runway_id"] = runway_id
-                    break
+        if not runway_id:
+            continue
+        assign_flight_id = assignment["flight_id"]
+        operation = assignment["operation"]
+        # Find flight info for the event payload.
+        matched = next((f for f in flights if f["id"] == assign_flight_id), None)
+        flight_number = matched["flight_number"] if matched else ""
+        sim_time_iso = sim_time.isoformat()
+        event_id = f"rwy:{assign_flight_id}:{runway_id}:{operation}:{sim_time_iso}"
+        facts: list[dict] = []
+        if not is_bulk:
+            facts = [{"id": event_id, "document": build_fact(
+                event_id, "FlightRunwayAssigned", sim_time, {
+                    "flight_id": assign_flight_id,
+                    "flight_number": flight_number,
+                    "runway_id": runway_id,
+                    "operation": operation,
+                })}]
+
+        async def _assign_runway(tx, _fid=assign_flight_id, _rw=runway_id, _op=operation):
+            await assign_flight_to_runway_in_tx(tx, _fid, _rw, _op, sim_time)
+
+        await _commit_flight_writes(event_id, sim_time, facts, [_assign_runway])
+        if matched is not None:
+            matched["runway_id"] = runway_id
 
     # 3. Process each flight through the FSM
     for flight in flights:
@@ -1009,98 +1094,139 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
     if (current_status == "approach" and direction == "arrival"
             and new_status != "landed"):
         if _draw_diversion(flight_id):
-            # Divert the flight — it never arrives at KART
-            await update_flight_status(flight_id, "diverted", sim_time,
-                                       delay_reason="diversion")
+            # Divert the flight — it never arrives at KART. G1: the 'diverted'
+            # status write + FlightDiverted + FlightStatusChanged facts commit
+            # atomically (durable inbox dedup + staged outbox) instead of a
+            # direct update-then-emit. In-memory queue/holding cleanup runs only
+            # after commit, and only when newly applied.
+            sim_time_iso = sim_time.isoformat()
+            event_id = f"div:{flight_id}:{sim_time_iso}"
+            reason = ("weather_below_minimums"
+                      if _state.runway_queue.weather_category in ("LIFR", "IMC")
+                      else "medical_emergency")
+            facts: list[dict] = []
             if not is_bulk:
-                emit_flight_diverted(
-                    flight_id=flight_id,
-                    flight_number=flight["flight_number"],
-                    reason="weather_below_minimums" if _state.runway_queue.weather_category in ("LIFR", "IMC") else "medical_emergency",
-                    sim_time=sim_time,
+                diverted_id = event_id
+                fsc_id = f"fsc:{flight_id}:{current_status}:diverted:{sim_time_iso}"
+                facts = [
+                    {"id": diverted_id, "document": build_fact(
+                        diverted_id, "FlightDiverted", sim_time, {
+                            "flight_id": flight_id,
+                            "flight_number": flight["flight_number"],
+                            "reason": reason,
+                        })},
+                    {"id": fsc_id, "document": build_fact(
+                        fsc_id, "FlightStatusChanged", sim_time, {
+                            "flight_id": flight_id,
+                            "flight_number": flight["flight_number"],
+                            "previous_status": current_status,
+                            "new_status": "diverted",
+                            "gate_id": flight.get("gate_id"),
+                            "runway_id": flight.get("runway_id"),
+                            "delay_minutes": flight.get("delay_minutes", 0),
+                            "reason": "diverted",
+                            "direction": direction,
+                            "destination_iata": flight.get("destination_iata"),
+                        })},
+                ]
+
+            async def _divert(tx, _fid=flight_id):
+                await update_flight_status_in_tx(
+                    tx, _fid, "diverted", delay_reason="diversion",
                 )
-                emit_flight_status_changed(
-                    flight_id=flight_id,
-                    flight_number=flight["flight_number"],
-                    previous_status=current_status,
-                    new_status="diverted",
-                    sim_time=sim_time,
-                    delay_minutes=flight.get("delay_minutes", 0),
-                    reason="diverted",
-                    direction=direction,
-                    destination_iata=flight.get("destination_iata"),
-                )
-            _state.runway_queue.remove(flight_id)
-            _state.holding_minutes.pop(flight_id, None)
-            logger.info("Flight %s DIVERTED", flight["flight_number"])
+
+            processed = await _commit_flight_writes(
+                event_id, sim_time, facts, [_divert],
+            )
+            if processed:
+                _state.runway_queue.remove(flight_id)
+                _state.holding_minutes.pop(flight_id, None)
+                logger.info("Flight %s DIVERTED", flight["flight_number"])
             return  # skip normal transition
 
     # P1-2-1: Crew readiness delay — 5% chance at boarding → departed
     if new_status == "departed" and direction == "departure":
         crew_delay = _draw_crew_delay(flight_id)
         if crew_delay > 0:
-            # Block the departure and add the delay
+            # Block the departure and add the delay. G1: the single 'boarding'
+            # re-write (with the pushed estimated_time) + FlightStatusChanged
+            # fact commit atomically, replacing two update_flight_status calls
+            # and a direct emit.
             current_delay = flight.get("delay_minutes", 0) or 0
             new_delay = current_delay + crew_delay
-            await update_flight_status(
-                flight_id, "boarding", sim_time,
-                delay_minutes=new_delay,
-                delay_reason="crew_readiness",
-            )
-            # Push estimated time
             est = flight.get("estimated_time")
+            new_est_str = None
             if est:
                 try:
-                    new_est = datetime.fromisoformat(str(est)) + timedelta(minutes=crew_delay)
-                    await update_flight_status(
-                        flight_id, "boarding", sim_time,
-                        delay_minutes=new_delay,
-                        delay_reason="crew_readiness",
-                        estimated_time=new_est.isoformat(),
-                    )
+                    new_est_str = (datetime.fromisoformat(str(est))
+                                   + timedelta(minutes=crew_delay)).isoformat()
                 except (ValueError, TypeError):
                     pass
+            sim_time_iso = sim_time.isoformat()
+            event_id = f"crew:{flight_id}:{sim_time_iso}"
+            facts: list[dict] = []
             if not is_bulk:
-                emit_flight_status_changed(
-                    flight_id=flight_id,
-                    flight_number=flight["flight_number"],
-                    previous_status="boarding",
-                    new_status="boarding",
-                    sim_time=sim_time,
-                    delay_minutes=new_delay,
-                    reason="crew_readiness",
-                    direction=direction,
-                    destination_iata=flight.get("destination_iata"),
+                fsc_id = f"fsc:{flight_id}:boarding:boarding:crew:{sim_time_iso}"
+                facts = [{"id": fsc_id, "document": build_fact(
+                    fsc_id, "FlightStatusChanged", sim_time, {
+                        "flight_id": flight_id,
+                        "flight_number": flight["flight_number"],
+                        "previous_status": "boarding",
+                        "new_status": "boarding",
+                        "gate_id": flight.get("gate_id"),
+                        "runway_id": flight.get("runway_id"),
+                        "delay_minutes": new_delay,
+                        "reason": "crew_readiness",
+                        "direction": direction,
+                        "destination_iata": flight.get("destination_iata"),
+                    })}]
+
+            async def _crew_delay(tx, _fid=flight_id, _d=new_delay, _est=new_est_str):
+                await update_flight_status_in_tx(
+                    tx, _fid, "boarding",
+                    delay_minutes=_d, delay_reason="crew_readiness",
+                    estimated_time=_est,
                 )
+
+            await _commit_flight_writes(event_id, sim_time, facts, [_crew_delay])
             new_status = None  # suppress the departed transition this tick
 
     # P1-2-2: CTOT slot allocation — 10% of departures during peak get a CTOT delay
     if new_status == "departed" and direction == "departure":
         ctot_delay = _draw_ctot(flight_id, sim_time)
         if ctot_delay > 0:
+            # G1: the 'boarding' re-write (delay + pushed estimated_time) and
+            # the FlightCTOTAssigned fact commit atomically (durable inbox dedup
+            # + staged outbox), replacing update-then-emit.
             current_delay = flight.get("delay_minutes", 0) or 0
             new_delay = current_delay + ctot_delay
             est = flight.get("estimated_time")
             new_est_str = None
             if est:
                 try:
-                    new_est = datetime.fromisoformat(str(est)) + timedelta(minutes=ctot_delay)
-                    new_est_str = new_est.isoformat()
+                    new_est_str = (datetime.fromisoformat(str(est))
+                                   + timedelta(minutes=ctot_delay)).isoformat()
                 except (ValueError, TypeError):
                     pass
-            await update_flight_status(
-                flight_id, "boarding", sim_time,
-                delay_minutes=new_delay,
-                delay_reason="ctot_slot",
-                estimated_time=new_est_str,
-            )
+            sim_time_iso = sim_time.isoformat()
+            event_id = f"ctot:{flight_id}:{sim_time_iso}"
+            facts: list[dict] = []
             if not is_bulk:
-                emit_flight_ctot_assigned(
-                    flight_id=flight_id,
-                    flight_number=flight["flight_number"],
-                    ctot_delay_minutes=ctot_delay,
-                    sim_time=sim_time,
+                facts = [{"id": event_id, "document": build_fact(
+                    event_id, "FlightCTOTAssigned", sim_time, {
+                        "flight_id": flight_id,
+                        "flight_number": flight["flight_number"],
+                        "ctot_delay_minutes": ctot_delay,
+                    })}]
+
+            async def _ctot(tx, _fid=flight_id, _d=new_delay, _est=new_est_str):
+                await update_flight_status_in_tx(
+                    tx, _fid, "boarding",
+                    delay_minutes=_d, delay_reason="ctot_slot",
+                    estimated_time=_est,
                 )
+
+            await _commit_flight_writes(event_id, sim_time, facts, [_ctot])
             new_status = None  # suppress the departed transition this tick
 
     if new_status is None:
@@ -1122,11 +1248,18 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
         )
         if update is not None:
             delay, reason = update
-            await update_flight_status(
-                flight_id, "boarding", sim_time,
-                delay_minutes=delay,
-                delay_reason=reason,
-            )
+            # G1: delay accumulation is a silent domain write (no fact), but it
+            # still commits through the atomic boundary so a redelivered tick is
+            # deduped on its deterministic id rather than re-adding the delay.
+            sim_time_iso = sim_time.isoformat()
+            event_id = f"bdelay:{flight_id}:{reason}:{sim_time_iso}"
+
+            async def _accumulate(tx, _fid=flight_id, _d=delay, _r=reason):
+                await update_flight_status_in_tx(
+                    tx, _fid, "boarding", delay_minutes=_d, delay_reason=_r,
+                )
+
+            await _commit_flight_writes(event_id, sim_time, [], [_accumulate])
         return
 
     # Execute the transition
@@ -1140,14 +1273,18 @@ async def _commit_transition(
     sim_time: datetime,
     update_kwargs: dict,
     delay_minutes: int,
+    extra_writes: list | None = None,
+    extra_facts: list[dict] | None = None,
 ) -> bool:
     """Atomically commit a status transition + its FlightStatusChanged fact (G1).
 
     Within ONE ``session.execute_write`` managed transaction: durable inbox
-    dedup, the status domain write, the inbox marker, and the staged
-    FlightStatusChanged outbox fact — all commit together or none do. The
-    background outbox loop later delivers the fact to ``flights.events`` with a
-    stable event_id (at-least-once, stable IDs). Returns True when newly
+    dedup, the status domain write, any ``extra_writes`` (async callables taking
+    the tx — e.g. a gate release folded in for cancellation/departure), the
+    inbox marker, and the staged FlightStatusChanged outbox fact plus any
+    ``extra_facts`` (e.g. FlightCancelled) — all commit together or none do. The
+    background outbox loop later delivers the facts to ``flights.events`` with
+    stable event_ids (at-least-once, stable IDs). Returns True when newly
     applied, False when this exact transition was already committed (replay),
     in which case the caller must not re-run its in-memory side effects.
     """
@@ -1170,7 +1307,8 @@ async def _commit_transition(
         "destination_iata": flight.get("destination_iata"),
     }
     fact = build_fact(event_id, "FlightStatusChanged", sim_time, payload)
-    facts = [{"id": event_id, "document": fact}]
+    facts = [{"id": event_id, "document": fact}, *(extra_facts or [])]
+    writes = list(extra_writes or [])
 
     async def apply(tx) -> bool:
         if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
@@ -1183,6 +1321,42 @@ async def _commit_transition(
             estimated_time=update_kwargs.get("estimated_time"),
             actual_time=update_kwargs.get("actual_time"),
         )
+        for write in writes:
+            await write(tx)
+        await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
+        await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
+        return True
+
+    async with get_driver().session() as session:
+        return await session.execute_write(apply)
+
+
+async def _commit_flight_writes(
+    event_id: str,
+    sim_time: datetime,
+    facts: list[dict],
+    writes: list,
+) -> bool:
+    """Atomically commit arbitrary flight domain writes + staged facts (G1).
+
+    Generalises ``_commit_transition`` for the discrete tick-driven handlers
+    (diversion, CTOT, crew-readiness delay, runway assignment) that are not a
+    plain status transition: a durable ``FlightInbox`` dedup on ``event_id``,
+    the supplied ``writes`` (async callables taking the managed tx), the inbox
+    marker, and the staged outbox ``facts`` all commit together or none do.
+
+    ``facts`` may be empty (BULK mode suppresses emission) — the domain write
+    and inbox marker still commit so a redelivered tick is deduped. Returns True
+    when newly applied, False when ``event_id`` was already committed (replay).
+    """
+    sim_time_iso = sim_time.isoformat()
+
+    async def apply(tx) -> bool:
+        if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
+            return False
+        revision = await next_outbox_revision(tx)
+        for write in writes:
+            await write(tx)
         await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
         await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
         return True
@@ -1205,6 +1379,12 @@ async def _execute_transition(
 
     # Prepare update kwargs
     update_kwargs: dict = {}
+    # G1: writes to fold into the status transaction (e.g. gate release) and
+    # extra facts to stage with FlightStatusChanged (e.g. FlightCancelled).
+    # In-memory cleanup that must only run once, post-commit, is collected here.
+    tx_writes: list = []
+    extra_facts: list[dict] = []
+    post_commit_actions: list = []
 
     # Side effects by transition type
     match new_status:
@@ -1235,10 +1415,9 @@ async def _execute_transition(
                     from datetime import timedelta as td
                     arrival_est = sim_time + td(minutes=int(duration))
                     update_kwargs["arrival_estimated_time"] = arrival_est.isoformat()
-            # Release gate
-            released = await release_gate(flight_id)
-            if released:
-                logger.info("Gate %s released by departing flight %s", released, flight_number)
+            # G1: release the gate inside the status transaction so the
+            # ASSIGNED_TO delete commits atomically with the 'departed' write.
+            tx_writes.append(lambda tx, _fid=flight_id: release_gate_in_tx(tx, _fid))
 
         case "landed":
             update_kwargs["actual_time"] = sim_time.isoformat()
@@ -1272,19 +1451,23 @@ async def _execute_transition(
 
         case "cancelled":
             update_kwargs["delay_reason"] = "delay_exceeded_180min"
-            # Remove from runway queue
-            _state.runway_queue.remove(flight_id)
-            # Remove hold
-            _state.held_flights.pop(flight_id, None)
-            # Release gate
-            await release_gate(flight_id)
-            # Emit cancellation event
-            emit_flight_cancelled(
-                flight_id=flight_id,
-                flight_number=flight_number,
-                sim_time=sim_time,
-                reason="delay_exceeded_180min",
-            )
+            # G1: the gate release and the FlightCancelled fact commit atomically
+            # with the 'cancelled' status write + its FlightStatusChanged fact.
+            tx_writes.append(lambda tx, _fid=flight_id: release_gate_in_tx(tx, _fid))
+            cancelled_id = f"cancel:{flight_id}:{sim_time.isoformat()}"
+            extra_facts.append({"id": cancelled_id, "document": build_fact(
+                cancelled_id, "FlightCancelled", sim_time, {
+                    "flight_id": flight_id,
+                    "flight_number": flight_number,
+                    "reason": "delay_exceeded_180min",
+                })})
+
+            def _cancel_cleanup(_fid=flight_id):
+                # In-memory bookkeeping runs once, only after the commit.
+                _state.runway_queue.remove(_fid)
+                _state.held_flights.pop(_fid, None)
+
+            post_commit_actions.append(_cancel_cleanup)
 
         case "at_gate":
             # Arrival turnaround — create task-based turnaround plan
@@ -1338,17 +1521,18 @@ async def _execute_transition(
                             )
 
         case "arrived":
-            # Arrival fully completed — release gate and clean up turnaround
+            # Arrival fully completed — release gate and clean up turnaround.
             if direction == "arrival":
-                released = await release_gate(flight_id)
-                if released:
-                    logger.info("Gate %s released by arrived flight %s", released, flight_number)
-                # Clean up turnaround plan if complete
-                reg = flight.get("aircraft_registration", "")
-                if reg and reg in _state.turnaround_plans:
-                    plan = _state.turnaround_plans[reg]
-                    if plan.is_complete:
-                        del _state.turnaround_plans[reg]
+                # G1: fold the gate release into the status transaction.
+                tx_writes.append(lambda tx, _fid=flight_id: release_gate_in_tx(tx, _fid))
+
+                def _cleanup_turnaround(_reg=flight.get("aircraft_registration", "")):
+                    if _reg and _reg in _state.turnaround_plans:
+                        plan = _state.turnaround_plans[_reg]
+                        if plan.is_complete:
+                            del _state.turnaround_plans[_reg]
+
+                post_commit_actions.append(_cleanup_turnaround)
 
     # Atomic domain write + staged FlightStatusChanged fact (G1). The old direct
     # update_flight_status + emit_flight_status_changed pair is replaced by one
@@ -1357,6 +1541,7 @@ async def _execute_transition(
     # skip the in-memory/metric side effects so nothing is double-counted.
     processed = await _commit_transition(
         flight, previous_status, new_status, sim_time, update_kwargs, delay_minutes,
+        extra_writes=tx_writes, extra_facts=extra_facts,
     )
     if not processed:
         logger.debug(
@@ -1364,6 +1549,12 @@ async def _execute_transition(
             flight_number, previous_status, new_status,
         )
         return
+
+    # Deferred in-memory cleanup (runway queue / holds / turnaround plans): run
+    # once, only now that the transaction committed, so a deduped replay never
+    # re-applies them.
+    for action in post_commit_actions:
+        action()
 
     # Update Prometheus counters
     m_transitions.labels(from_status=previous_status, to_status=new_status).inc()
@@ -1506,92 +1697,176 @@ async def _on_baggage_flagged(payload: dict, sim_time: datetime) -> None:
 
 
 # --- Public API for manual hold/release ---
+#
+# The domain write + its FlightStatusChanged/FlightGateAssigned fact are made
+# atomic through shared ``_apply_*_in_tx`` helpers (G1-b). The REST executors
+# below run one ``execute_write`` each; the command path (``_plan_command``)
+# reuses the same helpers inside the command transaction so the domain write,
+# domain fact, command receipt and receipt fact all commit together.
 
-async def hold_flight(flight_id: str, reason: str, duration_min: int, sim_time: datetime) -> dict | None:
-    """Place a manual hold on a flight."""
-    from db.neo4j import get_flight_by_id, set_manual_hold
-    flight = await get_flight_by_id(flight_id)
-    if flight is None:
-        return None
+
+def _hold_fact(flight: dict, updated: dict, delay: int, reason: str, sim_time: datetime) -> dict:
+    fid = flight["id"]
+    event_id = f"hold:{fid}:{sim_time.isoformat()}"
+    return {"id": event_id, "document": build_fact(
+        event_id, "FlightStatusChanged", sim_time, {
+            "flight_id": fid,
+            "flight_number": updated.get("flight_number", ""),
+            "previous_status": flight.get("status", "boarding"),
+            "new_status": "delayed",
+            "gate_id": flight.get("gate_id"),
+            "runway_id": flight.get("runway_id"),
+            "delay_minutes": delay,
+            "reason": reason,
+            "direction": flight.get("direction"),
+            "destination_iata": flight.get("destination_iata"),
+        })}
+
+
+async def _apply_hold_in_tx(
+    tx, flight: dict, reason: str, duration_min: int, sim_time: datetime,
+) -> tuple[dict | None, list[dict]]:
+    """Manual-hold domain write on ``tx``; returns (updated_flight, facts)."""
     est = flight.get("estimated_time") or flight.get("scheduled_time")
     try:
         current_estimate = datetime.fromisoformat(str(est)) if est else sim_time
     except (ValueError, TypeError):
-        return None
+        return None, []
     estimated = (current_estimate + timedelta(minutes=duration_min)).isoformat()
     delay = int(flight.get("delay_minutes") or 0) + duration_min
-    updated = await set_manual_hold(flight_id, reason, duration_min, estimated, delay, sim_time)
+    updated = await set_manual_hold_in_tx(
+        tx, flight["id"], reason, duration_min, estimated, delay, sim_time)
+    if updated is None:
+        return None, []
+    return updated, [_hold_fact(flight, updated, delay, reason, sim_time)]
+
+
+def _hold_post_commit(flight: dict, reason: str, duration_min: int, updated: dict, sim_time: datetime) -> None:
+    """In-memory hold bookkeeping + WS broadcast — runs only after commit."""
+    fid = flight["id"]
+    _state.held_flights[fid] = {
+        "reason": reason, "expected_duration_minutes": duration_min,
+        "held_at": sim_time.isoformat(),
+    }
+    if _state.ws_broadcast:
+        try:
+            asyncio.create_task(_state.ws_broadcast({
+                "type": "FlightStatusChanged",
+                "flight_id": fid,
+                "flight_number": updated.get("flight_number", ""),
+                "previous_status": "boarding",
+                "new_status": "delayed",
+                "sim_time": sim_time.isoformat(),
+            }))
+        except Exception:
+            pass
+
+
+async def hold_flight(flight_id: str, reason: str, duration_min: int, sim_time: datetime) -> dict | None:
+    """Place a manual hold on a flight (REST path) — atomic write + staged fact."""
+    flight = await get_flight_by_id(flight_id)
+    if flight is None:
+        return None
+
+    async def apply(tx):
+        updated, facts = await _apply_hold_in_tx(tx, flight, reason, duration_min, sim_time)
+        if updated is None:
+            return None
+        revision = await next_outbox_revision(tx)
+        await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
+        return updated
+
+    async with get_driver().session() as session:
+        updated = await session.execute_write(apply)
     if updated:
-        _state.held_flights[flight_id] = {
-            "reason": reason, "expected_duration_minutes": duration_min,
-            "held_at": sim_time.isoformat(),
-        }
-        emit_flight_status_changed(
-            flight_id=flight_id,
-            flight_number=updated.get("flight_number", ""),
-            previous_status=flight.get("status", "boarding"),
-            new_status="delayed",
-            sim_time=sim_time,
-            delay_minutes=delay,
-            reason=reason,
-            direction=flight.get("direction"),
-            destination_iata=flight.get("destination_iata"),
-        )
-
-        # Broadcast to WebSocket
-        if _state.ws_broadcast:
-            try:
-                asyncio.create_task(_state.ws_broadcast({
-                    "type": "FlightStatusChanged",
-                    "flight_id": flight_id,
-                    "flight_number": updated.get("flight_number", ""),
-                    "previous_status": "boarding",
-                    "new_status": "delayed",
-                    "sim_time": sim_time.isoformat(),
-                }))
-            except Exception:
-                pass
-
+        _hold_post_commit(flight, reason, duration_min, updated, sim_time)
     return updated
 
 
 async def release_flight(flight_id: str, sim_time: datetime) -> dict | None:
-    """Release a manual hold on a flight."""
-    from db.neo4j import get_flight_by_id, update_flight_status
+    """Release a manual hold on a flight (REST path) — atomic write + staged fact."""
     flight = await get_flight_by_id(flight_id)
     if not flight:
         return None
 
     direction = flight.get("direction", "departure")
     new_status = "boarding" if direction == "departure" else "approach"
+    event_id = f"release:{flight_id}:{sim_time.isoformat()}"
+    fact = {"id": event_id, "document": build_fact(
+        event_id, "FlightStatusChanged", sim_time, {
+            "flight_id": flight_id,
+            "flight_number": flight.get("flight_number", ""),
+            "previous_status": "delayed",
+            "new_status": new_status,
+            "gate_id": flight.get("gate_id"),
+            "runway_id": flight.get("runway_id"),
+            "delay_minutes": flight.get("delay_minutes", 0),
+            "reason": None,
+            "direction": direction,
+            "destination_iata": flight.get("destination_iata"),
+        })}
 
-    updated = await update_flight_status(
-        flight_id=flight_id,
-        new_status=new_status,
-        sim_time=sim_time,
-    )
+    async def apply(tx):
+        updated = await update_flight_status_in_tx(tx, flight_id, new_status)
+        if updated is None:
+            return None
+        revision = await next_outbox_revision(tx)
+        await outbox_common.stage_outbox(tx, "FlightOutbox", [fact], revision)
+        return updated
 
+    async with get_driver().session() as session:
+        updated = await session.execute_write(apply)
     if updated:
         _state.held_flights.pop(flight_id, None)
-        emit_flight_status_changed(
-            flight_id=flight_id,
-            flight_number=flight.get("flight_number", ""),
-            previous_status="delayed",
-            new_status=new_status,
-            sim_time=sim_time,
-            direction=direction,
-            destination_iata=flight.get("destination_iata"),
-        )
-
     return updated
 
 
-async def reassign_gate(flight_id: str, gate_id: str, sim_time: datetime) -> dict | None:
-    """Reassign a flight to a specific gate.
+def _reassign_fact(flight_id: str, flight_number: str, gate_id: str, sim_time: datetime) -> tuple[str, dict]:
+    event_id = f"fga:{flight_id}:{gate_id}:{sim_time.isoformat()}:reassignment"
+    fact = {"id": event_id, "document": build_fact(event_id, "FlightGateAssigned", sim_time, {
+        "flight_id": flight_id,
+        "flight_number": flight_number,
+        "gate_id": gate_id,
+        "reason": "reassignment",
+    })}
+    return event_id, fact
 
-    Re-links the ``ASSIGNED_TO`` relationship and emits the existing
-    ``FlightGateAssigned`` fact. Returns the flight dict on success, or ``None``
-    if the flight doesn't exist or the target gate is occupied by another flight.
+
+async def _apply_reassign_in_tx(
+    tx, flight_id: str, gate_id: str, sim_time: datetime, flight_number: str,
+) -> tuple[bool, list[dict]]:
+    """Gate-reassignment domain write on ``tx``; returns (ok, facts).
+
+    ``ok`` is False when the gate was taken concurrently (the in-tx
+    ``assign_flight_to_gate_in_tx`` authority), in which case nothing is staged.
+    """
+    if not await assign_flight_to_gate_in_tx(tx, flight_id, gate_id, sim_time):
+        return False, []
+    _, fact = _reassign_fact(flight_id, flight_number, gate_id, sim_time)
+    return True, [fact]
+
+
+def _reassign_post_commit(flight_id: str, flight_number: str, gate_id: str, sim_time: datetime) -> None:
+    if _state.ws_broadcast:
+        try:
+            asyncio.create_task(_state.ws_broadcast({
+                "type": "FlightGateAssigned",
+                "flight_id": flight_id,
+                "flight_number": flight_number,
+                "gate_id": gate_id,
+                "sim_time": sim_time.isoformat(),
+            }))
+        except Exception:
+            pass
+
+
+async def reassign_gate(flight_id: str, gate_id: str, sim_time: datetime) -> dict | None:
+    """Reassign a flight to a specific gate (REST path).
+
+    Re-links the ``ASSIGNED_TO`` relationship and stages the
+    ``FlightGateAssigned`` fact atomically (inbox dedup + outbox). Returns the
+    flight dict on success, or ``None`` if the flight doesn't exist or the
+    target gate is occupied by another flight.
     """
     flight = await get_flight_by_id(flight_id)
     if not flight:
@@ -1604,26 +1879,17 @@ async def reassign_gate(flight_id: str, gate_id: str, sim_time: datetime) -> dic
 
     flight_number = flight.get("flight_number", "")
     sim_time_iso = sim_time.isoformat()
-    # G1: the ASSIGNED_TO write and the FlightGateAssigned fact commit atomically
-    # (inbox dedup + staged outbox), replacing the old assign-then-emit pair.
-    event_id = f"fga:{flight_id}:{gate_id}:{sim_time_iso}:reassignment"
-    fact = build_fact(event_id, "FlightGateAssigned", sim_time, {
-        "flight_id": flight_id,
-        "flight_number": flight_number,
-        "gate_id": gate_id,
-        "reason": "reassignment",
-    })
+    event_id, _ = _reassign_fact(flight_id, flight_number, gate_id, sim_time)
 
     async def apply(tx) -> str | None:
         if await outbox_common.inbox_seen(tx, "FlightInbox", event_id):
             return "duplicate"
-        if not await assign_flight_to_gate_in_tx(tx, flight_id, gate_id, sim_time):
+        ok, facts = await _apply_reassign_in_tx(tx, flight_id, gate_id, sim_time, flight_number)
+        if not ok:
             return None  # gate taken concurrently — nothing staged
         revision = await next_outbox_revision(tx)
         await outbox_common.mark_inbox(tx, "FlightInbox", event_id, sim_time_iso)
-        await outbox_common.stage_outbox(
-            tx, "FlightOutbox", [{"id": event_id, "document": fact}], revision,
-        )
+        await outbox_common.stage_outbox(tx, "FlightOutbox", facts, revision)
         return "ok"
 
     async with get_driver().session() as session:
@@ -1633,17 +1899,8 @@ async def reassign_gate(flight_id: str, gate_id: str, sim_time: datetime) -> dic
         return None
 
     # Broadcast to WebSocket only for a freshly applied reassignment.
-    if outcome == "ok" and _state.ws_broadcast:
-        try:
-            asyncio.create_task(_state.ws_broadcast({
-                "type": "FlightGateAssigned",
-                "flight_id": flight_id,
-                "flight_number": flight_number,
-                "gate_id": gate_id,
-                "sim_time": sim_time.isoformat(),
-            }))
-        except Exception:
-            pass
+    if outcome == "ok":
+        _reassign_post_commit(flight_id, flight_number, gate_id, sim_time)
 
     flight["gate_id"] = gate_id
     return flight

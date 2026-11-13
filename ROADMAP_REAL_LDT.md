@@ -25,7 +25,7 @@ coding alone (they need a decision from the owner or a running cluster).
 
 | ID | Pri | Title | Status | Note / blocked-on |
 |----|-----|-------|--------|-------------------|
-| G1  | P0   | Transactional domain-write + outbox/inbox boundaries | ⚠ partial (advanced 2026-11-13) | Shared `_common/outbox.py` + canonical status-change path now atomic in flight/pax/baggage (A40). Remainder: tick-FSM handlers + **command-receipt writes** still non-atomic; closure needs those + CI live-stack validation |
+| G1  | P0   | Transactional domain-write + outbox/inbox boundaries | ⚠ substantially closed (2026-11-13) | A40+A42: shared `_common/outbox.py`; discrete-event handlers (G1-c) + transactional command receipts (G1-b) atomic in all three owners; per-tick checkpoint atomicity (G1-a) **done for pax+baggage**, **partial for flight**. Remainder: flight tick-consolidation + `ensure_gate_assigned`/turnaround/ground-vehicle/fuel/bulk-snapshot, pax `OpenSecurityLane`; **CI live-stack validation** is the closure bar |
 | G2  | P0–P1| Shared financial rates + accounting perspective | ⚠ partial | **Blocked on owner decision:** airport-vs-airline accounting perspective (30% landing/compensation assumptions) |
 | G3  | P1   | Transport/logging/consumer consolidation into `_common` | ✅ closed | A27/A33/A34/A39 |
 | G4  | P1   | Unify the 3 what-if simulators → one effect core | ☐ open | Largest remaining coding item; needs design + historical validation |
@@ -1253,7 +1253,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 
 | ID / priority | Remaining gap and evidence | What completion actually requires |
 |---|---|---|
-| G1 / P0 — partial | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. A24 adds atomic analysis proposal decisions/attempts, lifecycle facts and command outbox entries. **A40 (2026-11-13)** adds the shared `_common/outbox.py` (generic `inbox_seen`/`mark_inbox`/`stage_outbox`/`run`) and makes the *canonical entity status-change path* atomic in all three remaining owners: flight (`_execute_transition` → `FlightStatusChanged` + `reassign_gate` → `FlightGateAssigned`), passenger (`_on_flight_status_changed` → deplaning/departed), baggage (flight-departed → bags `in_hold`). Each commits domain write + durable `*Inbox` dedup + `*Outbox` fact in one Neo4j transaction, with a lifespan-managed delivery loop publishing with stable IDs until broker ack. Container-free rollback/replay/ordering tests pass (31 new); full unit suite 1099 pass (6 pre-existing env-only failures). | **Still open:** the tick-driven FSM handlers (the bulk of pax/baggage/flight state changes), cancellation/rebook/connection/offload/alert paths, ground-vehicle/turnaround facts, and — explicitly — the **command-receipt writes** (`CommandReceipts`/`command_store`) remain write-then-direct-emit, non-atomic. Closure requires converting those remaining owner+receipt paths **and** CI live-stack (Neo4j+Kafka) validation; this local run could not exercise the container stack. Financial Kafka delivery remains at-least-once with stable IDs, not exactly once; simulation epochs and legacy repair are separate work. |
+| G1 / P0 — substantially closed (A42) | Flight/passenger/baggage domain writes, receipt writes and fact delivery remain separate. A20 makes cost/carbon records, relationships, checkpoint, durable input IDs and financial outbox atomic; offsets follow processing. Financial rollback/competing-worker/process-exit/Kafka-replay tests exercise Neo4j/Kafka. A24 adds atomic analysis proposal decisions/attempts, lifecycle facts and command outbox entries. **A40 (2026-11-13)** adds the shared `_common/outbox.py` (generic `inbox_seen`/`mark_inbox`/`stage_outbox`/`run`) and makes the *canonical entity status-change path* atomic in all three remaining owners: flight (`_execute_transition` → `FlightStatusChanged` + `reassign_gate` → `FlightGateAssigned`), passenger (`_on_flight_status_changed` → deplaning/departed), baggage (flight-departed → bags `in_hold`). Each commits domain write + durable `*Inbox` dedup + `*Outbox` fact in one Neo4j transaction, with a lifespan-managed delivery loop publishing with stable IDs until broker ack. Container-free rollback/replay/ordering tests pass (31 new); full unit suite 1099 pass (6 pre-existing env-only failures). **A42 (2026-11-13)** closes most of the remainder: discrete-event handlers (G1-c) atomic in all three owners; transactional command receipts (G1-b, via `_common/command_store.save_receipt_in_tx`); per-tick single-transaction checkpoint atomicity (G1-a) **done for passenger + baggage** (locked `PassengerRuntime`/`BaggageOutboxSeq`, `tick.sim_time ≤ last_tick` replay guard, compute-then-apply), **partial for flight** (per-transition atomicity; full tick-consolidation deferred). Integrated unit suite 1142 pass / 5 pre-existing env-only fail, zero regressions, ruff clean. | **Still open:** flight's full per-tick consolidation + its `ensure_gate_assigned`/turnaround/ground-vehicle/fuel-warning/bulk-snapshot emits; passenger `OpenSecurityLane`. Deliberate deviations: passenger per-tick facts stay sampled (domain write + checkpoint are atomic; event *stream* sampled to avoid fast-forward flooding); baggage/passenger deliver the receipt *fact* via `emit` (idempotent, dedup by `command_id`) rather than the outbox. **CI live-stack (Neo4j+Kafka) validation remains the closure bar** — crash-mid-tick resume, competing-worker fencing, Kafka replay could not run in this container-free environment. Financial Kafka delivery remains at-least-once with stable IDs, not exactly once. |
 | G2 / P0–P1 — partial | A22 replaces independently editable constants/fixtures with one shared default loader, cost-owned durable/versioned effective rates, atomic validated updates and frozen planning rate snapshots. First-delivery fee cost+revenue accounting remains mixed; planning still includes a 30% landing-cost assumption and 30% compensation claim assumption. | Agree airport/airline accounting perspective and migrate affected projections/calculation models. Rate unification alone does not close G2 or all of Phase 0. |
 | G3 / P1 — **closed** | A27 deletes all 28 local `_logging`/`_tracing`/`_profiler` copies; A33 deletes 7× `db/neo4j.py` driver-lifecycle boilerplate; A34 deletes 7× `kafka/producer.py` producer-lifecycle boilerplate; A39 adds `run_consumer_loop()` to `_common.kafka_runtime` and applies it to flight-service, incident-service, and weather-service, replacing ~45 lines of identical while-loop boilerplate per service. Baggage and passenger retain their deferred-command loops (command-before-clock recovery requires per-batch mutation). Analysis and cost retain manual-commit/retry loops. `kafka_runtime` moved to `TYPE_CHECKING` imports so it is importable without `confluent_kafka`. Consumer god-module pattern (domain logic + transport in one file) is intentionally left — domain inversion is a larger P2 refactor. | Invert application orchestration so domain handlers live in `application/` and consumers are thin adapters. |
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
@@ -2473,3 +2473,72 @@ venv), verified identical on a clean tree with this work stashed. Ruff clean on 
 **Not closed.** G1 remains open: the remaining owner handlers + command-receipt writes still need the
 transactional boundary, and the roadmap's completion bar (live Neo4j+Kafka validation) must run in CI
 — the container stack was not available in this local environment.
+
+
+## 34. A41 — G1 close-out design (decision log, 2026-11-13)
+
+Design agreed to fully close G1 (implementation follows; not yet done):
+
+- **Tick-driven FSM handlers → per-owner locked runtime checkpoint.** Each owner gets a locked
+  `<Owner>Runtime {id:'latest', last_tick_sim_time, revision}` node (flight already has `FlightRuntime`
+  from A40). **Decision: per-tick, per-owner atomicity** — one `execute_write` per tick runs *all* of
+  an owner's FSM advancement: lock runtime → early-return if `tick.sim_time ≤ last_tick` (idempotent
+  replay/crash-resume) → bulk-write all transitions → stage all facts to the outbox at the runtime
+  revision → advance `last_tick`. In-memory caches update only post-commit. Dedup is at tick
+  granularity (no per-transition inbox explosion); safe because tick processing is deterministic given
+  the checkpoint. This is cost-service's A20 `CostRuntime` mechanism generalized.
+- **Command-receipt writes → same transaction.** `_common/command_store.py` gains
+  `load_receipt_in_tx`/`save_receipt_in_tx`; each command executor runs one `execute_write` covering
+  `inbox(command_id)` + domain write + domain fact (outbox) + receipt node + receipt fact (outbox).
+  Covers flight hold/release/reassign, passenger rebook, baggage RedirectBaggage.
+- **Remaining discrete-event handlers** (flight diversion/CTOT/cancellation facts; passenger
+  cancellation/connection/baggage-claim; baggage at-gate/offload) each have a discrete input
+  `event_id`, so they convert with the plain A40 inbox+outbox pattern.
+- **Closure bar:** container-free rollback/replay/ordering tests per handler **plus** CI live-stack
+  (Neo4j+Kafka) validation — crash-mid-tick resume, competing-worker fencing, Kafka replay.
+
+
+## 35. A42 — G1 close-out: discrete + receipts + per-tick atomicity (2026-11-13)
+
+Implements the A41 design across the three owners (one agent per service). `_common/command_store.py`
+gains `load_receipt_in_tx`/`save_receipt_in_tx` (tx-scoped receipt read/write) so a command's domain
+write + receipt commit atomically.
+
+- **G1-c (discrete-event) — done, all three owners.** flight diversion/CTOT/cancellation (gate release
+  folded into the cancel tx); passenger `_on_flight_cancelled`/`_check_connections`/
+  `_on_baggage_status_changed` (alert facts staged alongside); baggage at-gate arrivals + cancellation
+  offload (durable `offload:{flight_id}` inbox key replacing the in-memory set).
+- **G1-b (transactional command receipts) — done, all three owners.** One `execute_write` covers
+  `load_receipt_in_tx(command_id)` → domain write → domain fact → `save_receipt_in_tx` → receipt.
+  flight: HoldFlight/ReassignGate/GDP + REST hold/release/reassign (replaced `CommandReceipts.handle`
+  with a bespoke atomic path). passenger: rebook. baggage: RedirectBaggage. Deviation: baggage +
+  passenger deliver the *receipt fact* via `CommandReceipts.handle`'s `emit` (idempotent re-emit hook,
+  dedup by `command_id`) rather than the outbox, to avoid double-delivery on first send.
+- **G1-a (per-tick, per-owner atomicity).** **passenger + baggage: done** — the whole tick's FSM
+  advancement commits in one `execute_write` against a locked runtime checkpoint
+  (`PassengerRuntime.last_tick_sim_time`; baggage reuses `BaggageOutboxSeq` + `last_tick_sim_time`),
+  with `tick.sim_time ≤ last_tick` early-return for replay/crash-resume and a compute-then-apply
+  structure (pure planners build the batch; caches/WS/metrics update only post-commit; baggage
+  snapshots+rolls back the conveyor). **flight: partial** — easy tick writes (runway/crew-delay/
+  boarding-delay) and departed/arrived gate releases are atomic per-transition, but the full
+  single-transaction `_on_clock_tick` consolidation with a `FlightRuntime.last_tick_sim_time` guard was
+  judged too invasive to finish safely and was stopped cleanly.
+
+**Deliberate deviations (honest).** (1) passenger per-tick per-passenger facts stay sampled
+(BULK/tick-batch ~2%) as before — the domain write + checkpoint are fully atomic, only the per-entity
+event *stream* is sampled, to avoid flooding the outbox during fast-forward. (2) receipt-fact-via-emit
+as above. (3) passenger `OpenSecurityLane` and flight `ensure_gate_assigned`/turnaround/ground-vehicle/
+fuel-warning/bulk-snapshot remain write-then-direct-emit.
+
+**Tests.** +49 container-free tests (`test_flight_outbox.py` extended; new `test_baggage_g1_closeout.py`
+×19, `test_passenger_g1_closeout.py` ×15; updated `test_owner_command_execution.py`,
+`test_baggage_batch_persistence.py`, `test_baggage_outbox.py`): per-path partial-write rollback, tick
+replay-noop / strict-increase checkpoint, command redelivery re-emits receipt without re-mutating,
+outbox ordering/ack. Integrated full unit suite: **1142 passed, 5 failed** — the 5 are pre-existing
+env-only (`pyarrow`/`fastparquet`, `scikit-learn`/`lightgbm`, `gymnasium`, `torch` absent in the local
+venv), verified identical on a clean tree; **zero regressions**. Ruff clean on all changed files.
+
+**Not closed.** G1 is substantially but not fully closed: flight's tick-consolidation + the enumerated
+flight/passenger leftovers remain, and the roadmap's closure bar — CI live-stack (Neo4j+Kafka)
+validation (crash-mid-tick resume, competing-worker fencing, Kafka replay) — has not run (no container
+stack in this environment).

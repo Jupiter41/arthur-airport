@@ -539,6 +539,15 @@ async def assign_flight_to_gate_in_tx(tx, flight_id: str, gate_id: str, sim_time
     return await result.single() is not None
 
 
+_RELEASE_GATE_QUERY = """
+    MATCH (f:Flight {id: $flight_id})-[r:ASSIGNED_TO]->(g:Gate)
+    SET f.gate_id = g.id
+    DELETE r
+    SET g.status = 'available'
+    RETURN g.id AS gate_id
+    """
+
+
 async def release_gate(flight_id: str) -> str | None:
     """Remove ASSIGNED_TO relationship when flight departs. Returns released gate_id.
 
@@ -546,17 +555,22 @@ async def release_gate(flight_id: str) -> str | None:
     visible in queries after the relationship is deleted.
     """
     driver = get_driver()
-    query = """
-    MATCH (f:Flight {id: $flight_id})-[r:ASSIGNED_TO]->(g:Gate)
-    SET f.gate_id = g.id
-    DELETE r
-    SET g.status = 'available'
-    RETURN g.id AS gate_id
-    """
     async with driver.session() as session:
-        result = await session.run(query, flight_id=flight_id)
+        result = await session.run(_RELEASE_GATE_QUERY, flight_id=flight_id)
         record = await result.single()
         return record["gate_id"] if record else None
+
+
+async def release_gate_in_tx(tx, flight_id: str) -> str | None:
+    """Gate release inside a caller-owned managed transaction (G1).
+
+    Identical Cypher to ``release_gate`` but runs on ``tx`` so the gate release
+    commits atomically with a status write (e.g. cancellation/departure) and the
+    staged outbox facts.
+    """
+    result = await tx.run(_RELEASE_GATE_QUERY, flight_id=flight_id)
+    record = await result.single()
+    return record["gate_id"] if record else None
 
 
 async def get_available_gate(
@@ -657,10 +671,7 @@ async def is_gate_occupied(gate_id: str, exclude_flight_id: str | None = None) -
 # Runway management
 # ---------------------------------------------------------------------------
 
-async def assign_flight_to_runway(flight_id: str, runway_id: str, operation: str, sim_time: datetime) -> None:
-    """Create USES_RUNWAY relationship between flight and runway."""
-    driver = get_driver()
-    query = """
+_ASSIGN_RUNWAY_QUERY = """
     MATCH (f:Flight {id: $flight_id})
     OPTIONAL MATCH (f)-[old:USES_RUNWAY]->(:Runway)
     DELETE old
@@ -670,14 +681,37 @@ async def assign_flight_to_runway(flight_id: str, runway_id: str, operation: str
     SET rel.operation = $operation,
         rel.at = $at
     """
-    async with driver.session() as session:
+
+
+async def assign_flight_to_runway(flight_id: str, runway_id: str, operation: str, sim_time: datetime) -> None:
+    """Create USES_RUNWAY relationship between flight and runway."""
+    async with get_driver().session() as session:
         await session.run(
-            query,
+            _ASSIGN_RUNWAY_QUERY,
             flight_id=flight_id,
             runway_id=runway_id,
             operation=operation,
             at=sim_time.isoformat(),
         )
+
+
+async def assign_flight_to_runway_in_tx(
+    tx, flight_id: str, runway_id: str, operation: str, sim_time: datetime
+) -> None:
+    """Runway domain write inside a caller-owned managed transaction (G1).
+
+    Identical Cypher to ``assign_flight_to_runway`` but runs on ``tx`` so the
+    USES_RUNWAY write commits atomically with the FlightInbox marker and the
+    staged FlightRunwayAssigned fact.
+    """
+    result = await tx.run(
+        _ASSIGN_RUNWAY_QUERY,
+        flight_id=flight_id,
+        runway_id=runway_id,
+        operation=operation,
+        at=sim_time.isoformat(),
+    )
+    await result.consume()
 
 
 async def get_all_runways() -> list[dict]:
@@ -892,22 +926,46 @@ async def update_ground_vehicle_status(
         await session.run(query, **params)
 
 
+_SET_MANUAL_HOLD_QUERY = (
+    "MATCH (f:Flight {id: $id}) "
+    "SET f.status = 'delayed', f.delay_reason = $reason, "
+    "f.delay_minutes = $delay, f.estimated_time = $estimated, "
+    "f.manual_hold_reason = $reason, f.manual_hold_duration = $duration, "
+    "f.manual_held_at = $held_at RETURN f {.*} AS flight"
+)
+
+
 async def set_manual_hold(
     flight_id: str, reason: str, duration: int, estimated_time: str,
     delay_minutes: int, sim_time: datetime,
 ) -> dict | None:
     async with get_driver().session() as session:
         result = await session.run(
-            "MATCH (f:Flight {id: $id}) "
-            "SET f.status = 'delayed', f.delay_reason = $reason, "
-            "f.delay_minutes = $delay, f.estimated_time = $estimated, "
-            "f.manual_hold_reason = $reason, f.manual_hold_duration = $duration, "
-            "f.manual_held_at = $held_at RETURN f {.*} AS flight",
+            _SET_MANUAL_HOLD_QUERY,
             id=flight_id, reason=reason, duration=duration, delay=delay_minutes,
             estimated=estimated_time, held_at=sim_time.isoformat(),
         )
         row = await result.single()
         return dict(row["flight"]) if row else None
+
+
+async def set_manual_hold_in_tx(
+    tx, flight_id: str, reason: str, duration: int, estimated_time: str,
+    delay_minutes: int, sim_time: datetime,
+) -> dict | None:
+    """Manual-hold domain write inside a caller-owned managed transaction (G1-b).
+
+    Identical Cypher to ``set_manual_hold`` but runs on ``tx`` so the hold write
+    commits atomically with the staged FlightStatusChanged fact and, on the
+    command path, the command receipt + CommandExecuted fact.
+    """
+    result = await tx.run(
+        _SET_MANUAL_HOLD_QUERY,
+        id=flight_id, reason=reason, duration=duration, delay=delay_minutes,
+        estimated=estimated_time, held_at=sim_time.isoformat(),
+    )
+    row = await result.single()
+    return dict(row["flight"]) if row else None
 
 
 async def get_manual_holds() -> dict[str, dict]:

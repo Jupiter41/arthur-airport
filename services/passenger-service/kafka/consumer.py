@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import random
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
 
@@ -24,25 +25,28 @@ from confluent_kafka import Consumer
 from db.neo4j import (
     get_passengers_by_status,
     get_passengers_by_flight,
-    update_passenger_status,
     bulk_update_status,
     bulk_set_dwell,
-    set_connection_risk,
     get_connecting_passengers,
     get_departure_flights_in_window,
     get_status_counts,
-    update_passenger_location,
     apply_status_change_atomic,
+    apply_changes_atomic,
+    apply_tick_atomic,
+    read_tick_checkpoint,
+    rebook_passengers_atomic,
 )
 from kafka.producer import (
-    emit_passenger_status_changed,
+    emit_passenger_status_changed,  # noqa: F401 — kept as a patchable seam for canonical-path tests
     build_passenger_status_changed_fact,
+    build_passenger_alert_fact,
     emit_passenger_alert,
     emit_congestion_detected,
     emit_security_queue_updated,
     emit_bulk_state_snapshot,
     set_tick_batch_mode,
     set_bulk_mode,
+    tick_emit_decision,
 )
 from ml.congestion import check_congestion
 from ml.features import build_features
@@ -571,7 +575,7 @@ async def _dispatch(envelope: dict) -> None:
         case "FlightGateAssigned":
             await _on_flight_gate_assigned(payload, sim_time)
         case "FlightCancelled":
-            await _on_flight_cancelled(payload, sim_time)
+            await _on_flight_cancelled(payload, sim_time, envelope.get("event_id", ""))
         case "IncidentCreated":
             await _on_incident_created(payload, sim_time)
         case "IncidentStatusChanged":
@@ -579,7 +583,7 @@ async def _dispatch(envelope: dict) -> None:
         case "WeatherStateChanged":
             await _on_weather_changed(payload, sim_time)
         case "BaggageStatusChanged":
-            await _on_baggage_status_changed(payload, sim_time)
+            await _on_baggage_status_changed(payload, sim_time, envelope.get("event_id", ""))
         case _:
             pass
 
@@ -593,12 +597,63 @@ async def _handle_command(envelope: dict) -> None:
     from db.neo4j import get_driver
     from _common.command_store import load_receipt, save_receipt
 
+    # G1-b: the RebookPassengers path commits the passenger status write, the
+    # domain PassengerStatusChanged facts, the receipt node and the owner receipt
+    # fact in ONE transaction (via rebook_passengers_atomic), with durable
+    # load_receipt_in_tx dedup. Other commands (OpenSecurityLane) keep the shared
+    # CommandReceipts.handle path (process-local dedup + direct receipt emit).
+    if envelope.get("command_type") == "RebookPassengers":
+        await _handle_rebook_command(envelope)
+        return
+
     await _command_receipts.handle(
         envelope, _state.sim_time, _execute_command,
         lambda kind, clock, payload, key: _produce_event(kind, clock, payload, key=key),
         load=lambda key: load_receipt(get_driver(), key),
         save=lambda key, receipt: save_receipt(get_driver(), key, receipt),
     )
+
+
+async def _handle_rebook_command(envelope: dict) -> None:
+    """Atomic RebookPassengers execution + owner receipt (G1-b).
+
+    Validates the envelope, then delegates the mutation + receipt + facts to
+    ``rebook_passengers_atomic`` (one ``execute_write``). A parse rejection has no
+    domain write, so it is reported directly. The domain and receipt facts are
+    delivered by the PassengerOutbox loop; redelivery re-emits the stored receipt
+    without re-mutating any passenger.
+    """
+    from kafka.producer import _produce_event
+
+    command_id = envelope.get("command_id")
+    if not isinstance(command_id, str) or not command_id:
+        raise ValueError("command_id is required")
+    if _state.sim_time is None:
+        raise RuntimeError("Simulation clock not available")
+
+    command_type = envelope.get("command_type")
+    cmd, error = parse_command(command_type, envelope.get("payload"))
+    if error is not None:
+        m_commands.labels(command_type=str(command_type), outcome="rejected").inc()
+        logger.warning("Rejected command %s: %s", command_type, error)
+        _produce_event(
+            "CommandRejected", _state.sim_time,
+            {"command_id": command_id, "command_type": command_type, "reason": error},
+            key=command_id,
+        )
+        return
+
+    assert isinstance(cmd, RebookPassengers)
+    event_type, _payload, mutated = await rebook_passengers_atomic(
+        command_id, command_type, cmd.passenger_ids, _state.sim_time,
+    )
+    if mutated:
+        outcome = "accepted" if event_type == "CommandExecuted" else "rejected"
+        m_commands.labels(command_type=command_type, outcome=outcome).inc()
+        logger.info(
+            "RebookPassengers %s (command_id=%s, inbound=%s)",
+            outcome, command_id, cmd.inbound_flight,
+        )
 
 
 async def _execute_command(envelope: dict) -> str | None:
@@ -638,45 +693,41 @@ async def _execute_command(envelope: dict) -> str | None:
             cmd.terminal, old_count, cmd.lanes_open,
         )
 
-    elif isinstance(cmd, RebookPassengers):
-        from db.neo4j import get_passenger_by_id, update_passenger_status
-        reboooked, skipped = 0, 0
-        for pid in cmd.passenger_ids:
-            pax = await get_passenger_by_id(pid)
-            if pax is None:
-                skipped += 1
-                continue
-            if pax.get("status") in ("departed", "arrived", "cancelled"):
-                skipped += 1
-                continue
-            updated = await update_passenger_status(pid, "rebooking", _state.sim_time)
-            if updated:
-                from kafka.producer import emit_passenger_status_changed
-                await emit_passenger_status_changed(
-                    passenger_id=pid,
-                    name=pax.get("name", ""),
-                    previous_status=pax.get("status", ""),
-                    new_status="rebooking",
-                    location_zone=pax.get("location_zone", ""),
-                    sim_time=_state.sim_time,
-                    flight_id=pax.get("flight_id"),
-                    flight_number=pax.get("flight_number"),
-                )
-                reboooked += 1
-            else:
-                skipped += 1
-        if reboooked == 0:
-            m_commands.labels(command_type=command_type, outcome="rejected").inc()
-            return f"RebookPassengers: no passengers rebooked ({skipped} skipped)"
-        m_commands.labels(command_type=command_type, outcome="accepted").inc()
-        logger.info(
-            "RebookPassengers: %d rebooked, %d skipped (inbound=%s)",
-            reboooked, skipped, cmd.inbound_flight,
-        )
-
+    # RebookPassengers is handled atomically in _handle_rebook_command (G1-b) and
+    # never reaches this executor.
     return None
 
 _tick_counter: int = 0
+
+
+@dataclass
+class TickContribution:
+    """Intended per-tick domain changes produced by an FSM handler (G1-a).
+
+    Each FSM handler reads Neo4j and computes the transitions it wants, returning
+    them as data instead of writing directly. ``_on_clock_tick`` merges all
+    contributions and commits them in ONE ``apply_tick_atomic`` transaction.
+    In-memory zone/queue bookkeeping (derived, rebuildable) is still applied
+    inline by the handlers — safe because a replayed tick is skipped wholesale by
+    the durable ``PassengerRuntime`` checkpoint before any handler runs.
+    """
+
+    groups: list[dict] = field(default_factory=list)          # {ids,status,zone}
+    dwell_items: list[tuple] = field(default_factory=list)    # (pid, dwell)
+    location_updates: list[dict] = field(default_factory=list)  # {id,zone}
+    facts: list[dict] = field(default_factory=list)           # {id,document}
+
+    def add_status_fact(self, **kwargs) -> None:
+        """Stage a PassengerStatusChanged fact, honouring BULK/tick-batch sampling."""
+        if tick_emit_decision():
+            fact = build_passenger_status_changed_fact(**kwargs)
+            self.facts.append({"id": fact["event_id"], "document": fact})
+
+    def merge(self, other: "TickContribution") -> None:
+        self.groups.extend(other.groups)
+        self.dwell_items.extend(other.dwell_items)
+        self.location_updates.extend(other.location_updates)
+        self.facts.extend(other.facts)
 
 
 async def _warm_start_departures(sim_time: datetime) -> None:
@@ -750,6 +801,20 @@ async def _warm_start_departures(sim_time: datetime) -> None:
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Main tick handler — advance all passenger state machines."""
     global _tick_counter
+
+    # G1-a: durable replay / crash-resume guard. A re-delivered or already-applied
+    # tick (sim_time <= the durable PassengerRuntime checkpoint) does NOTHING —
+    # checked before any state mutation or in-memory bookkeeping. The authoritative
+    # guard is the locked re-check inside apply_tick_atomic; this cheap pre-read
+    # avoids wasted compute on replay. In-memory caches are rebuilt from Neo4j.
+    try:
+        durable_last = await read_tick_checkpoint()
+    except Exception:
+        durable_last = None
+    if durable_last is not None and sim_time <= durable_last:
+        logger.debug("Skipping replayed tick %s (<= checkpoint %s)", sim_time, durable_last)
+        return
+
     _tick_counter += 1
     _state.sim_time = sim_time
     _state.sim_day = payload.get("day_of_sim", 0)
@@ -783,26 +848,35 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         if _tick_counter % ml_interval == 0:
             await _ml_tick(sim_time)
 
-        # 2. Move booked passengers to checked_in at T-120
-        await _advance_booked_to_checkin(sim_time, delta_minutes)
-
-        # 2b. Drain wheelchair request queue (1C — accessibility)
+        # 2b. Drain wheelchair request queue (1C — accessibility).
+        #     Its own subsystem (separate Neo4j writes); not part of the FSM tx.
         await _wheelchair_tick(sim_time)
 
-        # 3. Move checked_in passengers to security_queue when check-in closes
-        await _advance_checkin_to_security(sim_time, delta_minutes)
+        # G1-a: the six FSM handlers now COMPUTE their intended transitions (reading
+        # Neo4j + doing derived in-memory bookkeeping inline) and return them as a
+        # TickContribution. All of a tick's domain writes + fact staging then commit
+        # in ONE apply_tick_atomic transaction, advancing the durable checkpoint.
+        plan = TickContribution()
+        plan.merge(await _advance_booked_to_checkin(sim_time, delta_minutes))
+        plan.merge(await _advance_checkin_to_security(sim_time, delta_minutes))
+        plan.merge(await _drain_security_queues(sim_time, delta_minutes))
+        plan.merge(await _advance_airside_to_gate(sim_time))
+        plan.merge(await _advance_boarding(sim_time, delta_minutes))
+        plan.merge(await _advance_arrivals(sim_time))
 
-        # 4. Drain security queues
-        await _drain_security_queues(sim_time, delta_minutes)
-
-        # 5. Move airside passengers to at_gate when dwells complete
-        await _advance_airside_to_gate(sim_time)
-
-        # 6. Board passengers at gates
-        await _advance_boarding(sim_time, delta_minutes)
-
-        # 7. Advance arrival flow
-        await _advance_arrivals(sim_time)
+        applied = await apply_tick_atomic(
+            sim_time,
+            status_groups=plan.groups,
+            dwell_items=plan.dwell_items,
+            location_updates=plan.location_updates,
+            facts=plan.facts,
+        )
+        if not applied:
+            # Single serial consumer: reaching here means the durable checkpoint
+            # advanced between the pre-read and the locked write (unexpected).
+            # In-memory bookkeeping already ran; it is derived and rebuilt from
+            # Neo4j on the next _sync_security_from_db / restart.
+            logger.warning("Tick %s not applied (checkpoint already advanced)", sim_time)
 
         # === Non-critical path (reduced frequency) ===
 
@@ -920,13 +994,17 @@ async def _maybe_emit_bulk_snapshot(sim_time: datetime) -> None:
 CHECKIN_OPEN_MINUTES = 120  # Passengers arrive at check-in T-120 min before departure
 
 
-async def _advance_booked_to_checkin(sim_time: datetime, delta_minutes: int = 1) -> None:
-    """Move booked passengers to checked_in at T-120 (check-in opens).
+async def _advance_booked_to_checkin(
+    sim_time: datetime, delta_minutes: int = 1
+) -> TickContribution:
+    """Compute booked → checked_in transitions at T-120 (check-in opens).
 
     Batched: up to MAX_CHECKIN_PER_TICK passengers per tick to simulate
     gradual arrival at the airport.  Scales with ``delta_minutes`` so that
-    high-speed tick skipping doesn't reduce throughput.
+    high-speed tick skipping doesn't reduce throughput. Returns the intended
+    transitions (G1-a); the caller commits them in the single tick transaction.
     """
+    plan = TickContribution()
     MAX_CHECKIN_PER_TICK = 200 * delta_minutes
 
     # Only query booked passengers whose flights depart within next 3 hours
@@ -935,7 +1013,7 @@ async def _advance_booked_to_checkin(sim_time: datetime, delta_minutes: int = 1)
         pax_list = await get_passengers_by_status("booked", scheduled_before=cutoff)
     except Exception as e:
         logger.error("Failed to get booked passengers: %s", e)
-        return
+        return plan
 
     # Group by flight
     flights: dict[str, list[dict]] = {}
@@ -974,10 +1052,10 @@ async def _advance_booked_to_checkin(sim_time: datetime, delta_minutes: int = 1)
         remaining = MAX_CHECKIN_PER_TICK - total_moved
         batch = pax_group[:remaining]
         ids = [p["id"] for p in batch]
-        await bulk_update_status(ids, "checked_in", new_zone, sim_time)
+        plan.groups.append({"ids": ids, "status": "checked_in", "zone": new_zone})
         for pax in batch:
             move_passenger(None, new_zone)
-            await emit_passenger_status_changed(
+            plan.add_status_fact(
                 passenger_id=pax["id"],
                 name=pax.get("name", ""),
                 previous_status="booked",
@@ -1002,14 +1080,21 @@ async def _advance_booked_to_checkin(sim_time: datetime, delta_minutes: int = 1)
                     logger.warning("wheelchair request failed for %s: %s", pax["id"], exc)
         total_moved += len(batch)
 
+    return plan
 
-async def _advance_checkin_to_security(sim_time: datetime, delta_minutes: int = 1) -> None:
-    """Move checked_in passengers to security_queue at T-45.
+
+async def _advance_checkin_to_security(
+    sim_time: datetime, delta_minutes: int = 1
+) -> TickContribution:
+    """Compute checked_in → security_queue transitions at T-45.
 
     Batched: moves up to MAX_CHECKIN_TO_SECURITY_PER_TICK passengers per tick
     across all flights to prevent security queue overload.  Scales with
     ``delta_minutes`` so high-speed tick skipping doesn't reduce throughput.
+    The in-memory SecuritySystem enqueue stays inline (derived state, rebuildable
+    from Neo4j); the DB status write + facts are returned for the atomic commit.
     """
+    plan = TickContribution()
     MAX_CHECKIN_TO_SECURITY_PER_TICK = 80 * delta_minutes  # ~80 pax/min across all terminals
 
     # Only query checked_in passengers whose flights depart within next 2 hours
@@ -1018,7 +1103,7 @@ async def _advance_checkin_to_security(sim_time: datetime, delta_minutes: int = 
         pax_list = await get_passengers_by_status("checked_in", scheduled_before=cutoff)
     except Exception as e:
         logger.error("Failed to get checked_in passengers: %s", e)
-        return
+        return plan
 
     # Group by flight for batched processing
     flights: dict[str, list[dict]] = {}
@@ -1067,13 +1152,15 @@ async def _advance_checkin_to_security(sim_time: datetime, delta_minutes: int = 
 
         if ids_to_move:
             new_zone = f"security-{terminal}"
-            await bulk_update_status(ids_to_move, "security_queue", new_zone, sim_time)
+            plan.groups.append(
+                {"ids": ids_to_move, "status": "security_queue", "zone": new_zone}
+            )
 
             for pax in pax_group:
                 if pax["id"] in ids_to_move:
                     old_zone = pax.get("location_zone") or f"check-in-{terminal}"
                     move_passenger(old_zone, new_zone)
-                    await emit_passenger_status_changed(
+                    plan.add_status_fact(
                         passenger_id=pax["id"],
                         name=pax.get("name", ""),
                         previous_status="checked_in",
@@ -1084,9 +1171,19 @@ async def _advance_checkin_to_security(sim_time: datetime, delta_minutes: int = 
                         flight_number=pax.get("flight_number"),
                     )
 
+    return plan
 
-async def _drain_security_queues(sim_time: datetime, delta_minutes: int = 1) -> None:
-    """Drain security checkpoints and move passengers to airside."""
+
+async def _drain_security_queues(
+    sim_time: datetime, delta_minutes: int = 1
+) -> TickContribution:
+    """Compute security_queue → airside transitions by draining checkpoints.
+
+    The in-memory SecuritySystem drain (and the periodic DB reconcile) stay inline
+    — authoritative in-memory queue state, rebuildable from Neo4j. The DB status +
+    dwell writes and facts are returned for the atomic tick commit (G1-a).
+    """
+    plan = TickContribution()
     # Periodic DB sync (every 60 ticks) to catch missed events/restarts.
     # On normal ticks, in-memory queues are authoritative.
     if _tick_counter % 60 == 0:
@@ -1103,16 +1200,16 @@ async def _drain_security_queues(sim_time: datetime, delta_minutes: int = 1) -> 
         new_zone = f"airside-{terminal}"
         default_old_zone = f"security-{terminal}"
 
-        # Batch: update status + set dwell in two UNWIND queries (not N individual writes)
-        await bulk_update_status(all_drained, "airside", new_zone, sim_time)
+        plan.groups.append({"ids": all_drained, "status": "airside", "zone": new_zone})
         # SA passengers skip dwell and route directly to gate (spec §3)
         sa_set = set(sa_drained)
-        dwell_items = [(pid, 0 if pid in sa_set else sample_dwell_minutes()) for pid in all_drained]
-        await bulk_set_dwell(dwell_items)
+        plan.dwell_items.extend(
+            (pid, 0 if pid in sa_set else sample_dwell_minutes()) for pid in all_drained
+        )
 
         for pid in all_drained:
             move_passenger(default_old_zone, new_zone)
-            await emit_passenger_status_changed(
+            plan.add_status_fact(
                 passenger_id=pid,
                 name="",
                 previous_status="security_queue",
@@ -1120,6 +1217,8 @@ async def _drain_security_queues(sim_time: datetime, delta_minutes: int = 1) -> 
                 location_zone=new_zone,
                 sim_time=sim_time,
             )
+
+    return plan
 
 
 async def _sync_security_from_db() -> dict[str, str]:
@@ -1202,15 +1301,16 @@ def _build_context_features(terminal: str, sim_time: datetime) -> dict:
     )
 
 
-async def _advance_airside_to_gate(sim_time: datetime) -> None:
-    """Move airside passengers to at_gate when dwell completes and gate opens."""
+async def _advance_airside_to_gate(sim_time: datetime) -> TickContribution:
+    """Compute airside → at_gate transitions when dwell completes and gate opens."""
+    plan = TickContribution()
     # Time-window: only passengers with flights departing within next 2 hours
     cutoff = (sim_time + timedelta(hours=2)).isoformat()
     try:
         pax_list = await get_passengers_by_status("airside", scheduled_before=cutoff)
     except Exception as e:
         logger.error("Failed to get airside passengers: %s", e)
-        return
+        return plan
 
     ids_by_zone: dict[str, list[str]] = {}
 
@@ -1246,7 +1346,7 @@ async def _advance_airside_to_gate(sim_time: datetime) -> None:
             ids_by_zone.setdefault(new_zone, []).append(pax["id"])
             move_passenger(old_zone, new_zone)
 
-            await emit_passenger_status_changed(
+            plan.add_status_fact(
                 passenger_id=pax["id"],
                 name=pax.get("name", ""),
                 previous_status="airside",
@@ -1267,18 +1367,29 @@ async def _advance_airside_to_gate(sim_time: datetime) -> None:
             continue
 
     for zone, ids in ids_by_zone.items():
-        await bulk_update_status(ids, "at_gate", zone, sim_time)
+        plan.groups.append({"ids": ids, "status": "at_gate", "zone": zone})
+
+    return plan
 
 
-async def _advance_boarding(sim_time: datetime, delta_minutes: int = 1) -> None:
-    """Board passengers at_gate → boarded, progressive at BOARDING_RATE."""
+async def _advance_boarding(
+    sim_time: datetime, delta_minutes: int = 1
+) -> TickContribution:
+    """Compute at_gate → boarded (and no-show → departed_airport) transitions.
+
+    Progressive boarding at BOARDING_RATE. The once-per-flight no-show random
+    draw and in-memory zone bookkeeping stay inline (a replayed tick is skipped
+    wholesale before this runs, so the draw never repeats); the DB status writes +
+    facts are returned for the atomic tick commit (G1-a).
+    """
+    plan = TickContribution()
     # Time-window: only passengers with flights departing within next 1.5 hours
     cutoff = (sim_time + timedelta(hours=1, minutes=30)).isoformat()
     try:
         pax_list = await get_passengers_by_status("at_gate", scheduled_before=cutoff)
     except Exception as e:
         logger.error("Failed to get at_gate passengers: %s", e)
-        return
+        return plan
 
     # Group by flight
     flights: dict[str, list[dict]] = {}
@@ -1312,14 +1423,13 @@ async def _advance_boarding(sim_time: datetime, delta_minutes: int = 1) -> None:
                     if random.random() < noshow_rate:
                         noshow_ids.add(pax["id"])
                 if noshow_ids:
-                    gate_id = sample.get("gate_id")
-                    terminal = get_terminal_for_flight(gate_id, sample.get("terminal_id"), flight_id)
+                    noshow_move_ids: list[str] = []
                     for pax in pax_group:
                         if pax["id"] in noshow_ids:
                             old_zone = pax.get("location_zone") or ""
-                            await update_passenger_status(pax["id"], "departed_airport", "no-show", sim_time)
+                            noshow_move_ids.append(pax["id"])
                             remove_passenger(old_zone)
-                            await emit_passenger_status_changed(
+                            plan.add_status_fact(
                                 passenger_id=pax["id"],
                                 name=pax.get("name", ""),
                                 previous_status="at_gate",
@@ -1329,6 +1439,12 @@ async def _advance_boarding(sim_time: datetime, delta_minutes: int = 1) -> None:
                                 flight_id=flight_id,
                                 flight_number=pax.get("flight_number"),
                             )
+                    if noshow_move_ids:
+                        plan.groups.append({
+                            "ids": noshow_move_ids,
+                            "status": "departed_airport",
+                            "zone": "no-show",
+                        })
                     pax_group = [p for p in pax_group if p["id"] not in noshow_ids]
                     logger.info("No-shows on flight %s: %d passengers", flight_id, len(noshow_ids))
 
@@ -1350,14 +1466,15 @@ async def _advance_boarding(sim_time: datetime, delta_minutes: int = 1) -> None:
         )
         new_zone = zone_for_status("boarded", terminal, gate_id)
 
-        await bulk_update_status(ids, "boarded", new_zone, sim_time)
+        if ids:
+            plan.groups.append({"ids": ids, "status": "boarded", "zone": new_zone})
 
         for pax in to_board:
             old_zone = pax.get("location_zone") or f"gate-{gate_id}"
             # Boarded passengers leave terminal waiting areas.
             remove_passenger(old_zone)
 
-            await emit_passenger_status_changed(
+            plan.add_status_fact(
                 passenger_id=pax["id"],
                 name=pax.get("name", ""),
                 previous_status="at_gate",
@@ -1374,6 +1491,8 @@ async def _advance_boarding(sim_time: datetime, delta_minutes: int = 1) -> None:
                 except Exception as exc:
                     logger.debug("wheelchair release failed: %s", exc)
 
+    return plan
+
 
 async def _wheelchair_tick(sim_time: datetime) -> None:
     """Drain wheelchair queues each clock tick (1C)."""
@@ -1383,8 +1502,40 @@ async def _wheelchair_tick(sim_time: datetime) -> None:
         logger.warning("wheelchair tick failed: %s", exc)
 
 
-async def _advance_arrivals(sim_time: datetime) -> None:
-    """Advance arrival passengers: deplaning → [customs →] baggage_claim → departed_airport."""
+async def _advance_arrivals(sim_time: datetime) -> TickContribution:
+    """Compute arrival transitions: deplaning → [customs →] baggage_claim → departed.
+
+    Carousel re-location writes and the in-memory carousel/collected sets stay
+    inline; the status transitions + facts + location updates are returned for the
+    atomic tick commit (G1-a).
+    """
+    plan = TickContribution()
+
+    def _carousel_zone_for(pax: dict) -> str | None:
+        fid = pax.get("flight_id")
+        if not fid:
+            return None
+        carousel_zone = _state.flight_carousel_zone.get(fid)
+        if carousel_zone:
+            return carousel_zone
+        # Deterministic fallback: derive carousel from gate/terminal
+        # A→1-2, B→3-4, C→5-6 (matches baggage-service logic)
+        gate = pax.get("gate_id") or ""
+        terminal = pax.get("terminal_id") or (gate[0].upper() if gate else "A")
+        carousel_map = {"A": [1, 2], "B": [3, 4], "C": [5, 6]}
+        carousels = carousel_map.get(terminal, [1, 2])
+        carousel_num = carousels[hash(fid) % len(carousels)]
+        return f"carousel-{carousel_num}"
+
+    def _assign_carousels(paxes: list[dict]) -> None:
+        for pax in paxes:
+            pid = pax["id"]
+            carousel_zone = _carousel_zone_for(pax)
+            if carousel_zone and pid not in _state.passengers_at_carousel:
+                move_passenger("baggage-claim", carousel_zone)
+                _state.passengers_at_carousel.add(pid)
+                plan.location_updates.append({"id": pid, "zone": carousel_zone})
+
     # deplaning → customs (international) or baggage_claim (domestic)
     try:
         deplaning = await get_passengers_by_status("deplaning")
@@ -1404,11 +1555,11 @@ async def _advance_arrivals(sim_time: datetime) -> None:
     if to_customs:
         ids = [p["id"] for p in to_customs]
         new_zone = "customs"
-        await bulk_update_status(ids, "customs", new_zone, sim_time)
+        plan.groups.append({"ids": ids, "status": "customs", "zone": new_zone})
         for pax in to_customs:
             old_zone = pax.get("location_zone") or "arrivals-hall"
             move_passenger(old_zone, new_zone)
-            await emit_passenger_status_changed(
+            plan.add_status_fact(
                 passenger_id=pax["id"],
                 name=pax.get("name", ""),
                 previous_status="deplaning",
@@ -1422,11 +1573,11 @@ async def _advance_arrivals(sim_time: datetime) -> None:
     if to_baggage_claim:
         ids = [p["id"] for p in to_baggage_claim]
         new_zone = "baggage-claim"
-        await bulk_update_status(ids, "baggage_claim", new_zone, sim_time)
+        plan.groups.append({"ids": ids, "status": "baggage_claim", "zone": new_zone})
         for pax in to_baggage_claim:
             old_zone = pax.get("location_zone") or "arrivals-hall"
             move_passenger(old_zone, new_zone)
-            await emit_passenger_status_changed(
+            plan.add_status_fact(
                 passenger_id=pax["id"],
                 name=pax.get("name", ""),
                 previous_status="deplaning",
@@ -1437,23 +1588,7 @@ async def _advance_arrivals(sim_time: datetime) -> None:
                 flight_number=pax.get("flight_number"),
             )
         # Assign to carousel if bags already on carousel for this flight
-        for pax in to_baggage_claim:
-            fid = pax.get("flight_id")
-            pid = pax["id"]
-            carousel_zone = _state.flight_carousel_zone.get(fid) if fid else None
-            if not carousel_zone and fid:
-                # Deterministic fallback: derive carousel from gate/terminal
-                # A→1-2, B→3-4, C→5-6 (matches baggage-service logic)
-                gate = pax.get("gate_id") or ""
-                terminal = pax.get("terminal_id") or (gate[0].upper() if gate else "A")
-                carousel_map = {"A": [1, 2], "B": [3, 4], "C": [5, 6]}
-                carousels = carousel_map.get(terminal, [1, 2])
-                carousel_num = carousels[hash(fid) % len(carousels)]
-                carousel_zone = f"carousel-{carousel_num}"
-            if carousel_zone and pid not in _state.passengers_at_carousel:
-                move_passenger("baggage-claim", carousel_zone)
-                _state.passengers_at_carousel.add(pid)
-                await update_passenger_location(pid, carousel_zone)
+        _assign_carousels(to_baggage_claim)
 
     # customs → baggage_claim
     try:
@@ -1470,11 +1605,11 @@ async def _advance_arrivals(sim_time: datetime) -> None:
     if customs_to_bc:
         ids = [p["id"] for p in customs_to_bc]
         new_zone = "baggage-claim"
-        await bulk_update_status(ids, "baggage_claim", new_zone, sim_time)
+        plan.groups.append({"ids": ids, "status": "baggage_claim", "zone": new_zone})
         for pax in customs_to_bc:
             old_zone = pax.get("location_zone") or "customs"
             move_passenger(old_zone, new_zone)
-            await emit_passenger_status_changed(
+            plan.add_status_fact(
                 passenger_id=pax["id"],
                 name=pax.get("name", ""),
                 previous_status="customs",
@@ -1485,21 +1620,7 @@ async def _advance_arrivals(sim_time: datetime) -> None:
                 flight_number=pax.get("flight_number"),
             )
         # Assign to carousel if bags already on carousel for this flight
-        for pax in customs_to_bc:
-            fid = pax.get("flight_id")
-            pid = pax["id"]
-            carousel_zone = _state.flight_carousel_zone.get(fid) if fid else None
-            if not carousel_zone and fid:
-                gate = pax.get("gate_id") or ""
-                terminal = pax.get("terminal_id") or (gate[0].upper() if gate else "A")
-                carousel_map = {"A": [1, 2], "B": [3, 4], "C": [5, 6]}
-                carousels = carousel_map.get(terminal, [1, 2])
-                carousel_num = carousels[hash(fid) % len(carousels)]
-                carousel_zone = f"carousel-{carousel_num}"
-            if carousel_zone and pid not in _state.passengers_at_carousel:
-                move_passenger("baggage-claim", carousel_zone)
-                _state.passengers_at_carousel.add(pid)
-                await update_passenger_location(pid, carousel_zone)
+        _assign_carousels(customs_to_bc)
 
     # baggage_claim → departed_airport
     try:
@@ -1518,13 +1639,13 @@ async def _advance_arrivals(sim_time: datetime) -> None:
     if to_depart:
         ids = [p["id"] for p in to_depart]
         new_zone = "arrivals-hall"
-        await bulk_update_status(ids, "departed_airport", new_zone, sim_time)
+        plan.groups.append({"ids": ids, "status": "departed_airport", "zone": new_zone})
         for pax in to_depart:
             old_zone = pax.get("location_zone") or "baggage-claim"
             remove_passenger(old_zone)
             _state.baggage_collected.discard(pax["id"])
             _state.passengers_at_carousel.discard(pax["id"])
-            await emit_passenger_status_changed(
+            plan.add_status_fact(
                 passenger_id=pax["id"],
                 name=pax.get("name", ""),
                 previous_status="baggage_claim",
@@ -1535,9 +1656,20 @@ async def _advance_arrivals(sim_time: datetime) -> None:
                 flight_number=pax.get("flight_number"),
             )
 
+    return plan
+
 
 async def _check_connections(sim_time: datetime) -> None:
-    """Evaluate all connecting passengers and emit alerts on risk change."""
+    """Evaluate connecting passengers; atomically persist risk + emit alerts (G1-c).
+
+    The connection-risk property writes, the ``missed_connection`` status write and
+    the ``PassengerAlert`` facts all commit in ONE ``apply_changes_atomic``
+    transaction, keyed on a deterministic per-check id (``conn-<sim_time>``) for
+    durable, restart-surviving dedup. Connection alerts are low-volume and are
+    staged unsampled. In-memory alert history, WS fan-out and metric counters run
+    only after a successful, non-deduped commit; risk gauges and the at-risk
+    snapshot (derived display state) are refreshed every call.
+    """
     try:
         conn_pax = await get_connecting_passengers()
     except Exception as e:
@@ -1547,46 +1679,61 @@ async def _check_connections(sim_time: datetime) -> None:
     results = evaluate_connecting_passengers(conn_pax, sim_time, _state.gate_positions or None)
     new_at_risk = []
 
+    risk_updates: list[dict] = []
+    missed_ids: list[str] = []
+    facts: list[dict] = []
+    # Deferred post-commit effects: (alert_payload, metric_type)
+    pending_alerts: list[tuple[dict, str]] = []
+
     for r in results:
         if r["risk_changed"]:
             new_risk = r["risk_level"]
-            r["old_risk_level"]
-
-            await set_connection_risk(r["id"], new_risk)
+            risk_updates.append({"id": r["id"], "risk": new_risk})
 
             if new_risk == "at_risk":
-                m_passenger_alerts.labels(type="connection_at_risk").inc()
-                alert = await emit_passenger_alert(
-                    alert_type="connection_at_risk",
-                    message=f"Connection at risk: {r['inbound_flight']} → {r['connection_flight']}",
-                    sim_time=sim_time,
-                    passenger_id=r["id"],
-                    urgency="high",
+                message = f"Connection at risk: {r['inbound_flight']} → {r['connection_flight']}"
+                fact = build_passenger_alert_fact(
+                    alert_type="connection_at_risk", message=message,
+                    sim_time=sim_time, passenger_id=r["id"], urgency="high",
                 )
-                _add_alert(alert)
-                if _state.ws_broadcast:
-                    await _state.ws_broadcast({"event_type": "PassengerAlert", "payload": alert})
+                facts.append({"id": fact["event_id"], "document": fact})
+                pending_alerts.append((fact["payload"], "connection_at_risk"))
 
             elif new_risk == "missed":
-                m_connections_missed.inc()
-                m_passenger_alerts.labels(type="connection_missed").inc()
-                await update_passenger_status(
-                    r["id"], "missed_connection",
-                    "arrivals-hall", sim_time,
+                missed_ids.append(r["id"])
+                message = f"Connection missed: {r['inbound_flight']} → {r['connection_flight']}"
+                fact = build_passenger_alert_fact(
+                    alert_type="connection_missed", message=message,
+                    sim_time=sim_time, passenger_id=r["id"], urgency="critical",
                 )
-                alert = await emit_passenger_alert(
-                    alert_type="connection_missed",
-                    message=f"Connection missed: {r['inbound_flight']} → {r['connection_flight']}",
-                    sim_time=sim_time,
-                    passenger_id=r["id"],
-                    urgency="critical",
-                )
-                _add_alert(alert)
-                if _state.ws_broadcast:
-                    await _state.ws_broadcast({"event_type": "PassengerAlert", "payload": alert})
+                facts.append({"id": fact["event_id"], "document": fact})
+                pending_alerts.append((fact["payload"], "connection_missed"))
 
         if r["risk_level"] in ("at_risk", "watch"):
             new_at_risk.append(r)
+
+    status_groups = (
+        [{"ids": missed_ids, "status": "missed_connection", "zone": "arrivals-hall"}]
+        if missed_ids else []
+    )
+    applied = False
+    if risk_updates or status_groups or facts:
+        applied = await apply_changes_atomic(
+            f"conn-{sim_time.isoformat()}",
+            sim_time,
+            status_groups=status_groups,
+            risk_updates=risk_updates,
+            facts=facts,
+        )
+
+    if applied:
+        for alert, metric_type in pending_alerts:
+            if metric_type == "connection_missed":
+                m_connections_missed.inc()
+            m_passenger_alerts.labels(type=metric_type).inc()
+            _add_alert(alert)
+            if _state.ws_broadcast:
+                await _state.ws_broadcast({"event_type": "PassengerAlert", "payload": alert})
 
     _state.at_risk_connections = new_at_risk
 
@@ -1753,8 +1900,15 @@ async def _on_flight_gate_assigned(payload: dict, sim_time: datetime) -> None:
                 await _state.ws_broadcast({"event_type": "PassengerAlert", "payload": alert})
 
 
-async def _on_flight_cancelled(payload: dict, sim_time: datetime) -> None:
-    """Mark all on-flight passengers as disrupted."""
+async def _on_flight_cancelled(payload: dict, sim_time: datetime, event_id: str = "") -> None:
+    """Mark all on-flight passengers as disrupted — atomic domain-write + facts (G1-c).
+
+    The ``disrupted`` status write, the ``PassengerStatusChanged`` facts and the
+    ``flight_cancelled`` ``PassengerAlert`` facts commit together in ONE
+    ``apply_changes_atomic`` transaction with durable inbox dedup on the input
+    ``event_id`` (replacing the previous write-then-direct-emit pair). In-memory
+    alert history is appended only after a successful, non-deduped commit.
+    """
     flight_id = payload.get("flight_id")
     if not flight_id:
         return
@@ -1764,29 +1918,46 @@ async def _on_flight_cancelled(payload: dict, sim_time: datetime) -> None:
     except Exception:
         return
 
+    by_zone: dict[str, list[str]] = {}
+    facts: list[dict] = []
+    pending_alerts: list[dict] = []
     for pax in pax_list:
-        if pax.get("status") not in ("boarded", "departed_airport"):
-            old_zone = pax.get("location_zone")
-            await update_passenger_status(
-                pax["id"], "disrupted", old_zone or "arrivals-hall", sim_time,
-            )
-            await emit_passenger_status_changed(
-                passenger_id=pax["id"],
-                name=pax.get("name", ""),
-                previous_status=pax.get("status", ""),
-                new_status="disrupted",
-                location_zone=old_zone or "arrivals-hall",
-                sim_time=sim_time,
-                flight_id=flight_id,
-            )
-            alert = await emit_passenger_alert(
-                alert_type="flight_cancelled",
-                message="Your flight has been cancelled.",
-                sim_time=sim_time,
-                passenger_id=pax["id"],
-                flight_id=flight_id,
-                urgency="critical",
-            )
+        if pax.get("status") in ("boarded", "departed_airport"):
+            continue
+        zone = pax.get("location_zone") or "arrivals-hall"
+        by_zone.setdefault(zone, []).append(pax["id"])
+        status_fact = build_passenger_status_changed_fact(
+            passenger_id=pax["id"],
+            name=pax.get("name", ""),
+            previous_status=pax.get("status", ""),
+            new_status="disrupted",
+            location_zone=zone,
+            sim_time=sim_time,
+            flight_id=flight_id,
+        )
+        facts.append({"id": status_fact["event_id"], "document": status_fact})
+        alert_fact = build_passenger_alert_fact(
+            alert_type="flight_cancelled",
+            message="Your flight has been cancelled.",
+            sim_time=sim_time,
+            passenger_id=pax["id"],
+            flight_id=flight_id,
+            urgency="critical",
+        )
+        facts.append({"id": alert_fact["event_id"], "document": alert_fact})
+        pending_alerts.append(alert_fact["payload"])
+
+    if not facts:
+        return
+
+    status_groups = [
+        {"ids": ids, "status": "disrupted", "zone": zone} for zone, ids in by_zone.items()
+    ]
+    applied = await apply_changes_atomic(
+        event_id, sim_time, status_groups=status_groups, facts=facts,
+    )
+    if applied:
+        for alert in pending_alerts:
             _add_alert(alert)
 
 
@@ -1851,8 +2022,15 @@ async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
         _state.weather_category = cat
 
 
-async def _on_baggage_status_changed(payload: dict, sim_time: datetime) -> None:
-    """Track baggage collection for arrival passengers."""
+async def _on_baggage_status_changed(payload: dict, sim_time: datetime, event_id: str = "") -> None:
+    """Track baggage collection for arrival passengers — atomic location write (G1-c).
+
+    Carousel re-location writes commit in ONE ``apply_changes_atomic`` transaction
+    with durable inbox dedup on the input ``event_id``; the derived in-memory
+    carousel set and zone-density counters update only after a successful,
+    non-deduped commit. ``collected`` carries no domain write (in-memory tracking
+    only, rebuildable), so it stays an in-memory set update.
+    """
     new_status = payload.get("new_status")
     if new_status not in ("on_carousel", "collected"):
         return
@@ -1868,14 +2046,14 @@ async def _on_baggage_status_changed(payload: dict, sim_time: datetime) -> None:
         carousel_zone = f"carousel-{belt_num}"
 
         # Track flight→carousel mapping so late-arriving passengers get assigned
+        # (pure in-memory, idempotent on redelivery).
         if flight_id:
             _state.flight_carousel_zone[flight_id] = carousel_zone
 
+        move_ids: list[str] = []
         if passenger_id and passenger_id not in _state.passengers_at_carousel:
             # Departure bag with known passenger
-            move_passenger("baggage-claim", carousel_zone)
-            _state.passengers_at_carousel.add(passenger_id)
-            await update_passenger_location(passenger_id, carousel_zone)
+            move_ids.append(passenger_id)
         elif not passenger_id and flight_id:
             # Arrival bag — no CARRIES relationship; move all baggage_claim
             # passengers on this flight to the carousel zone.
@@ -1886,9 +2064,17 @@ async def _on_baggage_status_changed(payload: dict, sim_time: datetime) -> None:
             for pax in pax_list:
                 pid = pax["id"]
                 if pax.get("status") == "baggage_claim" and pid not in _state.passengers_at_carousel:
+                    move_ids.append(pid)
+
+        if move_ids:
+            location_updates = [{"id": pid, "zone": carousel_zone} for pid in move_ids]
+            applied = await apply_changes_atomic(
+                event_id, sim_time, location_updates=location_updates,
+            )
+            if applied:
+                for pid in move_ids:
                     move_passenger("baggage-claim", carousel_zone)
                     _state.passengers_at_carousel.add(pid)
-                    await update_passenger_location(pid, carousel_zone)
 
     if new_status == "collected" and passenger_id:
         _state.baggage_collected.add(passenger_id)
