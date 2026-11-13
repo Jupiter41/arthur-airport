@@ -14,6 +14,11 @@ CONSTRAINTS = [
     "CREATE CONSTRAINT baggage_projection_id IF NOT EXISTS FOR (p:BaggageProjection) REQUIRE p.id IS UNIQUE",
     "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_tag IF NOT EXISTS FOR (b:Baggage) REQUIRE b.tag IS UNIQUE",
+    # G1: durable inbox/outbox for the atomic domain-write + fact-delivery boundary
+    # (mirrors cost-service db/neo4j.py CostInbox/CostOutbox).
+    "CREATE CONSTRAINT baggage_inbox_id IF NOT EXISTS FOR (i:BaggageInbox) REQUIRE i.id IS UNIQUE",
+    "CREATE CONSTRAINT baggage_outbox_id IF NOT EXISTS FOR (o:BaggageOutbox) REQUIRE o.id IS UNIQUE",
+    "CREATE CONSTRAINT baggage_outbox_seq_id IF NOT EXISTS FOR (s:BaggageOutboxSeq) REQUIRE s.id IS UNIQUE",
 ]
 
 INDEXES = [
@@ -23,6 +28,8 @@ INDEXES = [
     "CREATE INDEX baggage_status IF NOT EXISTS FOR (b:Baggage) ON (b.status)",
     "CREATE INDEX baggage_id IF NOT EXISTS FOR (b:Baggage) ON (b.id)",
     "CREATE INDEX scan_event_baggage_tag IF NOT EXISTS FOR (s:ScanEvent) ON (s.baggage_tag)",
+    # G1: deterministic (revision, position) delivery order for the outbox drainer.
+    "CREATE INDEX baggage_outbox_order IF NOT EXISTS FOR (o:BaggageOutbox) ON (o.revision, o.position)",
 ]
 
 
@@ -282,6 +289,176 @@ async def update_baggage_statuses(changes: list[dict], sim_time: datetime) -> No
             changes=changes, at=sim_time.isoformat(),
         )
         await result.consume()
+
+
+# ---------------------------------------------------------------------------
+# G1 — transaction-scoped writes (run INSIDE session.execute_write, alongside
+# the BaggageInbox marker + BaggageOutbox staging, so the domain mutation and
+# the facts to publish commit together or not at all).
+# ---------------------------------------------------------------------------
+
+async def write_baggage_statuses_tx(tx, changes: list[dict], sim_time: datetime) -> None:
+    """Same batch mutation as ``update_baggage_statuses`` but on a managed tx.
+
+    Writing the status + ScanEvent trail through the caller's transaction lets it
+    be committed atomically with the inbox marker and the outbox facts.
+    """
+    if not changes:
+        return
+    result = await tx.run(
+        """
+        UNWIND $changes AS change
+        MATCH (b:Baggage {id: change.id})
+        REMOVE b:UnscannedBaggage
+        SET b.status = change.status, b.last_scan_zone = change.zone,
+            b.last_scan_at = $at,
+            b.carousel = coalesce(change.carousel, b.carousel)
+        CREATE (s:ScanEvent {baggage_tag: b.tag, zone: change.zone,
+                             status: change.status, at: $at})
+        CREATE (b)-[:SCANNED_AT]->(s)
+        """,
+        changes=changes, at=sim_time.isoformat(),
+    )
+    await result.consume()
+
+
+async def flag_baggage_tx(
+    tx,
+    baggage_id: str,
+    flag_reason: str,
+    scan_zone: str,
+    sim_time: datetime,
+    review_status: str = "pending",
+) -> None:
+    """Flag a bag (status='flagged' + flag metadata + ScanEvent) on a managed tx.
+
+    Transaction-scoped twin of :func:`flag_baggage` so a screening flag commits
+    atomically with the inbox marker and the staged ``BaggageFlagged`` fact.
+    """
+    result = await tx.run(
+        """
+        MATCH (b:Baggage {id: $id})
+        REMOVE b:UnscannedBaggage
+        SET b.status = 'flagged',
+            b.last_scan_zone = $zone,
+            b.last_scan_at = $at,
+            b.flag_reason = $flag_reason,
+            b.flagged_at = $at,
+            b.review_status = $review_status
+        CREATE (s:ScanEvent {baggage_tag: b.tag, zone: $zone, status: 'flagged', at: $at})
+        CREATE (b)-[:SCANNED_AT]->(s)
+        """,
+        id=baggage_id,
+        zone=scan_zone,
+        at=sim_time.isoformat(),
+        flag_reason=flag_reason,
+        review_status=review_status,
+    )
+    await result.consume()
+
+
+async def set_loaded_on_timestamps_tx(tx, rows: list[dict], sim_time: datetime) -> None:
+    """Set ``loaded_at`` on LOADED_ON for several bags, on a managed tx.
+
+    ``rows`` is ``[{"baggage_id", "flight_id"}, ...]``. Lets the make-up / sorting
+    "loaded" transition record its relationship timestamp inside the per-tick
+    transaction rather than in a separate non-atomic write.
+    """
+    if not rows:
+        return
+    result = await tx.run(
+        """
+        UNWIND $rows AS row
+        MATCH (b:Baggage {id: row.baggage_id})
+        MATCH (f:Flight {id: row.flight_id})
+        MERGE (b)-[r:LOADED_ON]->(f)
+        SET r.loaded_at = $at
+        """,
+        rows=rows,
+        at=sim_time.isoformat(),
+    )
+    await result.consume()
+
+
+async def redirect_baggage_to_flight_tx(
+    tx, baggage_id: str, target_flight_id: str, sim_time: datetime
+) -> bool:
+    """Re-assign LOADED_ON to a different flight on a managed tx (G1-b).
+
+    Transaction-scoped twin of :func:`redirect_baggage_to_flight` so the bag
+    redirect, the durable command receipt and the staged ``BaggageStatusChanged``
+    fact all commit together. Returns True iff both nodes matched and the
+    relationship was re-created.
+    """
+    result = await tx.run(
+        """
+        MATCH (b:Baggage {id: $bid})
+        MATCH (f:Flight {id: $fid})
+        OPTIONAL MATCH (b)-[old:LOADED_ON]->(:Flight)
+        DELETE old
+        CREATE (b)-[:LOADED_ON {redirected_at: $at}]->(f)
+        REMOVE b:UnscannedBaggage
+        SET b.last_scan_zone = 'redirected',
+            b.last_scan_at = $at
+        RETURN b.id AS id
+        """,
+        bid=baggage_id,
+        fid=target_flight_id,
+        at=sim_time.isoformat(),
+    )
+    record = await result.single()
+    return record is not None
+
+
+async def begin_tick_tx(tx, sim_time_iso: str) -> tuple[bool, int]:
+    """Lock the baggage runtime checkpoint and decide whether to process a tick.
+
+    Generalises cost-service's locked ``CostRuntime`` to the baggage tick FSM
+    (A41 "per-tick, per-owner atomicity"). The single ``BaggageOutboxSeq`` node
+    carries both the monotonic outbox ``revision`` and ``last_tick_sim_time``.
+    MERGE takes the write lock. If ``sim_time_iso`` is not strictly after the
+    recorded ``last_tick_sim_time`` the tick is a replay/crash-resume and the
+    caller must early-return (``(False, 0)``) — nothing is mutated. Otherwise the
+    revision is bumped and ``last_tick_sim_time`` advanced in the same tx, so a
+    committed tick advances the checkpoint atomically with its writes.
+
+    ISO-8601 naive timestamps compare correctly as strings (fixed format).
+    """
+    result = await tx.run(
+        "MERGE (s:BaggageOutboxSeq {id: 'latest'}) "
+        "RETURN s.last_tick_sim_time AS last_tick, coalesce(s.revision, 0) AS revision"
+    )
+    row = await result.single()
+    last_tick = row["last_tick"]
+    if last_tick is not None and sim_time_iso <= last_tick:
+        return False, 0
+    result = await tx.run(
+        "MATCH (s:BaggageOutboxSeq {id: 'latest'}) "
+        "SET s.revision = coalesce(s.revision, 0) + 1, "
+        "    s.last_tick_sim_time = $last_tick "
+        "RETURN s.revision AS revision",
+        last_tick=sim_time_iso,
+    )
+    row = await result.single()
+    return True, row["revision"]
+
+
+async def next_outbox_revision_tx(tx) -> int:
+    """Return the next monotonic outbox revision, bumped inside the caller's tx.
+
+    A single ``BaggageOutboxSeq`` counter (mirroring cost-service's locked
+    ``CostRuntime.revision``) gives every processed input a strictly increasing
+    revision, so facts from different events never interleave in the drainer's
+    ``ORDER BY revision, position``. The bump shares the caller's transaction, so
+    a rolled-back event consumes no revision.
+    """
+    result = await tx.run(
+        "MERGE (s:BaggageOutboxSeq {id: 'latest'}) "
+        "SET s.revision = coalesce(s.revision, 0) + 1 "
+        "RETURN s.revision AS revision"
+    )
+    row = await result.single()
+    return row["revision"]
 
 
 async def update_baggage_status(

@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+import json
 import sys
 from datetime import datetime
 from types import ModuleType
@@ -24,53 +25,75 @@ def context(monkeypatch):
     return consumer
 
 
-def test_induction_persists_batch_before_queues_and_per_bag_events(monkeypatch):
+def test_induction_plans_batch_then_commits_atomically_with_per_bag_facts(monkeypatch):
+    """G1-a: induction is planned (no write/emit), then committed in the tick tx.
+
+    The plan carries the batch + per-bag facts; the ``inducted_bag_ids`` cache is
+    updated only *after* ``_apply_tick`` commits (durable-before-cache ordering).
+    """
+    from tests.unit.test_baggage_outbox import Driver  # container-free fake driver
+
     consumer = context(monkeypatch)
     consumer._state = consumer.BaggageConsumerState()
     bags = [{"id": "b1", "tag": "fake-1", "terminal_id": "T-B"},
             {"id": "b2", "tag": "fake-2", "flight_status": "departed"}]
     monkeypatch.setattr(consumer, "get_dropped_off_baggage_for_departures", AsyncMock(return_value=bags))
-    emitted = []
+    driver = Driver()
+    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
 
-    async def save(changes, clock):
-        assert clock == NOW
-        assert not consumer._state.inducted_bag_ids
-        assert consumer._state.conveyor.get_zone("induction-B").items == 0
-        assert not emitted
-        assert changes == [{"id": "b1", "status": "inducted", "zone": "induction-B"},
-                           {"id": "b2", "status": "in_hold", "zone": "aircraft-hold"}]
+    plan = consumer._TickPlan()
+    asyncio.run(consumer._plan_induction(plan, NOW))
 
-    async def emit(**payload):
-        emitted.append(payload)
-        return payload
-
-    save_mock = AsyncMock(side_effect=save)
-    monkeypatch.setattr(consumer, "update_baggage_statuses", save_mock)
-    monkeypatch.setattr(consumer, "_emit_status_changed_with_metric", emit)
-    asyncio.run(consumer._induct_new_bags(NOW))
-    assert save_mock.await_count == 1
-    assert consumer._state.inducted_bag_ids == {"b1", "b2"}
+    # Compute phase: statuses + per-bag facts planned; the durable cache is NOT
+    # yet mutated, while the in-memory conveyor (rebuildable) is populated.
+    assert plan.status_changes == [
+        {"id": "b1", "status": "inducted", "zone": "induction-B"},
+        {"id": "b2", "status": "in_hold", "zone": "aircraft-hold"}]
+    assert plan.inducted_ids == ["b1", "b2"]
+    assert consumer._state.inducted_bag_ids == set()
     assert consumer._state.conveyor.get_zone("induction-B").items == 1
-    assert [(p["baggage_id"], p["new_status"]) for p in emitted] == [
-        ("b1", "inducted"), ("b2", "in_hold")]
+    assert [(f["document"]["payload"]["baggage_id"], f["document"]["payload"]["new_status"])
+            for f in plan.facts] == [("b1", "inducted"), ("b2", "in_hold")]
+    for f in plan.facts:
+        assert f["document"]["payload"]["previous_status"] == "dropped_off"
+
+    # Apply phase: one transaction commits every transition + fact + checkpoint.
+    assert asyncio.run(consumer._apply_tick(plan, NOW)) is True
+    assert driver.db["baggage"]["b1"]["status"] == "inducted"
+    assert driver.db["baggage"]["b2"]["status"] == "in_hold"
+    assert len(driver.db["outbox"]) == 2
+    assert driver.db["last_tick"] == NOW.isoformat()
 
 
-def test_failed_induction_write_leaves_bags_eligible_for_retry(monkeypatch):
+def test_failed_tick_write_rolls_back_and_leaves_bags_eligible_for_retry(monkeypatch):
+    """A failed tick commit mutates nothing and leaves no cache/checkpoint drift."""
+    from tests.unit.test_baggage_outbox import Driver
+
     consumer = context(monkeypatch)
     consumer._state = consumer.BaggageConsumerState()
     monkeypatch.setattr(consumer, "get_dropped_off_baggage_for_departures", AsyncMock(
         return_value=[{"id": "b1", "tag": "fake-1", "terminal_id": "T-B"}]))
-    monkeypatch.setattr(consumer, "update_baggage_statuses", AsyncMock(side_effect=RuntimeError("db offline")))
-    emit = AsyncMock()
-    monkeypatch.setattr(consumer, "_emit_status_changed_with_metric", emit)
-    with pytest.raises(RuntimeError, match="db offline"):
-        asyncio.run(consumer._induct_new_bags(NOW))
-    assert not consumer._state.inducted_bag_ids
-    assert consumer._state.conveyor.get_zone("induction-B").items == 0
-    emit.assert_not_awaited()
+    driver = Driver()
+    driver.fail_on = "UNWIND $changes AS change"  # the tick's domain write fails
+    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
+
+    with pytest.raises(RuntimeError, match="Injected"):
+        asyncio.run(consumer._on_clock_tick({}, NOW))
+
+    assert consumer._state.inducted_bag_ids == set()        # cache not advanced
+    # Conveyor fully restored to the pre-tick snapshot (b1's induct+advance undone).
+    assert sum(z.items for z in consumer._state.conveyor.get_all_zones().values()) == 0
+    assert consumer._state.last_tick_sim_time is None       # checkpoint not advanced
+    assert driver.db["baggage"] == {}                       # nothing committed
+    assert driver.db["outbox"] == {}
+    assert driver.db["last_tick"] is None
 
 
 def test_departure_removes_fast_tracked_bags_from_conveyor(monkeypatch):
+    """G1: departure now writes status + inbox + outbox in one tx, then clears
+    the (Neo4j-derived) conveyor cache and stages facts rather than emitting."""
+    from tests.unit.test_baggage_outbox import Driver  # container-free fake driver
+
     consumer = context(monkeypatch)
     database = sys.modules["db.neo4j"]
     consumer._state = consumer.BaggageConsumerState()
@@ -78,16 +101,20 @@ def test_departure_removes_fast_tracked_bags_from_conveyor(monkeypatch):
                             is_dg=False, dg_class=None, passenger_id=None,
                             terminal="B", entered_at=NOW.isoformat())
     consumer._state.conveyor.induct_bag(bag, NOW.isoformat())
+    driver = Driver()
+    monkeypatch.setattr(consumer, "get_driver", lambda: driver)
     monkeypatch.setattr(database, "get_flight_baggage", AsyncMock(return_value=[
         {"id": "b1", "tag": "fake-1", "status": "inducted"}]))
-    save = AsyncMock()
-    emit = AsyncMock()
-    monkeypatch.setattr(consumer, "update_baggage_statuses", save)
-    monkeypatch.setattr(consumer, "_emit_status_changed_with_metric", emit)
-    asyncio.run(consumer._on_flight_status_changed({"flight_id": "f1", "new_status": "departed"}, NOW))
+    asyncio.run(consumer._on_flight_status_changed(
+        {"flight_id": "f1", "new_status": "departed"}, NOW, "evt-dep"))
+    # Conveyor cache cleared only after the commit succeeded.
     assert consumer._state.conveyor.get_zone("induction-B").items == 0
-    save.assert_awaited_once_with([{"id": "b1", "status": "in_hold", "zone": "aircraft-hold"}], NOW)
-    assert emit.await_args.kwargs["previous_status"] == "inducted"
+    # Domain write + durable inbox + one staged fact all committed atomically.
+    assert driver.db["baggage"]["b1"]["status"] == "in_hold"
+    assert driver.db["inbox"] == {"evt-dep"}
+    fact = json.loads(next(iter(driver.db["outbox"].values()))["document"])
+    assert fact["payload"]["previous_status"] == "inducted"
+    assert fact["payload"]["new_status"] == "in_hold"
 
 
 def test_recovery_preserves_screening_metadata_arrivals_and_repeated_rebuild(monkeypatch):

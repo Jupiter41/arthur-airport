@@ -11,10 +11,12 @@ from _common._logging import setup_logging
 
 setup_logging("flight-service")
 
+from _common import outbox as outbox_common  # noqa: E402
 from db.neo4j import (  # noqa: E402
     check_neo4j,
     close_neo4j,
     create_constraints_and_indexes,
+    get_driver,
     migrate_flight_properties,
     wait_for_neo4j,
 )
@@ -23,6 +25,7 @@ from kafka.producer import (  # noqa: E402
     check_kafka,
     close_kafka_producer,
     init_kafka_producer,
+    publish_confirmed,
     wait_for_kafka,
 )
 from routers.flights import router as flights_router  # noqa: E402
@@ -96,6 +99,24 @@ async def lifespan(app: FastAPI):
 
     consumer_task.add_done_callback(_consumer_done)
 
+    # 7b. Start the FlightOutbox delivery loop (G1). It drains staged flight
+    #     facts to flights.events with stable event_ids, deleting each row only
+    #     after the broker acks — at-least-once delivery that survives a crash
+    #     between the domain commit and publish.
+    outbox_stop = asyncio.Event()
+    outbox_task = asyncio.create_task(
+        outbox_common.run("FlightOutbox", get_driver, publish_confirmed, outbox_stop, logger=logger)
+    )
+
+    def _outbox_done(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("flight outbox loop crashed", exc_info=exc)
+
+    outbox_task.add_done_callback(_outbox_done)
+
     # 8. Start ADS-B polling if enabled (Phase 1.1)
     if os.getenv("ADSB_ENABLED", "false").lower() == "true":
         from services.adsb import get_adsb_cache
@@ -115,6 +136,13 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     stop_consumer()
+    outbox_stop.set()
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(consumer_task, outbox_task, return_exceptions=True), timeout=15,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("flight background tasks exceeded shutdown budget")
     if os.getenv("ADSB_ENABLED", "false").lower() == "true":
         from services.adsb import get_adsb_cache
         get_adsb_cache().stop()

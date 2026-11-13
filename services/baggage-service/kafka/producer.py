@@ -1,6 +1,8 @@
 """Kafka producer for baggage-service — baggage events to baggage.events topic."""
 
+import json
 import logging
+import time
 from datetime import datetime
 
 from confluent_kafka import Producer
@@ -29,6 +31,37 @@ def set_bulk_mode(enabled: bool) -> None:
     """Toggle BULK mode — suppresses per-bag event emission."""
     global _bulk_mode
     _bulk_mode = enabled
+
+
+def is_bulk_mode() -> bool:
+    """Whether per-bag facts are currently suppressed (BULK speed mode)."""
+    return _bulk_mode
+
+
+def publish_confirmed(document: dict) -> None:
+    """Deliver one staged outbox fact to ``baggage.events``, blocking for the ack.
+
+    Mirrors cost-service's ``publish_confirmed``: ``document`` is the full,
+    already-built event envelope staged in ``BaggageOutbox``. Raises if the
+    broker does not acknowledge within the deadline so the outbox row is retained
+    (at-least-once with a stable ``event_id``) rather than silently dropped.
+    """
+    if _producer is None:
+        raise RuntimeError("Baggage event producer unavailable; outbox retained")
+    delivered: list = []
+    payload = document.get("payload") or {}
+    key = (payload.get("tag") or document.get("event_id") or "").encode("utf-8")
+    _producer.produce(
+        topic=TOPIC,
+        key=key or None,
+        value=json.dumps(document).encode("utf-8"),
+        callback=lambda error, message: delivered.append(error),
+    )
+    deadline = time.monotonic() + 10
+    while not delivered and time.monotonic() < deadline:
+        _producer.poll(0.1)
+    if not delivered or delivered[0] is not None:
+        raise RuntimeError("Baggage broker acknowledgement unavailable; outbox retained")
 
 
 def _produce_event(
@@ -101,6 +134,74 @@ async def emit_baggage_flagged(
         tag, flag_reason, dg_class, scan_zone,
     )
     return payload
+
+
+def build_status_changed_fact(
+    *,
+    id_base: str,
+    baggage_id: str,
+    tag: str,
+    previous_status: str,
+    new_status: str,
+    scan_zone: str,
+    sim_time: datetime,
+    passenger_id: str | None,
+    flight_id: str | None,
+) -> dict:
+    """Build one BaggageStatusChanged outbox fact: ``{"id", "document"}``.
+
+    ``document`` is the full event envelope that ``publish_confirmed`` will
+    produce verbatim. The envelope's ``event_id`` is a *stable*, deterministic id
+    derived from the input (``id_base``) so a redelivery re-stages the identical
+    fact id — at-least-once with stable IDs, not exactly-once.
+    """
+    payload = {
+        "baggage_id": baggage_id,
+        "tag": tag,
+        "passenger_id": passenger_id,
+        "flight_id": flight_id,
+        "previous_status": previous_status,
+        "new_status": new_status,
+        "scan_zone": scan_zone,
+        "at": sim_time.isoformat(),
+    }
+    envelope = kafka_runtime.build_envelope(
+        "BaggageStatusChanged", sim_time, payload, PRODUCER_NAME
+    )
+    stable_id = f"{id_base or tag}:{baggage_id}:{new_status}"
+    envelope["event_id"] = stable_id
+    return {"id": stable_id, "document": envelope}
+
+
+def build_flagged_fact(
+    *,
+    id_base: str,
+    baggage_id: str,
+    tag: str,
+    flag_reason: str,
+    scan_zone: str,
+    sim_time: datetime,
+    dg_class: str | None,
+    passenger_id: str | None,
+    flight_id: str | None,
+) -> dict:
+    """Build one BaggageFlagged outbox fact: ``{"id", "document"}`` (stable id)."""
+    payload = {
+        "baggage_id": baggage_id,
+        "tag": tag,
+        "passenger_id": passenger_id,
+        "flight_id": flight_id,
+        "flag_reason": flag_reason,
+        "dg_class": dg_class,
+        "scan_zone": scan_zone,
+        "at": sim_time.isoformat(),
+    }
+    envelope = kafka_runtime.build_envelope(
+        "BaggageFlagged", sim_time, payload, PRODUCER_NAME
+    )
+    stable_id = f"{id_base or tag}:{baggage_id}:flagged:{flag_reason}"
+    envelope["event_id"] = stable_id
+    return {"id": stable_id, "document": envelope}
 
 
 def emit_zone_snapshot(payload: dict, sim_time: datetime) -> None:

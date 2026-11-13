@@ -6,10 +6,12 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from _common import outbox
 from db.neo4j import (
     check_neo4j,
     close_neo4j,
     create_constraints_and_indexes,
+    get_driver,
     wait_for_neo4j,
 )
 from kafka.consumer import (
@@ -24,6 +26,7 @@ from kafka.producer import (
     check_kafka,
     close_kafka_producer,
     init_kafka_producer,
+    publish_confirmed,
     wait_for_kafka,
 )
 from _common._logging import setup_logging
@@ -33,6 +36,17 @@ setup_logging("baggage-service")
 from routers.baggage import router as baggage_router  # noqa: E402
 
 logger = logging.getLogger("baggage-service")
+
+
+class _OutboxLog:
+    """Adapt stdlib logging to the structlog-style ``logger.exception(msg, **kw)``
+    the shared outbox drainer calls (stdlib rejects arbitrary kwargs)."""
+
+    def __init__(self, base: logging.Logger) -> None:
+        self._base = base
+
+    def exception(self, msg: str, **kw) -> None:
+        self._base.exception("%s %s", msg, kw or "")
 
 # --- WebSocket connection manager ---
 _ws_clients: set[WebSocket] = set()
@@ -90,13 +104,27 @@ async def lifespan(app: FastAPI):
 
     consumer_task.add_done_callback(_consumer_done)
 
+    # 8. Start the G1 transactional-outbox drainer: delivers staged
+    #    BaggageStatusChanged facts to Kafka with a stable event_id, deleting
+    #    each row only after the broker acks (at-least-once).
+    outbox_stop = asyncio.Event()
+    outbox_task = asyncio.create_task(
+        outbox.run(
+            "BaggageOutbox", get_driver, publish_confirmed, outbox_stop,
+            logger=_OutboxLog(logger),
+        )
+    )
+
     logger.info("baggage-service startup complete")
     yield
 
     # Shutdown
     stop_consumer()
+    outbox_stop.set()
     with suppress(asyncio.TimeoutError):
-        await asyncio.wait_for(asyncio.gather(consumer_task, return_exceptions=True), timeout=5)
+        await asyncio.wait_for(
+            asyncio.gather(consumer_task, outbox_task, return_exceptions=True), timeout=5
+        )
     close_kafka_producer()
     await close_neo4j()
     from _common._tracing import shutdown_tracing

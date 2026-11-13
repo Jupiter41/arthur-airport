@@ -21,6 +21,19 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/costs", tags=["costs"])
 
+def _driver_or_none():
+    """Return the Neo4j driver, or None if it is not yet initialised.
+
+    Post-G3, ``db.get_driver()`` raises ``RuntimeError`` when the driver is not
+    connected (there is no module-level ``_driver`` global any more); handlers
+    that degrade gracefully want None instead of an exception.
+    """
+    try:
+        return db.get_driver()
+    except RuntimeError:
+        return None
+
+
 def _require_neo4j() -> None:
     """Raise 503 if Neo4j is not connected. Use at the top of any DB-backed handler."""
     try:

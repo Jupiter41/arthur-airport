@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 
 from _common import neo4j_client
+from _common import outbox as _outbox
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +16,17 @@ CONSTRAINTS = [
     # 1C — Accessibility & special assistance pool
     "CREATE CONSTRAINT wheelchair_resource_terminal IF NOT EXISTS FOR (w:WheelchairResource) REQUIRE w.terminal IS UNIQUE",
     "CREATE CONSTRAINT wheelchair_assignment_id IF NOT EXISTS FOR (a:WheelchairAssignment) REQUIRE a.id IS UNIQUE",
+    # G1 — transactional domain-write + outbox/inbox (mirrors cost-service)
+    "CREATE CONSTRAINT passenger_inbox_id IF NOT EXISTS FOR (i:PassengerInbox) REQUIRE i.id IS UNIQUE",
+    "CREATE CONSTRAINT passenger_outbox_id IF NOT EXISTS FOR (o:PassengerOutbox) REQUIRE o.id IS UNIQUE",
+    # G1-a — per-tick, per-owner locked runtime checkpoint (mirrors CostRuntime/FlightRuntime)
+    "CREATE CONSTRAINT passenger_runtime_id IF NOT EXISTS FOR (s:PassengerRuntime) REQUIRE s.id IS UNIQUE",
 ]
 
 INDEXES = [
     "CREATE INDEX flight_status IF NOT EXISTS FOR (f:Flight) ON (f.status)",
     "CREATE INDEX passenger_page_order IF NOT EXISTS FOR (p:Passenger) ON (p.name, p.id)",
+    "CREATE INDEX passenger_outbox_order IF NOT EXISTS FOR (o:PassengerOutbox) ON (o.revision, o.position)",
     "CREATE INDEX passenger_pnr IF NOT EXISTS FOR (p:Passenger) ON (p.pnr)",
     "CREATE INDEX passenger_status IF NOT EXISTS FOR (p:Passenger) ON (p.status)",
     "CREATE INDEX passenger_location IF NOT EXISTS FOR (p:Passenger) ON (p.location_zone)",
@@ -291,6 +298,317 @@ async def bulk_update_status(
         )
         record = await result.single()
         return record["cnt"] if record else 0
+
+
+async def apply_status_change_atomic(
+    event_id: str,
+    groups: list[dict],
+    facts: list[dict],
+    sim_time: datetime,
+) -> bool:
+    """Atomic domain-write + inbox + outbox for a passenger status change (G1).
+
+    Within ONE ``session.execute_write`` transaction (mirrors cost-service's
+    ``ledger.process``) this:
+
+      (a) skips if the input ``event_id`` is already in ``PassengerInbox`` —
+          durable, restart-surviving dedup (stronger than the in-memory
+          IdempotencyTracker, which is lost on restart);
+      (b) bulk-updates passenger ``status`` / ``location_zone`` / ``<status>_at``
+          — the authoritative domain write (Neo4j is the source of truth);
+      (c) marks ``PassengerInbox`` so a redelivered input is not re-applied;
+      (d) stages the ``PassengerStatusChanged`` facts into ``PassengerOutbox``
+          instead of emitting them directly, so domain write and fact delivery
+          commit or roll back together (rule #4: every state change emits an
+          event — now transactionally).
+
+    ``groups`` is a list of ``{"ids", "status", "zone"}`` transitions (one input
+    event may move distinct cohorts to distinct statuses). ``facts`` is a list of
+    ``{"id": <stable event_id>, "document": <full envelope>}`` outbox rows.
+
+    Returns True if applied, False if ``event_id`` was already processed.
+
+    Ordering/revision choice: passenger-service has no single runtime node to
+    carry a monotonic revision (unlike cost-service's ``CostRuntime``). We derive
+    ``revision = coalesce(max(o.revision), 0) + 1`` over the *still-pending*
+    outbox rows, inside the same transaction. Delivery order only matters among
+    rows not yet confirmed+deleted, so a counter relative to the live backlog is
+    sufficient and deterministic; per-fact ``position`` orders facts within one
+    event. The single consumer loop processes events serially (``await _dispatch``
+    one at a time), so no two applies contend for the same revision.
+    """
+    for group in groups:
+        if group["status"] not in _VALID_STATUSES:
+            raise ValueError(f"Invalid passenger status: {group['status']!r}")
+    sim_str = sim_time.isoformat()
+
+    async def apply(tx) -> bool:
+        if await _outbox.inbox_seen(tx, "PassengerInbox", event_id):
+            return False
+        rev_result = await tx.run(
+            "MATCH (o:PassengerOutbox) RETURN coalesce(max(o.revision), 0) AS rev"
+        )
+        rev_row = await rev_result.single()
+        revision = (rev_row["rev"] if rev_row else 0) + 1
+        for group in groups:
+            ids = group["ids"]
+            if not ids:
+                continue
+            # ts_field derives from a status validated against _VALID_STATUSES
+            # above, never from free input — safe to interpolate (as bulk_update_status does).
+            ts_field = f"{group['status']}_at"
+            result = await tx.run(
+                f"UNWIND $ids AS pid "
+                f"MATCH (p:Passenger {{id: pid}}) "
+                f"SET p.status = $status, p.location_zone = $zone, p.{ts_field} = $ts",
+                ids=ids, status=group["status"], zone=group["zone"], ts=sim_str,
+            )
+            await result.consume()
+        await _outbox.mark_inbox(tx, "PassengerInbox", event_id, sim_str)
+        await _outbox.stage_outbox(tx, "PassengerOutbox", facts, revision)
+        return True
+
+    async with get_driver().session() as session:
+        return await session.execute_write(apply)
+
+
+async def _write_status_groups(tx, groups: list[dict], sim_str: str) -> None:
+    """Bulk status/zone/timestamp writes for one or more transition cohorts."""
+    for group in groups:
+        ids = group["ids"]
+        if not ids:
+            continue
+        # ts_field derives from a status already validated against _VALID_STATUSES
+        # by the caller, never from free input — safe to interpolate.
+        ts_field = f"{group['status']}_at"
+        result = await tx.run(
+            f"UNWIND $ids AS pid "
+            f"MATCH (p:Passenger {{id: pid}}) "
+            f"SET p.status = $status, p.location_zone = $zone, p.{ts_field} = $ts",
+            ids=ids, status=group["status"], zone=group["zone"], ts=sim_str,
+        )
+        await result.consume()
+
+
+async def _write_location_updates(tx, location_updates: list[dict]) -> None:
+    """Location-only writes (no status/timestamp change) — e.g. carousel moves."""
+    rows = [{"id": u["id"], "zone": u["zone"]} for u in location_updates if u.get("id")]
+    if not rows:
+        return
+    result = await tx.run(
+        "UNWIND $rows AS r MATCH (p:Passenger {id: r.id}) SET p.location_zone = r.zone",
+        rows=rows,
+    )
+    await result.consume()
+
+
+async def _write_risk_updates(tx, risk_updates: list[dict]) -> None:
+    """Connection-risk property writes staged in the same transaction."""
+    rows = [{"id": u["id"], "risk": u["risk"]} for u in risk_updates if u.get("id")]
+    if not rows:
+        return
+    result = await tx.run(
+        "UNWIND $rows AS r MATCH (p:Passenger {id: r.id}) SET p.connection_risk = r.risk",
+        rows=rows,
+    )
+    await result.consume()
+
+
+async def apply_changes_atomic(
+    event_id: str,
+    sim_time: datetime,
+    *,
+    status_groups: list[dict] | None = None,
+    location_updates: list[dict] | None = None,
+    risk_updates: list[dict] | None = None,
+    facts: list[dict] | None = None,
+) -> bool:
+    """Generalized atomic domain-write + inbox + outbox for a discrete input (G1-c).
+
+    Mirrors :func:`apply_status_change_atomic` but also stages location-only and
+    connection-risk property writes, and allows ``facts`` to carry non-status
+    envelopes (e.g. ``PassengerAlert``). Everything commits in ONE
+    ``execute_write``: durable inbox dedup on ``event_id`` → status/location/risk
+    writes → inbox marker → outbox facts at ``max(pending)+1``. Returns True if
+    applied, False if ``event_id`` was already processed (durable dedup).
+    """
+    status_groups = status_groups or []
+    location_updates = location_updates or []
+    risk_updates = risk_updates or []
+    facts = facts or []
+    for group in status_groups:
+        if group["status"] not in _VALID_STATUSES:
+            raise ValueError(f"Invalid passenger status: {group['status']!r}")
+    sim_str = sim_time.isoformat()
+
+    async def apply(tx) -> bool:
+        if await _outbox.inbox_seen(tx, "PassengerInbox", event_id):
+            return False
+        rev_result = await tx.run(
+            "MATCH (o:PassengerOutbox) RETURN coalesce(max(o.revision), 0) AS rev"
+        )
+        rev_row = await rev_result.single()
+        revision = (rev_row["rev"] if rev_row else 0) + 1
+        await _write_status_groups(tx, status_groups, sim_str)
+        await _write_location_updates(tx, location_updates)
+        await _write_risk_updates(tx, risk_updates)
+        await _outbox.mark_inbox(tx, "PassengerInbox", event_id, sim_str)
+        await _outbox.stage_outbox(tx, "PassengerOutbox", facts, revision)
+        return True
+
+    async with get_driver().session() as session:
+        return await session.execute_write(apply)
+
+
+async def apply_tick_atomic(
+    tick_sim_time: datetime,
+    *,
+    status_groups: list[dict] | None = None,
+    dwell_items: list[tuple[str, int]] | None = None,
+    location_updates: list[dict] | None = None,
+    risk_updates: list[dict] | None = None,
+    facts: list[dict] | None = None,
+) -> bool:
+    """Per-tick, per-owner atomic advancement of the passenger FSM (G1-a).
+
+    All of a tick's domain writes + fact staging commit in ONE ``execute_write``,
+    gated by a locked ``PassengerRuntime {id:'latest', last_tick_sim_time,
+    revision}`` checkpoint (the cost-service ``CostRuntime`` / flight-service
+    ``FlightRuntime`` mechanism, generalized):
+
+      1. ``MERGE`` + lock ``PassengerRuntime`` (serialises concurrent writers,
+         bumps the monotonic ``revision`` used for outbox delivery order).
+      2. If ``tick_sim_time <= last_tick_sim_time`` → **return False** (idempotent
+         replay / crash-resume: a re-delivered or already-applied tick re-does
+         nothing). The checkpoint is durable, so this survives restart.
+      3. Bulk-write every FSM transition (status groups + dwell + location + risk).
+      4. Stage every domain fact into ``PassengerOutbox`` at the runtime revision.
+      5. Advance ``last_tick_sim_time`` to ``tick_sim_time``.
+
+    Returns True if the tick was applied, False on idempotent replay. In-memory
+    zone/queue bookkeeping (derived, rebuildable per rule #3) is the caller's to
+    update post-commit, and only when this returns True.
+    """
+    status_groups = status_groups or []
+    dwell_items = dwell_items or []
+    location_updates = location_updates or []
+    risk_updates = risk_updates or []
+    facts = facts or []
+    for group in status_groups:
+        if group["status"] not in _VALID_STATUSES:
+            raise ValueError(f"Invalid passenger status: {group['status']!r}")
+    sim_str = tick_sim_time.isoformat()
+    dwell_rows = [{"id": pid, "dwell": dwell} for pid, dwell in dwell_items]
+
+    async def apply(tx) -> bool:
+        result = await tx.run(
+            "MERGE (s:PassengerRuntime {id: 'latest'}) "
+            "SET s.revision = coalesce(s.revision, 0) + 1 "
+            "RETURN s.last_tick_sim_time AS last_tick, s.revision AS revision"
+        )
+        row = await result.single()
+        last_tick = row["last_tick"] if row else None
+        revision = row["revision"] if row else 1
+        if last_tick is not None:
+            try:
+                last_dt = datetime.fromisoformat(str(last_tick)).replace(tzinfo=None)
+            except (ValueError, TypeError):
+                last_dt = None
+            if last_dt is not None and tick_sim_time <= last_dt:
+                return False  # idempotent replay / crash-resume
+        await _write_status_groups(tx, status_groups, sim_str)
+        if dwell_rows:
+            dwell_result = await tx.run(
+                "UNWIND $rows AS r MATCH (p:Passenger {id: r.id}) SET p.dwell_minutes = r.dwell",
+                rows=dwell_rows,
+            )
+            await dwell_result.consume()
+        await _write_location_updates(tx, location_updates)
+        await _write_risk_updates(tx, risk_updates)
+        await _outbox.stage_outbox(tx, "PassengerOutbox", facts, revision)
+        advance = await tx.run(
+            "MATCH (s:PassengerRuntime {id: 'latest'}) SET s.last_tick_sim_time = $ts",
+            ts=sim_str,
+        )
+        await advance.consume()
+        return True
+
+    async with get_driver().session() as session:
+        return await session.execute_write(apply)
+
+
+async def rebook_passengers_atomic(
+    command_id: str,
+    command_type: str,
+    passenger_ids: list[str],
+    sim_time: datetime,
+) -> tuple[str, dict, bool]:
+    """Persist an advisory-only rejection and its outbox receipt atomically.
+
+    A replacement itinerary is absent from this command contract. No passenger
+    status is changed. Redelivery stages the stored receipt without mutation.
+    The final boolean indicates whether a new receipt was committed.
+    """
+    from _common.command_store import load_receipt_in_tx, save_receipt_in_tx
+    from kafka.producer import (
+        build_command_receipt_fact,
+    )
+
+    async def apply(tx) -> tuple[str, dict, bool]:
+        rev_result = await tx.run(
+            "MATCH (o:PassengerOutbox) RETURN coalesce(max(o.revision), 0) AS rev"
+        )
+        rev_row = await rev_result.single()
+        revision = (rev_row["rev"] if rev_row else 0) + 1
+
+        existing = await load_receipt_in_tx(tx, command_id)
+        if existing is not None:
+            # Redelivery: re-emit the stored receipt, never re-mutate.
+            event_type, payload = existing
+            receipt_fact = build_command_receipt_fact(event_type, sim_time, payload)
+            await _outbox.stage_outbox(
+                tx, "PassengerOutbox",
+                [{"id": receipt_fact["event_id"], "document": receipt_fact}],
+                revision,
+            )
+            return event_type, payload, False
+
+        # No replacement flight is part of this command contract. Preserve the
+        # advisory-only behavior, with a durable atomic rejection receipt.
+        facts: list[dict] = []
+        receipt = ("CommandRejected", {
+            "command_id": command_id, "command_type": command_type,
+            "reason": "RebookPassengers: replacement itinerary is not implemented; advisory only",
+        })
+        await save_receipt_in_tx(tx, command_id, receipt)
+        receipt_fact = build_command_receipt_fact(receipt[0], sim_time, receipt[1])
+        facts.append({"id": receipt_fact["event_id"], "document": receipt_fact})
+        await _outbox.stage_outbox(tx, "PassengerOutbox", facts, revision)
+        return receipt[0], receipt[1], True
+
+    async with get_driver().session() as session:
+        return await session.execute_write(apply)
+
+
+async def read_tick_checkpoint() -> datetime | None:
+    """Return the durable ``last_tick_sim_time`` checkpoint, or None if unset.
+
+    Lets the tick handler cheaply skip an already-applied/replayed tick before
+    doing any compute or in-memory mutation; the authoritative replay guard is
+    still the locked check inside :func:`apply_tick_atomic`.
+    """
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MATCH (s:PassengerRuntime {id: 'latest'}) "
+            "RETURN s.last_tick_sim_time AS last_tick"
+        )
+        row = await result.single()
+    if not row or row["last_tick"] is None:
+        return None
+    try:
+        return datetime.fromisoformat(str(row["last_tick"])).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
 
 
 async def set_passenger_dwell(passenger_id: str, dwell_minutes: int) -> None:

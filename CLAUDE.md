@@ -123,7 +123,14 @@ docker compose down -v && docker compose up --build
 4. **Every state change produces a Kafka event.** Silent mutations are forbidden. If a flight
    changes status, a `FlightStatusChanged` event must be produced.
 
-5. **All data is fake.** Never introduce real airport, airline, or passenger data.
+5. **The twin's generated operational data is synthetic; never introduce real personal/passenger data.**
+   All passengers, passenger names/IDs, flight numbers, aircraft registrations, baggage and incidents
+   the twin generates are fabricated — no real personal data ever exists. Real-world data appears only
+   as optional, off-by-default, clearly-labelled *reference / calibration / overlay* input (open
+   datasets: OurAirports, OpenFlights, BTS aggregates, historical METAR; public read-only APIs:
+   adsb.lol/OpenSky, aviationweather.gov) and is never presented as the twin's own operational state.
+   See `DATA.md` and `docs/architecture/OVERVIEW.md` ADR-006. (The residual real-data tension —
+   live-API modes and OpenFlights-derived airline identities — is tracked in `ROADMAP_REAL_LDT.md §10 G11`.)
 
 6. **The spec is authoritative.** If the spec says a field exists, it exists. If you need to
    deviate from the spec, update the spec first.

@@ -7,6 +7,10 @@ from uuid import uuid4
 
 from confluent_kafka import Producer
 
+# NOTE: ``BufferError`` is a Python builtin raised by ``Producer.produce()`` when
+# the local queue is full. confluent-kafka 2.x no longer re-exports it, so we rely
+# on the builtin directly (importing it from confluent_kafka crashes the module).
+
 from _common import kafka_runtime
 from services.airport_config import load_airport_runtime_config
 

@@ -5,7 +5,7 @@ import { queryClient } from "../../queryClient";
 import type {
   AnalysisBottleneck,
   AnalysisRecommendation,
-} from "../../stores/analysisStore";
+} from "../../types";
 import { SEVERITY_RING, ACTION_ICON } from "./constants";
 
 export function RecommendationFeed({

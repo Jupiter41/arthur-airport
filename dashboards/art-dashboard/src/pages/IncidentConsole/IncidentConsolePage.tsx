@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { useIncidentStore } from "../../stores/incidentStore";
-import { useAnalysisStore } from "../../stores/analysisStore";
 import { AutonomousPanel } from "../../components/AutonomousPanel";
 import type {
   AnalysisBottleneck,
   AnalysisRecommendation,
-} from "../../stores/analysisStore";
+} from "../../types";
 import { incidentsApi } from "../../hooks/useApi";
 import {
   useIncidentConsoleQueries,
@@ -48,10 +47,10 @@ export default function IncidentConsolePage() {
   const [activeTab, setActiveTab] = useState<TabId>("ops");
 
   const queries = useIncidentConsoleQueries();
+  // Bottlenecks and recommendations: React Query is the single source of
+  // truth (polls the analysis REST endpoints). No WebSocket-fed duplicate.
   const bnQuery = useBottlenecksQuery();
   const recQuery = useRecommendationsQuery();
-  const storeBottlenecks = useAnalysisStore((s) => s.bottlenecks);
-  const storeRecs = useAnalysisStore((s) => s.recommendations);
 
   useEffect(() => {
     const active = queries.active.data ?? [];
@@ -194,12 +193,10 @@ export default function IncidentConsolePage() {
 
           <RecommendationFeed
             bottlenecks={
-              (bnQuery.data as AnalysisBottleneck[] | undefined) ??
-              storeBottlenecks
+              (bnQuery.data as AnalysisBottleneck[] | undefined) ?? []
             }
             recommendations={
-              (recQuery.data as AnalysisRecommendation[] | undefined) ??
-              storeRecs
+              (recQuery.data as AnalysisRecommendation[] | undefined) ?? []
             }
           />
 

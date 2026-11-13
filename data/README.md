@@ -1,6 +1,8 @@
 # `data/` — Reference Datasets
 
-Static reference data used by the sim-orchestrator to generate realistic schedules, populate destination pools, and drive simulation parameters. All datasets are free, open-licensed, and can be refreshed without code changes.
+Static **real open** reference datasets used by the sim-orchestrator to generate realistic schedules, populate destination pools, and drive simulation parameters. All datasets are free, open-licensed, and can be refreshed without code changes.
+
+> **Data policy:** this is real open-licensed reference data (airport infrastructure, airline identities, aggregate traffic statistics, historical weather). It calibrates and seeds the simulation — the twin's generated operational entities (passengers, flights, baggage, incidents) remain 100% synthetic. See `DATA.md §0`, `docs/architecture/OVERVIEW.md` ADR-006, and the open policy item in `ROADMAP_REAL_LDT.md §10 G11`.
 
 ---
 
