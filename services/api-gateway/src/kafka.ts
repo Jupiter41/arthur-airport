@@ -24,6 +24,10 @@ const ALL_TOPICS = Object.keys(TOPIC_KEY_MAP);
 let consumer: Consumer | null = null;
 let connected = false;
 let lastMessageAt: number | null = null;
+let lastHeartbeatAt: number | null = null;
+let stopping = false;
+let starting: Promise<void> | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 const FRESHNESS_THRESHOLD_MS = Math.max(30_000,
   Number(process.env.KAFKA_FRESHNESS_THRESHOLD_MS) || 30_000);
@@ -33,15 +37,35 @@ export function isKafkaConnected(): boolean {
 }
 
 export function isKafkaFresh(): boolean {
-  if (!connected || lastMessageAt === null) return false;
-  return Date.now() - lastMessageAt < FRESHNESS_THRESHOLD_MS;
+  if (!connected) return false;
+  const activity = Math.max(lastMessageAt ?? 0, lastHeartbeatAt ?? 0);
+  return activity > 0 && Date.now() - activity < FRESHNESS_THRESHOLD_MS;
 }
 
 export function getLastMessageAt(): number | null {
   return lastMessageAt;
 }
 
-export async function setupKafka(): Promise<void> {
+function scheduleRetry(): void {
+  if (stopping || retryTimer) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (!stopping) void setupKafka();
+  }, 1000);
+  retryTimer.unref();
+}
+
+export function setupKafka(): Promise<void> {
+  if (starting) return starting;
+  if (connected) return Promise.resolve();
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+  stopping = false;
+  starting = startAttempt().finally(() => { starting = null; });
+  return starting;
+}
+
+async function startAttempt(): Promise<void> {
   const brokers = (process.env.KAFKA_BROKERS ?? "kafka:9092").split(",");
   const groupId = process.env.KAFKA_GROUP_ID ?? "api-gateway";
 
@@ -54,16 +78,41 @@ export async function setupKafka(): Promise<void> {
     },
   });
 
-  consumer = kafka.consumer({ groupId });
+  const previous = consumer;
+  consumer = null;
+  connected = false;
+  lastHeartbeatAt = null;
+  if (previous) await previous.disconnect().catch(err => console.error("[Kafka] Disconnect failed:", err));
+  if (stopping) return;
+  const next = kafka.consumer({ groupId });
+  consumer = next;
+  next.on(next.events.GROUP_JOIN, () => {
+    if (consumer !== next || stopping) return;
+    connected = true;
+    lastHeartbeatAt = Date.now();
+  });
+  next.on(next.events.HEARTBEAT, () => {
+    if (consumer === next && connected) lastHeartbeatAt = Date.now();
+  });
+  next.on(next.events.DISCONNECT, () => {
+    if (consumer === next) connected = false;
+  });
+  next.on(next.events.CRASH, event => {
+    if (consumer !== next || stopping) return;
+    connected = false;
+    // KafkaJS owns retriable runtime crashes; replace only when it gives up.
+    if (!event.payload.restart) scheduleRetry();
+  });
 
   try {
-    await consumer.connect();
-    connected = true;
+    await next.connect();
+    if (stopping || consumer !== next) return;
     console.log("[Kafka] Consumer connected");
 
-    await consumer.subscribe({ topics: ALL_TOPICS, fromBeginning: false });
+    await next.subscribe({ topics: ALL_TOPICS, fromBeginning: false });
+    if (stopping || consumer !== next) return;
 
-    await consumer.run({
+    await next.run({
       eachMessage: async ({ topic, message }: EachMessagePayload) => {
         lastMessageAt = Date.now();
         try {
@@ -102,23 +151,22 @@ export async function setupKafka(): Promise<void> {
     console.log(`[Kafka] Subscribed to ${ALL_TOPICS.length} topics`);
   } catch (err) {
     console.error("[Kafka] Failed to start consumer:", err);
-    connected = false;
+    if (consumer === next) {
+      consumer = null;
+      connected = false;
+    }
+    await next.disconnect().catch(disconnectError => console.error("[Kafka] Disconnect failed:", disconnectError));
+    scheduleRetry();
   }
-
-  // Handle disconnect events
-  consumer.on("consumer.disconnect", () => {
-    connected = false;
-    console.warn("[Kafka] Consumer disconnected");
-  });
-
-  consumer.on("consumer.connect", () => {
-    connected = true;
-  });
 }
 
 export async function shutdownKafka(): Promise<void> {
-  if (consumer) {
-    await consumer.disconnect();
-    connected = false;
-  }
+  stopping = true;
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+  const current = consumer;
+  consumer = null;
+  connected = false;
+  lastHeartbeatAt = null;
+  if (current) await current.disconnect();
 }

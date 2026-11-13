@@ -57,6 +57,13 @@ Readiness probes release upstream response bodies after inspecting their status,
 including failed probes. Repeated checks must not retain unread fetch streams
 and exhaust the gateway's connection resources during service restarts.
 
+Kafka connect/subscribe/run failures retry with a new consumer after one second,
+including transient missing partitions during broker recovery. Failed attempts
+disconnect before replacement; only one startup attempt runs at a time. A
+non-restarting consumer crash also schedules replacement. Shutdown cancels retries.
+Readiness requires group membership and recent broker activity; heartbeats keep
+a paused simulation ready without inventing a domain message timestamp.
+
 - Proxy and aggregate REST requests to upstream services
 - Subscribe to all Kafka topics and maintain a WebSocket fan-out to connected clients
 - Issue and validate stub JWT tokens

@@ -3281,3 +3281,13 @@ at most **0.067s**, including while the Python regression suite runs. New cache
 tests cover cold rebuild, slow-refresh read isolation, failure retention and an
 empty successful replacement. Evidence: `g9-flow-restart-verified.txt`,
 `g9-flow-concurrent.json`, and `g9-release-units.txt`. Final validation follows.
+
+The next complete gate passed 88 checks, then exposed a real gateway startup
+recovery defect: Kafka's transient `UNKNOWN_TOPIC_OR_PARTITION` during full
+broker restart left the gateway permanently disconnected. The gateway now
+replaces failed startup consumers with a single retry, handles non-restarting
+crashes, registers listeners before connection and cancels retries on shutdown.
+Group membership establishes readiness; broker heartbeats keep paused-clock
+readiness fresh without changing the last domain-message timestamp. Gateway
+build and **33 tests** pass, including four new lifecycle regressions. The
+complete restart/REST group is rerun in `g9-restarts-rest.txt` against this build.

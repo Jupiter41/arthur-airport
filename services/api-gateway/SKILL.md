@@ -9,6 +9,12 @@
 
 ## Project structure
 
+Kafka startup registers lifecycle listeners before connecting. Connect, subscribe
+and run failures disconnect the failed consumer and schedule one replacement;
+non-restarting runtime crashes use the same path. Group join establishes readiness,
+heartbeats maintain freshness during a paused simulation, and shutdown cancels
+pending retries. Preserve the recovery tests in `src/kafka.test.ts`.
+
 ```
 services/api-gateway/
 ├── src/
