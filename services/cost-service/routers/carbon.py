@@ -26,7 +26,11 @@ def set_factors(factors: dict) -> None:
 
 
 def _require_neo4j() -> None:
-    if db._driver is None:
+    # Post-G3 there is no module-level ``_driver``; get_driver() raises when
+    # the driver is not yet initialised.
+    try:
+        db.get_driver()
+    except RuntimeError:
         raise HTTPException(status_code=503, detail="neo4j not connected")
 
 
