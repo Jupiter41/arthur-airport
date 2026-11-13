@@ -42,6 +42,18 @@ async def query_incident_for_outcome(incident_id: str) -> dict | None:
     return {"status": row["status"]} if row else None
 
 
+async def query_incident_statuses(incident_ids: list[str]) -> dict[str, str]:
+    """Persisted statuses (including terminal ones) for outcome attribution."""
+    ids = [i for i in incident_ids if i]
+    if not ids:
+        return {}
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MATCH (i:Incident) WHERE i.id IN $ids RETURN i.id AS id, i.status AS status", ids=ids,
+        )
+        return {row["id"]: row["status"] async for row in result if row["status"] is not None}
+
+
 async def query_gate_availability() -> dict:
     """Return per-terminal gate availability: {terminal: {total, occupied, free}}."""
     driver = get_driver()

@@ -327,31 +327,46 @@ def _event_significance(event_type: str, payload: dict) -> int:
 
 
 async def _measure_due_outcomes(now: datetime) -> None:
-    """G8: for executed proposals whose outcome is due, measure and persist it.
+    """G8: measure due executed proposals, attribute them and refresh calibration.
 
-    Observed-condition measurement (not counterfactual). Failures are logged and
-    swallowed so outcome measurement never blocks the tick pipeline.
+    The observed condition is compared with the dispatch-time baseline and with
+    untreated comparable units over the same window (services.outcome.attribute).
+    Calibration is recomputed from the persisted proposals each tick, so it is
+    rebuildable after restart. Failures are logged and swallowed so outcome
+    measurement never blocks the tick pipeline.
     """
-    from services import outcome, proposal_store
+    from services import calibration, outcome, proposal_store
     from services.autonomous import record_outcome
-    from db.neo4j import query_incident_for_outcome
+    from db.neo4j import query_incident_statuses
     from types import SimpleNamespace
     try:
         documents = await proposal_store.list_documents()
+        changed = False
         for doc in outcome.due_for_outcome(documents, now):
             measurement_state = state
+            baseline = doc.get("baseline")
+            statuses: dict[str, str] = {}
             if doc.get("action_type") in {"resolve_incident", "contain_incident"}:
                 incident_id = (doc.get("parameters") or {}).get("incident_id")
-                incident = await query_incident_for_outcome(incident_id) if incident_id else None
+                ids = [incident_id, *((baseline or {}).get("controls") or [])]
+                statuses = await query_incident_statuses(ids)
+                incident = {"status": statuses[incident_id]} if incident_id in statuses else None
                 measurement_state = SimpleNamespace(active_incidents={incident_id: incident} if incident else {})
             measured = outcome.measure_outcome(
                 doc.get("action_type", ""), doc.get("parameters") or {}, measurement_state,
             )
             measured["measured_sim_minutes"] = outcome.elapsed_minutes(doc["executed_at"], now)
+            measured["attribution"] = outcome.attribute(
+                baseline, measured, outcome.post_observation(baseline, state, statuses),
+            )
             saved = await proposal_store.record_outcome(doc["id"], measured, now)
             if saved is not None:
+                changed = True
                 record_outcome(f"action-{doc['id']}", measured, now)
                 logger.info("Measured outcome for proposal %s: %s", doc["id"], measured)
+        if changed:
+            documents = await proposal_store.list_documents()
+        calibration.refresh(documents)
     except Exception:
         logger.warning("Outcome measurement failed this tick", exc_info=True)
 

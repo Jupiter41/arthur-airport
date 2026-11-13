@@ -207,7 +207,17 @@ The forecast is used to:
 - **Every 3 simulated days thereafter:** retrain on full history
 
 Training runs in a background thread to avoid blocking the event loop. The model is serialized to
-`/app/models/forecast_{terminal}.lgbm` and hot-reloaded after each training run.
+`$MODELS_PATH/forecast_{terminal}.lgbm` and hot-reloaded after each training run.
+
+**Interruption recovery (G7, A58).** Model and parquet writes use a temporary file plus
+`os.replace`, so a crash never leaves a truncated model or training file. The retrain schedule is
+derived state: after a restart the next due tick (simulated day ≥ 3) retrains from the persisted
+parquet history, which also re-runs any retrain interrupted by the crash. Rows still in the
+in-memory buffer (at most one 60-sim-minute flush interval) are lost on an abrupt exit; they are
+forecast training samples, not operational state. Compose mounts the `passenger-ml` volume at
+`/app/ml-artifacts` (`MODELS_PATH=/app/ml-artifacts/models`,
+`TRAINING_DATA_PATH=/app/ml-artifacts/training_data`) so models and history survive container
+recreation.
 
 ### Model spec
 

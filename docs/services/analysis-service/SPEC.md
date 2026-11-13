@@ -80,7 +80,8 @@ clock source. Broker partition/offset fencing prevents an older clock owner from
 overwriting a newer consumed tick after rebalance. Clock/config metadata never
 substitutes wall time for simulation time. Other analysis projection consistency,
 training recovery, simulation epochs and owner mutation/receipt atomicity remain
-separate roadmap work. Legacy proposals are retained and indexed at startup.
+separate roadmap work (training recovery: see "Durable training runs"). Legacy
+proposals are retained and indexed at startup.
 Consumer offsets commit only after durable receipt/proposal processing succeeds; new groups replay
 retained inputs from the earliest offset.
 
@@ -115,7 +116,8 @@ consumption resumes. Other workers refresh the shared result after batches.
 Graph inputs are each owner's latest committed data, not a historical global
 snapshot at the analysis clock. Owner facts can arrive after that clock; later
 evaluations reconcile them. Local ephemeral anomaly/narration windows are not
-operational truth. Training recovery remains G7, calibration remains G8.
+operational truth. Training recovery (G7) and calibration (G8) are described in
+"Durable training runs" and "Outcome attribution and calibration" below.
 
 Weather facts use the producer's `new_category` and recommended arrival/departure
 rates. Capacity is expressed relative to configured CAVOK rates. Baggage occupancy
@@ -137,3 +139,61 @@ Outcome updates and `ActionOutcomeMeasured` facts commit together in the analysi
 outbox. Duplicate measurements do nothing. Rebuilding the action log preserves
 the stored outcome and measurement timestamp. The scheduler records actual elapsed
 simulation minutes, which may exceed 30 after downtime or a bulk tick.
+
+
+## Durable training runs (G7, A58)
+
+`TrainingRun` nodes (unique `id`, indexed `status`) hold the complete run
+document — model type, total timesteps, seed, artifact/checkpoint paths, actual
+progress, `attempt_count`, `resumed_from_timesteps` — plus `lease_token` and
+`lease_until`. Claims and fenced writes first lock `AnalysisRuntime {id:
+'training'}`, so they serialize across replicas; at most one run holds a live
+lease. Lease times use Neo4j `timestamp()` only as job metadata.
+
+`POST /training/start` creates a `queued` run, claims it and launches
+`train_rl.py` with `--seed`, `--checkpoint-dir` and `--checkpoint-freq`
+(`TRAINING_CHECKPOINT_TIMESTEPS`, default `timesteps // 20`, at least 1000). The
+trainer atomically replaces `latest.zip` + `checkpoint.json` (resume point) and
+`progress.json` (actual timesteps) in `<TRAINING_ARTIFACTS_DIR>/checkpoints/<id>`.
+The monitor persists progress every heartbeat, which also renews the lease
+(`TRAINING_LEASE_SECONDS`, default 30).
+
+A lifespan loop (`TRAINING_RECOVERY_POLL_SECONDS`, default 5) claims any `queued`
+run or `running` run whose lease expired, increments `attempt_count` and relaunches
+it with `--resume latest.zip`; PPO continues to the requested total with the same
+seed and configuration. Resumed training is not bitwise identical to an
+uninterrupted run (optimizer/rollout state after the checkpoint is recomputed).
+Without a checkpoint, the attempt restarts from zero with the persisted seed.
+Graceful shutdown releases the run to `queued`; `POST /training/stop` records
+`stopped`, which is terminal. A worker whose lease was replaced terminates its
+subprocess and can neither write progress, promote the policy nor finish the
+run. The policy is promoted atomically only after a successful exit, a valid
+archive and a successful ownership check. Compose mounts the `analysis-artifacts`
+volume at `/app/artifacts`; `RL_MODEL_PATH` defaults to
+`/app/artifacts/rl_policy.zip`.
+
+## Outcome attribution and calibration (G8, A58)
+
+On first dispatch, a proposal stores `baseline`: the targeted condition, untreated
+comparable units (other observed checkpoints; other gate-less waiting flights;
+other unresolved active incidents; at most 50) and the engine's prediction in the
+outcome's units (security: wait reduction `wait / new_lane_count`; binary
+actions: the stated confidence). Retries keep the original baseline.
+
+At measurement the outcome's `attribution` compares the treated change with the
+untreated change over the same window: difference-in-differences for security
+waits, lift over the untreated control rate for gate/incident actions. The
+untreated arm is the counterfactual. Security observations must be refreshed after
+the baseline. Without a fresh untreated comparable unit the result is a labelled
+`pre_post` observation with `calibration_eligible: false`. Attribution is
+observational (`causal_claim: false`), not a randomised estimate.
+
+`services.calibration` derives per action type, from eligible executed proposals:
+`effect_ratio` (realised / predicted), `impact_factor`, `success_rate`,
+`confidence_factor` and `brier_score`. Factors shrink towards 1.0 with five prior
+pseudo-observations and are clamped to [0.25, 2.0]. Ranking multiplies
+`impact_value` by `calibration_impact_factor` and confidence by
+`calibration_confidence_factor` (capped at 1); `calibration_samples` reports the
+evidence. With no eligible outcomes all factors are 1.0. The snapshot is rebuilt
+from persisted proposals at startup, after each tick's measurement pass and on
+`GET /calibration`.

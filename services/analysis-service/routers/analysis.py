@@ -219,6 +219,13 @@ async def what_if_analysis(request: WhatIfRequest) -> WhatIfResponse:
 # ── P2-3-5: Analysis log ────────────────────────────────────
 
 
+@router.get("/calibration")
+async def get_calibration() -> dict[str, Any]:
+    """Outcome-attributed prediction calibration (G8), rebuilt from durable proposals."""
+    from services import calibration, proposal_store
+    return calibration.refresh(await proposal_store.list_documents())
+
+
 @router.get("/what-if/log")
 async def what_if_log(
     limit: int = Query(50, ge=1, le=500),
@@ -431,7 +438,7 @@ async def llm_config() -> dict[str, Any]:
 @router.get("/training/status")
 async def training_status() -> dict[str, Any]:
     """Return current training status, history, and available models."""
-    return training_manager.get_status()
+    return await training_manager.get_status()
 
 
 @router.get("/training/config")

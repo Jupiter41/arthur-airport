@@ -894,8 +894,16 @@ publication never occurs inside a retriable Neo4j transaction callback.
 `ActionOutcomeMeasured` is an outbox fact on `analysis.events`, keyed by proposal
 ID. Its payload is the proposal document with `actual_outcome` and
 `outcome_measured_at`. It commits with the outcome write; retries retain its event
-ID, and an already measured proposal creates no new fact. Observed conditions do
-not prove causal attribution or calibrated savings.
+ID, and an already measured proposal creates no new fact. Since A58 the outcome
+also carries `attribution` (treated vs untreated change, counterfactual, method,
+`calibration_eligible`, `causal_claim: false`). Observational attribution is not
+a randomised causal estimate.
+
+`RecommendationOutcomeMeasured` is a planning outbox fact on `planning.events`,
+keyed by recommendation ID, committed with the automatic measurement. Payload:
+`recommendation_id`, `predicted_saving_eur`, `actual_saving_eur`,
+`prediction_error_eur`, `attribution_method`, `calibration_eligible`, `sim_day`;
+`sim_time` is the measuring simulation time.
 
 `GroundDelayProgram` on `flights.commands` takes `flight_ids`,
 `stagger_minutes` and optional `reason`. Duplicate IDs are held once; only

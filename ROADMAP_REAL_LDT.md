@@ -1,11 +1,12 @@
 # Roadmap to a Real Living Digital Twin (LDT)
 
-> **Current verification: 2026-11-13 (A54/A55).** Sections 0–9 and early
+> **Current verification: 2026-11-13 (A54/A55, A58).** Sections 0–9 and early
 > execution entries are historical observations. Section 10 is the current gap
 > register. G9 graph recovery is validated with independent Neo4j/Kafka workers,
 > including REALTIME/BULK production snapshots and pre-tick startup restoration.
 > The pre-G9 runtime gate passed 136 tests; final consolidated evidence is recorded
-> in A55. These checks do not claim completion of every modelling/calibration gap.
+> in A55. A58 closes G7 (durable, resumable training jobs) and G8 (counterfactual
+> attribution, prediction calibration, automatic planning outcomes). G4 remains open.
 
 > Principal-architect / product-CTO review of the Arthur International Airport digital twin, and a
 > pragmatic transformation plan to evolve it from a **facade of an LDT** into an **operational LDT**
@@ -31,16 +32,16 @@ coding alone (they need a decision from the owner or a running cluster).
 | G4  | P1   | Unify the 3 what-if simulators → one effect core | ☐ open | Largest remaining coding item; needs design + historical validation |
 | G5  | P1   | Unified impact×confidence÷cost ranking + cost signals | ✅ closed (shared ranking scope) | A25/A36/A37 and A40 delivered shared ranking and atomic financial signals. Empirical calibration remains G8; action executability remains G6. |
 | G6  | P1   | Concrete executable actions and advisory boundaries | ✅ closed (accepted action-loop scope) | Supported owner commands execute with durable receipts and replay protection. Rebooking remains advisory/rejected until itinerary reassignment exists; GDP currently uses uniform holds. These limits remain explicit follow-ups. |
-| G7  | P1   | Crash/interruption recovery for jobs | ⚠ partial | Planning jobs done; training-job recovery remains |
-| G8  | P1   | Outcome measurement → calibration | ⚠ partial | Observed-condition measurement done; counterfactual/baseline + prediction calibration **need measured outcomes from a running system** |
+| G7  | P1   | Crash/interruption recovery for jobs | ✅ closed (job-recovery scope) | A58: leased, fenced `TrainingRun` records; RL resumes from atomic PPO checkpoints after abrupt exit with the same seed; planning ML training rebuilt from its durable record; passenger retrain atomic and re-run after restart. Partial Monte Carlo resume and input/model snapshots remain explicit follow-ups. |
+| G8  | P1   | Outcome measurement → calibration | ✅ closed (attribution + calibration loop) | A58: dispatch-time baselines with untreated controls; difference-in-differences / control-rate counterfactuals; shrunk per-action calibration feeds ranking; planning outcomes measured automatically. Factors stay neutral until eligible outcomes accumulate; attribution is observational, not randomised. |
 | G9  | P1   | Graph-based projection rebuild (all domains) | ✅ closed | A55: durable discovery, unsampled owner snapshots, pre-tick transit/fleet/security recovery; eight independent-process Neo4j/Kafka recovery checks pass. |
 | G10 | P2   | Remove Zustand/WS vs React-Query/REST duplication | ✅ closed | Closed 2026-11-13 — passenger + analysis dedup; build/tests green (2 vestigial unread WS stores noted for follow-up) |
 | G11 | P2   | Reconcile data policy with fake-data contract | ✅ closed (accepted policy) | Owner-confirmed closure: operational entities remain synthetic with no real personal data; existing external reference/calibration/overlay sources remain labelled and separate under the previously accepted policy. No new external data import is authorized by this status correction. |
 | G12 | P2   | Sustained load + crash/replica validation | ✅ closed (accepted local scope) | Owner decision recorded on 2026-11-13: initial deployment is local; no Kubernetes cluster is available. Local restart/replay/concurrency validation is accepted. Broader cluster certification is deferred until Kubernetes deployment becomes a goal. |
 
-The action loop, shared transport and ranking have delivered slices, with the
-remaining work listed in §10. Passing the local runtime gate does not close the
-effect-model, recovery, calibration or cluster-validation gaps.
+The action loop, shared transport, ranking, job recovery and calibration loop
+have delivered their accepted scopes, with follow-ups listed in §10. The shared
+effect model (G4) remains the open gap.
 
 ---
 
@@ -1258,8 +1259,8 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
 | G5 / P1 — **closed for shared ranking scope** | A25/A36/A37 unify ranked financial/operational recommendations and deprecate the separate cost endpoint. A40 makes financial snapshots transaction-local, including current-tick charges and durable outbox delivery. | Preserve the shared ranking contract. Scores remain heuristic until empirical calibration in G8; unsupported actions remain advisory under G6. Shared ranking does not certify causal savings or executability. |
 | G6 / P1 — **closed for the accepted action-loop scope** | Supported gate, hold/GDP, security-lane, baggage and incident commands execute through owning services with durable receipts, transaction boundaries and replay tests. This preserves the previously accepted closure. | Retain honest advisory boundaries: rebooking currently rejects without changing an itinerary; destination/capacity validation and atomic itinerary reassignment are prerequisites for enabling it. GDP holds remain uniform, not staggered slot allocation. These are explicit follow-ups; the closed status does not certify those unimplemented behaviors. |
-| G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
-| G8 / P1 — partial | A32 schedules observed outcomes after 30 simulation minutes. A40 preserves results when rebuilding logs, commits measurement facts with results, compares UTC instants and requested gates, reads persisted incident status, and uses timestamped observed security waits. Missing targets/checkpoint observations are unknown rather than success; elapsed time can exceed 30 after downtime. This is observed-condition measurement, not causal attribution. | Validate fresh projections across restart/BULK mode, add baseline/counterfactual attribution and prediction calibration, and extend automatic outcomes to planning. Planning outcomes remain manual; no calibrated savings claim. |
+| G7 / P1 — **closed for job-recovery scope** (2026-11-13, A58) | A21 planning scenario jobs and A24 analysis proposals keep their leases, fencing and crash recovery. A58 adds durable `TrainingRun` records (lease token/expiry, attempt count, seed, actual progress) serialized by `AnalysisRuntime {id: 'training'}`. PPO writes atomic `latest.zip`/`checkpoint.json`/`progress.json`; a lifespan recovery loop claims queued or lease-expired runs and resumes them with `--resume` to the requested total. Graceful shutdown requeues; operator stop is terminal; a superseded owner terminates and cannot write progress, promote the policy or finish. Planning `/ml/train` records `ModelTrainingRun`; startup re-runs an interrupted or lost training deterministically and labels a changed/missing dataset. Passenger forecast writes stay atomic and the next due tick re-runs an interrupted retrain. Compose adds `analysis-artifacts` and `passenger-ml` volumes. | Six training lease/recovery units, two planning-training restore units, a real PPO checkpoint resume and a real SIGKILL-then-resume check pass; three independent-process Neo4j checks (`tests/integration/test_training_jobs.py`) join the CI live gate. Follow-ups, not reopenings: partial Monte Carlo checkpoint resume, frozen schedule/weather/model snapshots for planning inputs, and loss of at most one 60-sim-minute passenger training buffer on abrupt exit. Resumed PPO is not bitwise identical to an uninterrupted run. |
+| G8 / P1 — **closed for attribution and calibration loop** (2026-11-13, A58) | A32/A40 observed-condition measurement is retained. On first dispatch, proposals persist a `baseline`: target condition, untreated comparable units and the ex-ante prediction in outcome units. Outcomes add `attribution`: difference-in-differences for security waits, lift over untreated control rate for gate/incident actions; the untreated arm is the counterfactual. Security observations must be refreshed after the baseline; G9/A55 already validates fresh projections across restart and BULK. `services.calibration` derives effect ratio, success rate, Brier score and shrunk, bounded impact/confidence factors per action type; ranking applies them and reports `calibration_samples`; `GET /analysis/calibration` exposes the snapshot. Planning measures applied recommendations automatically from `CostRecord` windows against untreated units, using `SimState` time, with an atomic `RecommendationOutcomeMeasured` fact. | Nine attribution/calibration units, five planning-outcome units and a baseline-retention store test pass. Without fresh untreated controls an outcome is `pre_post` and excluded from calibration; no result claims randomised causality (`causal_claim: false`). Factors are neutral (1.0) until eligible outcomes accumulate in a running twin, so no calibrated-savings figure is claimed from this change. Unmodelled action types remain `measurable: false`. |
 | G9 / P1 — **closed** (2026-11-13, A55) | Analysis replaces its complete graph projection, restores stable discovery identities/timers, and serializes discovery plus facts in its outbox. Passenger security and full flight fleet observations are validated and unsampled in REALTIME/BULK; baggage persists and publishes its aggregate on every tick. Owner startup restores committed conveyor transit, turnaround/vehicle progress, queues and simulation time before another tick. | Verified with eight independent-process Neo4j/Kafka checks: rollback, abrupt exits before/after commit, accepted-clock startup, competing evaluators, replay/fencing/rewind, late/deleted inputs, proposal refresh, replica reads, broker failure retention, actual owner snapshots in both modes, and pre-tick owner checkpoint equality. This closes graph recovery; historical global snapshots, predictive calibration (G8), training jobs (G7) and cluster certification remain separate scope. |
 | G10 / P2 — **closed** (2026-11-13) | Hand-synchronized duplication removed for the two domains where it actually occurred: **passenger flow** (store was a pure React-Query mirror) and **analysis bottlenecks/recommendations** (RQ-preferred-with-WS-fallback dual read). `passengerStore`/`analysisStore` deleted, types moved to `src/types.ts`, consumers repointed; OVERVIEW rewritten to "one source of truth per domain" (WS-fed Zustand for live operational domains; React Query/REST for request-response domains). Build (`tsc -b && vite build`) + 40 tests green. | Two vestigial WS-fed-but-unread stores (`costStore`, `groundVehicleStore`) remain as a minor non-duplicating follow-up cleanup. Live seed-then-patch domains (flights/weather/incidents/sim clock) are a single source already and were left as-is. |
 | G11 / P2 — **closed under the previously accepted policy** (owner reconfirmed 2026-11-13) | Generated operational entities remain synthetic and contain no real personal data. The owner confirms that this policy-reconciliation item was already closed. Preserve the accepted distinction between operational simulation and labelled external reference/calibration/overlay inputs documented in CLAUDE.md, ADR-006 and DATA.md. | Keep reference inputs clearly separate from operational state and preserve source labels. This restores the accepted roadmap status; it changes no adapters, data defaults, credentials or imported data and authorizes no new external data acquisition. The merge-era decision to reopen this item is superseded by A57. |
@@ -1323,7 +1324,7 @@ It runs only against a disposable synthetic stack and restores lane capacity.
 | weather-service | FSM/capacity/METAR units and actual transition producer→analysis contract pass. |
 | incident-service | Cascade/lifecycle/protocol units pass; full-fleet incident command integration is not implemented. |
 | sim-orchestrator | Clock/schedule/scenario/speed units pass; full-stack execution needs a working engine. |
-| analysis / recommendations | Routing/approval/owner confirmation and projection units pass; many action types remain advisory, G4/G5/G6/G8 remain open. |
+| analysis / recommendations | Routing/approval/owner confirmation and projection units pass; many action types remain advisory, G4/G5/G6/G8 remain open (historical A15 row; G5/G6/G8 since closed, G4 open). |
 | cost-service | Cost/revenue/calculator units pass; transactional dedup and the accounting/rate-source gaps G1/G2 remain open. |
 | planning-service | Engine/finance/storage/outbox/demand-history units pass; jobs do not automatically resume and model uncertainty remains heuristic. |
 | gateway / dashboard | Gateway regression tests and both builds checked below; browser/full-stack certification remains pending. |
@@ -3347,3 +3348,77 @@ it does not claim that rejected rebooking commands perform itinerary changes.
 The current open/partial rows are **G4, G7 and G8**. All other rows retain their
 accepted closures, including the newly completed G9. Code and validation evidence
 are unchanged; this is a correction of roadmap status and scope only.
+
+## 51. A58 — Close G7 (durable training jobs) and G8 (attribution and calibration) (2026-11-13)
+
+**G7 — training and other job types.** Analysis training no longer lives in a
+process-local list. `services/training_store.py` persists each `TrainingRun` with
+its complete document, `lease_token`, `lease_until` and creation order. Claims
+and fenced writes lock `AnalysisRuntime {id: 'training'}`; at most one run holds a
+live lease. `POST /training/start` creates, claims and launches. A lifespan loop
+claims any queued or lease-expired run, increments `attempt_count` and resumes it.
+`train_rl.py` gained `--checkpoint-dir`, `--checkpoint-freq` and `--resume`. Its
+callback atomically replaces `latest.zip` and `checkpoint.json`, and reports real
+`num_timesteps` in `progress.json`. The final archive is staged and replaced. A
+recovered attempt resumes from the checkpoint's timesteps with the persisted seed.
+Without a checkpoint, it restarts from zero with that seed. Progress is now actual
+rather than time-estimated once the trainer reports it.
+
+Graceful shutdown terminates the subprocess and releases the run to `queued`;
+operator stop is terminal (`stopped`). Every heartbeat is a fenced save that
+renews the lease. A worker that loses ownership terminates its subprocess and
+cannot write progress, promote `rl_policy.zip` or finish the run. Promotion
+requires a valid archive and a successful ownership check. Artifacts moved out of
+the source `models` package: Compose mounts `analysis-artifacts` at `/app/artifacts`
+(`TRAINING_ARTIFACTS_DIR`, `RL_MODEL_PATH`); readiness includes the recovery loop.
+
+Planning `/ml/train` now records `ModelTrainingRun {id: 'planning-ml'}` with the
+dataset path and SHA-256 before training, then the result. Startup re-runs an
+interrupted (`running`) or completed-but-lost run. Training is deterministic
+(`random_state=42`), and a changed or missing dataset is labelled, not hidden.
+Passenger forecast retraining was already atomic per file. After restart its next
+due tick re-runs an interrupted retrain from persisted history. The new
+`passenger-ml` volume keeps models and parquet history across container
+recreation. At most one 60-sim-minute buffer of training rows can be lost.
+
+**G8 — baseline, counterfactual and calibration.** First dispatch stores
+`baseline` on the proposal: the target's condition, untreated comparable units and
+the engine's ex-ante prediction in outcome units. Retries keep the original. Each
+measured outcome adds `attribution`. Security uses difference-in-differences
+against other freshly observed checkpoints. Gate and incident actions use lift
+over the untreated control rate (other waiting flights; other unresolved incidents
+read from Neo4j). Stale post-action observations and missing controls yield
+`calibration_eligible: false`. Every result states `causal_claim: false`, because
+the comparison is observational. `services/calibration.py` rebuilds per-action
+effect ratio, success rate, Brier score and impact/confidence factors from
+persisted proposals. Factors use five prior pseudo-observations and clamp to
+[0.25, 2.0]. Ranking multiplies impact and confidence by them and exposes the
+factors and sample count on each recommendation; `GET /analysis/calibration`
+returns the snapshot. With no eligible outcomes, ranking is unchanged.
+
+Planning recommendations now measure automatically (`audit/outcome_measurer.py`).
+After `RECOMMENDATION_MEASUREMENT_DELAY_MIN` simulation minutes, measured from
+`SimState`, it compares non-revenue `CostRecord` cost charged to the target before
+and after application. It subtracts the mean change of untreated units of the same
+kind. One conditional transaction writes the result, `outcome_source: automatic`
+and a `RecommendationOutcomeMeasured` fact on `planning.events`. Manual outcome
+input remains an operator override. `POST /audit/apply` now defaults to simulation
+time instead of wall time.
+
+**Validation.** In a Linux Python 3.11 environment, **1,266 Python units pass**
+(three dependency warnings). New checks cover leased recovery, stale-owner fencing,
+shutdown release, terminal stop, failed attempts, planning-training restore,
+attribution, calibration shrinkage/bounds, calibrated ranking, baseline retention,
+planning DiD and idempotent measurement facts. Real PPO checks resume from a
+checkpoint and complete after SIGKILL. Python lint and dashboard TypeScript
+(`tsc --noEmit`) pass. Vitest and Compose-backed suites were not run: the
+environment has no Docker and only Windows-native dashboard binaries.
+`tests/integration/test_training_jobs.py` adds three independent-process Neo4j
+checks: exclusive claim, abrupt-exit recovery with stale-owner fencing, and
+graceful requeue. They run in the strict CI live gate.
+
+The open row is now **G4** (shared effect library). G7/G8 follow-ups: partial
+Monte Carlo resume, frozen planning input/model snapshots, randomised or
+staggered evaluation for stronger causal claims, and outcome models for
+currently unmeasurable action types. None reopens the accepted closures.
+

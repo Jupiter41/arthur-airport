@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
+from datetime import date
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from adapters.registry import (
@@ -742,18 +742,14 @@ async def predict_delay(
 
 
 @router.post("/ml/train")
-async def train_models(background_tasks: BackgroundTasks):
-    """Train demand and delay ML models from BTS data."""
+async def train_models():
+    """Train demand and delay ML models from BTS data under a durable training record (G7)."""
     import os
-    from ml.training_pipeline import run_training_pipeline
+    from ml.training_jobs import request_training
 
     bts_path = os.getenv("BTS_CSV_PATH", "/app/data/bts/T100_reference.csv")
-
-    # Run training in background (can take a few seconds)
-    import asyncio
-
-    result = await asyncio.to_thread(run_training_pipeline, bts_path)
-    return {"status": "completed", "results": result}
+    run = await asyncio.to_thread(request_training, bts_path)
+    return {"status": run["status"], "results": run.get("results", {}), "run": run}
 
 
 @router.get("/ml/status")
@@ -762,9 +758,12 @@ async def ml_model_status():
     from ml.demand_model import get_demand_model
     from ml.delay_model import get_delay_model
 
+    from ml.training_jobs import status as training_status
+
     return {
         "demand_model": get_demand_model().to_dict(),
         "delay_model": get_delay_model().to_dict(),
+        "training_run": await asyncio.to_thread(training_status),
     }
 
 
@@ -816,7 +815,15 @@ async def apply_audit_recommendation(rec_id: str, body: dict):
     """Mark a recommendation as applied."""
     from audit.audit_trail import mark_applied
 
-    applied_at = body.get("applied_at", datetime.utcnow().isoformat())
+    from audit.outcome_measurer import current_sim_state
+
+    applied_at = body.get("applied_at") or body.get("applied_at_sim_time")
+    if not applied_at:
+        # Application is a simulation-time fact (G8 windows use sim time).
+        state = await asyncio.to_thread(current_sim_state)
+        if state is None:
+            raise HTTPException(status_code=409, detail="Simulation time unavailable; pass applied_at")
+        applied_at = state[0].isoformat()
     if (await asyncio.to_thread(mark_applied, rec_id, applied_at)):
         return {"status": "applied", "rec_id": rec_id}
     raise HTTPException(status_code=404, detail="Recommendation not found")

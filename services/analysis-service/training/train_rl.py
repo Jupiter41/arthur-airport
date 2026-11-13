@@ -56,16 +56,32 @@ def main() -> None:
         help="CPU worker threads for PPO (default: 1)",
     )
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--checkpoint-dir", type=str, default=None,
+        help="Directory for atomic resumable checkpoints (latest.zip) and progress.json",
+    )
+    parser.add_argument(
+        "--checkpoint-freq", type=int, default=0,
+        help="Timesteps between checkpoints (default: timesteps // 20, at least 1000)",
+    )
+    parser.add_argument(
+        "--resume", type=str, default=None,
+        help="Resume from this checkpoint archive (written by --checkpoint-dir)",
+    )
     args = parser.parse_args()
     if args.timesteps < 1 or args.eval_episodes < 1 or args.threads < 1:
         parser.error("timesteps, eval-episodes and threads must be positive")
+    if args.checkpoint_freq < 0:
+        parser.error("checkpoint-freq must not be negative")
 
     import torch
     torch.set_num_threads(args.threads)
 
     from stable_baselines3 import PPO
-    from stable_baselines3.common.callbacks import EvalCallback
+    from stable_baselines3.common.callbacks import CallbackList, EvalCallback
     from stable_baselines3.common.env_util import make_vec_env
+
+    from training.checkpointing import make_checkpoint_callback, write_progress
 
     from services.rl.env import AirportOpsEnv
 
@@ -101,33 +117,56 @@ def main() -> None:
         deterministic=True,
     )
 
-    # Create PPO agent
-    model = PPO(
-        "MlpPolicy",
-        env,
-        learning_rate=3e-4,
-        n_steps=256,
-        batch_size=64,
-        n_epochs=10,
-        gamma=0.99,
-        gae_lambda=0.95,
-        clip_range=0.2,
-        ent_coef=0.01,
-        verbose=1,
-        tensorboard_log=tensorboard_log,
-        seed=args.seed,
-        device="cpu",
-    )
+    # Create (or resume) the PPO agent. A resumed attempt continues from the
+    # checkpoint's num_timesteps with the same seed and configuration.
+    resume = Path(args.resume) if args.resume else None
+    resumed = resume is not None and resume.is_file()
+    model = None
+    if resumed:
+        logger.info("Resuming PPO from checkpoint %s", resume)
+        model = PPO.load(str(resume), env=env, device="cpu")
+        model.tensorboard_log = tensorboard_log
+    if model is None:
+        model = PPO(
+            "MlpPolicy",
+            env,
+            learning_rate=3e-4,
+            n_steps=256,
+            batch_size=64,
+            n_epochs=10,
+            gamma=0.99,
+            gae_lambda=0.95,
+            clip_range=0.2,
+            ent_coef=0.01,
+            verbose=1,
+            tensorboard_log=tensorboard_log,
+            seed=args.seed,
+            device="cpu",
+        )
 
-    # Train
-    model.learn(
-        total_timesteps=args.timesteps,
-        callback=eval_callback,
-        progress_bar=True,
-    )
+    # Train only the remaining timesteps of the requested total.
+    callbacks = [eval_callback]
+    checkpoint_dir = Path(args.checkpoint_dir) if args.checkpoint_dir else None
+    if checkpoint_dir is not None:
+        frequency = args.checkpoint_freq or max(1000, args.timesteps // 20)
+        callbacks.append(make_checkpoint_callback(checkpoint_dir, frequency))
+    remaining = max(0, args.timesteps - int(model.num_timesteps))
+    if remaining:
+        model.learn(
+            total_timesteps=remaining,
+            callback=CallbackList(callbacks),
+            progress_bar=importlib.util.find_spec("tqdm") is not None and importlib.util.find_spec("rich") is not None,
+            reset_num_timesteps=not resumed,
+        )
+    else:
+        logger.info("Checkpoint already reached %d timesteps; finalising", model.num_timesteps)
 
-    # Save final model
-    model.save(str(output_path))
+    # Save final model atomically (a crash cannot leave a truncated archive).
+    staged = output_path.with_name(output_path.name + ".partial.zip")
+    model.save(str(staged))
+    staged.replace(output_path)
+    if checkpoint_dir is not None:
+        write_progress(checkpoint_dir, int(model.num_timesteps), completed=True)
     logger.info("Model saved to %s", output_path)
 
     # Evaluate

@@ -49,7 +49,11 @@ spec:
               value: "gpt-4o-mini"
             # RL model path
             - name: RL_MODEL_PATH
-              value: "/app/models/rl_policy.zip"
+              value: "/app/artifacts/rl_policy.zip"
+            # G7: durable training runs resume from checkpoints here. Mount a
+            # PersistentVolumeClaim at /app/artifacts for cross-pod recovery.
+            - name: TRAINING_ARTIFACTS_DIR
+              value: "/app/artifacts"
           readinessProbe:
             httpGet:
               path: /ready

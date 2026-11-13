@@ -61,6 +61,8 @@ class Proposal:
     # G8: automatic outcome measurement, filled ~30 sim-min after execution.
     actual_outcome: dict | None = None
     outcome_measured_at: str | None = None
+    # G8 attribution: target + untreated controls observed at first dispatch.
+    baseline: dict | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)

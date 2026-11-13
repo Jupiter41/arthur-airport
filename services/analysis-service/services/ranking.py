@@ -8,8 +8,9 @@ scale* so they can be ranked by
 
     priority_score = impact_value * confidence_score / cost_value
 
-**These weights are heuristic and NOT calibrated against measured outcomes**
-(see ROADMAP_REAL_LDT.md §10 G8 — automatic outcome measurement is still open).
+**The base weights are heuristic.** Since A58 (G8) each action type's impact
+and confidence are multiplied by factors learned from attributed outcomes in
+``services.calibration``; with no eligible outcomes both factors are 1.0.
 They exist to replace a confidence-only sort with one that also accounts for
 the *magnitude* of the benefit and the cost of realising it.  The absolute
 scale is irrelevant; only the ordering across concurrently-active
@@ -171,8 +172,15 @@ def score_recommendation(rec: Recommendation, bn: Bottleneck) -> float:
 
     Returns the priority score (also stored on the recommendation).
     """
+    from services import calibration
+
     impact, cost = estimate_impact_cost(rec, bn)
-    rec.impact_value = impact
+    factors = calibration.factors(rec.action_type.value)
+    rec.impact_value = impact * factors.impact
     rec.cost_value = cost
-    rec.priority_score = impact * rec.confidence_score / cost
+    rec.calibration_impact_factor = factors.impact
+    rec.calibration_confidence_factor = factors.confidence
+    rec.calibration_samples = factors.samples
+    confidence = min(1.0, rec.confidence_score * factors.confidence)
+    rec.priority_score = rec.impact_value * confidence / cost
     return rec.priority_score

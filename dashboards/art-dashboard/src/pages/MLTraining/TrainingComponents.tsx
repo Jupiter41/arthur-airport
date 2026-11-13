@@ -169,6 +169,14 @@ export function TrainingHistory({ runs }: { runs: TrainingRun[] }) {
               {run.started_at ? new Date(run.started_at).toLocaleString() : "—"}
               {run.completed_at &&
                 ` → ${new Date(run.completed_at).toLocaleTimeString()}`}
+              {(run.attempt_count ?? 1) > 1 && (
+                <span className="ml-2 text-amber-300">
+                  attempt {run.attempt_count}
+                  {run.resumed_from_timesteps
+                    ? ` · resumed at ${run.resumed_from_timesteps.toLocaleString()} steps`
+                    : ""}
+                </span>
+              )}
             </div>
             {run.error && (
               <div className="text-red-400 mt-1 text-[10px] truncate">

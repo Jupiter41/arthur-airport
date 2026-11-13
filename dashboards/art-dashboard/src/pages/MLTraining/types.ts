@@ -11,6 +11,10 @@ export interface TrainingRun {
   metrics: Record<string, unknown>;
   error: string | null;
   output_path: string | null;
+  /** G7: durable-run recovery metadata. */
+  attempt_count?: number;
+  resumed_from_timesteps?: number;
+  seed?: number | null;
 }
 
 export interface ModelFile {

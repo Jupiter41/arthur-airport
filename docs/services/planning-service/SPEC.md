@@ -151,8 +151,10 @@ One node per scenario, created on completion.
 | `was_applied`               | Boolean              |                                                                        |
 | `applied_at`                | String (ISO) \| null |                                                                        |
 | `measurement_sim_time`      | String (ISO) \| null | When outcome was measured                                              |
-| `actual_saving_eur`         | Float \| null        | Measured 30 sim-min after application                                  |
+| `actual_saving_eur`         | Float \| null        | Attributed saving measured 30 sim-min after application (G8)           |
 | `prediction_error_eur`      | Float \| null        | predicted - actual                                                     |
+| `outcome_source`            | String \| null       | `automatic` (measurer) · `manual` (operator REST input)                |
+| `attribution`               | Object \| null       | Window costs, untreated control change, counterfactual, method         |
 | `sim_day`                   | Integer              |                                                                        |
 | `model_version`             | String               |                                                                        |
 
@@ -879,8 +881,37 @@ hypothetical flight/passenger simulation steps are isolated and produce no
 operational events.
 
 The one exception: when a `RecommendationLog` outcome is measured, the service
-produces a `RecommendationOutcomeMeasured` event to `cost.events` so the
-cost dashboard can update the audit panel without polling.
+commits a `RecommendationOutcomeMeasured` fact to its outbox, published on
+`planning.events` (A58; the earlier draft named `cost.events`, but planning only
+publishes through its own outbox).
+
+### Automatic outcome measurement (G8, A58)
+
+`audit/outcome_measurer.py` runs in the lifespan every 5 s. Simulation time is
+read from `SimState {id: 'airport'}`, never the wall clock. An applied entry with
+`target_type` `Flight` · `Terminal` · `Incident`, a `target_id` and a parseable
+simulation `applied_at` becomes due `RECOMMENDATION_MEASUREMENT_DELAY_MIN` after
+application. The measurer sums airport cost (`CostRecord`, non-revenue) charged
+to the target through `FOR_FLIGHT` / `FOR_TERMINAL` / `CAUSED_BY` in the window
+before and the same-length window after application, and the same for every
+untreated unit of that kind charged in either window. The attributed saving is
+`-(treated change - mean untreated change)`; the untreated change is the
+counterfactual. Without untreated units the result is a `pre_post` observation
+(`calibration_eligible: false`). The conditional write is idempotent, and
+`POST /audit/apply` defaults `applied_at` to the current simulation time.
+Manual `POST /audit/outcome/{id}` remains an operator override (`outcome_source:
+manual`). The summary adds `automatic_measured_count` and
+`counterfactual_attributed_count`.
+
+### Recoverable ML training (G7, A58)
+
+`POST /ml/train` records `ModelTrainingRun {id: 'planning-ml'}` (dataset path,
+SHA-256, status, attempt count, results) before and after training. At startup,
+`ml/training_jobs.restore` re-runs a `running` (interrupted) or `completed` run
+whose models are not in this process's memory. Training is deterministic
+(`random_state=42`), so the recovered attempt rebuilds the same models; a changed
+dataset sets `dataset_changed: true`, and a missing dataset marks the run failed.
+`GET /ml/status` includes `training_run`.
 
 ```json
 {

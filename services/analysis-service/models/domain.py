@@ -100,26 +100,38 @@ class Recommendation(BaseModel):
         default=0.0, ge=0.0,
         description=(
             "Estimated benefit on a common synthetic scale (passenger-minutes "
-            "saved). Heuristic, not calibrated — see ROADMAP_REAL_LDT.md G8."
+            "saved), multiplied by calibration_impact_factor (G8)."
         ),
     )
     cost_value: float = Field(
         default=0.0, ge=0.0,
         description=(
             "Estimated cost on a common synthetic scale (disruption-minutes). "
-            "Heuristic, not calibrated — see ROADMAP_REAL_LDT.md G8."
+            "Heuristic synthetic scale."
         ),
     )
     priority_score: float = Field(
         default=0.0, ge=0.0,
         description=(
-            "Ranking score = impact_value * confidence_score / cost_value. "
+            "Ranking score = impact_value * min(1, confidence_score * "
+            "calibration_confidence_factor) / cost_value. "
             "Higher is better; used to order recommendations."
         ),
     )
     parameters: dict[str, Any] = Field(
         default_factory=dict,
         description="Action-specific parameters (flight_id, lane, terminal, etc.)",
+    )
+    calibration_impact_factor: float = Field(
+        default=1.0, ge=0.0,
+        description="Outcome-calibrated multiplier applied to impact_value (G8); 1.0 = uncalibrated.",
+    )
+    calibration_confidence_factor: float = Field(
+        default=1.0, ge=0.0,
+        description="Outcome-calibrated multiplier applied to confidence in ranking (G8).",
+    )
+    calibration_samples: int = Field(
+        default=0, ge=0, description="Attributed outcomes behind the calibration factors.",
     )
     executable: bool = False
     execution_status: str = "advisory"

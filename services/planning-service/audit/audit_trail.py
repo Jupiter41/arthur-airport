@@ -40,6 +40,10 @@ class RecommendationLogEntry:
     target_type: str = ""  # Flight | Terminal | Incident
     target_id: str = ""
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    # G8: automatic measurement against untreated comparable units.
+    measurement_sim_time: str | None = None
+    outcome_source: str | None = None  # automatic | manual
+    attribution: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -59,6 +63,9 @@ class RecommendationLogEntry:
             "target_type": self.target_type,
             "target_id": self.target_id,
             "created_at": self.created_at,
+            "measurement_sim_time": self.measurement_sim_time,
+            "outcome_source": self.outcome_source,
+            "attribution": self.attribution,
         }
 
 
@@ -66,8 +73,15 @@ class RecommendationLogEntry:
 
 
 
+_FIELDS = set(RecommendationLogEntry.__dataclass_fields__)
+
+
+def _entry(document: dict) -> RecommendationLogEntry:
+    return RecommendationLogEntry(**{k: v for k, v in document.items() if k in _FIELDS})
+
+
 def _entries() -> list[RecommendationLogEntry]:
-    entries = [RecommendationLogEntry(**d) for d in get_repository().list("RecommendationLog")]
+    entries = [_entry(d) for d in get_repository().list("RecommendationLog")]
     return sorted(entries, key=lambda e: (e.created_at, e.id))
 
 
@@ -118,6 +132,8 @@ def record_outcome(
     for entry in _entries():
         if entry.id == rec_id:
             entry.actual_saving_eur = actual_saving_eur
+            entry.outcome_source = "manual"
+            entry.attribution = None
             if entry.predicted_saving_eur != 0:
                 entry.prediction_error_eur = entry.predicted_saving_eur - actual_saving_eur
             else:
@@ -125,6 +141,40 @@ def record_outcome(
             get_repository().put("RecommendationLog", entry.id, entry.to_dict())
             return True
     return False
+
+
+def record_measured_outcome(rec_id: str, attribution: dict, measured_at: str) -> dict | None:
+    """Atomically attach an automatic measurement (G8); idempotent per entry.
+
+    The ``RecommendationOutcomeMeasured`` fact commits in the same transaction.
+    """
+    from uuid import uuid4
+
+    actual = round(float(attribution["actual_saving_eur"]), 2)
+    event = {
+        "event_id": str(uuid4()), "event_type": "RecommendationOutcomeMeasured",
+        "schema_version": "1.0", "producer": "planning-service",
+        "produced_at": datetime.utcnow().isoformat() + "+00:00", "sim_time": measured_at,
+        "payload": {"record_id": rec_id, "kind": "RecommendationLog", "recommendation_id": rec_id},
+    }
+
+    def mutate(document: dict) -> dict | None:
+        if not document.get("was_applied") or document.get("actual_saving_eur") is not None:
+            return None
+        predicted = float(document.get("predicted_saving_eur") or 0.0)
+        document.update(actual_saving_eur=actual, prediction_error_eur=round(predicted - actual, 2),
+                        measurement_sim_time=measured_at, outcome_source="automatic",
+                        attribution=attribution)
+        event["payload"].update(
+            predicted_saving_eur=predicted, actual_saving_eur=actual,
+            prediction_error_eur=document["prediction_error_eur"],
+            attribution_method=attribution.get("method"),
+            calibration_eligible=bool(attribution.get("calibration_eligible")),
+            sim_day=document.get("sim_day"),
+        )
+        return document
+
+    return get_repository().update("RecommendationLog", rec_id, mutate, extra_event=event)
 
 
 def get_audit_log(
@@ -180,6 +230,9 @@ def get_audit_summary() -> dict:
         "prediction_accuracy_pct": round(accuracy, 1),
         "avg_confidence": round(avg_confidence, 3),
         "measured_count": len(measured),
+        "automatic_measured_count": sum(1 for e in measured if e.outcome_source == "automatic"),
+        "counterfactual_attributed_count": sum(
+            1 for e in measured if (e.attribution or {}).get("calibration_eligible")),
     }
 
 

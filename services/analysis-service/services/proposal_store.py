@@ -175,7 +175,8 @@ def _due(document: dict, clock: datetime) -> bool:
     return (current - previous).total_seconds() >= 300
 
 
-async def dispatch(proposal_id: str, clock: datetime, *, approve_by: str | None = None) -> dict | None:
+async def dispatch(proposal_id: str, clock: datetime, *, approve_by: str | None = None,
+                   baseline: dict | None = None) -> dict | None:
     async def apply(tx: AsyncManagedTransaction, revision: int) -> dict | None:
         document = await _get(tx, proposal_id)
         if document is None or document["status"] not in ACTIVE:
@@ -194,6 +195,9 @@ async def dispatch(proposal_id: str, clock: datetime, *, approve_by: str | None 
             return document
         document.update(status="dispatched", command_id=document["id"], dispatched_at=clock.isoformat(),
                         dispatch_attempts=document.get("dispatch_attempts", 0) + 1)
+        if document.get("baseline") is None and baseline is not None:
+            # First dispatch is the pre-action observation; retries keep it.
+            document["baseline"] = baseline
         messages.extend([{"topic": intent.topic, "key": intent.entity_key, "envelope": {
             "command_type": intent.command_type, "command_id": document["id"], "schema_version": "1.0",
             "issued_by": document.get("decided_by") or document["proposed_by"],

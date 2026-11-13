@@ -413,7 +413,9 @@ The SpacetimeDB path is documented as an option but the reference implementation
 | `SecurityCheckpoint` | passenger-service | unique `terminal`; `lanes_open`, `updated_at` in simulation time |
 | `PlanningScenario` | planning-service | unique `id`; complete JSON `document` including progress and resolved seed |
 | `PlanningResult` | planning-service | unique `id` = scenario ID; JSON `document` containing KPIs and financials |
-| `RecommendationLog` | planning-service | unique `id`; JSON `document` containing prediction/application/measurement |
+| `RecommendationLog` | planning-service | unique `id`; JSON `document` containing prediction/application/measurement, `outcome_source` and `attribution` (G8) |
+| `ModelTrainingRun` | planning-service | unique `id` (`planning-ml`); JSON `document` with dataset path/SHA-256, status, attempt count and results (G7) |
+| `TrainingRun` | analysis-service | unique `id`, indexed `status`; JSON `document` (seed, checkpoint dir, actual progress, attempts), `lease_token`, `lease_until`, `created_ms` (G7) |
 | `PlanningEvent` | planning-service | unique event `id`; JSON event `document`, removed only after broker confirmation |
 
 Planning associations currently use IDs inside documents. The optional relationship

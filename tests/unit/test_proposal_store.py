@@ -305,3 +305,26 @@ def test_ambiguous_commits_keep_original_proposal_and_single_dispatch(context):
     asyncio.run(store.dispatch(proposal.id, NOW, approve_by="operator"))
     assert len(commands(driver)) == 1
     assert document(driver, proposal.id)["dispatch_attempts"] == 1
+
+
+def test_first_dispatch_records_pre_action_baseline_and_retries_keep_it(context, monkeypatch):
+    """G8: attribution compares against the condition when the command was first sent."""
+    import sys
+    from types import ModuleType, SimpleNamespace
+
+    store, execution, _, driver = context
+    consumer = ModuleType("kafka.consumer")
+    monkeypatch.setitem(sys.modules, "kafka.consumer", consumer)
+    sec = lambda wait: SimpleNamespace(observed_wait_minutes=wait, last_updated=NOW, open_lanes=4)  # noqa: E731
+    state = SimpleNamespace(security={"Terminal B": sec(24), "Terminal A": sec(10)})
+    consumer.get_state = lambda: state
+    proposal = asyncio.run(create(context, human=False))
+    asyncio.run(execution.dispatch(proposal, NOW))
+    baseline = document(driver, proposal.id)["baseline"]
+    assert baseline["treated"]["wait"] == 24 and set(baseline["controls"]) == {"Terminal A"}
+    assert baseline["predicted"]["delta"] == pytest.approx(-24 / 5)
+    state.security["Terminal B"] = sec(40)
+    retried = execution.approval_queue.get(proposal.id)
+    asyncio.run(execution.dispatch(retried, NOW + timedelta(minutes=6)))
+    assert document(driver, proposal.id)["dispatch_attempts"] == 2
+    assert document(driver, proposal.id)["baseline"] == baseline

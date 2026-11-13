@@ -2,9 +2,12 @@
 
 from dataclasses import asdict
 from datetime import datetime
+import logging
 
 from _common.commands import action_command
 from services import approval_queue, proposal_store
+
+logger = logging.getLogger(__name__)
 
 
 async def refresh() -> list[approval_queue.Proposal]:
@@ -18,8 +21,22 @@ async def persist(proposal: approval_queue.Proposal, clock: datetime) -> approva
     return approval_queue.cache(document)
 
 
+def _baseline(proposal: approval_queue.Proposal, sim_time: datetime) -> dict | None:
+    """Pre-action target/control observation for G8 attribution; never blocks dispatch."""
+    from services import outcome
+    try:
+        from kafka.consumer import get_state
+
+        return outcome.observe_baseline(proposal.action_type, proposal.parameters, get_state(),
+                                        sim_time, proposal.confidence_score)
+    except Exception:
+        logger.warning("Baseline observation unavailable for %s", proposal.id, exc_info=True)
+        return None
+
+
 async def dispatch(proposal: approval_queue.Proposal, sim_time: datetime, *, approve_by: str | None = None) -> dict:
-    document = await proposal_store.dispatch(proposal.id, sim_time, approve_by=approve_by)
+    baseline = None if proposal.baseline is not None else _baseline(proposal, sim_time)
+    document = await proposal_store.dispatch(proposal.id, sim_time, approve_by=approve_by, baseline=baseline)
     if document is None:
         # A receipt may commit between the caller's snapshot and dispatch.
         # Report that committed result without authorizing another command.

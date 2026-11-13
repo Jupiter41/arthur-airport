@@ -198,6 +198,9 @@ services:
       PASSENGER_BTS_FILE: /app/data/bts/T100_reference.csv
       AIRPORT_IATA: ART
       AIRPORT_ICAO: KART
+      # G7: forecast models and training rows survive container recreation.
+      MODELS_PATH: /app/ml-artifacts/models
+      TRAINING_DATA_PATH: /app/ml-artifacts/training_data
     depends_on:
       neo4j:
         condition: service_healthy
@@ -214,6 +217,7 @@ services:
       - ./services/_common:/app/_common:ro
       - ./data/bts:/app/data/bts:ro
       - ./config:/app/config:ro
+      - passenger-ml:/app/ml-artifacts
 
   baggage-service:
     <<: *python-service
@@ -370,8 +374,14 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
-      # Phase 5: RL model path
-      RL_MODEL_PATH: ${RL_MODEL_PATH:-/app/models/rl_policy.zip}
+      # Phase 5: RL model path. G7: policies, run archives and resumable
+      # checkpoints live on a durable volume (not in the source `models` package).
+      RL_MODEL_PATH: ${RL_MODEL_PATH:-/app/artifacts/rl_policy.zip}
+      TRAINING_ARTIFACTS_DIR: /app/artifacts
+    volumes:
+      - ./services/_common:/app/_common:ro
+      - ./config:/app/config:ro
+      - analysis-artifacts:/app/artifacts
     depends_on:
       neo4j:
         condition: service_healthy
@@ -579,6 +589,8 @@ networks:
     driver: bridge
 
 volumes:
+  analysis-artifacts:
+  passenger-ml:
   neo4j-data:
   neo4j-logs:
   zookeeper-data:

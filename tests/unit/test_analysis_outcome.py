@@ -134,16 +134,18 @@ def test_scheduler_reads_persisted_incident_and_records_actual_elapsed(monkeypat
                parameters={"incident_id": "synthetic-incident"})
     monkeypatch.setattr(store, "list_documents", AsyncMock(return_value=[doc]))
     save = AsyncMock(return_value=doc)
-    read = AsyncMock(return_value=incident)
+    read = AsyncMock(return_value={"synthetic-incident": incident["status"]} if incident else {})
     monkeypatch.setattr(store, "record_outcome", save)
-    monkeypatch.setattr(db, "query_incident_for_outcome", read)
+    monkeypatch.setattr(db, "query_incident_statuses", read)
     # The active-only cache has no incident, even for a legitimately resolved one.
     consumer.state.active_incidents.clear()
     asyncio.run(consumer._measure_due_outcomes(NOW))
-    read.assert_awaited_once_with("synthetic-incident")
+    read.assert_awaited_once_with(["synthetic-incident"])
     measured = save.await_args.args[1]
     assert measured["measurable"] is measurable
     assert measured["measured_sim_minutes"] == 45
     assert save.await_args.args[0] == "p1" and save.await_args.args[2] == NOW
     if measurable:
         assert measured["bottleneck_resolved"] is True
+    # Legacy proposals without a dispatch baseline are never used for calibration.
+    assert measured["attribution"]["calibration_eligible"] is False

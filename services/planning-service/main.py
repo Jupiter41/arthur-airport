@@ -45,12 +45,25 @@ async def lifespan(app: FastAPI):
     worker = asyncio.create_task(jobs.run(worker_stop))
     app.state.worker = worker
     app.state.producer = producer
+    # G7: rebuild in-memory ML models from the durable training record, and
+    # measure applied recommendations automatically (G8).
+    from ml import training_jobs
+    from audit import outcome_measurer
+    restore_task = asyncio.create_task(asyncio.to_thread(training_jobs.restore))
+    app.state.ml_restore = restore_task
+    measurer_stop = asyncio.Event()
+    measurer = asyncio.create_task(outcome_measurer.run(measurer_stop))
+    app.state.outcome_measurer = measurer
     logger.info("planning-service started", port=8009)
     try:
         yield
     finally:
         worker_stop.set()
+        measurer_stop.set()
         await worker
+        await measurer
+        if not restore_task.done():
+            restore_task.cancel()
         stop.set()
         await task
         await asyncio.to_thread(producer.flush, 10)

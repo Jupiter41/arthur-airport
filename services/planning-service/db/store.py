@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from neo4j import Driver, ManagedTransaction
 
-LABELS = frozenset({"PlanningScenario", "PlanningResult", "RecommendationLog"})
+LABELS = frozenset({"PlanningScenario", "PlanningResult", "RecommendationLog", "ModelTrainingRun"})
 PLANNING_EPOCH = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
@@ -77,6 +77,31 @@ class PlanningRepository:
 
         with self.driver.session() as session:
             session.execute_write(write)
+
+    def update(self, kind: str, record_id: str, mutate, extra_event: dict | None = None) -> dict | None:
+        """Atomically read-modify-write one record. ``mutate`` returns the new
+        document, or None to leave it unchanged (no event is written then)."""
+        kind = self.label(kind)
+
+        def write(tx: ManagedTransaction) -> dict | None:
+            row = tx.run(
+                f"MATCH (n:{kind} {{id: $id}}) SET n.lock = coalesce(n.lock, 0) + 1 "
+                "RETURN n.document AS document", id=record_id,
+            ).single()
+            if not row:
+                return None
+            document = mutate(json.loads(row["document"]))
+            if document is None:
+                return None
+            tx.run(f"MATCH (n:{kind} {{id: $id}}) SET n.document = $document",
+                   id=record_id, document=json.dumps(document, allow_nan=False)).consume()
+            self.write_outbox(tx, self.event(kind, record_id, f"{kind}Updated", document))
+            if extra_event is not None:
+                self.write_outbox(tx, extra_event)
+            return document
+
+        with self.driver.session() as session:
+            return session.execute_write(write)
 
     def get(self, kind: str, record_id: str) -> dict | None:
         kind = self.label(kind)

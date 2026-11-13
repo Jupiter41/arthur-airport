@@ -79,8 +79,14 @@ async def lifespan(app: FastAPI):
     from services.autonomous import record_proposal_execution
     from datetime import datetime
     await proposal_store.initialize()
+    from services import training_store
+    from services.training_manager import manager as training_manager
+    await training_store.initialize()
     get_state().restore_graph(await load_operational_projection())
-    approval_queue.restore(await proposal_store.list_documents())
+    from services import calibration
+    restored_documents = await proposal_store.list_documents()
+    approval_queue.restore(restored_documents)
+    calibration.refresh(restored_documents)
     clock = await proposal_store.load_clock()
     if clock:
         get_state().on_clock_tick(clock)
@@ -101,13 +107,20 @@ async def lifespan(app: FastAPI):
     outbox_stop = asyncio.Event()
     outbox_task = asyncio.create_task(action_outbox.run(outbox_stop))
     app.state.action_outbox_task = outbox_task
+    # G7: resume queued or abandoned durable training runs (startup and replicas).
+    training_stop = asyncio.Event()
+    training_task = asyncio.create_task(training_manager.run(training_stop))
+    app.state.training_task = training_task
 
     logger.info("analysis-service startup complete")
     yield
 
     # Shutdown
-    from services.training_manager import manager as training_manager
-    await training_manager.stop_training()
+    training_stop.set()
+    with suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(training_task, timeout=5)
+    # Graceful shutdown releases the run to the queue with its checkpoints.
+    await training_manager.shutdown()
     stop_consumer()
     outbox_stop.set()
     with suppress(asyncio.TimeoutError):
@@ -182,4 +195,5 @@ async def ready():
         "kafka": check_kafka,
         "consumer": is_consumer_running,
         "action_outbox": lambda: not app.state.action_outbox_task.done(),
+        "training_recovery": lambda: not app.state.training_task.done(),
     })
