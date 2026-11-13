@@ -64,6 +64,15 @@ def publish_confirmed(document: dict) -> None:
         raise RuntimeError("Baggage broker acknowledgement unavailable; outbox retained")
 
 
+
+def publish_batch_confirmed(documents: list[dict]) -> None:
+    kafka_runtime.publish_confirmed_batch(
+        _producer, documents, lambda doc: TOPIC,
+        lambda doc: str(doc.get("payload", {}).get("tag")
+                        or doc.get("payload", {}).get("command_id") or doc["event_id"]),
+    )
+
+
 def _produce_event(
     event_type: str,
     sim_time: datetime,

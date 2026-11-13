@@ -884,3 +884,9 @@ and `loaded_rows`. Both use the standard envelope and tick `sim_time`, are
 staged atomically with all corresponding writes/checkpoint, and remain unsampled
 in BULK mode. Individual per-entity display notifications retain their existing
 sampling policy. Delivery is at-least-once with stable outbox event IDs.
+
+Owner outboxes enqueue bounded batches in `(revision, position)` order and
+retain every row until all broker callbacks for that batch confirm delivery.
+A partial acknowledgement failure retains the whole batch for stable-ID replay.
+Idempotent producer sessions preserve partition ordering through broker retries;
+process restarts still give at-least-once delivery, not exactly once.

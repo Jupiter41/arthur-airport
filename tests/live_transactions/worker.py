@@ -77,7 +77,8 @@ async def seed():
 
 
 async def command():
-    consumer._state.sim_time = CLOCK
+    if consumer._state.sim_time is None:
+        consumer._state.sim_time = CLOCK
     envelope = {"command_id": "g1-command", "command_type": {
         "flight": "HoldFlight", "passenger": "OpenSecurityLane", "baggage": "RedirectBaggage",
     }[OWNER], "payload": {
@@ -129,7 +130,10 @@ async def delivery():
     # Process exit after broker ack but before deleting the outbox row.
     await db.close_neo4j()
     await db.init_neo4j()
-    await outbox.publish_pending(f"{LABEL}Outbox", db.get_driver, producer.publish_confirmed, batch=10000)
+    await outbox.publish_pending(
+        f"{LABEL}Outbox", db.get_driver, producer.publish_confirmed, batch=10000,
+        publish_batch_confirmed=producer.publish_batch_confirmed,
+    )
     observed = []
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
@@ -206,6 +210,19 @@ async def main():
         await tick()
         if mode == "exit-after-commit":
             os._exit(28)
+    elif mode == "mixed":
+        from datetime import timedelta
+        consumer._state.sim_time = CLOCK
+        async def ticks():
+            for minute in range(10):
+                await consumer._on_clock_tick({"step_minutes": 1}, CLOCK + timedelta(minutes=minute))
+        async def commands():
+            for number in range(10):
+                await consumer._handle_command({
+                    "command_id": f"g1-mixed-{number}", "command_type": "OpenSecurityLane",
+                    "payload": {"terminal": "B", "lanes_open": 7},
+                })
+        await asyncio.wait_for(asyncio.gather(ticks(), commands()), timeout=45)
     elif mode == "command":
         await command()
     elif mode == "delivery":

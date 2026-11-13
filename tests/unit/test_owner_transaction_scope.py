@@ -43,6 +43,10 @@ class Driver:
             async def __aexit__(self, *args):
                 pass
 
+            async def run(self, query, **params):
+                assert "MERGE (s:TestRuntime" in query
+                return Result()
+
             async def execute_write(self, callback):
                 candidate = deepcopy(driver.data)
                 result = await callback(Tx(driver, candidate))
@@ -120,3 +124,24 @@ def test_checkpoint_roundtrip_preserves_tuples_sets_queues_and_simulation_time()
     original.queue.append(object())
     with pytest.raises(TypeError, match="Unsupported"):
         CODEC.dump(original)
+
+
+@pytest.mark.parametrize("broker_error", [None, "injected broker error"])
+def test_broker_batch_requires_every_acknowledgement_and_preserves_enqueue_order(broker_error):
+    from _common.kafka_runtime import publish_confirmed_batch
+    documents = [{"event_id": "first"}, {"event_id": "second"}]
+    class Producer:
+        def __init__(self):
+            self.sent = []
+        def produce(self, **kwargs):
+            self.sent.append(kwargs)
+        def poll(self, timeout):
+            for index, item in enumerate(self.sent):
+                item["callback"](broker_error if index == 1 else None, None)
+    producer = Producer()
+    if broker_error:
+        with pytest.raises(RuntimeError, match="acknowledgement"):
+            publish_confirmed_batch(producer, documents, lambda doc: "test.events", lambda doc: doc["event_id"])
+    else:
+        publish_confirmed_batch(producer, documents, lambda doc: "test.events", lambda doc: doc["event_id"])
+    assert [item["key"] for item in producer.sent] == [b"first", b"second"]

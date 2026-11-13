@@ -88,6 +88,7 @@ async def create_constraints_and_indexes() -> None:
     async with driver.session() as session:
         for stmt in CONSTRAINTS + INDEXES:
             await session.run(stmt)
+        await (await session.run("MERGE (s:FlightRuntime {id: 'latest'})")).consume()
     logger.info("Flight constraints and indexes created")
 
 
@@ -449,7 +450,8 @@ async def next_outbox_revision(tx) -> int:
     delivery order across all transitions, even when a tick commits several.
     """
     result = await tx.run(
-        "MERGE (s:FlightRuntime {id: 'latest'}) "
+        "MATCH (s:FlightRuntime {id: 'latest'}) "
+        "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
         "SET s.revision = coalesce(s.revision, 0) + 1 "
         "RETURN s.revision AS revision"
     )

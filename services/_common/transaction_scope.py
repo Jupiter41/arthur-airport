@@ -72,10 +72,15 @@ async def run_tick(
     _check_label(runtime_label)
     _check_label(outbox_label)
 
+    # Initialize separately: repeated MERGE under a held owner lock can invert
+    # Neo4j's uniqueness/index locks against a concurrent command transaction.
+    async with get_driver().session() as session:
+        await (await session.run(f"MERGE (s:{runtime_label} {{id: 'latest'}})")).consume()
+
     async def apply(tx: Any) -> tuple[Any, list[dict], list[Callable[[], None]]]:
         row = await (await tx.run(
-            f"MERGE (s:{runtime_label} {{id: 'latest'}}) "
-            "SET s.lock = coalesce(s.lock, 0) + 1 "
+            f"MATCH (s:{runtime_label} {{id: 'latest'}}) "
+            "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
             "RETURN s.last_tick_sim_time AS last_tick, s.document AS document"
         )).single()
         candidate = copy(state)

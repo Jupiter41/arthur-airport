@@ -23,9 +23,9 @@ Coverage for flight, passenger and baggage owners:
 
 - actual domain/outbox/checkpoint writes followed by rollback or abrupt process exit;
 - process exit after commit, then a new worker replaying the same tick;
-- competing independent tick and command processes;
+- competing independent tick and command processes, plus concurrent live ticks/lane commands;
 - command mutation/receipt/fact rollback and redelivery;
-- broker failure retention, then real Kafka delivery with stable IDs across an ack/delete gap;
+- broker failure retention, then real Kafka delivery with stable IDs across an ack/delete gap, using the production batch publisher;
 - real Kafka input replay through owner dispatch and acknowledged consumer polling;
 - flight gate assignment, turnaround, vehicle, fuel and BULK summary facts.
 

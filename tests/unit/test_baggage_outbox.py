@@ -48,6 +48,8 @@ class Tx:
             self.driver.fail_on = None
             raise RuntimeError("Injected storage failure")
         db = self.db
+        if query == "MERGE (s:BaggageOutboxSeq {id: 'latest'})":
+            return Result()
         if "BaggageProjection" in query:
             db["projection"] = params.get("document")
             return Result()

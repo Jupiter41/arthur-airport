@@ -2575,7 +2575,7 @@ checkpoint; ticks at/before its simulation time perform no domain work.
   succeed. Outbox deletion still follows broker acknowledgement, with stable IDs
   across an ack/delete crash window (at-least-once delivery).
 
-**Validation.** `pytest tests/unit`: **1,154 passed**, no failures/skips (local
+**Validation.** `pytest tests/unit`: **1,158 passed**, no failures/skips (local
 Python 3.12; four existing ML/deprecation warnings). Ruff passes for every Python
 service and the new live harness. `G1_DISPOSABLE_STACK=1 REQUIRE_LIVE_STACK=1
 pytest tests/live_transactions`: **26 passed in 756.08 s**, no skips, using real
@@ -2591,8 +2591,23 @@ run all live transaction checks with strict no-skip policy, upload JUnit/status/
 logs on success or failure, and tear down volumes unconditionally. Shared Python
 code and the live harness join the Ruff gate. The existing all-service readiness
 and full integration gate stays mandatory. Reproduction and disposable-stack
-requirements are in `tests/live_transactions/README.md`. Hosted CI evidence is
-recorded after the branch run; local results above do not claim a hosted run.
+requirements are in `tests/live_transactions/README.md`.
+
+The initial hosted run passed the dedicated 26-case transaction gate, unit,
+Python/Node and gateway jobs; its existing full-stack receipt test exposed two
+additional interactions under normal event flow. The correction initializes
+runtime nodes separately and takes a constant-write owner lock before reads or
+revision increments, and uses ordered producer batches instead of one broker
+round trip/Neo4j deletion per fact. A partially acknowledged batch stays intact
+for stable-ID replay; idempotent producers preserve partition order during
+client retries. The same committed domain/receipt boundary is retained.
+
+The live gate now has **27 cases**, adding concurrent passenger ticks/lane
+commands; production batch delivery is exercised by the broker-failure/replay
+cases. Four more unit cases prove full-batch acknowledgement and retention.
+The formerly failing full-stack owner-receipt case passes locally after these
+corrections. Final hosted evidence is linked from [PR #2 checks](https://github.com/Jupiter41/arthur-airport/pull/2/checks);
+that live status is authoritative for the latest branch revision.
 
 This closes G1's owner transaction/delivery boundary, not G12's sustained-load or
 cluster certification, nor the other open §10 modelling/recovery gaps.

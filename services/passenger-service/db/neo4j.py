@@ -63,6 +63,7 @@ async def create_constraints_and_indexes() -> None:
     async with driver.session() as session:
         for stmt in CONSTRAINTS + INDEXES:
             await session.run(stmt)
+        await (await session.run("MERGE (s:PassengerRuntime {id: 'latest'})")).consume()
     logger.info("Passenger constraints and indexes created")
 
 
@@ -322,14 +323,9 @@ async def apply_status_change_atomic(
 
     Returns True if applied, False if ``event_id`` was already processed.
 
-    Ordering/revision choice: passenger-service has no single runtime node to
-    carry a monotonic revision (unlike cost-service's ``CostRuntime``). We derive
-    ``revision = coalesce(max(o.revision), 0) + 1`` over the *still-pending*
-    outbox rows, inside the same transaction. Delivery order only matters among
-    rows not yet confirmed+deleted, so a counter relative to the live backlog is
-    sufficient and deterministic; per-fact ``position`` orders facts within one
-    event. The single consumer loop processes events serially (``await _dispatch``
-    one at a time), so no two applies contend for the same revision.
+    A locked PassengerRuntime counter supplies a monotonic outbox revision
+    shared with tick and command transactions; per-fact position orders the
+    facts inside one committed input.
     """
     for group in groups:
         if group["status"] not in _VALID_STATUSES:
@@ -419,7 +415,7 @@ async def apply_changes_atomic(
     connection-risk property writes, and allows ``facts`` to carry non-status
     envelopes (e.g. ``PassengerAlert``). Everything commits in ONE
     ``execute_write``: durable inbox dedup on ``event_id`` → status/location/risk
-    writes → inbox marker → outbox facts at ``max(pending)+1``. Returns True if
+    writes → inbox marker → outbox facts at the locked owner runtime revision. Returns True if
     applied, False if ``event_id`` was already processed (durable dedup).
     """
     status_groups = status_groups or []
@@ -488,7 +484,8 @@ async def apply_tick_atomic(
 
     async def apply(tx) -> bool:
         result = await tx.run(
-            "MERGE (s:PassengerRuntime {id: 'latest'}) "
+            "MATCH (s:PassengerRuntime {id: 'latest'}) "
+            "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
             "SET s.revision = coalesce(s.revision, 0) + 1 "
             "RETURN s.last_tick_sim_time AS last_tick, s.revision AS revision"
         )
@@ -998,7 +995,8 @@ async def security_lane_command_atomic(
     async def apply(tx):
         # Shared ordering lock also serializes lane commands against ticks.
         row = await (await tx.run(
-            "MERGE (s:PassengerRuntime {id: 'latest'}) "
+            "MATCH (s:PassengerRuntime {id: 'latest'}) "
+            "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
             "SET s.revision = coalesce(s.revision, 0) + 1 RETURN s.revision AS revision"
         )).single()
         revision = row["revision"]
@@ -1037,7 +1035,8 @@ async def security_lane_command_atomic(
 
 async def next_outbox_revision(tx) -> int:
     row = await (await tx.run(
-        "MERGE (s:PassengerRuntime {id: 'latest'}) "
+        "MATCH (s:PassengerRuntime {id: 'latest'}) "
+        "SET s._transaction_lock = true REMOVE s._transaction_lock WITH s "
         "SET s.revision = coalesce(s.revision, 0) + 1 "
         "RETURN s.revision AS revision"
     )).single()

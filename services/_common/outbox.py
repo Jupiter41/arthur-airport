@@ -124,6 +124,7 @@ async def publish_pending(
     publish_confirmed: Callable[[dict], None],
     *,
     batch: int = 100,
+    publish_batch_confirmed: Callable[[list[dict]], None] | None = None,
 ) -> int:
     """Deliver up to ``batch`` pending facts in order; delete each only on ack.
 
@@ -138,6 +139,17 @@ async def publish_pending(
             batch=batch,
         )
         pending = await result.data()
+    if pending and publish_batch_confirmed is not None:
+        await asyncio.to_thread(
+            publish_batch_confirmed, [json.loads(row["document"]) for row in pending],
+        )
+        async with get_driver().session() as session:
+            result = await session.run(
+                f"UNWIND $ids AS id MATCH (e:{label} {{id: id}}) DELETE e",
+                ids=[row["id"] for row in pending],
+            )
+            await result.consume()
+        return len(pending)
     count = 0
     for row in pending:
         await asyncio.to_thread(publish_confirmed, json.loads(row["document"]))
@@ -158,18 +170,20 @@ async def run(
     *,
     logger: Any | None = None,
     poll_interval_s: float = 1.0,
+    publish_batch_confirmed: Callable[[list[dict]], None] | None = None,
 ) -> None:
     """Background loop: drain the outbox, retaining anything not yet confirmed."""
     while not stop.is_set():
         try:
-            count = await publish_pending(outbox_label, get_driver, publish_confirmed)
+            count = await publish_pending(
+                outbox_label, get_driver, publish_confirmed,
+                publish_batch_confirmed=publish_batch_confirmed,
+            )
             if count:
                 continue
         except Exception:
             if logger is not None:
-                logger.exception(
-                    "outbox delivery unavailable; retaining events", label=outbox_label
-                )
+                logger.exception(f"outbox delivery unavailable; retaining {outbox_label} events")
         try:
             await asyncio.wait_for(stop.wait(), timeout=poll_interval_s)
         except asyncio.TimeoutError:

@@ -116,3 +116,11 @@ def test_flight_turnaround_vehicles_fuel_and_snapshots_share_tick_boundary(speed
     after = worker("flight", "tick", auxiliary=True, speed=speed, minute=30)
     assert any(json.loads(row["document"])["event_type"] == "GroundVehicleReturned" for row in after["facts"])
     assert worker("flight", "tick", auxiliary=True, speed=speed, minute=30) == after
+
+
+def test_live_passenger_ticks_and_lane_commands_do_not_invert_runtime_locks():
+    worker("passenger", "seed")
+    result = worker("passenger", "mixed")
+    assert len(result["receipts"]) == 10
+    assert all(row["kind"] == "CommandExecuted" for row in result["receipts"])
+    assert result["runtime"][0]["tick"] == "2100-01-01T12:09:00"

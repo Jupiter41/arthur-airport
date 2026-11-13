@@ -67,7 +67,7 @@ def publish_confirmed(envelope: dict) -> None:
         raise RuntimeError("Flight event producer unavailable")
     delivered: list = []
     payload = envelope.get("payload") or {}
-    key = payload.get("flight_id") or envelope["event_id"]
+    key = payload.get("vehicle_id") or payload.get("flight_id") or envelope["event_id"]
     _producer.produce(
         topic=GROUND_TOPIC if envelope["event_type"].startswith("GroundVehicle") else TOPIC,
         key=key.encode("utf-8"),
@@ -79,6 +79,15 @@ def publish_confirmed(envelope: dict) -> None:
         _producer.poll(0.1)
     if not delivered or delivered[0] is not None:
         raise RuntimeError("Flight broker acknowledgement unavailable; outbox retained")
+
+def publish_batch_confirmed(documents: list[dict]) -> None:
+    kafka_runtime.publish_confirmed_batch(
+        _producer, documents,
+        lambda doc: GROUND_TOPIC if doc["event_type"].startswith("GroundVehicle") else TOPIC,
+        lambda doc: str(doc.get("payload", {}).get("vehicle_id")
+                        or doc.get("payload", {}).get("flight_id") or doc["event_id"]),
+    )
+
 
 
 def _produce_event(

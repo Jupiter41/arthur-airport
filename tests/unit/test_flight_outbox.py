@@ -101,7 +101,7 @@ class Tx:
             self.driver.fail_on = None
             raise RuntimeError("Injected storage failure")
         db = self.db
-        if "MERGE (s:FlightRuntime" in query:
+        if "s:FlightRuntime" in query:
             db["runtime_rev"] += 1
             return Result([{"revision": db["runtime_rev"]}])
         if "i:FlightInbox" in query and "RETURN i.id" in query:
@@ -154,6 +154,10 @@ class Tx:
             ordered = sorted(db["outbox"].values(),
                              key=lambda r: (r["revision"], r["position"]))
             return Result([{"id": r["id"], "document": r["document"]} for r in ordered])
+        if "UNWIND $ids AS id MATCH (e:FlightOutbox" in query:
+            for event_id in p["ids"]:
+                db["outbox"].pop(event_id, None)
+            return Result()
         if "MATCH (e:FlightOutbox {id: $id}) DELETE e" in query:
             db["outbox"].pop(p["id"], None)
             return Result()
@@ -468,3 +472,31 @@ def test_flight_checkpoint_restores_executable_turnaround_vehicle_and_queue_type
     assert len(restored.vehicle_pool.vehicles) == len(saved.vehicle_pool.vehicles)
     assert restored.task_vehicles[("G1-REG", "fueling")] == "GV-FUE-001"
     assert restored.runway_queue.assign_slots(SIM_TIME)[0]["flight_id"] == "F1"
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_batched_outbox_preserves_order_and_deletes_only_after_whole_batch_ack(flight_ctx, fail):
+    _, outbox, driver = flight_ctx
+    driver.db["outbox"] = {
+        "b": {"id": "b", "document": '{"event_id":"b"}', "revision": 2, "position": 0},
+        "a": {"id": "a", "document": '{"event_id":"a"}', "revision": 1, "position": 0},
+    }
+    delivered = []
+    def batch(documents):
+        assert set(driver.db["outbox"]) == {"a", "b"}
+        delivered.extend(doc["event_id"] for doc in documents)
+        if fail:
+            raise RuntimeError("partial batch broker failure")
+    def single(document):
+        raise AssertionError("Must use the batched production path")
+    async def drain():
+        return await outbox.publish_pending("FlightOutbox", lambda: driver, single,
+                                            publish_batch_confirmed=batch)
+    if fail:
+        with pytest.raises(RuntimeError, match="partial batch"):
+            asyncio.run(drain())
+        assert set(driver.db["outbox"]) == {"a", "b"}
+    else:
+        assert asyncio.run(drain()) == 2
+        assert driver.db["outbox"] == {}
+    assert delivered == ["a", "b"]

@@ -46,6 +46,7 @@ def init_producer(name: str, brokers: str | None = None) -> Producer:
             "bootstrap.servers": brokers or os.getenv("KAFKA_BROKERS", "kafka:9092"),
             "client.id": name,
             "acks": "all",
+            "enable.idempotence": True,
             "retries": 3,
         }
     )
@@ -233,3 +234,33 @@ async def run_consumer_loop(
     finally:
         consumer.close()
         logger.info("Kafka consumer closed")
+
+
+def publish_confirmed_batch(
+    producer: Producer | None,
+    documents: list[dict],
+    topic: Callable[[dict], str],
+    key: Callable[[dict], str],
+) -> None:
+    """Enqueue in outbox order and require broker acknowledgement for the batch.
+
+    A partial failure retains the whole batch in storage. Retried documents keep
+    their event IDs; an idempotent producer also preserves partition order while
+    librdkafka retries in-flight requests. This is still at-least-once delivery
+    across producer/process restarts.
+    """
+    import time
+    if producer is None:
+        raise RuntimeError("Event producer unavailable; outbox retained")
+    delivered: list = []
+    for document in documents:
+        producer.produce(
+            topic=topic(document), key=key(document).encode("utf-8"),
+            value=json.dumps(document).encode("utf-8"),
+            callback=lambda error, message: delivered.append(error),
+        )
+    deadline = time.monotonic() + 10
+    while len(delivered) < len(documents) and time.monotonic() < deadline:
+        producer.poll(0.1)
+    if len(delivered) != len(documents) or any(error is not None for error in delivered):
+        raise RuntimeError("Broker batch acknowledgement unavailable; outbox retained")

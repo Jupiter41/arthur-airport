@@ -105,7 +105,7 @@ class _Tx:
             self.driver.fail_on = None
             raise RuntimeError("Injected storage failure")
         db = self.db
-        if "MERGE (s:FlightRuntime" in query:
+        if "s:FlightRuntime" in query:
             db["runtime_rev"] += 1
             return _FakeResult([{"revision": db["runtime_rev"]}])
         if "RETURN r.event_type" in query:

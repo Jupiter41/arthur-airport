@@ -63,6 +63,16 @@ def tick_emit_decision() -> bool:
     return True
 
 
+
+def publish_batch_confirmed(documents: list[dict]) -> None:
+    kafka_runtime.publish_confirmed_batch(
+        _producer, documents, lambda doc: TOPIC,
+        lambda doc: str(doc.get("payload", {}).get("passenger_id")
+                        or doc.get("payload", {}).get("terminal")
+                        or doc.get("payload", {}).get("command_id") or doc["event_id"]),
+    )
+
+
 def _produce_event(
     event_type: str,
     sim_time: datetime,
@@ -164,7 +174,7 @@ def publish_confirmed(document: dict) -> None:
         raise RuntimeError("Passenger event producer unavailable; outbox retained")
     delivered: list = []
     payload = document.get("payload") or {}
-    key = payload.get("passenger_id") or payload.get("terminal") or document.get("event_id") or ""
+    key = payload.get("passenger_id") or payload.get("terminal") or payload.get("command_id") or document.get("event_id") or ""
     _producer.produce(
         topic=TOPIC,
         key=key.encode("utf-8") if key else None,

@@ -90,7 +90,7 @@ class Tx:
         db = self.db
 
         # --- PassengerRuntime checkpoint (G1-a) ---
-        if "MERGE (s:PassengerRuntime" in query and "SET s.revision" in query:
+        if "s:PassengerRuntime" in query and "SET s.revision" in query:
             db["runtime"]["revision"] += 1
             return Result([{
                 "last_tick": db["runtime"]["last_tick"],
