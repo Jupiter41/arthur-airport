@@ -27,7 +27,8 @@ Coverage for flight, passenger and baggage owners:
 - command mutation/receipt/fact rollback and redelivery;
 - broker failure retention, then real Kafka delivery with stable IDs across an ack/delete gap, using the production batch publisher;
 - real Kafka input replay through owner dispatch and acknowledged consumer polling;
-- flight gate assignment, turnaround, vehicle, fuel and BULK summary facts.
+- flight gate assignment, turnaround, vehicle, fuel and BULK summary facts;
+- reconciliation of newer incident/arrival projections when the tick is a replay.
 
 The separate `domain-transactions` CI job runs this suite. The existing
 `full-stack` job continues to require every application service and all REST,

@@ -124,3 +124,8 @@ def test_live_passenger_ticks_and_lane_commands_do_not_invert_runtime_locks():
     assert len(result["receipts"]) == 10
     assert all(row["kind"] == "CommandExecuted" for row in result["receipts"])
     assert result["runtime"][0]["tick"] == "2100-01-01T12:09:00"
+
+
+def test_replayed_baggage_tick_retains_new_incident_and_arrival_projection():
+    worker("baggage", "seed")
+    worker("baggage", "replay-inputs")

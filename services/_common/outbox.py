@@ -188,3 +188,59 @@ async def run(
             await asyncio.wait_for(stop.wait(), timeout=poll_interval_s)
         except asyncio.TimeoutError:
             pass
+
+
+def transition_batch_facts(
+    event_type: str, sim_time: Any, producer: str, payload: dict[str, list],
+    *, grouped_ids: dict[str, str] | None = None, max_items: int = 500,
+) -> list[dict]:
+    """Bound audit packets by entity/update count, preserving every transition.
+
+    ``grouped_ids`` identifies cohort lists such as status_groups[].ids. Cohorts
+    are split by their member IDs rather than counted as a single item. Generated
+    UUIDs/zone codes therefore stay well below Kafka's default message ceiling,
+    even after a long catch-up tick. Parts share an audit batch identity.
+    """
+    from uuid import uuid4
+    from _common.kafka_runtime import build_envelope
+    if max_items < 1:
+        raise ValueError("max_items must be positive")
+    grouped_ids = grouped_ids or {}
+    parts: list[dict] = []
+    current_part = {key: [] for key in payload}
+    remaining = max_items
+
+    def flush() -> None:
+        nonlocal current_part, remaining
+        if any(current_part.values()):
+            parts.append(current_part)
+        current_part = {key: [] for key in payload}
+        remaining = max_items
+
+    for key, items in payload.items():
+        member_key = grouped_ids.get(key)
+        for item in items:
+            if member_key:
+                members = item[member_key]
+                offset = 0
+                while offset < len(members):
+                    if remaining == 0:
+                        flush()
+                    count = min(remaining, len(members) - offset)
+                    current_part[key].append({**item, member_key: members[offset:offset + count]})
+                    remaining -= count
+                    offset += count
+            else:
+                if remaining == 0:
+                    flush()
+                current_part[key].append(item)
+                remaining -= 1
+    flush()
+    batch_id = str(uuid4())
+    facts = []
+    for index, part in enumerate(parts):
+        document = build_envelope(event_type, sim_time, {
+            **part, "batch_id": batch_id, "part": index, "part_count": len(parts),
+        }, producer)
+        facts.append({"id": document["event_id"], "document": document})
+    return facts

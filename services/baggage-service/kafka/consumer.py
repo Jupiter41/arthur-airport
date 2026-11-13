@@ -527,12 +527,12 @@ async def _apply_tick(plan: _TickPlan, sim_time: datetime) -> bool:
             )
         await set_loaded_on_timestamps_tx(tx, plan.loaded_rows, sim_time)
         facts = list(plan.facts)
-        if plan.status_changes or plan.flags or plan.loaded_rows:
-            document = kafka_runtime.build_envelope("BaggageStatusBatchChanged", sim_time, {
+        facts.extend(outbox.transition_batch_facts(
+            "BaggageStatusBatchChanged", sim_time, "baggage-service", {
                 "status_changes": plan.status_changes, "flags": plan.flags,
                 "loaded_rows": plan.loaded_rows,
-            }, "baggage-service")
-            facts.append({"id": document["event_id"], "document": document})
+            },
+        ))
         await outbox.stage_outbox(tx, "BaggageOutbox", facts, revision)
         return True
 
@@ -564,13 +564,36 @@ _TICK_CODEC = SnapshotCodec(
 
 async def _prepare_tick(candidate: BaggageConsumerState) -> None:
     # External redirects/offloads may have removed a checkpointed queued bag.
-    bags = {b["id"] for b in await get_baggage_in_pipeline()}
+    pipeline = await get_baggage_in_pipeline()
+    bags = {bag["id"] for bag in pipeline}
+    present = set()
     for zone in candidate.conveyor.get_all_zones().values():
         zone.queue = type(zone.queue)(b for b in zone.queue if b.baggage_id in bags)
+        present.update(b.baggage_id for b in zone.queue)
         zone.status = "normal"
     candidate.conveyor._transit_queue = [
         b for b in candidate.conveyor._transit_queue if b.bag.baggage_id in bags
     ]
+    present.update(b.bag.baggage_id for b in candidate.conveyor._transit_queue)
+    for bag in pipeline:
+        candidate.inducted_bag_ids.add(bag["id"])
+        if bag["id"] in present or bag.get("status") not in {
+            "inducted", "screening", "sorting", "arrived", "offloaded",
+        }:
+            continue
+        zone = candidate.conveyor.get_zone(bag.get("current_zone"))
+        if zone is None:
+            continue
+        terminal = str(bag.get("terminal_id") or "T-A")[-1]
+        terminal = terminal if terminal in "ABC" else "A"
+        destination = str(bag.get("gate_id") or terminal)[0]
+        zone.queue.append(BagInZone(
+            baggage_id=bag["id"], tag=bag.get("tag") or "",
+            flight_id=bag.get("flight_id") or "", is_dg=bool(bag.get("is_dg")),
+            dg_class=bag.get("dg_class"), passenger_id=bag.get("passenger_id"),
+            terminal=terminal, gate_terminal=destination if destination in "ABC" else terminal,
+            entered_at=bag.get("last_scan_at") or "",
+        ))
     for location in candidate.active_failures.values():
         for zone_id in FAILURE_IMPACT.get(location, []):
             candidate.conveyor.set_zone_status(zone_id, "offline")

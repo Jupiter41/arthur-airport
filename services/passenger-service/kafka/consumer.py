@@ -753,6 +753,7 @@ _TICK_CODEC = SnapshotCodec(
 async def _prepare_tick(candidate: PassengerConsumerState) -> None:
     from db.neo4j import load_security_lanes
     lanes = await load_security_lanes()
+    await _sync_security_from_db()
     for terminal, cp in candidate.security.checkpoints.items():
         cp.lanes_open = lanes.get(terminal, cp.lanes_open)
         cp.frozen = _state.security.checkpoints[terminal].frozen
@@ -1162,7 +1163,7 @@ async def _drain_security_queues(
     plan = TickContribution()
     # Periodic DB sync (every 60 ticks) to catch missed events/restarts.
     # On normal ticks, in-memory queues are authoritative.
-    if _state.tick_counter % 60 == 0:
+    if current_tick.get() is None and _state.tick_counter % 60 == 0:
         await _sync_security_from_db()
 
     forecast_queues = _get_forecast_queues(sim_time)
@@ -1214,6 +1215,13 @@ async def _sync_security_from_db() -> dict[str, str]:
 
     zone_by_pid: dict[str, str] = {}
     security_ids: set[str] = set()
+    committed_ids = {pax["id"] for pax in pax_list}
+    queued_ids = {
+        pid for cp in _state.security.checkpoints.values()
+        for pid in (*cp.queue, *cp.sa_queue)
+    }
+    _state.security_enqueued = queued_ids & committed_ids
+    _state.airside_transitioned.difference_update(committed_ids)
     for pax in pax_list:
         pid = pax["id"]
         security_ids.add(pid)

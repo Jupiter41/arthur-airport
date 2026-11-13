@@ -476,3 +476,18 @@ def test_check_connections_stages_missed_risk_and_alerts_atomically(monkeypatch)
     docs = [json.loads(r["document"]) for r in driver.db["outbox"].values()]
     assert sorted(d["event_type"] for d in docs) == ["PassengerAlert", "PassengerAlert"]
     assert {d["payload"]["type"] for d in docs} == {"connection_missed", "connection_at_risk"}
+
+
+def test_security_reconciliation_uses_graph_status_over_stale_checkpoint_flags(monkeypatch):
+    consumer = _consumer(monkeypatch)
+    checkpoint = consumer._state.security.checkpoints["B"]
+    checkpoint.enqueue("stale")
+    consumer._state.security_enqueued.update({"stale", "new"})
+    consumer._state.airside_transitioned.add("new")
+    monkeypatch.setattr(consumer, "get_passengers_by_status", AsyncMock(return_value=[{
+        "id": "new", "status": "security_queue", "location_zone": "security-B",
+    }]))
+    asyncio.run(consumer._sync_security_from_db())
+    assert checkpoint.queue == ["new"]
+    assert consumer._state.security_enqueued == {"new"}
+    assert "new" not in consumer._state.airside_transitioned

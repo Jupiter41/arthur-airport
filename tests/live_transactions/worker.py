@@ -210,6 +210,18 @@ async def main():
         await tick()
         if mode == "exit-after-commit":
             os._exit(28)
+    elif mode == "replay-inputs":
+        await tick()
+        await query("MATCH (f:Flight {id:'g1-target'}) "
+                    "CREATE (:Baggage {id:'g1-arrived', tag:'0000000002', status:'arrived', "
+                    "last_scan_zone:'arrival-belt-1', last_scan_at:'2100-01-01T12:00:00'})-[:LOADED_ON]->(f)")
+        await consumer._on_incident_created({
+            "incident_id": "g1-power", "type": "system_failure", "location": "power-A",
+        }, CLOCK)
+        await consumer._on_clock_tick({"step_minutes": 1}, CLOCK)
+        assert consumer._state.conveyor.get_zone("induction-A").status == "offline"
+        assert any(b.baggage_id == "g1-arrived" for b in
+                   consumer._state.conveyor.get_zone("arrival-belt-1").queue)
     elif mode == "mixed":
         from datetime import timedelta
         consumer._state.sim_time = CLOCK

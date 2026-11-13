@@ -145,3 +145,45 @@ def test_broker_batch_requires_every_acknowledgement_and_preserves_enqueue_order
     else:
         publish_confirmed_batch(producer, documents, lambda doc: "test.events", lambda doc: doc["event_id"])
     assert [item["key"] for item in producer.sent] == [b"first", b"second"]
+
+
+def test_unsampled_audit_batches_bound_large_cohorts_without_losing_members():
+    import json
+    from _common.outbox import transition_batch_facts
+    ids = [f"{number:036d}" for number in range(30000)]
+    dwell = [(passenger_id, 12) for passenger_id in ids[:1000]]
+    facts = transition_batch_facts("PassengerStatusBatchChanged", NOW, "passenger-service", {
+        "status_groups": [{"ids": ids, "status": "airside", "zone": "airside-A"}],
+        "dwell_items": dwell, "location_updates": [], "risk_updates": [],
+    }, grouped_ids={"status_groups": "ids"})
+    payloads = [fact["document"]["payload"] for fact in facts]
+    assert len(facts) > 1
+    assert [pid for part in payloads for group in part["status_groups"] for pid in group["ids"]] == ids
+    assert [row for part in payloads for row in part["dwell_items"]] == dwell
+    assert len({part["batch_id"] for part in payloads}) == 1
+    assert [part["part"] for part in payloads] == list(range(len(facts)))
+    assert all(part["part_count"] == len(facts) for part in payloads)
+    assert all(len(json.dumps(fact["document"]).encode()) < 1_000_000 for fact in facts)
+
+
+def test_replayed_tick_reconciles_new_external_input_without_reapplying_domain():
+    driver, original = Driver(), state()
+    async def advance(payload, clock):
+        scope = current.get()
+        scope.state.counter = 1
+        scope.state.queue.clear()
+        scope.state.last_tick_sim_time = clock
+        scope.state.sim_time = clock
+        scope.facts.append({"id": "once", "document": {"event_id": "once"}})
+    asyncio.run(run_tick("TestRuntime", "TestOutbox", original, CODEC,
+                         lambda: driver, advance, {}, NOW))
+    before = deepcopy(driver.data)
+    async def prepare(candidate):
+        candidate.queue.append("new external input")
+    async def forbidden(payload, clock):
+        raise AssertionError("A replay must not advance domain state")
+    asyncio.run(run_tick("TestRuntime", "TestOutbox", original, CODEC,
+                         lambda: driver, forbidden, {}, NOW, prepare))
+    assert list(original.queue) == ["new external input"]
+    assert original.counter == 1
+    assert driver.data == before

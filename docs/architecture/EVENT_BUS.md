@@ -890,3 +890,9 @@ retain every row until all broker callbacks for that batch confirm delivery.
 A partial acknowledgement failure retains the whole batch for stable-ID replay.
 Idempotent producer sessions preserve partition ordering through broker retries;
 process restarts still give at-least-once delivery, not exactly once.
+
+Transition-audit packets contain at most 500 entity IDs/updates per envelope.
+Cohorts in `status_groups[].ids` split by member count. All packets from one
+batch share `batch_id`, with zero-based `part` and total `part_count` for audit
+reassembly. Every part is staged with the domain transaction; no members are
+sampled away to satisfy the broker's message-size limit.

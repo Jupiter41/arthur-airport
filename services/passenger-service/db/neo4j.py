@@ -279,13 +279,12 @@ async def bulk_update_status(
     from _common.transaction_scope import current
     scope = current.get()
     if scope is not None and passenger_ids:
-        from _common.kafka_runtime import build_envelope
-        document = build_envelope("PassengerStatusBatchChanged", sim_time, {
-            "status_groups": [{"ids": passenger_ids, "status": new_status, "zone": new_zone}],
-            "dwell_items": [], "location_updates": [], "risk_updates": [],
-        }, "passenger-service")
-        scope.facts.append({"id": document["event_id"], "document": document})
-
+        scope.facts.extend(_outbox.transition_batch_facts(
+            "PassengerStatusBatchChanged", sim_time, "passenger-service", {
+                "status_groups": [{"ids": passenger_ids, "status": new_status, "zone": new_zone}],
+                "dwell_items": [], "location_updates": [], "risk_updates": [],
+            }, grouped_ids={"status_groups": "ids"},
+        ))
     async with driver.session() as session:
         result = await session.run(
             query, ids=passenger_ids, status=new_status, zone=new_zone, ts=sim_str,
@@ -508,15 +507,12 @@ async def apply_tick_atomic(
             await dwell_result.consume()
         await _write_location_updates(tx, location_updates)
         await _write_risk_updates(tx, risk_updates)
-        if status_groups or dwell_items or location_updates or risk_updates:
-            from _common.kafka_runtime import build_envelope
-            document = build_envelope("PassengerStatusBatchChanged", tick_sim_time, {
+        staged_facts = [*facts, *_outbox.transition_batch_facts(
+            "PassengerStatusBatchChanged", tick_sim_time, "passenger-service", {
                 "status_groups": status_groups, "dwell_items": dwell_items,
                 "location_updates": location_updates, "risk_updates": risk_updates,
-            }, "passenger-service")
-            staged_facts = [*facts, {"id": document["event_id"], "document": document}]
-        else:
-            staged_facts = facts
+            }, grouped_ids={"status_groups": "ids"},
+        )]
         await _outbox.stage_outbox(tx, "PassengerOutbox", staged_facts, revision)
         advance = await tx.run(
             "MATCH (s:PassengerRuntime {id: 'latest'}) SET s.last_tick_sim_time = $ts",

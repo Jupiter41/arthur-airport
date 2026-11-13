@@ -2575,7 +2575,7 @@ checkpoint; ticks at/before its simulation time perform no domain work.
   succeed. Outbox deletion still follows broker acknowledgement, with stable IDs
   across an ack/delete crash window (at-least-once delivery).
 
-**Validation.** `pytest tests/unit`: **1,158 passed**, no failures/skips (local
+**Validation.** `pytest tests/unit`: **1,161 passed**, no failures/skips (local
 Python 3.12; four existing ML/deprecation warnings). Ruff passes for every Python
 service and the new live harness. `G1_DISPOSABLE_STACK=1 REQUIRE_LIVE_STACK=1
 pytest tests/live_transactions`: **26 passed in 756.08 s**, no skips, using real
@@ -2602,11 +2602,15 @@ round trip/Neo4j deletion per fact. A partially acknowledged batch stays intact
 for stable-ID replay; idempotent producers preserve partition order during
 client retries. The same committed domain/receipt boundary is retained.
 
-The live gate now has **27 cases**, adding concurrent passenger ticks/lane
-commands; production batch delivery is exercised by the broker-failure/replay
-cases. Four more unit cases prove full-batch acknowledgement and retention.
+The live gate now has **28 cases**, adding concurrent passenger ticks/lane
+commands and projection reconciliation on a replayed tick; production batch delivery is exercised by the broker-failure/replay
+cases. Seven more unit cases prove full-batch acknowledgement/retention, bounded large-cohort audit packets, replay input reconciliation and security queue recovery.
 The formerly failing full-stack owner-receipt case passes locally after these
-corrections. Final hosted evidence is linked from [PR #2 checks](https://github.com/Jupiter41/arthur-airport/pull/2/checks);
+corrections. Catch-up audit packets are bounded to 500 entity IDs/updates with
+`batch_id`/`part`/`part_count`, preserving all mutations below Kafka's message
+limit. Replayed ticks reconcile newer incident, arrival and lane inputs before
+publishing restored projections. Financial integration workers use the public
+Neo4j lifecycle after G3 removed their stale private initialization method. Final hosted evidence is linked from [PR #2 checks](https://github.com/Jupiter41/arthur-airport/pull/2/checks);
 that live status is authoritative for the latest branch revision.
 
 This closes G1's owner transaction/delivery boundary, not G12's sustained-load or

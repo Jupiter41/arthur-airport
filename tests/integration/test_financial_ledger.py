@@ -39,7 +39,7 @@ async def counts(tx, source):
     return dict(row)
 
 async def main():
-    await db._init_driver()
+    await db.wait_for_neo4j(max_attempts=1)
     consumer.set_carbon_factors(json.loads(Path('fixtures/carbon_factors.json').read_text()))
     await ledger.initialize()
     event = args['event']
@@ -143,7 +143,7 @@ async def main():
             # Delivery happened, but simulate a crash before deleting its outbox
             # entry. Reopen storage, then use the actual outbox worker to retry.
             await db.close_neo4j()
-            await db._init_driver()
+            await db.wait_for_neo4j(max_attempts=1)
             await outbox.publish_pending()
             matches = 0
             deadline = time.monotonic() + 20

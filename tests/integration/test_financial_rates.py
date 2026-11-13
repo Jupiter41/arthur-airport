@@ -22,7 +22,7 @@ from services import ledger, rates
 from _common.financial_rates import rates_version
 args = json.load(sys.stdin)
 async def run():
-    await db._init_driver()
+    await db.wait_for_neo4j(max_attempts=1)
     try:
         await ledger.initialize()
         if args.get('validate_summary'):

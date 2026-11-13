@@ -88,9 +88,6 @@ async def run_tick(
             setattr(candidate, key, deepcopy(getattr(state, key)))
         if row and row["document"]:
             codec.restore(candidate, row["document"])
-        if row and row["last_tick"] and sim_time <= datetime.fromisoformat(row["last_tick"]):
-            candidate.sim_time = datetime.fromisoformat(row["last_tick"])
-            return candidate, [], []
         scope = TickScope(tx, candidate)
         token = current.set(scope)
         broadcaster = candidate.ws_broadcast
@@ -100,6 +97,11 @@ async def run_tick(
         try:
             if prepare:
                 await prepare(candidate)
+            # External facts may have changed projections since this checkpoint.
+            # Reconcile those inputs even when the clock itself is a replay.
+            if row and row["last_tick"] and sim_time <= datetime.fromisoformat(row["last_tick"]):
+                candidate.sim_time = datetime.fromisoformat(row["last_tick"])
+                return candidate, [], []
             await advance(payload, sim_time)
             row = await (await tx.run(
                 f"MATCH (s:{runtime_label} {{id: 'latest'}}) "

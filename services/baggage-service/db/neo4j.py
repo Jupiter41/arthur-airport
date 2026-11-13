@@ -648,7 +648,7 @@ async def get_baggage_in_pipeline() -> list[dict]:
     driver = get_driver()
     query = """
     MATCH (b:Baggage)
-    WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived', 'loaded', 'in_hold', 'flagged']
+    WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived', 'loaded', 'in_hold', 'flagged', 'offloaded']
     OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
