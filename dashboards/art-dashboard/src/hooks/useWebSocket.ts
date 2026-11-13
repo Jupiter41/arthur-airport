@@ -5,9 +5,7 @@ import { useFlightStore } from "../stores/flightStore";
 import { useWeatherStore } from "../stores/weatherStore";
 import { useBaggageStore } from "../stores/baggageStore";
 import { useIncidentStore } from "../stores/incidentStore";
-import { usePassengerStore } from "../stores/passengerStore";
 import { useGroundVehicleStore } from "../stores/groundVehicleStore";
-import { useAnalysisStore } from "../stores/analysisStore";
 import { useCostStore } from "../stores/costStore";
 import { getAuthToken } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
@@ -195,26 +193,9 @@ export const eventHandlers: Record<string, EventHandler> = {
       .updateVehicleStatus(payload.vehicle_id as string, "available");
   },
 
-  BottleneckDetected: (payload) => {
-    useAnalysisStore.getState().handleAnalysisEvent({
-      event_type: "BottleneckDetected",
-      payload,
-    });
-  },
-
-  BottleneckResolved: (payload) => {
-    useAnalysisStore.getState().handleAnalysisEvent({
-      event_type: "BottleneckResolved",
-      payload,
-    });
-  },
-
-  RecommendationGenerated: (payload) => {
-    useAnalysisStore.getState().handleAnalysisEvent({
-      event_type: "RecommendationGenerated",
-      payload,
-    });
-  },
+  // Bottlenecks and recommendations are owned by React Query
+  // (useBottlenecksQuery / useRecommendationsQuery polling the analysis
+  // REST endpoints). No WebSocket-fed duplicate is kept for them.
 
   AutonomousActionApplied: (payload, sim_time, event) => {
     useIncidentStore.getState().addAlert({

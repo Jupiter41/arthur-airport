@@ -6,6 +6,38 @@ simulation.
 
 ---
 
+## 0. Data policy — synthetic by default, real data is reference-only
+
+The twin's **generated operational entities** — passengers, passenger names/IDs,
+flight numbers, aircraft registrations, baggage, and incidents — are **always 100%
+synthetic**. No real personal data ever exists in the running system (see
+`docs/architecture/OVERVIEW.md` ADR-006 and `CLAUDE.md` rule #5).
+
+Several sources below are **real open datasets** or **live public read-only APIs**.
+They are used only as **reference / calibration / overlay** input and are **off by
+default** — each must be explicitly enabled:
+
+| Source | Real data? | Default | Enable with |
+| ------ | ---------- | ------- | ----------- |
+| OurAirports fixtures (§1) | Real (open, pre-generated into fixtures) | always seeded | n/a — infrastructure baseline |
+| BTS T-100 schedule/pax calibration (§2) | Real (open) | **off** | `PASSENGER_SOURCE=bts_historical`, planning `source="bts"` |
+| OpenFlights airline identities (§3) | Real (open) | pre-generated into fixtures | n/a — fixture provenance |
+| ADS-B live feed (§4) | Real-time, live API | **off** (`ADSB_ENABLED=false`) | `ADSB_ENABLED=true` |
+| Historical / live weather (§5) | Real (archive + live API) | **off** (`WEATHER_SOURCE=simulated`) | `WEATHER_SOURCE=historical` or `live` |
+| Incident scenarios (§6), Airport config (§7) | Synthetic | always | n/a |
+
+When a real-data mode is enabled, the dashboard **Data Sources** page labels it as
+real data. The real datasets provide *calibration and realism baselines* (traffic
+mix, infrastructure, weather), not the twin's own operational records; generated
+passengers, bags and incidents stay synthetic even in these modes.
+
+> **Open policy item (`ROADMAP_REAL_LDT.md §10 G11`):** the live-API reference modes
+> and the OpenFlights-derived real airline identities below are genuine real-world
+> data, which is in tension with the literal "all data is fake" contract. Keeping
+> them as labelled opt-in reference inputs vs. removing them is an owner decision.
+
+---
+
 ## 1. OurAirports Fixture Data
 
 | Field   | Value                                                        |

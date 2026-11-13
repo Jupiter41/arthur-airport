@@ -3,8 +3,16 @@
 ## Overview
 
 The Arthur Airport Digital Twin supports multiple data sources for each domain service.
-Each service can consume data from either the simulation engine or real-world APIs,
-selectable at runtime via REST endpoints or environment variables.
+Each service can consume data from either the simulation engine (the **default**) or
+optional **real-world open datasets / public read-only APIs**, selectable at runtime via
+REST endpoints or environment variables.
+
+> **Data policy:** the simulation engine is the default for every domain, and the twin's
+> generated operational entities (passengers, flights, baggage, incidents) stay **100%
+> synthetic** regardless of the selected source. Real-world modes are opt-in, off by
+> default, used only as reference/calibration/overlay input, and labelled as real data in
+> the dashboard. See `DATA.md §0`, `OVERVIEW.md` ADR-006, and the open policy item in
+> `ROADMAP_REAL_LDT.md §10 G11`.
 
 ## Architecture
 

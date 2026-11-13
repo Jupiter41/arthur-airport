@@ -82,9 +82,22 @@ analysis-service → topic: analysis.events
 
 ### Real-time push (WebSocket)
 
-The API gateway subscribes to all Kafka topics and fans out relevant events to connected dashboard clients over WebSocket. Operational facts are pushed over WebSocket. REST supplies initial loads,
-planning/history queries and reconciliation polling; consolidating overlapping
-frontend state remains roadmap work.
+The API gateway subscribes to all Kafka topics and fans out relevant events to connected dashboard clients over WebSocket.
+
+The dashboard uses **one source of truth per domain** — it does not hold the same
+data in both a WebSocket-fed store and a REST query:
+
+- **Live operational domains** (flights, weather, incidents/alerts, the sim clock,
+  ground vehicles) use WebSocket-fed Zustand stores as the source of truth. REST
+  supplies the initial/full load that seeds the store; WebSocket events then patch
+  it in place (e.g. `FlightStatusChanged`), and a low-frequency REST refetch
+  reconciles against the backend.
+- **Request-response / polling domains** (passenger flow, baggage aggregates,
+  analysis bottlenecks & recommendations, costs, and the planning / sim-history
+  pages) use React Query against REST as the source of truth. Components read the
+  query data directly; there is no parallel Zustand copy to hand-synchronize. These
+  domains have no live WebSocket stream that mutates them, so React Query polling
+  (where enabled) is the honest refresh mechanism.
 
 ---
 
@@ -153,11 +166,29 @@ All services consume the `sim.clock` Kafka topic to advance their internal time.
 **Rationale:** SpacetimeDB is designed for real-time multiplayer simulations — its subscription model and reducer pattern map naturally to the digital twin's needs. It would eliminate the need for the Kafka → WebSocket fan-out in the gateway.  
 **Trade-off:** SpacetimeDB is early-stage software. The spec documents both paths; the reference implementation uses Neo4j + Kafka.
 
-### ADR-006 — All simulation data is fake
+### ADR-006 — Generated operational data is synthetic; real data is reference-only
 
-**Decision:** No real airport, airline, passenger, or flight data is used anywhere.  
-**Rationale:** Avoids GDPR concerns, airline data licensing, and real-world incident sensitivity. The simulation is entirely self-contained.  
-**Implementation:** The sim-orchestrator seeds all data on startup from a configurable `fixtures/` directory containing fake airline codes, flight numbers, passenger names, and aircraft registrations.
+**Decision:** The twin's *generated operational entities* — passengers, passenger names/IDs,
+flight numbers, aircraft registrations, baggage, and incidents — are always 100% synthetic, and
+no real personal data ever exists. Real-world data is used **only** as optional, off-by-default
+*reference / calibration / overlay* input, never as the twin's own operational state.  
+**Rationale:** Keeping every personal and operational record fabricated avoids GDPR concerns and
+real-world incident sensitivity, while open reference datasets give the simulation a realistic
+baseline (traffic mix, infrastructure, weather) without manual data entry.  
+**Implementation:** The sim-orchestrator seeds operational data from a configurable `fixtures/`
+directory (synthetic passenger names, flight numbers, aircraft registrations). Some fixtures and
+optional modes draw on **real open datasets** — OurAirports (airport infrastructure), OpenFlights
+(airline identities, e.g. real IATA codes/names), BTS T-100 (aggregate traffic statistics), and
+historical METAR — and on optional live public **read-only** APIs (adsb.lol / OpenSky for a map
+overlay, aviationweather.gov for live METAR). Every real-data mode is **off by default**
+(`ADSB_ENABLED=false`, `WEATHER_SOURCE=simulated`, `PASSENGER_SOURCE=simulation`, planning
+`source="simulation"`), labelled as real data in the dashboard, and documented in `DATA.md`.
+
+> **Open policy item (`ROADMAP_REAL_LDT.md §10 G11`):** the live-API reference modes and the
+> OpenFlights-derived real airline identities in `sim-orchestrator/fixtures/` are genuine
+> real-world data. Whether to keep them as clearly-labelled opt-in reference inputs or remove them
+> to reach a literal "no real data anywhere" posture is an **owner decision**; this reconciliation
+> only makes the labelling honest and consistent, and keeps all generated operational data synthetic.
 
 ---
 

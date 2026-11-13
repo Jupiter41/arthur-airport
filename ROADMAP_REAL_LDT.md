@@ -17,6 +17,34 @@
 
 ---
 
+## Gap status at a glance (updated 2026-11-13)
+
+Authoritative detail for each row lives in **§10 (Current gap register)**. `✅` = closed;
+`⚠` = partial / scoped-open; `☐` = open. "Blocked-on" calls out rows that cannot be closed by
+coding alone (they need a decision from the owner or a running cluster).
+
+| ID | Pri | Title | Status | Note / blocked-on |
+|----|-----|-------|--------|-------------------|
+| G1  | P0   | Transactional domain-write + outbox/inbox boundaries | ⚠ partial | Extend atomic boundaries from cost/analysis to flight/pax/baggage owners (large) |
+| G2  | P0–P1| Shared financial rates + accounting perspective | ⚠ partial | **Blocked on owner decision:** airport-vs-airline accounting perspective (30% landing/compensation assumptions) |
+| G3  | P1   | Transport/logging/consumer consolidation into `_common` | ✅ closed | A27/A33/A34/A39 |
+| G4  | P1   | Unify the 3 what-if simulators → one effect core | ☐ open | Largest remaining coding item; needs design + historical validation |
+| G5  | P1   | Unified impact×confidence÷cost ranking + cost signals | ✅ closed | A25/A36/A37 |
+| G6  | P1   | Concrete executable actions (GDP/rebook/taxi/gate/incident) | ✅ closed | A28–A31/A38 |
+| G7  | P1   | Crash/interruption recovery for jobs | ⚠ partial | Planning jobs done; training-job recovery remains |
+| G8  | P1   | Outcome measurement → calibration | ⚠ partial | Observed-condition measurement done; counterfactual/baseline + prediction calibration **need measured outcomes from a running system** |
+| G9  | P1   | Graph-based projection rebuild (all domains) | ⚠ partial | Analysis security/vehicle + transit-progress recovery remain |
+| G10 | P2   | Remove Zustand/WS vs React-Query/REST duplication | ✅ closed | Closed 2026-11-13 — passenger + analysis dedup; build/tests green (2 vestigial unread WS stores noted for follow-up) |
+| G11 | P2   | Reconcile data policy with fake-data contract | ✅ closed | Closed 2026-11-13 — two-tier policy reconciled (CLAUDE.md r#5, ADR-006, DATA.md). Owner decision: **keep** real-world data as labelled opt-in reference/calibration input; generated operational data stays 100% synthetic, no real personal data |
+| G12 | P2   | Sustained load + crash/replica validation | ⚠ partial | **Blocked on cluster:** needs real cluster time + RBAC; not a code task |
+
+**Honest summary:** the LDT-defining gaps (action loop, ranking, concrete commands) are closed
+(G3/G5/G6). The only genuinely large remaining *coding* items are **G1** and **G4**. G2/G8/G12 are
+blocked on decisions or infrastructure, not on more code, and should be treated as explicitly parked
+rather than unfinished.
+
+---
+
 ## 0. Framing — this is not "just a dashboard"
 
 The most important correction to the usual framing: this platform already *reaches for* the full
@@ -1234,8 +1262,8 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G7 / P1 — partial | A21 gives planning a durable pending queue, renewable leases, stale-worker fencing, automatic expired-job recovery and atomic result/completion publication. An attempt restarts from its persisted seed/config. A24 serializes analysis proposal creation, approval/rejection, retry attempts and receipts in Neo4j, with an independent acknowledged command/audit outbox. Training-job recovery is separate. | Retain analysis decision/retry and planning fencing/crash/concurrency tests; extend interruption recovery to training and other job types. Full analysis discovery/projection ownership remains G9. A22 freezes financial rate inputs; schedule/weather/model snapshots and partial Monte Carlo checkpoint resume remain separate work. |
 | G8 / P1 — partial | A32 adds a **sim-clock-driven** outcome measurer: ~30 sim-min after a proposal executes, `_on_tick` measures the observed condition (e.g. is the targeted incident still active, did the flight get a gate) and persists `actual_outcome` to the Neo4j `ActionProposal` + the action log — so analysis `record_outcome` finally has an automatic caller (live-validated). Still open: this is **observed-condition** measurement, **not counterfactual/baseline attribution** (no no-action arm), predictions remain uncalibrated, and planning outcomes are still manual REST input. | Add baseline/counterfactual attribution and prediction calibration; extend automatic outcomes to planning; validated training/history before financial savings claims. |
 | G9 / P1 | Flight/gate/weather/incident projections rehydrate from Neo4j and reconcile every ten ticks (A15). Baggage aggregates are durable and unsampled, including BULK mode. A17 fixes owner scan-zone recovery, dangerous-goods/routing metadata and arrived-bag queues. A18 restores incident identities for flight restrictions, passenger freezes and conveyor failures. Analysis security/vehicle projections, transit progress and complete owner/vehicle recovery remain partial; aggregate publication retains the G1 crash window. | Complete graph-based projection rebuild and unsampled domain snapshots with actual producer→consumer contract tests, including BULK mode. |
-| G10 / P2 | Zustand/WS and React Query/REST still overlap. Original “dashboards never poll” wording contradicted `useApi` and planning pages. | Choose a source of truth per domain and remove hand-synchronized duplicate state. Overview now describes current behavior honestly. |
-| G11 / P2 | Provider-labelled adapters, historical data files and some plan examples conflict with the project-level fake-data-only contract. Operational/reference modes are not consistently labelled. | Reconcile the data policy in specs/config/UI; keep tests and generated operational data synthetic. This continuation imported no external data. |
+| G10 / P2 — **closed** (2026-11-13) | Hand-synchronized duplication removed for the two domains where it actually occurred: **passenger flow** (store was a pure React-Query mirror) and **analysis bottlenecks/recommendations** (RQ-preferred-with-WS-fallback dual read). `passengerStore`/`analysisStore` deleted, types moved to `src/types.ts`, consumers repointed; OVERVIEW rewritten to "one source of truth per domain" (WS-fed Zustand for live operational domains; React Query/REST for request-response domains). Build (`tsc -b && vite build`) + 40 tests green. | Two vestigial WS-fed-but-unread stores (`costStore`, `groundVehicleStore`) remain as a minor non-duplicating follow-up cleanup. Live seed-then-patch domains (flights/weather/incidents/sim clock) are a single source already and were left as-is. |
+| G11 / P2 — **closed** (2026-11-13) | The data policy is now consistent and honest across `CLAUDE.md` rule #5, `OVERVIEW.md` ADR-006, `DATA.md`, `DATA_SOURCES.md` and `data/README.md` — generated operational entities (passengers, names/IDs, flight numbers, registrations, baggage, incidents) are 100% synthetic and no real personal data ever exists; per-mode UI/adapter labels were already honest; defaults remain synthetic. **Owner decision (2026-11-13):** the genuine real-world integrations — OurAirports infra + OpenFlights airline identities (default path), and opt-in live APIs (adsb.lol/OpenSky, aviationweather.gov) + BTS/historical-METAR datasets — are **kept** as clearly-labelled, opt-in reference/calibration/overlay inputs, never presented as the twin's own operational state. No external data was imported, no fixtures deleted, no defaults changed. | Maintain the two-tier contract going forward: generated operational data stays synthetic; new real-world sources must be opt-in, off-by-default and labelled reference. |
 | G12 / P2 — partial | A17–A24 validate local Compose, all-service readiness, full restart, command replay and browser checks. Run 39153728540 passes all jobs and 121 live tests, including analysis proposal contention/rollback/outbox/crash recovery, durable rates, ledger recovery and planning worker fencing. A26 adds the missing `cost-service`/`planning-service` k8s manifests and the gateway's cost/planning service URLs (`kustomize build` + offline validation; no live apply — cluster RBAC denies it here). Sustained load and the remaining owners' crash/replica behavior remain unproved. | Retain the strict full-stack CI gate and validate the remaining load/crash/replica behavior on a cluster. Functional integration success is not complete fidelity or deployment certification. |
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for

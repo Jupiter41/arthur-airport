@@ -389,3 +389,37 @@ export interface FinancialRecommendation {
   payback_sim_minutes: number;
   expiry_sim_time: string;
 }
+
+export interface AnalysisBottleneck {
+  id: string;
+  type: string;
+  severity: "warning" | "critical";
+  zone: string;
+  root_cause: string;
+  estimated_duration_minutes: number;
+  affected_entity_count: number;
+  detected_at: string;
+  metrics: Record<string, unknown>;
+  resolved_at: string | null;
+}
+
+export interface AnalysisRecommendation {
+  id: string;
+  bottleneck_id: string;
+  action_type: string;
+  description: string;
+  expected_impact: string;
+  cost: string;
+  confidence_score: number;
+  expiry_sim_time: string;
+  priority_rank: number;
+  // Heuristic ranking signals (impact * confidence / cost) — not calibrated.
+  impact_value?: number;
+  cost_value?: number;
+  priority_score?: number;
+  parameters: Record<string, unknown>;
+  executable?: boolean;
+  execution_status?: string;
+  applied: boolean;
+  applied_at: string | null;
+}

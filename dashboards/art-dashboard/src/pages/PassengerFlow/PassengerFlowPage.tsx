@@ -1,5 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
-import { usePassengerStore } from "../../stores/passengerStore";
+import { useState, useMemo } from "react";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { usePassengerFlowQueries } from "../../hooks/useQueries";
 import { ExportMenu } from "../../components/ExportMenu";
@@ -14,12 +13,6 @@ import type { ZoneDensity } from "../../types";
 
 /* ──────── Main Page ──────── */
 export default function PassengerFlowPage() {
-  const zones = usePassengerStore((s) => s.zones);
-  const summary = usePassengerStore((s) => s.summary);
-  const connectionsAtRisk = usePassengerStore((s) => s.connectionsAtRisk);
-  const setZones = usePassengerStore((s) => s.setZones);
-  const setSummary = usePassengerStore((s) => s.setSummary);
-  const setConnectionsAtRisk = usePassengerStore((s) => s.setConnectionsAtRisk);
   const incidents = useIncidentStore((s) => s.incidents);
 
   const [selectedZone, setSelectedZone] = useState<ZoneDensity | null>(null);
@@ -34,19 +27,12 @@ export default function PassengerFlowPage() {
     return set;
   }, [incidents]);
 
+  // Passenger flow is REST-polled (no live WebSocket stream mutates it), so
+  // React Query is the single source of truth — read query data directly.
   const queries = usePassengerFlowQueries();
-
-  useEffect(() => {
-    if (queries.heatmap.data) setZones(queries.heatmap.data);
-  }, [queries.heatmap.data, setZones]);
-
-  useEffect(() => {
-    if (queries.summary.data) setSummary(queries.summary.data);
-  }, [queries.summary.data, setSummary]);
-
-  useEffect(() => {
-    if (queries.atRisk.data) setConnectionsAtRisk(queries.atRisk.data);
-  }, [queries.atRisk.data, setConnectionsAtRisk]);
+  const zones = queries.heatmap.data ?? [];
+  const summary = queries.summary.data ?? null;
+  const connectionsAtRisk = queries.atRisk.data ?? [];
 
   const isLoading = queries.heatmap.isLoading && zones.length === 0;
   const hasError = queries.heatmap.isError && zones.length === 0;
