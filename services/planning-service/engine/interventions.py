@@ -16,10 +16,10 @@ from dataclasses import dataclass, field
 
 
 VALID_ACTIONS = {
-    "gdp_start",                 # apply runway capacity cap until duration ends or gdp_end
-    "gdp_end",                   # explicit early end of an active GDP
+    "gdp_start",                 # one uniform hold per selected departure
+    "gdp_end",                   # end marker; cannot release committed holds
     "open_security_lanes",       # additional lanes per terminal
-    "gate_swap",                 # additional gates available globally
+    "gate_swap",                 # reassignment to an existing free gate
 }
 
 
@@ -107,36 +107,12 @@ def aggregate_capacity_factor(
 ) -> tuple[float, int, int]:
     """Compute (runway_capacity_factor, extra_security_lanes, extra_gates) at minute.
 
-    - Disruption capacity caps at ``disruption.capacity_pct``.
-    - ``gdp_start`` interventions multiply runway capacity by ``params.cap_pct`` (default 0.7),
-      taking the *minimum* of all active GDPs.
-    - ``open_security_lanes`` add ``params.lanes`` (default 1) — summed across active interventions.
-    - ``gate_swap`` adds ``params.delta`` gates (default 1) — summed across active interventions.
-    - A ``gdp_end`` action terminates GDPs that started before its sim_minute.
+    Only disruptions reduce runway capacity. Lane windows add security capacity.
+    GDP and gate reassignment are discrete shared-core commands at their start
+    minute; they never create gates or reduce physical runway throughput.
     """
-    cap_factor = 1.0
-    extra_lanes = 0
-    extra_gates = 0
+    from _common.effects import planning_window
 
-    # Find any gdp_end before this minute
-    gdp_end_minute = None
-    for iv in interventions:
-        if iv.action == "gdp_end" and iv.sim_minute <= minute:
-            if gdp_end_minute is None or iv.sim_minute < gdp_end_minute:
-                gdp_end_minute = iv.sim_minute
-
-    if disruption and disruption.is_active(minute):
-        cap_factor = min(cap_factor, max(0.0, disruption.capacity_pct))
-
-    for iv in interventions:
-        if not iv.is_active(minute, gdp_end_minute):
-            continue
-        if iv.action == "gdp_start":
-            cap_pct = float(iv.params.get("cap_pct", 0.7))
-            cap_factor = min(cap_factor, max(0.0, cap_pct))
-        elif iv.action == "open_security_lanes":
-            extra_lanes += int(iv.params.get("lanes", 1))
-        elif iv.action == "gate_swap":
-            extra_gates += int(iv.params.get("delta", 1))
-
-    return cap_factor, extra_lanes, extra_gates
+    factor, lanes = planning_window([iv.to_dict() for iv in interventions],
+                                    disruption.to_dict() if disruption else None, minute)
+    return factor, lanes, 0

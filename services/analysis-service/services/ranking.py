@@ -1,186 +1,51 @@
-"""Comparable impact / cost scoring for recommendations (roadmap G5).
-
-The recommender historically ranked interventions by ``confidence_score``
-alone, so a high-confidence but trivial action (e.g. an announcement) could
-outrank a high-impact one (e.g. saving 40 missed connections).  This module
-derives, for each recommendation, a benefit and a cost on a *common synthetic
-scale* so they can be ranked by
-
-    priority_score = impact_value * confidence_score / cost_value
-
-**The base weights are heuristic.** Since A58 (G8) each action type's impact
-and confidence are multiplied by factors learned from attributed outcomes in
-``services.calibration``; with no eligible outcomes both factors are 1.0.
-They exist to replace a confidence-only sort with one that also accounts for
-the *magnitude* of the benefit and the cost of realising it.  The absolute
-scale is irrelevant; only the ordering across concurrently-active
-recommendations is meaningful.
-
-Scales:
-- ``impact_value``  — passenger-minutes of delay/queue time avoided.
-- ``cost_value``    — "disruption-minutes": ground-delay minutes plus a small
-  staff/announcement-equivalent floor so that cost is never zero.
-
-The functions here are pure: they read only the recommendation's own
-``parameters`` and the owning bottleneck's ``metrics`` / ``affected_entity_count``.
-No I/O, no global state.
-"""
-
+"""Rank the shared G4 projection's benefit * calibrated confidence / cost."""
 from __future__ import annotations
 
-from models.domain import ActionType, Bottleneck, Recommendation
+from _common.effects import Action, EFFECT_MODEL_VERSION, EffectState, Security, apply, parameters, security_throughput
+from models.domain import Bottleneck, Recommendation
+from services import calibration
+from services.effect_adapter import project
 
-# Never divide by zero and never let a "free" action look infinitely good:
-# the cheapest action still costs at least this many disruption-minute units.
-COST_FLOOR = 5.0
-
-# Staff/announcement actions carry a small fixed operational cost (minutes of
-# equivalent effort) rather than a delay cost.
-_STAFF_LANE_COST = 20.0
-_ESCORT_COST = 10.0
-_SIGNAGE_COST = 8.0
-_VEHICLE_REPOSITION_COST = 10.0
-_BAGGAGE_HANDLING_COST = 12.0
-_ANNOUNCEMENT_COST = 3.0
+COST_FLOOR = parameters().cost_floor
 
 
-def _num(value, default: float = 0.0) -> float:
-    """Coerce a metric/parameter to float, tolerating None / bad types."""
-    try:
-        if isinstance(value, bool):  # bool is an int subclass — reject
-            return default
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+def _projection(rec: Recommendation, bn: Bottleneck, state=None):
+    if state is not None:
+        return project(state, rec.action_type.value, rec.parameters)[0]
+    # Offline scoring can project terminal totals; absent entity targets remain unobserved.
+    params = parameters()
+    lanes = int(rec.parameters.get("new_lane_count", rec.parameters.get("lanes_open", 5))) - 1
+    lanes = max(0, lanes)
+    name = str(rec.parameters.get("terminal", getattr(bn, "zone", "A"))).removeprefix("Terminal ")
+    compact = EffectState(security={name: Security(
+        queue=max(0, bn.metrics.get("queue_depth", bn.affected_entity_count)), lanes=lanes,
+        wait=max(0, bn.metrics.get("forecast_wait_minutes", 0)),
+        arrivals_per_minute=security_throughput(lanes, params))})
+    factor = calibration.factors(rec.action_type.value).impact
+    return apply([Action(action_type=rec.action_type.value, parameters=rec.parameters)], compact,
+                 params.prediction_horizon_minutes, params=params, factors={rec.action_type.value: factor})
 
 
-def _affected_pax(bn: Bottleneck) -> float:
-    """Passenger proxy for a bottleneck, floored at 1."""
-    return max(_num(bn.affected_entity_count, 1.0), 1.0)
+def estimate_impact_cost(rec: Recommendation, bn: Bottleneck, state=None) -> tuple[float, float]:
+    projection = _projection(rec, bn, state)
+    return projection.impact_value, projection.cost_value
 
 
-def estimate_impact_cost(rec: Recommendation, bn: Bottleneck) -> tuple[float, float]:
-    """Return ``(impact_value, cost_value)`` for a recommendation.
-
-    Both are non-negative; ``cost_value`` is floored at :data:`COST_FLOOR`.
-    """
-    m = bn.metrics or {}
-    p = rec.parameters or {}
-    at = rec.action_type
-
-    impact = 0.0
-    cost = COST_FLOOR
-
-    if at is ActionType.OPEN_SECURITY_LANE:
-        wait = _num(m.get("forecast_wait_minutes"), 20.0)
-        new_lanes = _num(p.get("new_lane_count"), 5.0)
-        prev_lanes = max(new_lanes - 1.0, 1.0)
-        # Per-passenger minutes saved when a lane is added (M/M/c-ish proxy).
-        saved_per_pax = wait * (1.0 - prev_lanes / new_lanes)
-        pax = _num(m.get("queue_depth"), 0.0) or _affected_pax(bn)
-        impact = saved_per_pax * pax
-        cost = _STAFF_LANE_COST
-
-    elif at is ActionType.EARLY_GATE_CALL:
-        # ~15% crowding relief, announcement-only.
-        impact = 0.15 * _affected_pax(bn) * 5.0
-        cost = _ANNOUNCEMENT_COST
-
-    elif at is ActionType.REDIRECT_CHECKIN:
-        # ~30% upstream feed reduction.
-        impact = 0.30 * _affected_pax(bn) * 6.0
-        cost = _SIGNAGE_COST
-
-    elif at is ActionType.REASSIGN_GATE:
-        # Frees gate pressure (proxy: affected flights * turnaround minutes),
-        # at the cost of +5 min walk time per affected passenger.
-        impact = _affected_pax(bn) * 8.0
-        cost = _affected_pax(bn) * 5.0
-
-    elif at is ActionType.DELAY_TAXI:
-        hold = _num(p.get("hold_minutes"), 10.0)
-        # Buys turnaround slack for the terminal's passengers.
-        impact = _affected_pax(bn) * 6.0
-        cost = hold * max(_num(m.get("waiting_flights"), 1.0), 1.0)
-
-    elif at is ActionType.SWAP_GATES:
-        impact = _affected_pax(bn) * 4.0
-        cost = _ANNOUNCEMENT_COST * 2.0
-
-    elif at is ActionType.HOLD_CONNECTING_FLIGHT:
-        pax = _num(p.get("passengers_saved"), 0.0) or _num(m.get("passenger_count"), 0.0)
-        # Saving a connection avoids a rebooking + long re-route: ~180 pax-min.
-        impact = pax * 180.0
-        cost = _num(p.get("hold_minutes"), 0.0) or _num(m.get("inbound_delay"), 10.0)
-
-    elif at is ActionType.FAST_TRACK_PASSENGERS:
-        pax = _num(p.get("passenger_count"), 0.0) or _affected_pax(bn)
-        impact = pax * 10.0  # ~10 min saved per fast-tracked pax
-        cost = _ESCORT_COST + pax * 3.0
-
-    elif at is ActionType.REBOOK_PASSENGERS:
-        pax = _num(p.get("passenger_count"), 0.0) or _affected_pax(bn)
-        # Guaranteed recovery, but a worse passenger outcome than a hold.
-        impact = pax * 90.0
-        cost = pax * 30.0
-
-    elif at is ActionType.GROUND_DELAY_PROGRAM:
-        holdable = _num(p.get("holdable_flights"), 0.0)
-        queued = _num(m.get("queued_flights"), holdable)
-        # Avoids airborne-hold fuel burn / approach-queue cascade.
-        impact = max(queued, 1.0) * 60.0
-        stagger = _num(p.get("stagger_minutes"), 10.0)
-        cost = holdable * stagger if holdable else COST_FLOOR
-
-    elif at is ActionType.REDIRECT_BAGGAGE:
-        util = _num(m.get("utilisation_pct"), 0.0)
-        impact = max(util - 70.0, 0.0) * _affected_pax(bn) * 0.2 + _affected_pax(bn)
-        cost = _BAGGAGE_HANDLING_COST
-
-    elif at is ActionType.EXPEDITE_LOADING:
-        impact = _affected_pax(bn) * 2.0
-        cost = _BAGGAGE_HANDLING_COST
-
-    elif at is ActionType.REDISTRIBUTE_VEHICLES:
-        util = _num(m.get("utilisation_pct"), 0.0)
-        impact = max(util - 75.0, 0.0) * 2.0 + _affected_pax(bn)
-        cost = _VEHICLE_REPOSITION_COST
-
-    elif at is ActionType.DEFER_TASK:
-        impact = _affected_pax(bn) * 1.5
-        cost = _VEHICLE_REPOSITION_COST
-
-    elif at in (ActionType.RESOLVE_INCIDENT, ActionType.CONTAIN_INCIDENT):
-        # Clearing an incident lifts its restrictions across every affected
-        # flight/zone — high benefit, at the cost of committed response resources.
-        impact = _affected_pax(bn) * 30.0
-        cost = 30.0
-
-    elif at is ActionType.OPEN_MAKEUP_CAROUSEL:
-        # Opening a carousel prevents flight delays from cascading baggage bottlenecks.
-        total_cost = _num(m.get("total_cost_eur"), 0.0)
-        impact = max(total_cost * 0.02, _affected_pax(bn) * 5.0)
-        cost = COST_FLOOR
-
-    impact = max(impact, 0.0)
-    cost = max(cost, COST_FLOOR)
-    return impact, cost
-
-
-def score_recommendation(rec: Recommendation, bn: Bottleneck) -> float:
-    """Populate ``impact_value`` / ``cost_value`` / ``priority_score`` on ``rec``.
-
-    Returns the priority score (also stored on the recommendation).
-    """
-    from services import calibration
-
-    impact, cost = estimate_impact_cost(rec, bn)
+def score_recommendation(rec: Recommendation, bn: Bottleneck, state=None) -> float:
+    projection = _projection(rec, bn, state)
     factors = calibration.factors(rec.action_type.value)
-    rec.impact_value = impact * factors.impact
-    rec.cost_value = cost
+    rec.effect_model_version = EFFECT_MODEL_VERSION
+    rec.effect_status = projection.action_status[0]
+    rec.projection = projection.predictions.get(rec.action_type.value)
+    if rec.projection and rec.projection.get("metric") == "security_wait_minutes":
+        rec.expected_impact = f"Projected wait change {rec.projection['delta']:.1f} min over {parameters().prediction_horizon_minutes} sim-minutes"
+    elif rec.effect_status == "no_effect_model":
+        rec.expected_impact = "Advisory: no shared effect model"
+    rec.impact_value = projection.impact_value
+    rec.cost_value = projection.cost_value
     rec.calibration_impact_factor = factors.impact
     rec.calibration_confidence_factor = factors.confidence
     rec.calibration_samples = factors.samples
     confidence = min(1.0, rec.confidence_score * factors.confidence)
-    rec.priority_score = rec.impact_value * confidence / cost
+    rec.priority_score = rec.impact_value * confidence / rec.cost_value
     return rec.priority_score

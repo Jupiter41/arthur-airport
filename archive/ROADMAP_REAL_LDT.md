@@ -1,12 +1,13 @@
 # Roadmap to a Real Living Digital Twin (LDT)
 
-> **Current verification: 2026-11-13 (A54/A55, A58).** Sections 0–9 and early
+> **Current verification: 2026-11-14 (A54/A55, A58/A59).** Sections 0–9 and early
 > execution entries are historical observations. Section 10 is the current gap
 > register. G9 graph recovery is validated with independent Neo4j/Kafka workers,
 > including REALTIME/BULK production snapshots and pre-tick startup restoration.
 > The pre-G9 runtime gate passed 136 tests; final consolidated evidence is recorded
 > in A55. A58 closes G7 (durable, resumable training jobs) and G8 (counterfactual
-> attribution, prediction calibration, automatic planning outcomes). G4 remains open.
+> attribution, prediction calibration, automatic planning outcomes). A59 closes G4 (shared effect core and replay tooling);
+> action-level empirical accuracy remains unvalidated until sufficient outcomes accumulate.
 
 > Principal-architect / product-CTO review of the Arthur International Airport digital twin, and a
 > pragmatic transformation plan to evolve it from a **facade of an LDT** into an **operational LDT**
@@ -18,7 +19,7 @@
 
 ---
 
-## Gap status at a glance (updated 2026-11-13)
+## Gap status at a glance (updated 2026-11-14)
 
 Authoritative detail for each row lives in **§10 (Current gap register)**. `✅` = closed;
 `⚠` = partial / scoped-open; `☐` = open. "Blocked-on" calls out rows that cannot be closed by
@@ -29,7 +30,7 @@ coding alone (they need a decision from the owner or a running cluster).
 | G1  | P0   | Transactional domain-write + outbox/inbox boundaries | ✅ closed (local owner boundary) | Remote G1 completion merged; all 28 independent-process transaction/crash/fencing/Kafka checks pass (A55). Broader cluster/load certification remains G12. |
 | G2  | P0–P1| Shared financial rates + accounting perspective | ✅ closed | Shared airport-v1 accounting, separate airline exposure, full compensation liability and airport-only planning benefits; two live accounting/planning checks pass (A55). |
 | G3  | P1   | Transport/logging/consumer consolidation into `_common` | ✅ closed (shared transport scope) | A27/A33/A34/A39 delivered common logging, transport lifecycle and shared consumer loops. Further application-layer extraction is follow-up work, not a reopening of this closure. |
-| G4  | P1   | Unify the 3 what-if simulators → one effect core | ☐ open | Largest remaining coding item; needs design + historical validation |
+| G4  | P1   | Unify the 3 what-if simulators → one effect core | ✅ closed (shared-model scope) | A59: deterministic shared effects drive what-if, ranking/G8, RL and planning; versioned outputs/policies, retraining and local Neo4j replay job verified. Empty outcome log means all action types remain empirically unvalidated. |
 | G5  | P1   | Unified impact×confidence÷cost ranking + cost signals | ✅ closed (shared ranking scope) | A25/A36/A37 and A40 delivered shared ranking and atomic financial signals. Empirical calibration remains G8; action executability remains G6. |
 | G6  | P1   | Concrete executable actions and advisory boundaries | ✅ closed (accepted action-loop scope) | Supported owner commands execute with durable receipts and replay protection. Rebooking remains advisory/rejected until itinerary reassignment exists; GDP currently uses uniform holds. These limits remain explicit follow-ups. |
 | G7  | P1   | Crash/interruption recovery for jobs | ✅ closed (job-recovery scope) | A58: leased, fenced `TrainingRun` records; RL resumes from atomic PPO checkpoints after abrupt exit with the same seed; planning ML training rebuilt from its durable record; passenger retrain atomic and re-run after restart. Partial Monte Carlo resume and input/model snapshots remain explicit follow-ups. |
@@ -41,7 +42,8 @@ coding alone (they need a decision from the owner or a running cluster).
 
 The action loop, shared transport, ranking, job recovery and calibration loop
 have delivered their accepted scopes, with follow-ups listed in §10. The shared
-effect model (G4) remains the open gap.
+effect model (G4) is delivered in A59. All gap rows have reached their accepted
+local scopes; recorded follow-ups and empirical-validation limits remain.
 
 ---
 
@@ -1246,7 +1248,7 @@ that committed-suite count.
 
 ## 10. Current gap register — checked against code and completed plan claims
 
-**The roadmap is not complete.** Historical checkmarks describe delivered slices;
+**Accepted gap scopes are closed as of A59.** Historical checkmarks describe delivered slices;
 they do not prove the intended behavior across the whole digital twin. This audit
 cross-checked this roadmap, `PLANNING.md`, `AUTONOMOUS_OPS.md`, `ROADMAP_USECASE.md`,
 capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths.
@@ -1256,7 +1258,7 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G1 / P0 — **closed for local owner boundaries** (2026-11-13, A55) | The merged remote G1 work consolidates full flight/passenger/baggage ticks, commands, domain writes, public aggregates, checkpoints and facts under each owner transaction; audit batches remain unsampled in BULK. Shared scoped repositories prevent nested commits. Stable-ID outboxes retain facts through broker failure and replay. | All 28 independent-process Neo4j/Kafka transaction tests pass, covering rollback, abrupt exits, competing ticks/commands, owner lock ordering and acknowledged input/output replay. Preserve the strict CI gate. Delivery remains at-least-once; broader cluster/load certification is tracked in G12. Historical A40/A42 partial-boundary notes are superseded by the merged G1 completion and A55 evidence. |
 | G2 / P0–P1 — **closed** (2026-11-13, A55) | Shared airport-v1 policy separates airport expense/revenue from airline fuel/handling/compensation exposure. Live and planning calculations use full compensation liability; investment benefits include airport financial effects only. Legacy checkpoints/results are migrated or labelled. Frozen financial rate inputs remain versioned. | Two strict live accounting/planning checks pass (20.53s), including real reports, ledger migration/restart, Kafka acknowledgement, planning policy and legacy result labels. The migration test runs with the standard isolated financial worker and indexed fixture cleanup. Predictive accuracy and causal savings remain G8. |
 | G3 / P1 — **closed for shared transport scope** | A27/A33/A34 consolidate logging and transport lifecycle; A39 shares three batch-consumer loops. This preserves the completed scope recorded on the merged branch. | Further extraction of domain orchestration into application modules is an architectural follow-up. Retain deferred-command, command-before-clock and manual-commit/retry behavior. That follow-up does not reopen the shared-transport closure. |
-| G4 / P1 | Planning simulation, analysis what-if and RL environment still contain separate action-effect models. Canonical aircraft classification exists, not a canonical entity/effect core. | One calibrated effect library with shared contracts, used by all three, plus historical validation. Phase 2 remains partial. |
+| G4 / P1 — **closed for shared-model scope** (2026-11-14, A59) | `_common.effects` supplies deterministic step/apply contracts, concrete gate/hold/GDP/security/baggage/incident effects and planning intervention/capacity/queue formulas. What-if, ranking and G8 share calibrated projections; RL uses the same step, retaining seven choices; planning retains its detailed lifecycle around the shared formulas. Config owns parameters. New outputs and policy archives carry `effect_model_version`; legacy results are labelled, incompatible policies refused, and PPO retrained. | The replay job ran against local Neo4j; its proposal log contained zero documents. Every action type is **unvalidated**, as required below 20 eligible outcomes; no empirical accuracy or operational policy quality is claimed. The report and training evidence live in `docs/validation/g4-*.json`. Sixteen new shared-effect checks, 1,284 general unit tests, four real PPO checks and lint pass. |
 | G5 / P1 — **closed for shared ranking scope** | A25/A36/A37 unify ranked financial/operational recommendations and deprecate the separate cost endpoint. A40 makes financial snapshots transaction-local, including current-tick charges and durable outbox delivery. | Preserve the shared ranking contract. Scores remain heuristic until empirical calibration in G8; unsupported actions remain advisory under G6. Shared ranking does not certify causal savings or executability. |
 | G6 / P1 — **closed for the accepted action-loop scope** | Supported gate, hold/GDP, security-lane, baggage and incident commands execute through owning services with durable receipts, transaction boundaries and replay tests. This preserves the previously accepted closure. | Retain honest advisory boundaries: rebooking currently rejects without changing an itinerary; destination/capacity validation and atomic itinerary reassignment are prerequisites for enabling it. GDP holds remain uniform, not staggered slot allocation. These are explicit follow-ups; the closed status does not certify those unimplemented behaviors. |
 | G7 / P1 — **closed for job-recovery scope** (2026-11-13, A58) | A21 planning scenario jobs and A24 analysis proposals keep their leases, fencing and crash recovery. A58 adds durable `TrainingRun` records (lease token/expiry, attempt count, seed, actual progress) serialized by `AnalysisRuntime {id: 'training'}`. PPO writes atomic `latest.zip`/`checkpoint.json`/`progress.json`; a lifespan recovery loop claims queued or lease-expired runs and resumes them with `--resume` to the requested total. Graceful shutdown requeues; operator stop is terminal; a superseded owner terminates and cannot write progress, promote the policy or finish. Planning `/ml/train` records `ModelTrainingRun`; startup re-runs an interrupted or lost training deterministically and labels a changed/missing dataset. Passenger forecast writes stay atomic and the next due tick re-runs an interrupted retrain. Compose adds `analysis-artifacts` and `passenger-ml` volumes. | Six training lease/recovery units, two planning-training restore units, a real PPO checkpoint resume and a real SIGKILL-then-resume check pass; three independent-process Neo4j checks (`tests/integration/test_training_jobs.py`) join the CI live gate. Follow-ups, not reopenings: partial Monte Carlo checkpoint resume, frozen schedule/weather/model snapshots for planning inputs, and loss of at most one 60-sim-minute passenger training buffer on abrupt exit. Resumed PPO is not bitwise identical to an uninterrupted run. |
@@ -1265,6 +1267,28 @@ capacity-planning roadmap 4 and stabilization roadmap 5 against their code paths
 | G10 / P2 — **closed** (2026-11-13) | Hand-synchronized duplication removed for the two domains where it actually occurred: **passenger flow** (store was a pure React-Query mirror) and **analysis bottlenecks/recommendations** (RQ-preferred-with-WS-fallback dual read). `passengerStore`/`analysisStore` deleted, types moved to `src/types.ts`, consumers repointed; OVERVIEW rewritten to "one source of truth per domain" (WS-fed Zustand for live operational domains; React Query/REST for request-response domains). Build (`tsc -b && vite build`) + 40 tests green. | Two vestigial WS-fed-but-unread stores (`costStore`, `groundVehicleStore`) remain as a minor non-duplicating follow-up cleanup. Live seed-then-patch domains (flights/weather/incidents/sim clock) are a single source already and were left as-is. |
 | G11 / P2 — **closed under the previously accepted policy** (owner reconfirmed 2026-11-13) | Generated operational entities remain synthetic and contain no real personal data. The owner confirms that this policy-reconciliation item was already closed. Preserve the accepted distinction between operational simulation and labelled external reference/calibration/overlay inputs documented in CLAUDE.md, ADR-006 and DATA.md. | Keep reference inputs clearly separate from operational state and preserve source labels. This restores the accepted roadmap status; it changes no adapters, data defaults, credentials or imported data and authorizes no new external data acquisition. The merge-era decision to reopen this item is superseded by A57. |
 | G12 / P2 — **closed for accepted local scope** (2026-11-13) | The merged branch records the owner decision that no Kubernetes cluster is available and the initial target is local operation. Local readiness, restart, command replay, crash/fencing and concurrency checks are accepted for this scope. A55 adds independent G9 recovery, complete restart/REST validation and post-restart concurrency evidence. | Retain the strict CI gates. Broader sustained-load and cluster crash/replica certification remain deferred until Kubernetes deployment becomes a goal; this closure does not claim cluster certification. The earlier merge reconciliation incorrectly reinstated the superseded cluster prerequisite. |
+
+### G4 — approved design decisions (owner, 2026-11-13)
+
+All ten decisions take the recommended option. A59 implements the shared-model scope;
+replay reports preserve action-level empirical validation as a separate evidence threshold.
+
+| # | Decision | Chosen option |
+|---|---|---|
+| 1 | Which actions get a shared effect model | The executable actions (gate reassignment, hold/GDP, security lane, baggage, incident) plus planning's 4 interventions. Advisory-only actions are marked "no effect model". |
+| 2 | What kind of model | A step function (advance one tick), with a one-shot `apply(actions, state, horizon)` wrapper for what-if |
+| 3 | What state the core works on | A new compact shared state of totals per terminal, gate pool and resource, mapped from each consumer's own state. Planning keeps its detailed engine but uses the core's formulas and parameters. |
+| 4 | Ranking and the G8 prediction | Both use the core. Ranking's impact figure and the G8 predicted effect come from the core's projection. |
+| 5 | Parameters and calibration | Parameters move to `config/airport.yaml` (also covers D6). G8 calibration factors adjust them, with the same shrinkage and [0.25, 2.0] limits. |
+| 6 | Fixed or random effects | The core always gives the same answer for the same input. Planning adds its Monte Carlo noise around it. |
+| 7 | What "validated" means | Replay the core on logged ticks and compare against G8's measured outcomes, per action type. Pass bar: median absolute error ≤ 25% of the observed effect, with at least 20 samples. Types below 20 samples are reported as "unvalidated", not failed. |
+| 8 | RL action space and policies | Keep the 7 choices, with the environment's effects swapped for the core. Version the policies, refuse to load policies from the old environment, and retrain. |
+| 9 | Migration and versioning | Store `effect_model_version` on planning results, proposals, what-if logs and RL policies. Label old results rather than re-running them. Roll out one consumer at a time: what-if → ranking/G8 → RL → planning. |
+| 10 | Behaviour that's currently fudged | Model baggage redirection and uniform GDP holds the way they're actually executed. Keep rebooking as a labelled no-op. Staggered GDP and rebooking stay follow-ups. |
+
+**G4 closure criterion (met by A59):** what-if, ranking, G8, RL and planning all use the one shared effect
+library, outputs carry `effect_model_version`, and the replay validation job runs. Action
+types count as validated only once each has enough measured outcomes.
 
 **Corrected completion claims:** A8/A9 now send executable commands and wait for
 owner receipts; security commands persist and publish facts; planning records are
@@ -3422,3 +3446,52 @@ Monte Carlo resume, frozen planning input/model snapshots, randomised or
 staggered evaluation for stronger causal claims, and outcome models for
 currently unmeasurable action types. None reopens the accepted closures.
 
+
+
+## A59 — G4 shared deterministic effects and replay closure (2026-11-14)
+
+**Status: G4 closed for the approved shared-model scope.** The contract is in
+`docs/architecture/EFFECT_MODEL.md`; `services/_common/effects.py` owns typed
+compact state, one-minute `step`, one-shot `apply`, planning window/command
+selection, queue throughput and runway capacity. All five consumer paths use
+it. Action-effect formulas formerly duplicated in what-if, ranking and RL were
+removed. Calibration bounds/priors and model parameters live in airport.yaml;
+G8's factors adjust projected benefits once, preserving physical inventory and
+owner command semantics. Dispatch baselines retain tick/time, compact inputs,
+parameters, horizon and factors so ex-ante projections can be replayed.
+
+GDP holds are uniform. Baggage redirects one observed bag and changes its
+flight/status, without symbolic congestion relief. Gate assignment conserves
+gates and validates availability. Advisory actions, including rebooking, have
+no effect model. Hold/GDP effects do not claim connection or airborne-holding
+savings without the corresponding model. Planning gate swaps no longer create
+permanent stands; security arrivals aggregate and drain once per terminal, and
+extra lanes no longer add runway-hold delay. Monte Carlo schedule noise remains
+outside the deterministic core.
+
+Outputs/proposals/results and PPO archives identify `effects-v1`; unversioned
+stored results retain a `legacy` label. Policy inference, benchmarking, resume
+and promotion reject incompatible versions. RL retains 22 observations/seven
+actions; queue and bottleneck rewards follow shared deterministic effects.
+A real seed-42 run resumed after a Windows sandbox checkpoint-replace denial
+and completed at **50,628 timesteps**, with archive version verification and
+agent load/inference. Its three synthetic evaluations averaged **28.70** reward;
+this verifies training mechanics, **not operational policy quality**.
+
+**Verification:** 1,284 general Python units pass (14.35s, eight dependency/
+existing deprecation warnings); all four real PPO train/reload/resume/abrupt-exit
+checks pass (25.14s). Sixteen shared-effect tests cover cross-consumer agreement,
+fixed command semantics, inventory conservation, graph recovery of baggage
+targets, single calibration application, advisory no-ops, policy version refusal
+and replay thresholds/duplicates/errors. The concurrent-consumer shutdown test
+now checks both consumers close exactly once without assuming their completion
+order. Abrupt-exit testing uses portable `Process.kill()`.
+
+`scripts/replay_effects.py --output tmp-g4-replay.json` ran against local Neo4j
+on 2026-11-14. The proposal log contained **0 documents**. Therefore every action
+type is **unvalidated**, rather than failed or certified accurate. The replay
+job requires at least 20 eligible distinct proposal IDs per action, then median
+absolute relative error <= 25%; legacy/missing inputs are excluded. Reports:
+`docs/validation/g4-replay.json` and `docs/validation/g4-policy.json`. No live
+Kafka command-loop regression or full service-image rebuild was run in A59;
+this closure does not broaden earlier G1/G9/G12 deployment certification.

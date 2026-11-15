@@ -27,6 +27,7 @@ from pathlib import Path
 
 # Add parent dir to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -123,6 +124,8 @@ def main() -> None:
     resumed = resume is not None and resume.is_file()
     model = None
     if resumed:
+        from _common.effect_policy import require_compatible
+        require_compatible(resume)
         logger.info("Resuming PPO from checkpoint %s", resume)
         model = PPO.load(str(resume), env=env, device="cpu")
         model.tensorboard_log = tensorboard_log
@@ -143,6 +146,9 @@ def main() -> None:
             seed=args.seed,
             device="cpu",
         )
+
+    from _common.effects import EFFECT_MODEL_VERSION
+    model.effect_model_version = EFFECT_MODEL_VERSION
 
     # Train only the remaining timesteps of the requested total.
     callbacks = [eval_callback]

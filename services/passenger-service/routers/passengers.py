@@ -6,8 +6,10 @@ Base path: /api/v1
 import logging
 from datetime import timedelta
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from db.neo4j import (
     get_all_passengers,
@@ -30,6 +32,35 @@ from services.zones import get_heatmap_zones
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1")
+
+
+class SecurityLaneRequest(BaseModel):
+    lanes_open: int = Field(ge=1, le=20, strict=True)
+    command_id: str = Field(default_factory=lambda: str(uuid4()), min_length=1, max_length=128)
+
+
+class SecurityLaneResponse(BaseModel):
+    event_type: str
+    receipt: dict
+    applied: bool
+
+
+@router.post("/flow/security/{terminal}/lanes", response_model=SecurityLaneResponse)
+async def set_security_lanes(terminal: str, body: SecurityLaneRequest) -> dict:
+    if terminal not in {"A", "B", "C"}:
+        raise HTTPException(status_code=422, detail="Terminal must be A, B or C")
+    sim_time = get_sim_time()
+    if sim_time is None:
+        raise HTTPException(status_code=503, detail="Passenger owner simulation clock unavailable")
+    from db.neo4j import security_lane_command_atomic
+    kind, payload, applied = await security_lane_command_atomic(
+        body.command_id, "OpenSecurityLane", terminal, body.lanes_open, sim_time,
+    )
+    if applied and kind == "CommandExecuted":
+        get_security().get(terminal).lanes_open = body.lanes_open
+    if kind != "CommandExecuted":
+        raise HTTPException(status_code=409, detail=payload.get("reason") or "Lane command rejected")
+    return {"event_type": kind, "receipt": payload, "applied": applied}
 
 
 @router.get("/passengers")

@@ -65,7 +65,12 @@ export function getSimMode(): string {
 }
 
 export function cacheLatestEvent(topicKey: string, event: object): void {
-  latestState[topicKey] = event;
+  const envelope = event as { event_type?: string; payload?: { terminal?: string } };
+  const type = envelope.event_type;
+  const key = type === "SecurityQueueUpdated" && ["A", "B", "C"].includes(envelope.payload?.terminal ?? "")
+    ? `${topicKey}:security:${envelope.payload!.terminal}`
+    : type === "GroundVehicleSnapshot" || type === "BaggageZoneSnapshot" ? `${topicKey}:${type}` : topicKey;
+  latestState[key] = event;
 }
 
 export function getBootstrapState(): Record<string, object> {
@@ -80,7 +85,7 @@ export function fanOut(topicKey: string, event: object): void {
   if (currentSimMode === "BULK") {
     const eventObj = event as Record<string, unknown>;
     const eventType = eventObj.event_type as string | undefined;
-    const isBulkSnapshot = eventType === "BulkStateSnapshot";
+    const isBulkSnapshot = ["BulkStateSnapshot", "GroundVehicleSnapshot", "SecurityQueueUpdated", "BaggageZoneSnapshot"].includes(eventType ?? "");
     const isAlert =
       topicKey === "alerts" ||
       (eventType === "IncidentCreated" &&

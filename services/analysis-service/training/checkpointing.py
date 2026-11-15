@@ -33,6 +33,8 @@ def write_progress(directory: Path, timesteps: int, *, checkpoint: str | None = 
 def save_checkpoint(model, directory: Path) -> Path:
     """Save ``model`` as ``latest.zip`` atomically and record its timesteps."""
     directory.mkdir(parents=True, exist_ok=True)
+    from _common.effects import EFFECT_MODEL_VERSION
+    model.effect_model_version = EFFECT_MODEL_VERSION
     staged = directory / "latest.partial.zip"
     model.save(str(staged))
     target = directory / "latest.zip"

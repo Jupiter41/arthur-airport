@@ -39,6 +39,10 @@ describe("public route boundaries", () => {
     }
     assert.equal(publicRouteAllowed("PATCH", "/api/v1/sim/settings"), true);
     assert.equal(publicRouteAllowed("GET", "/api/v1/flights"), true);
+    assert.equal(publicRouteAllowed("GET", "/api/v1/analysis/decisions"), true);
+    assert.equal(publicRouteAllowed("GET", "/api/v1/analysis/decisions/prop-example"), true);
+    assert.equal(publicRouteAllowed("POST", "/api/v1/analysis/decisions"), false);
+    assert.equal(publicRouteAllowed("POST", "/api/v1/passengers/flow/security/A/lanes"), false);
   });
 });
 

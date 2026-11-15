@@ -34,6 +34,7 @@ def load_policy(path: str | None = None) -> bool:
     Returns True if loaded successfully, False otherwise.
     """
     global _policy, _loaded
+    _policy, _loaded = None, False
 
     model_path = path or MODEL_PATH
     if not Path(model_path).exists():
@@ -42,6 +43,8 @@ def load_policy(path: str | None = None) -> bool:
         return False
 
     try:
+        from _common.effect_policy import require_compatible
+        require_compatible(model_path)
         from stable_baselines3 import PPO
         _policy = PPO.load(model_path)
         _loaded = True

@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
+from _common.effects import EFFECT_MODEL_VERSION
 
 
 # ── Bottleneck ───────────────────────────────────────────────
@@ -78,6 +79,9 @@ class ActionType(str, Enum):
 class Recommendation(BaseModel):
     """A ranked intervention recommendation for a detected bottleneck."""
     id: str = Field(..., description="Unique recommendation ID")
+    effect_model_version: str = "legacy"
+    effect_status: str = "unprojected"
+    projection: dict[str, Any] | None = None
     bottleneck_id: str = Field(..., description="Related bottleneck ID")
     action_type: ActionType
     description: str = Field(..., description="Human-readable action description")
@@ -164,6 +168,8 @@ class WhatIfRequest(BaseModel):
 class KPIProjection(BaseModel):
     """Projected KPIs after applying an action."""
     action_index: int
+    effect_model_version: str = "legacy"
+    effect_status: str = "baseline"
     delay_minutes_total: float
     missed_connections: int
     avg_queue_depth: float
@@ -176,6 +182,7 @@ class KPIProjection(BaseModel):
 class WhatIfResponse(BaseModel):
     """Response from what-if projection."""
     baseline: KPIProjection
+    effect_model_version: str = EFFECT_MODEL_VERSION
     projections: list[KPIProjection]
     sim_time_at_request: datetime
     horizon_minutes: int
@@ -187,6 +194,7 @@ class WhatIfResponse(BaseModel):
 class AnalysisLogEntry(BaseModel):
     """Record of a what-if query or recommendation application."""
     id: str
+    effect_model_version: str = "legacy"
     timestamp: datetime
     entry_type: str  # "what_if" | "recommendation_applied" | "autonomous_action"
     action: WhatIfAction | None = None

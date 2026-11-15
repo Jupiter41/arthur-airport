@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from _common.effects import EFFECT_MODEL_VERSION
+from _common.effect_policy import require_compatible
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,7 @@ class TrainingRun:
     checkpoint_dir: str | None = None
     resumed_from_timesteps: int = 0
     created_at: str | None = None
+    effect_model_version: str = "legacy"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -91,6 +94,7 @@ class TrainingRun:
             "checkpoint_dir": self.checkpoint_dir,
             "resumed_from_timesteps": self.resumed_from_timesteps,
             "created_at": self.created_at,
+            "effect_model_version": self.effect_model_version,
         }
 
     def document(self) -> dict[str, Any]:
@@ -221,6 +225,7 @@ class TrainingManager:
         root = artifacts_dir()
         run = TrainingRun(
             id=run_id, model_type=model_type, status="queued", total_timesteps=timesteps,
+            effect_model_version=EFFECT_MODEL_VERSION,
             output_path=str(root / f"{run_id}.zip"),
             checkpoint_dir=str(root / "checkpoints" / run_id),
             seed=random.SystemRandom().randrange(1_000_000),
@@ -375,6 +380,12 @@ class TrainingManager:
             output = await output_task
             valid = (proc.returncode == 0 and run.output_path
                      and Path(run.output_path).is_file() and zipfile.is_zipfile(run.output_path))
+            if valid:
+                try:
+                    require_compatible(run.output_path)
+                except (ValueError, KeyError, OSError):
+                    valid = False
+                    output = "Training produced an incompatible effect model; retrain"
             if valid and not await self._owns(run):
                 logger.warning("Training run %s finished after losing its lease; not promoting", run.id)
                 run.status = "superseded"

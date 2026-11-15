@@ -36,6 +36,7 @@ from models.domain import (
     WhatIfRequest,
     WhatIfResponse,
 )
+from routers.decisions import router as decisions_router
 from services import approval_queue
 from services.autonomous import (
     apply_recommendation,
@@ -55,6 +56,7 @@ from services.training_manager import manager as training_manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/analysis", tags=["analysis"])
+router.include_router(decisions_router)
 
 
 # ── P2-1-7: Bottleneck list ─────────────────────────────────
@@ -113,8 +115,12 @@ async def list_recommendations() -> dict[str, Any]:
 # ── Apply a recommendation (manual operator action) ─────────
 
 
+class ApplyDecisionRequest(BaseModel):
+    request_approval: bool = False
+
+
 @router.post("/recommendations/{recommendation_id}/apply")
-async def apply_recommendation_endpoint(recommendation_id: str) -> dict[str, Any]:
+async def apply_recommendation_endpoint(recommendation_id: str, body: ApplyDecisionRequest | None = None) -> dict[str, Any]:
     """Submit a concrete action; only a domain receipt confirms application."""
     sim_time = await _action_clock()
     from services.action_execution import refresh
@@ -125,6 +131,7 @@ async def apply_recommendation_endpoint(recommendation_id: str) -> dict[str, Any
         entry = apply_recommendation(
             get_active_recommendations(), recommendation_id, sim_time,
             initiated_by="operator",
+            request_approval=bool(body and body.request_approval),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -167,18 +174,15 @@ class ProposalDecision(BaseModel):
 @router.post("/approvals/{proposal_id}/approve")
 async def approve_proposal(proposal_id: str, body: ProposalDecision | None = None) -> dict[str, Any]:
     """Atomically authorize and queue a command; active approvals are idempotent."""
-    from services import proposal_store
+    from services.action_execution import approve
+    from kafka.consumer import refresh_discovery
     at = await _action_clock()
+    await refresh_discovery()
     try:
-        document = await proposal_store.dispatch(proposal_id, at, approve_by=(body or ProposalDecision()).decided_by)
+        result = await approve(proposal_id, at, decided_by=(body or ProposalDecision()).decided_by)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if document is None:
-        raise HTTPException(status_code=409, detail="Proposal not pending or retryable")
-    proposal = approval_queue.cache(document)
-    return {"approved": True, "applied": proposal.status == approval_queue.EXECUTED,
-            "executed": proposal.status == approval_queue.EXECUTED, "status": proposal.status,
-            "proposal_id": proposal.id, "command_id": proposal.id}
+    return {"approved": True, **result}
 
 
 @router.post("/approvals/{proposal_id}/reject")

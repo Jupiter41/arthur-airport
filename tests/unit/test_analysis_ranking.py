@@ -62,7 +62,7 @@ class TestScoring:
         assert cost >= COST_FLOOR
 
     def test_score_populates_fields(self):
-        rec = _rec(ActionType.OPEN_SECURITY_LANE, new_lane_count=5)
+        rec = _rec(ActionType.OPEN_SECURITY_LANE, terminal="A", new_lane_count=5)
         bn = _bn(forecast_wait_minutes=30, queue_depth=100)
         score = score_recommendation(rec, bn)
         assert rec.impact_value > 0
@@ -72,11 +72,11 @@ class TestScoring:
         )
         assert score == rec.priority_score
 
-    def test_hold_connection_scales_with_passengers_saved(self):
+    def test_hold_without_connection_model_does_not_invent_passengers_saved(self):
         few = _rec(ActionType.HOLD_CONNECTING_FLIGHT, passengers_saved=2, hold_minutes=15)
         many = _rec(ActionType.HOLD_CONNECTING_FLIGHT, passengers_saved=40, hold_minutes=15)
         bn = _bn(BottleneckType.CONNECTION_CLUSTER)
-        assert estimate_impact_cost(many, bn)[0] > estimate_impact_cost(few, bn)[0]
+        assert estimate_impact_cost(many, bn)[0] == estimate_impact_cost(few, bn)[0] == 0
 
     def test_bool_passenger_count_rejected(self):
         # bool is an int subclass — must not be read as a passenger count.
@@ -87,15 +87,14 @@ class TestScoring:
 
 class TestRankingOverridesConfidence:
     def test_high_impact_beats_higher_confidence_trivial_action(self):
-        bn = _bn(BottleneckType.CONNECTION_CLUSTER)
+        bn = _bn(forecast_wait_minutes=30, queue_depth=100)
         # Trivial announcement: very high confidence, tiny impact.
         trivial = _rec(ActionType.EARLY_GATE_CALL, confidence=0.99)
         # Saving 40 connections: lower confidence, huge impact.
         big = _rec(
-            ActionType.HOLD_CONNECTING_FLIGHT,
+            ActionType.OPEN_SECURITY_LANE,
             confidence=0.70,
-            passengers_saved=40,
-            hold_minutes=15,
+            terminal="A", new_lane_count=5,
         )
         score_recommendation(trivial, bn)
         score_recommendation(big, bn)

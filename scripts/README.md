@@ -11,6 +11,27 @@ Related documentation:
 
 ---
 
+## docker_storage.py
+
+Local Docker storage report, guarded build/start and explicitly scoped cache cleanup.
+Uses Python's standard library; no pip install required.
+
+```powershell
+python scripts/docker_storage.py status
+python scripts/docker_storage.py up
+python scripts/docker_storage.py up analysis-service
+python scripts/docker_storage.py build
+python scripts/docker_storage.py prune-cache
+```
+
+The dedicated builder targets 12 GB of cache and builds serially. Builds stop
+before a service starts if Docker's host drive or builder filesystem has less
+than 20 GiB free. This tool never prunes volumes or runtime images. For relocated
+Docker disks, pass `--disk-path` on the actual drive. See
+[storage policies and limitations](../docs/infra/DOCKER_STORAGE.md).
+
+---
+
 ## scenario-runner.sh
 
 CLI wrapper for the scenario engine REST API. Requires `curl` and `python3`.
@@ -297,3 +318,17 @@ bash scripts/helper_test_planning_slots_network.sh http://localhost:3000/api/v1/
 ```
 
 Requires: `curl`, `jq`, and `planning-service` running with BTS data mounted.
+
+## teach_security_loop.py
+
+Runs one complete security-lane recommendation through human approval, owner
+receipt and attributed measurement against a disposable local synthetic stack.
+Uses gateway APIs and restores lane/configuration settings; injected entities
+and evidence remain in the lab. Requires approver credentials in environment
+variables and no existing active proposals. Missing evidence fails the run.
+
+```powershell
+python scripts/teach_security_loop.py --output tmp-security-lesson.json
+```
+
+See [runbook and validation](../docs/validation/DECISION_LOOP.md).

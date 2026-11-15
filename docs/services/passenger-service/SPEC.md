@@ -18,6 +18,18 @@ files may be installed by the host administrator.
 
 ## 1. Domain responsibilities
 
+### Explicit lane control (operator cockpit, 2026-11-14)
+
+`POST /api/v1/flow/security/{terminal}/lanes` accepts `lanes_open` (strict integer
+1–20) and an optional stable `command_id`. Terminal must be A, B or C. It uses
+the same `security_lane_command_atomic` boundary as Kafka `OpenSecurityLane`:
+lane state, measured checkpoint, domain facts and receipt commit together.
+The response carries the stored receipt; retries with the same ID do not apply
+the command again. No available owner simulation clock means 503. Gateway
+operator authorization applies; this route is deliberately unavailable on
+public deployments. The local teaching runner uses this explicit owner API,
+not the orchestrator's presently non-executing lane-settings fields.
+
 Legacy `RebookPassengers` commands are advisory-only until replacement itinerary
 execution exists. The rejection receipt and its outbox fact commit atomically;
 replay delivers the stored receipt without changing passenger status or flight.

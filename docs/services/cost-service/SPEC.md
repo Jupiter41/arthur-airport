@@ -2,7 +2,7 @@
 
 **Port:** 8008  
 **Language:** Python 3.11 / FastAPI  
-**Status:** Durable airport-perspective ledger; G2 closed (2026-11-13); remaining intelligence gaps in `ROADMAP_REAL_LDT.md`
+**Status:** Durable airport-perspective ledger; G2 closed (2026-11-13); remaining intelligence gaps in `archive/ROADMAP_REAL_LDT.md`
 
 ---
 

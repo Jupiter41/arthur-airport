@@ -186,12 +186,29 @@ def _default_wind_reductions() -> dict[str, float]:
     return {"crosswind": 0.85, "crosswind_heavy": 0.60, "tailwind": 0.70}
 
 
+class EffectParameters(BaseModel):
+    """G4 deterministic projection parameters; calibrated benefits preserve inventory."""
+
+    security_pax_per_lane_minute: float = Field(default=3.0, gt=0)
+    prediction_horizon_minutes: int = Field(default=30, ge=1, le=1440)
+    success_probability: float = Field(default=0.8, ge=0, le=1)
+    gate_slack_minutes: float = Field(default=8.0, ge=0)
+    lane_cost: float = Field(default=20.0, gt=0)
+    baggage_cost: float = Field(default=12.0, gt=0)
+    incident_cost: float = Field(default=30.0, gt=0)
+    cost_floor: float = Field(default=5.0, gt=0)
+    calibration_prior_strength: float = Field(default=5.0, gt=0)
+    calibration_factor_min: float = Field(default=0.25, gt=0, le=1)
+    calibration_factor_max: float = Field(default=2.0, ge=1)
+
+
 class AirportOperations(BaseModel):
     """D6 operational constants — tuning an airport is editing one file."""
 
     walking_speed_m_min: float = Field(default=84.0, gt=0)
     apron_speed_m_min: float = Field(default=83.3, gt=0)
     cascade_max_depth: int = Field(default=5, ge=1)
+    effects: EffectParameters = Field(default_factory=EffectParameters)
 
     weather_capacity: dict[str, WeatherCategoryCapacity] = Field(
         default_factory=_default_weather_capacity

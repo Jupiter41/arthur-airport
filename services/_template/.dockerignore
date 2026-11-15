@@ -13,3 +13,17 @@ venv/
 SKILL.md
 README.md
 tests/
+
+# Generated data belongs on volumes, outside build contexts.
+artifacts/
+checkpoints/
+runs/
+htmlcov/
+.coverage
+*.zip
+*.pt
+*.pth
+*.pkl
+*.joblib
+*.tar
+*.tar.gz

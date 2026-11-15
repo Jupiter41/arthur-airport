@@ -1,5 +1,19 @@
 # Arthur International Airport — Digital Twin
 
+Current priorities: [Next steps — make the living twin visible](NEXT_STEPS.md).
+
+The dashboard opens on an operator cockpit (`/`). Decision history (`/decisions`)
+connects detection, ranked reasoning, authorization, owner execution receipts and
+measured outcomes. The flight board remains at `/flights`. See the
+[teaching runbook and validation evidence](docs/validation/DECISION_LOOP.md).
+
+`/airport-3d` adds interactive 3D aircraft/ground vehicles, terminal security
+queues and baggage conveyors. It uses live synthetic owner state, explicitly
+labels representative placement, and includes actual baggage scan inspection.
+See the [3D view contract](docs/dashboards/AIRPORT_3D.md).
+
+Docker builds now use a [storage guard](docs/infra/DOCKER_STORAGE.md): bounded build cache, serial builds and a low-space preflight. Use `python scripts/docker_storage.py up` for local startup.
+
 ![CI](https://github.com/arthur-airport/arthur-airport/actions/workflows/ci.yml/badge.svg)
 
 > **IATA:** `ART` · **ICAO:** `KART` · **Location:** fictional mid-size hub
@@ -80,7 +94,7 @@ The simulation is **config-driven**: customize every airport property by editing
 
 3. **Run** the stack:
    ```bash
-   docker compose up --build
+   python scripts/docker_storage.py up
    ```
 
 The sim-orchestrator will load your config, seed the airport, and start the simulation.
@@ -247,7 +261,7 @@ The passenger-service includes a LightGBM model for predicting queue depth:
 ```bash
 git clone https://github.com/Jupiter41/arthur-airport.git
 cd arthur-airport
-docker compose up --build
+python scripts/docker_storage.py up
 ```
 
 The sim-orchestrator seeds all data and starts the virtual clock automatically.
@@ -295,10 +309,10 @@ curl -s -X POST http://localhost:3000/auth/token \
 
 ```bash
 # Restart a single service after a code change
-docker compose up --build --no-deps flight-service
+python scripts/docker_storage.py up flight-service
 
 # Full reset — wipe all data and reseed
-docker compose down -v && docker compose up --build
+docker compose down -v && python scripts/docker_storage.py up
 
 # Tail logs for one service
 docker compose logs -f passenger-service
@@ -502,7 +516,7 @@ pip install pytest
 python -m pytest tests/unit/ -v
 
 # Run integration tests (requires full stack running)
-docker compose up --build -d
+python scripts/docker_storage.py up
 pip install pytest requests
 python -m pytest tests/integration/ -v
 

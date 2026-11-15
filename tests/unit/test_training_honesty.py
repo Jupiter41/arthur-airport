@@ -53,7 +53,7 @@ def test_successful_job_promotes_new_archive_atomically(tmp_path, monkeypatch):
     monkeypatch.delenv("RL_MODEL_PATH", raising=False)
     artifact = tmp_path / "new-policy.zip"
     with zipfile.ZipFile(artifact, "w") as archive:
-        archive.writestr("synthetic-test-artifact", "test")
+        archive.writestr("data", '{"effect_model_version": "effects-v1"}')
     manager = module.TrainingManager()
     run = module.TrainingRun(id="trial", model_type="rl", output_path=str(artifact))
 

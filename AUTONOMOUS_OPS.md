@@ -1,6 +1,6 @@
 # Autonomous Operations — User Guide
 
-> **Verification update (2026-10-18):** see `ROADMAP_REAL_LDT.md` §10 for
+> **Verification update (2026-10-18):** see `archive/ROADMAP_REAL_LDT.md` §10 for
 > delivered behavior, validation boundaries and open gaps. Planning records now
 > persist in Neo4j; owner receipts confirm action execution. Automatic measured
 > savings, full action coverage and a unified effect/recommendation engine remain

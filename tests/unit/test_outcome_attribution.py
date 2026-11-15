@@ -26,7 +26,8 @@ def test_security_lane_difference_in_differences():
     before = _security_state({"A": 30, "B": 20, "C": 10}, T0)
     baseline = outcome.observe_baseline("open_security_lane", {"terminal": "Terminal A", "new_lane_count": 5},
                                         before, T0, 0.85)
-    assert baseline["predicted"] == {"metric": "security_wait_minutes", "delta": -6.0}
+    assert baseline["predicted"]["metric"] == "security_wait_minutes"
+    assert baseline["predicted"]["delta"] == pytest.approx(-12.0)
     after = _security_state({"A": 18, "B": 16, "C": 8}, T1)
     measured = outcome.measure_outcome("open_security_lane", {"terminal": "A"}, after)
     attribution = outcome.attribute(baseline, measured, outcome.post_observation(baseline, after))
@@ -65,7 +66,7 @@ def test_gate_reassignment_lift_over_untreated_control_rate():
         "F3": SimpleNamespace(gate=None, status="landed"),
         "F4": SimpleNamespace(gate="A1", status="boarding"),   # not waiting → not a control
     }
-    state = SimpleNamespace(flights=flights)
+    state = SimpleNamespace(flights=flights, gates={"B7": {"terminal": "Terminal B"}})
     baseline = outcome.observe_baseline("reassign_gate", {"flight_id": "F1", "gate_id": "B7"}, state, T0, 0.7)
     assert baseline["controls"] == ["F2", "F3"] and baseline["treated"] == 0
     flights["F1"].gate, flights["F2"].gate = "B7", "C2"
@@ -74,7 +75,7 @@ def test_gate_reassignment_lift_over_untreated_control_rate():
     assert attribution["method"] == "untreated_control_rate"
     assert attribution["control_rate"] == 0.5
     assert attribution["attributed_effect"] == 0.5
-    assert attribution["predicted_probability"] == 0.7
+    assert attribution["predicted_probability"] == 0.8
 
 
 def test_incident_attribution_uses_persisted_statuses():
@@ -131,7 +132,7 @@ def test_ranking_applies_calibration_factors():
     bn = domain.Bottleneck.model_construct(metrics={"forecast_wait_minutes": 20, "queue_depth": 10},
                                            affected_entity_count=10)
     rec = domain.Recommendation.model_construct(action_type=domain.ActionType.OPEN_SECURITY_LANE,
-                                                parameters={"new_lane_count": 5}, confidence_score=0.8)
+                                                parameters={"terminal": "A", "new_lane_count": 5}, confidence_score=0.8)
     cal.refresh([])
     base = ranking.score_recommendation(rec, bn)
     security = {"calibration_eligible": True, "metric": "security_wait_minutes",

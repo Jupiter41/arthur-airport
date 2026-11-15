@@ -31,7 +31,7 @@ real data. The real datasets provide *calibration and realism baselines* (traffi
 mix, infrastructure, weather), not the twin's own operational records; generated
 passengers, bags and incidents stay synthetic even in these modes.
 
-> **Open policy item (`ROADMAP_REAL_LDT.md §10 G11`):** the live-API reference modes
+> **Open policy item (`archive/ROADMAP_REAL_LDT.md §10 G11`):** the live-API reference modes
 > and the OpenFlights-derived real airline identities below are genuine real-world
 > data, which is in tension with the literal "all data is fake" contract. Keeping
 > them as labelled opt-in reference inputs vs. removing them is an owner decision.

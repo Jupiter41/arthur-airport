@@ -26,9 +26,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from _common.effects import parameters
+
 CALIBRATION_VERSION = "calibration-v1"
-PRIOR_STRENGTH = 5.0
-FACTOR_MIN, FACTOR_MAX = 0.25, 2.0
+_CONFIG = parameters()
+PRIOR_STRENGTH = _CONFIG.calibration_prior_strength
+FACTOR_MIN, FACTOR_MAX = _CONFIG.calibration_factor_min, _CONFIG.calibration_factor_max
 
 
 @dataclass(frozen=True)

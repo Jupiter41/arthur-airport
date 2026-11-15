@@ -211,6 +211,13 @@ Response `200`:
 
 ## 5. WebSocket fan-out
 
+Live operational projections (2026-11-14): `GroundVehicleSnapshot`,
+`SecurityQueueUpdated` and `BaggageZoneSnapshot` must bypass BULK display
+throttling, like `BulkStateSnapshot`. Preserve their original event envelopes.
+Bootstrap retains the latest snapshot per event type and, for security, per
+terminal; unrelated later events cannot evict those snapshots. This is relay
+and bounded recovery caching only; no domain decisions are made in the gateway.
+
 ### Connection
 
 ```

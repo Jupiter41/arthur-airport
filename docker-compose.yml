@@ -1,6 +1,13 @@
 name: arthur-airport
 
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-python-service: &python-service
+  logging: *bounded-logging
   restart: unless-stopped
   networks:
     - art-net
@@ -20,6 +27,7 @@ services:
   # ─── Infrastructure ────────────────────────────────────────────
 
   neo4j:
+    logging: *bounded-logging
     image: neo4j:5
     restart: unless-stopped
     networks: [art-net]
@@ -31,6 +39,8 @@ services:
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_memory_heap_initial__size: 512m
       NEO4J_dbms_memory_heap_max__size: 1G
+      NEO4J_db_tx__log_rotation_retention__policy: "256M size"
+      NEO4J_db_tx__log_rotation_size: 16M
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
@@ -41,17 +51,21 @@ services:
       retries: 10
 
   zookeeper:
+    logging: *bounded-logging
     image: confluentinc/cp-zookeeper:7.6.0
     restart: unless-stopped
     networks: [art-net]
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_AUTOPURGE_SNAP_RETAIN_COUNT: 3
+      ZOOKEEPER_AUTOPURGE_PURGE_INTERVAL: 1
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-logs:/var/lib/zookeeper/log
 
   kafka:
+    logging: *bounded-logging
     image: confluentinc/cp-kafka:7.6.0
     restart: unless-stopped
     networks: [art-net]
@@ -66,6 +80,11 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_LOG_RETENTION_HOURS: 168
+      # Per partition, not a broker-wide quota. Active segments add overhead.
+      KAFKA_LOG_RETENTION_BYTES: 67108864
+      KAFKA_LOG_SEGMENT_BYTES: 16777216
+      KAFKA_LOG_ROLL_MS: 3600000
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 60000
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
@@ -81,6 +100,7 @@ services:
       retries: 10
 
   kafka-ui:
+    logging: *bounded-logging
     image: provectuslabs/kafka-ui:latest
     profiles: [observability, full]
     restart: unless-stopped
@@ -95,6 +115,7 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
 
   kafka-init:
+    logging: *bounded-logging
     image: confluentinc/cp-kafka:7.6.0
     networks: [art-net]
     depends_on:
@@ -137,6 +158,7 @@ services:
         echo "All topics created."
 
   kafka-exporter:
+    logging: *bounded-logging
     image: danielqsj/kafka-exporter:latest
     profiles: [observability, full]
     restart: unless-stopped
@@ -151,6 +173,7 @@ services:
   # ─── Domain services ───────────────────────────────────────────
 
   flight-service:
+    logging: *bounded-logging
     <<: *python-service
     build: ./services/flight-service
     ports:
@@ -181,6 +204,7 @@ services:
       retries: 5
 
   passenger-service:
+    logging: *bounded-logging
     <<: *python-service
     build: ./services/passenger-service
     ports:
@@ -220,6 +244,7 @@ services:
       - passenger-ml:/app/ml-artifacts
 
   baggage-service:
+    logging: *bounded-logging
     <<: *python-service
     build: ./services/baggage-service
     ports:
@@ -247,6 +272,7 @@ services:
       retries: 5
 
   weather-service:
+    logging: *bounded-logging
     <<: *python-service
     build: ./services/weather-service
     ports:
@@ -283,6 +309,7 @@ services:
       retries: 5
 
   incident-service:
+    logging: *bounded-logging
     <<: *python-service
     build: ./services/incident-service
     ports:
@@ -313,6 +340,7 @@ services:
       retries: 5
 
   sim-orchestrator:
+    logging: *bounded-logging
     <<: *python-service
     build: ./services/sim-orchestrator
     ports:
@@ -355,6 +383,7 @@ services:
       start_period: 120s
 
   analysis-service:
+    logging: *bounded-logging
     <<: *python-service
     build: ./services/analysis-service
     ports:
@@ -396,6 +425,7 @@ services:
       retries: 5
 
   cost-service:
+    logging: *bounded-logging
     <<: *python-service
     build: ./services/cost-service
     ports:
@@ -423,6 +453,7 @@ services:
       retries: 5
 
   planning-service:
+    logging: *bounded-logging
     <<: *python-service
     build: ./services/planning-service
     ports:
@@ -444,6 +475,7 @@ services:
       retries: 5
 
   api-gateway:
+    logging: *bounded-logging
     build: ./services/api-gateway
     restart: unless-stopped
     networks: [art-net]
@@ -486,6 +518,7 @@ services:
       retries: 5
 
   dashboard:
+    logging: *bounded-logging
     build:
       context: ./dashboards/art-dashboard
       args:
@@ -504,6 +537,7 @@ services:
   # ─── Observability ─────────────────────────────────────────────
 
   jaeger:
+    logging: *bounded-logging
     image: jaegertracing/all-in-one:1.55
     profiles: [observability, full]
     restart: unless-stopped
@@ -515,6 +549,7 @@ services:
       COLLECTOR_OTLP_ENABLED: "true"
 
   loki:
+    logging: *bounded-logging
     image: grafana/loki:2.9.4
     profiles: [observability, full]
     restart: unless-stopped
@@ -527,6 +562,7 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
 
   promtail:
+    logging: *bounded-logging
     image: grafana/promtail:2.9.4
     profiles: [observability, full]
     restart: unless-stopped
@@ -540,6 +576,7 @@ services:
       - loki
 
   prometheus:
+    logging: *bounded-logging
     image: prom/prometheus:v2.51.0
     profiles: [observability, full]
     restart: unless-stopped
@@ -554,6 +591,7 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=7d"
+      - "--storage.tsdb.retention.size=1GB"
     depends_on:
       - flight-service
       - passenger-service
@@ -564,6 +602,7 @@ services:
       - api-gateway
 
   grafana:
+    logging: *bounded-logging
     image: grafana/grafana:10.4.0
     profiles: [observability, full]
     restart: unless-stopped

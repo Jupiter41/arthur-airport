@@ -11,6 +11,22 @@ must not run a background exporter against the absent optional collector: queued
 collector DNS lookups can exhaust Node's shared worker pool and block upstream
 readiness and proxy requests.
 
+## Local disk budget (2026-11-14)
+
+The supported local build/start entry point is `python scripts/docker_storage.py up`.
+Its storage contract is specified in [DOCKER_STORAGE.md](DOCKER_STORAGE.md):
+dedicated BuildKit cache GC targeting 12 GB, serial builds, a 20 GiB free-space
+preflight on the host Docker disk and builder filesystem, and no automatic volume
+or image deletion. Plain `docker compose up --build` bypasses these build guards.
+Every default-stack container rotates stdout/stderr at 10 MB × 3 files.
+Kafka keeps seven days **or** 64 MiB per partition, whichever expires first,
+with 16 MiB segments. This intentionally limits replay history under load rather
+than guaranteeing seven days; broker retention uses wall time, not simulation time.
+Prometheus targets 1 GB or seven days; Loki deletes logs after seven days.
+Neo4j retains 256 MiB of rotated transaction logs (plus active/checkpoint files).
+These are retention/GC targets, not a hard quota for the whole Docker VHDX.
+Entity records, ML artifacts, and audit records remain durable and are not purged.
+
 The dashboard's Nginx proxy resolves `api-gateway` through Docker's embedded DNS
 with a short cache. Gateway container recreation must not leave auth, API, or
 WebSocket routes pointing to its previous container address. Requests retain

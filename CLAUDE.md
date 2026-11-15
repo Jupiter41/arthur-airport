@@ -130,7 +130,7 @@ docker compose down -v && docker compose up --build
    datasets: OurAirports, OpenFlights, BTS aggregates, historical METAR; public read-only APIs:
    adsb.lol/OpenSky, aviationweather.gov) and is never presented as the twin's own operational state.
    See `DATA.md` and `docs/architecture/OVERVIEW.md` ADR-006. (The residual real-data tension —
-   live-API modes and OpenFlights-derived airline identities — is tracked in `ROADMAP_REAL_LDT.md §10 G11`.)
+   live-API modes and OpenFlights-derived airline identities — is tracked in `archive/ROADMAP_REAL_LDT.md §10 G11`.)
 
 6. **The spec is authoritative.** If the spec says a field exists, it exists. If you need to
    deviate from the spec, update the spec first.

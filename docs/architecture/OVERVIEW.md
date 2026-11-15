@@ -184,7 +184,7 @@ overlay, aviationweather.gov for live METAR). Every real-data mode is **off by d
 (`ADSB_ENABLED=false`, `WEATHER_SOURCE=simulated`, `PASSENGER_SOURCE=simulation`, planning
 `source="simulation"`), labelled as real data in the dashboard, and documented in `DATA.md`.
 
-> **Open policy item (`ROADMAP_REAL_LDT.md §10 G11`):** the live-API reference modes and the
+> **Open policy item (`archive/ROADMAP_REAL_LDT.md §10 G11`):** the live-API reference modes and the
 > OpenFlights-derived real airline identities in `sim-orchestrator/fixtures/` are genuine
 > real-world data. Whether to keep them as clearly-labelled opt-in reference inputs or remove them
 > to reach a literal "no real data anywhere" posture is an **owner decision**; this reconciliation

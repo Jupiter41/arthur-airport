@@ -1,7 +1,7 @@
 # Sprint 54 — LDT roadmap continuation: G5 ranking, G12 manifests, G3 consolidation, G6 incidents commands
 
 **Date:** 2026-10-26
-**Scope:** `ROADMAP_REAL_LDT.md` §10 gaps G5 (recommender ranking), G12 (k8s
+**Scope:** `archive/ROADMAP_REAL_LDT.md` §10 gaps G5 (recommender ranking), G12 (k8s
 manifests), G3 (transport-utility consolidation) and G6 (incidents command
 channel, live-validated). Recorded as execution-log entries A25–A28.
 

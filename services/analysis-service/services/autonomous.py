@@ -224,6 +224,7 @@ def apply_recommendation(
     sim_time: datetime,
     *,
     initiated_by: str = "operator",
+    request_approval: bool = False,
 ) -> dict | None:
     """Create an executable proposal by id; execution waits for owner receipt.
 
@@ -255,7 +256,7 @@ def apply_recommendation(
         proposed_at=sim_time,
         recommendation_id=rec.id,
         bottleneck_id=rec.bottleneck_id,
-        requires_human=rec.action_type in SAFETY_GUARDED_ACTIONS,
+        requires_human=request_approval or rec.action_type in SAFETY_GUARDED_ACTIONS,
     )
     _bottleneck_cooldowns[rec.bottleneck_id] = sim_time
     return proposal.to_dict()

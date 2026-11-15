@@ -179,7 +179,7 @@ def test_passenger_command_executes_while_fact_tick_is_waiting(monkeypatch):
         await asyncio.wait_for(consumer.run_consumer(), timeout=3)
 
     asyncio.run(exercise())
-    assert closed == ["commands", "facts"]
+    assert sorted(closed) == ["commands", "facts"]  # Concurrent consumers may finish in either order.
 
 
 def test_passenger_command_waits_for_clock_and_retries_before_offset_commit(monkeypatch):

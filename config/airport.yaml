@@ -58,6 +58,18 @@ simulation:
 # thresholds/reductions apply the published reductions when wind exceeds the
 # threshold (crosswind > 25kt → ×0.85, > 35kt → ×0.60, tailwind > 10kt → ×0.70).
 operations:
+  effects:
+    security_pax_per_lane_minute: 3.0
+    prediction_horizon_minutes: 30
+    success_probability: 0.8
+    gate_slack_minutes: 8.0
+    lane_cost: 20.0
+    baggage_cost: 12.0
+    incident_cost: 30.0
+    cost_floor: 5.0
+    calibration_prior_strength: 5.0
+    calibration_factor_min: 0.25
+    calibration_factor_max: 2.0
   walking_speed_m_min: 84.0
   apron_speed_m_min: 83.3
   cascade_max_depth: 5

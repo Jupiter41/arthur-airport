@@ -128,8 +128,8 @@ def test_graph_loader_reads_all_sections_from_one_driver_transaction(monkeypatch
 
     monkeypatch.setattr(module, "get_driver", lambda: MagicMock(session=Session))
     snapshot = asyncio.run(module.load_operational_projection())
-    assert set(snapshot) == {"flights", "gates", "incidents", "weather", "baggage", "security", "vehicles", "cost"}
-    assert len(queries) == 8
+    assert set(snapshot) == {"flights", "gates", "incidents", "weather", "baggage", "baggage_targets", "security", "vehicles", "cost"}
+    assert len(queries) == 9
     assert all("SET " not in query and "CREATE " not in query for query in queries)
 
 

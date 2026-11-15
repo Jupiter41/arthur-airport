@@ -13,6 +13,24 @@ events through its durable outbox.
 
 ## 1. Domain responsibilities
 
+### Shared effects — G4 (2026-11-14)
+
+The detailed planning engine delegates queue throughput, weather/runway capacity
+and intervention commands to the [shared effect model](../../architecture/EFFECT_MODEL.md).
+Monte Carlo schedule noise remains local; effect formulas are deterministic.
+GDP now holds each selected departure uniformly at its start, rather than
+reducing runway capacity. `hold_minutes` takes precedence; legacy `cap_pct`
+maps to `(1-cap_pct)*duration_minutes`. `gdp_end` cannot undo a committed hold.
+`open_security_lanes` adds lanes during its window (20 maximum per terminal).
+`gate_swap` reassigns an observed flight to an existing free gate; it no longer
+creates permanent extra gates. Explicit `flight_id` / `gate_id` are preferred;
+without them the first ungated flight and available gate are selected.
+`delta` no longer creates stands: infrastructure scenarios own physical capacity.
+Security arrivals aggregate per terminal and drain exactly once per minute;
+adding a lane never adds runway-hold delay. New results carry
+`effect_model_version=effects-v1`; unversioned stored results are labelled
+`legacy` on read and retain their original numbers.
+
 ### Financial perspective — G2 (2026-11-13)
 
 New results use `accounting_policy=airport-v1`: `total_cost_eur` contains airport

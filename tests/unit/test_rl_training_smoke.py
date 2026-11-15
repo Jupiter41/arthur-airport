@@ -24,6 +24,7 @@ def test_real_ppo_training_without_tensorboard_creates_usable_policy(tmp_path):
     import numpy as np
 
     model = PPO.load(artifact, device="cpu")
+    assert model.effect_model_version == "effects-v1"
     action, _ = model.predict(np.zeros(22, dtype=np.float32), deterministic=True)
     assert 0 <= int(action) < 7
 
@@ -86,7 +87,6 @@ def test_real_ppo_checkpoint_resumes_remaining_timesteps(tmp_path):
 def test_real_ppo_survives_sigkill_and_resumes_from_last_checkpoint(tmp_path):
     """G7: an abrupt kill leaves a valid checkpoint; resumption completes the run."""
     import json
-    import signal
     import time
 
     root = Path(__file__).resolve().parents[2]
@@ -105,7 +105,7 @@ def test_real_ppo_survives_sigkill_and_resumes_from_last_checkpoint(tmp_path):
             time.sleep(0.2)
         time.sleep(0.5)
     finally:
-        process.send_signal(signal.SIGKILL)
+        process.kill()  # SIGKILL on POSIX, TerminateProcess on Windows; no graceful cleanup.
         process.wait()
     assert not (tmp_path / "killed.zip").exists()
     reached = json.loads((checkpoints / "checkpoint.json").read_text())["timesteps"]

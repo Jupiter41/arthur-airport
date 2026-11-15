@@ -60,10 +60,15 @@ Do not implement anything that contradicts the spec. If you need to deviate, sta
 ## Running
 
 ```bash
-docker compose up --build        # full stack
+python scripts/docker_storage.py up  # full stack, bounded cache + free-space guard
 docker compose up neo4j kafka    # infra only (for local service dev)
 docker compose down -v           # full reset
 ```
+
+For local rebuilds, use `python scripts/docker_storage.py build [service]` or
+`up [service]`. Do not bypass the storage guard with `compose up --build` during
+routine development. See `docs/infra/DOCKER_STORAGE.md`. Never automatically
+prune volumes or reset Docker Desktop to recover disk space.
 
 ---
 

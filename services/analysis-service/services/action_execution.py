@@ -47,7 +47,15 @@ async def dispatch(proposal: approval_queue.Proposal, sim_time: datetime, *, app
     intent = action_command(confirmed.action_type, confirmed.parameters)
     return {"applied": confirmed.status == approval_queue.EXECUTED,
             "executed": confirmed.status == approval_queue.EXECUTED, "status": confirmed.status,
-            "proposal_id": confirmed.id, "command_id": confirmed.id, "command": intent.command_type}
+            "proposal_id": confirmed.id, "command_id": confirmed.id, "command": intent.command_type if intent else None}
+
+
+async def approve(proposal_id: str, sim_time: datetime, *, decided_by: str) -> dict:
+    """Human approval uses the same baseline capture and dispatch path as Apply."""
+    document = await proposal_store.get_document(proposal_id)
+    if document is None:
+        raise ValueError("Proposal not found")
+    return await dispatch(approval_queue.cache(document), sim_time, approve_by=decided_by)
 
 
 async def receive_result(event_type: str, payload: dict, sim_time: datetime, topic: str) -> bool:

@@ -7,13 +7,14 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
 # CPU-only torch: stable-baselines3 pulls torch, and PyPI's default build bundles
 # the ~2.5 GB CUDA runtime. Pinning the +cpu wheel keeps this image ~6 GB smaller.
 # BuildKit cache mount: pip's wheel/HTTP cache lives outside the image layers,
 # so rebuilds reuse downloads even when the layer itself is invalidated.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install "torch==2.13.0+cpu" --extra-index-url https://download.pytorch.org/whl/cpu
+    pip install "torch==2.13.0+cpu" --index-url https://download.pytorch.org/whl/cpu
+# Keep the large torch layer independent of requirements and source changes.
+COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --only-binary=:all: -r requirements.txt
 

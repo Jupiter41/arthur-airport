@@ -1,0 +1,19 @@
+# Used only by the project's dedicated docker-container builder.
+# GC targets are soft: active builds and exported runtime images can exceed them.
+[worker.oci]
+  gc = true
+  max-parallelism = 1
+  reservedSpace = "2GB"
+  maxUsedSpace = "12GB"
+  minFreeSpace = "20GB"
+
+[[worker.oci.gcpolicy]]
+  filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
+  keepDuration = "24h"
+  maxUsedSpace = "2GB"
+
+[[worker.oci.gcpolicy]]
+  all = true
+  reservedSpace = "2GB"
+  maxUsedSpace = "12GB"
+  minFreeSpace = "20GB"

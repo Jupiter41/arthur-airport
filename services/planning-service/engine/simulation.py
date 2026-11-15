@@ -21,6 +21,9 @@ from datetime import date, datetime, time as dt_time, timedelta
 from adapters.base import AbstractAdapter
 from _common.financial_rates import load_default_rates, resolve_rates_for_airline
 from _common.accounting import compensation_liability
+from _common.airport_config import load_airport_runtime_config
+from _common.effects import (EffectState, Flight, Gate, apply_instant, planning_actions,
+                             parameters, runway_capacity, security_tick)
 
 from .infrastructure import InfrastructureConfig
 from .interventions import Disruption, Intervention, aggregate_capacity_factor
@@ -30,12 +33,7 @@ logger = logging.getLogger(__name__)
 
 # ── Runway capacity by weather category ─────────────────────
 
-RUNWAY_CAPACITY: dict[str, dict[str, int]] = {
-    "CAVOK": {"arrival": 32, "departure": 32, "runways": 2},
-    "VMC":   {"arrival": 28, "departure": 28, "runways": 2},
-    "IMC":   {"arrival": 18, "departure": 16, "runways": 1},
-    "LIFR":  {"arrival": 8,  "departure": 6,  "runways": 1},
-}
+RUNWAY_CAPACITY = {k: v.model_dump() for k, v in load_airport_runtime_config().operations.weather_capacity.items()}
 
 # ── Seat map for capacity estimates ─────────────────────────
 # (Body-class classification lives in _common.aircraft — the single source of
@@ -267,19 +265,7 @@ class PlanningSimEngine:
         if new_routes:
             schedule = list(schedule) + _expand_new_routes(new_routes, sim_date, rng)
 
-        # 1B — gate_swap interventions add stand capacity for the entire run
-        # (transient gate openings are not modelled; the largest delta wins).
-        gate_swap_total = 0
-        if interventions:
-            for iv in interventions:
-                if iv.action == "gate_swap":
-                    gate_swap_total += int(iv.params.get("delta", 1))
-
         state = self._initialise_state(schedule, infrastructure, sim_date, rng)
-        if gate_swap_total > 0:
-            for i in range(gate_swap_total):
-                state.gate_occupancy[f"X{i + 1:02d}"] = None
-            state.gate_hours_available = len(state.gate_occupancy) * 24.0
         # Build hour→weather lookup
         weather_by_hour: dict[int, dict] = {}
         for w in weather_seq:
@@ -381,37 +367,7 @@ class PlanningSimEngine:
         """Process one simulated minute."""
         category = weather.get("category", "CAVOK")
         wind_kt = weather.get("wind_speed_kt", 5)
-        cap = RUNWAY_CAPACITY.get(category, RUNWAY_CAPACITY["CAVOK"])
-
-        # Runway capacity scaled by the scenario's runway count.
-        #
-        # The per-category rates are calibrated for the 2-runway KART baseline
-        # (RUNWAY_CAPACITY[...]["runways"] records how many runways that rate
-        # assumes). Scale linearly by how many runways the scenario can actually
-        # work so that adding or closing a runway moves capacity — the previous
-        # code had a no-op branch here, so runway_count had *zero* effect on
-        # throughput (a "close a runway" scenario showed no impact at all).
-        #
-        # In good visibility every physical runway is usable; in low-visibility
-        # categories (cap["runways"] < 2) the weather binds the usable count
-        # regardless of how many runways physically exist (only ILS/reduced-rate
-        # ops), so we never scale *up* past the category's limit there.
-        category_runways = cap["runways"]
-        if category_runways >= 2:
-            usable_runways = infra.runway_count
-        else:
-            usable_runways = min(infra.runway_count, category_runways)
-        runway_scale = usable_runways / category_runways
-        max_dep = int(cap["departure"] * runway_scale)
-        max_arr = int(cap["arrival"] * runway_scale)
-
-        # Apply wind reductions
-        if wind_kt > 35:
-            max_dep = int(max_dep * 0.60)
-            max_arr = int(max_arr * 0.60)
-        elif wind_kt > 25:
-            max_dep = int(max_dep * 0.85)
-            max_arr = int(max_arr * 0.85)
+        max_dep, max_arr = runway_capacity(category, infra.runway_count, wind_kt)
 
         # 1B — apply interventions + baseline disruption to runway/security/gate capacity.
         cap_factor = 1.0
@@ -425,6 +381,24 @@ class PlanningSimEngine:
                 max_dep = int(max_dep * cap_factor)
                 max_arr = int(max_arr * cap_factor)
 
+        scheduled_actions = [iv.to_dict() for iv in interventions or []]
+        if any(iv["sim_minute"] == minute and iv["action"] in {"gdp_start", "gate_swap"} for iv in scheduled_actions):
+            compact = EffectState(
+                flights={fid: Flight(terminal=f.terminal or "", gate=f.gate, status=f.status,
+                                     delay=f.delay_minutes, passengers=f.pax_count)
+                         for fid, f in state.flights.items()},
+                gates={gid: Gate(terminal=gid[:1], occupant=occupant)
+                       for gid, occupant in state.gate_occupancy.items()})
+            projected, _ = apply_instant(compact, planning_actions(scheduled_actions, minute, compact))
+            for fid, item in projected.flights.items():
+                flight = state.flights[fid]
+                added_delay = item.delay - flight.delay_minutes
+                flight.delay_minutes = int(item.delay)
+                flight.estimated_departure += timedelta(minutes=added_delay)
+                flight.gate, flight.terminal = item.gate, item.terminal
+            state.gate_occupancy = {gid: g.occupant for gid, g in projected.gates.items()}
+
+        security_arrivals: dict[str, float] = {}
         for flight in state.flights.values():
             if flight.status == "completed":
                 continue
@@ -436,7 +410,7 @@ class PlanningSimEngine:
                 # Boarding starts 60 minutes before departure
                 if minutes_to_departure <= 60:
                     # Try to assign a gate
-                    gate = self._find_gate(state, flight.terminal)
+                    gate = flight.gate or self._find_gate(state, flight.terminal)
                     if gate:
                         flight.gate = gate
                         flight.status = "boarding"
@@ -459,21 +433,7 @@ class PlanningSimEngine:
                 # Security queue modelling (simplified)
                 if minutes_to_departure <= 90 and minutes_to_departure > 60:
                     terminal = flight.terminal or "A"
-                    sec_lanes = infra.security_lanes_per_terminal.get(terminal, 4) + extra_lanes
-                    pax_per_min = flight.pax_count / 30  # pax arrive over 30 min
-                    throughput_per_min = sec_lanes * 3  # ~3 pax/min/lane
-                    if pax_per_min > throughput_per_min:
-                        queue_build = pax_per_min - throughput_per_min
-                        state.security_queues[terminal] = (
-                            state.security_queues.get(terminal, 0) + int(queue_build)
-                        )
-                        wait = state.security_queues[terminal] / max(1, throughput_per_min)
-                        if wait > state.security_wait_max:
-                            state.security_wait_max = wait
-                        state.peak_security_queue[terminal] = max(
-                            state.peak_security_queue.get(terminal, 0),
-                            state.security_queues.get(terminal, 0),
-                        )
+                    security_arrivals[terminal] = security_arrivals.get(terminal, 0) + flight.pax_count / 30
 
             elif flight.status == "boarding":
                 if minutes_to_departure <= 0:
@@ -523,7 +483,7 @@ class PlanningSimEngine:
                     else:
                         # Holding — runway at capacity
                         state.holding_events += 1
-                        flight.delay_minutes += 1 + extra_lanes
+                        flight.delay_minutes += 1
                         flight.estimated_departure = sim_time + timedelta(minutes=1)
                         state.total_delay_minutes += 1
 
@@ -533,11 +493,15 @@ class PlanningSimEngine:
                 if flight.departed_at and (sim_time - flight.departed_at).total_seconds() / 60 >= fly_time_min:
                     flight.status = "completed"
 
-        # Decay security queues naturally each minute
-        for terminal in list(state.security_queues.keys()):
-            sec_lanes = infra.security_lanes_per_terminal.get(terminal, 4) + extra_lanes
-            drain = sec_lanes * 3  # 3 pax/min/lane
-            state.security_queues[terminal] = max(0, state.security_queues[terminal] - drain)
+        # Aggregate arrivals once per terminal, then advance the canonical queue.
+        effect_params = parameters()
+        for terminal in state.security_queues.keys() | security_arrivals.keys():
+            lanes = min(20, infra.security_lanes_per_terminal.get(terminal, 4) + extra_lanes)
+            queue, wait = security_tick(state.security_queues.get(terminal, 0),
+                                        security_arrivals.get(terminal, 0), lanes, effect_params)
+            state.security_queues[terminal] = queue
+            state.security_wait_max = max(state.security_wait_max, wait)
+            state.peak_security_queue[terminal] = max(state.peak_security_queue.get(terminal, 0), queue)
 
         # Baggage throughput tracking
         active_pax = sum(

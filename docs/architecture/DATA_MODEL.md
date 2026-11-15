@@ -466,3 +466,15 @@ flight runtime and fleet snapshot fact. Analysis owns versioned
 `AnalysisRuntime {id: 'discovery'}` containing its graph inputs, broker clock
 offset, stable bottleneck/recommendation identities and threshold timers. Its
 replacement and all discovery facts share the analysis transaction/outbox.
+
+### Durable decision history (2026-11-14)
+
+Analysis owns `DecisionRecord`, unique on `id` (stable bottleneck ID), with
+`detected_at`, JSON `bottleneck`, JSON `recommendations`, `ranked_at` and
+`resolved_at`. Discovery updates it alongside its runtime and outbox facts.
+`ActionProposal.document` additionally retains immutable `decision_context`
+(bottleneck, selected recommendation, ranked alternatives, financial summary,
+capture time), lifecycle `history` and the validated `owner_receipt`.
+These commit with the existing proposal/outbox transaction; domain ownership
+does not change. Restart reads these records from Neo4j. Legacy missing context
+and receipts remain explicitly unavailable.

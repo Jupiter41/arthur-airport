@@ -13,6 +13,7 @@ from services.approval_queue import Proposal
 from services.detectors import check_resolved, detect_all
 from services.recommender import generate_recommendations
 from services.state import OperationalState, _parse_dt, _utc
+from services.decision_history import save_discovery
 
 VERSION = 1
 
@@ -112,6 +113,8 @@ async def evaluate() -> tuple[dict | None, list[Bottleneck], list[Bottleneck]]:
             "threshold_timers": {key: value.isoformat() if value else None
                                  for key, value in state.makeup_over_threshold_since.items()},
         }
+        await save_discovery(tx, [bn.model_dump(mode="json") for bn in [*active.values(), *resolved]],
+                             document["recommendations"], now.isoformat())
         await (await tx.run(
             "MERGE (s:AnalysisRuntime {id: 'discovery'}) SET s.document = $document",
             document=_json(document),

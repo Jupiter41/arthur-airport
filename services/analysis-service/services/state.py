@@ -93,6 +93,7 @@ class OperationalState:
         self.gates: dict[str, dict] = {}
         self.graph_loaded: bool = False
         self.baggage_snapshot_at: datetime | None = None
+        self.baggage_targets: dict[str, dict] = {}
 
         # Security queues per terminal
         self.security: dict[str, SecurityState] = {
@@ -172,6 +173,8 @@ class OperationalState:
             gates[gate["id"]] = gate
         incidents = {row["incident"]["id"]: dict(row["incident"]) for row in snapshot["incidents"]}
         self.flights, self.gates, self.active_incidents = flights, gates, incidents
+        self.baggage_targets = {row["id"]: {k: row.get(k) for k in ("flight_id", "zone", "status")}
+                                for row in snapshot.get("baggage_targets", [])}
         self.graph_loaded = True
         if snapshot["weather"]:
             weather = dict(snapshot["weather"][0]["weather"])
@@ -227,6 +230,7 @@ class OperationalState:
         if clock and self.sim_time and _utc(clock) < _utc(self.sim_time):
             # A simulation rewind must not pin aggregates to a future timestamp.
             self.baggage_zones.clear()
+            self.baggage_targets.clear()
             self.baggage_snapshot_at = None
             self.vehicle_snapshot_at = None
             self.makeup_over_threshold_since.clear()
@@ -330,6 +334,12 @@ class OperationalState:
 
     def on_baggage_status_changed(self, payload: dict) -> None:
         """Process BaggageStatusChanged — track zone occupancy."""
+        bag_id = payload.get("baggage_id")
+        if bag_id:
+            self.baggage_targets[bag_id] = {
+                "flight_id": payload.get("flight_id"), "zone": payload.get("scan_zone"),
+                "status": payload.get("new_status", "unknown"),
+            }
         new_zone = payload.get("new_zone", "")
         old_zone = payload.get("old_zone", "")
 

@@ -59,7 +59,7 @@ def generate_recommendations(
             rec.execution_status = "available" if rec.executable else "advisory"
             # Quantify benefit/cost on a common scale so ranking reflects
             # impact * confidence / cost, not confidence alone (G5).
-            score_recommendation(rec, bn)
+            score_recommendation(rec, bn, state)
             proposal = next((p for p in reversed(proposals)
                              if p.bottleneck_id == bn.id and p.action_type == rec.action_type.value
                              and p.parameters == rec.parameters), None)

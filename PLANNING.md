@@ -1,6 +1,6 @@
 # Capacity Planning & Investment Analysis
 
-> **Verification update (2026-10-17):** see `ROADMAP_REAL_LDT.md` §10 for
+> **Verification update (2026-10-17):** see `archive/ROADMAP_REAL_LDT.md` §10 for
 > delivered behavior, validation boundaries and open gaps. Planning records now
 > persist in Neo4j; owner receipts confirm action execution. Automatic measured
 > savings, full action coverage and a unified effect/recommendation engine remain
@@ -303,7 +303,7 @@ outcomes supplied through the outcome API. Summary accuracy includes only record
 with a measured outcome. It does not prove that predictions are calibrated.
 
 Automatic measurement 30 simulation minutes after execution and attribution to a
-baseline remain planned work (`ROADMAP_REAL_LDT.md` §10 G8). Analysis execution
+baseline remain planned work (`archive/ROADMAP_REAL_LDT.md` §10 G8). Analysis execution
 receipts and planning audit logs are not yet one automatic feedback pipeline.
 
 ---

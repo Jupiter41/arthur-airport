@@ -16,9 +16,10 @@ The local transition helpers remain useful for pure policy evaluation and tests.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from uuid import uuid4
+from _common.effects import EFFECT_MODEL_VERSION
 
 # ── Proposal lifecycle states ────────────────────────────────
 PENDING = "pending"
@@ -63,6 +64,10 @@ class Proposal:
     outcome_measured_at: str | None = None
     # G8 attribution: target + untreated controls observed at first dispatch.
     baseline: dict | None = None
+    effect_model_version: str = "legacy"
+    decision_context: dict | None = None
+    history: list[dict] = field(default_factory=list)
+    owner_receipt: dict | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -126,6 +131,7 @@ def propose(
         confidence_score=confidence_score,
         proposed_by=proposed_by,
         proposed_at=proposed_at.isoformat(),
+        effect_model_version=EFFECT_MODEL_VERSION,
         recommendation_id=recommendation_id,
         bottleneck_id=bottleneck_id,
         status=PENDING if requires_human else APPROVED,

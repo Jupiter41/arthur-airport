@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import copy
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+
+from _common.effects import (Action, EffectState, Flight, Gate, Security, Bag,
+                             EFFECT_MODEL_VERSION, parameters, security_throughput, step, terminal_name)
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +124,7 @@ class AirportOpsEnv(gym.Env):
         self._step_count = 0
         self._prev_delay = 0.0
         self._prev_bottlenecks = 0
+        self._prev_wait = 0.0
 
     def reset(
         self,
@@ -141,6 +145,7 @@ class AirportOpsEnv(gym.Env):
         self._step_count = 0
         self._prev_delay = self._get_total_delay()
         self._prev_bottlenecks = self._state.get("bottleneck_count", 0)
+        self._prev_wait = sum(s.get("forecast_wait_minutes", 0) for s in self._state.get("security", {}).values())
 
         obs = self._get_obs()
         return obs, {}
@@ -152,10 +157,7 @@ class AirportOpsEnv(gym.Env):
         assert self.action_space.contains(action)
 
         # Apply action to shadow state
-        action_effect = _apply_action(self._state, action)
-
-        # Advance simulation by 1 sim-minute
-        _advance_sim_minute(self._state)
+        action_effect = _advance_shared(self._state, action)
 
         self._step_count += 1
 
@@ -167,6 +169,11 @@ class AirportOpsEnv(gym.Env):
         # Delay delta penalty
         delay_delta = new_delay - self._prev_delay
         reward += delay_delta * REWARD_DELAY_WEIGHT
+        wait = sum(s.get("forecast_wait_minutes", 0) for s in self._state.get("security", {}).values())
+        reward += (wait - self._prev_wait) * REWARD_DELAY_WEIGHT
+        if action == 1 and action_effect == "modelled":
+            reward -= parameters().lane_cost * abs(REWARD_DELAY_WEIGHT)
+        self._prev_wait = wait
 
         # Bottleneck change
         bottleneck_delta = new_bottlenecks - self._prev_bottlenecks
@@ -184,6 +191,7 @@ class AirportOpsEnv(gym.Env):
 
         obs = self._get_obs()
         info = {
+            "effect_model_version": EFFECT_MODEL_VERSION,
             "action_name": ACTION_NAMES[action],
             "action_effect": action_effect,
             "step": self._step_count,
@@ -301,7 +309,10 @@ def state_from_operational(op_state, active_bottleneck_count: int = 0) -> dict:
             "utilisation_pct": v.utilisation_pct,
         }
 
+    from services.effect_adapter import from_operational
+
     return {
+        "effect_state": from_operational(op_state).model_dump(mode="json"),
         "sim_time": op_state.sim_time,
         "security": security,
         "flights": flights,
@@ -321,7 +332,7 @@ def _default_state() -> dict:
     return {
         "sim_time": datetime(2024, 6, 15, 8, 0, 0),
         "security": {
-            t: {"queue_depth": 20, "forecast_wait_minutes": 5.0, "open_lanes": 4}
+            t: {"queue_depth": 360, "forecast_wait_minutes": 30.0, "open_lanes": 4}
             for t in ("Terminal A", "Terminal B", "Terminal C")
         },
         "flights": {},
@@ -331,109 +342,74 @@ def _default_state() -> dict:
         "vehicles": {},
         "weather": {"category": "CAVOK", "runway_capacity_pct": 100.0},
         "incidents": {},
-        "bottleneck_count": 0,
+        "bottleneck_count": 3,
     }
 
 
-def _apply_action(state: dict, action: int) -> str:
-    """Apply an action to the shadow state. Returns a description."""
-    if action == 0:
-        return "no_action"
+def _compact(state: dict) -> EffectState:
+    if "effect_state" in state:
+        return EffectState.model_validate(state["effect_state"])
+    params = parameters()
+    security = {terminal_name(t): Security(
+        queue=sec.get("queue_depth", 0), lanes=sec.get("open_lanes", 4),
+        wait=sec.get("forecast_wait_minutes", 0),
+        arrivals_per_minute=sec.get("arrivals_per_minute", security_throughput(sec.get("open_lanes", 4), params)))
+        for t, sec in state.get("security", {}).items()}
+    return EffectState(security=security, flights={fid: Flight(
+        terminal=terminal_name(f.get("terminal") or ""), gate=f.get("gate"), status=f.get("status", "scheduled"),
+        direction=f.get("flight_type", "departure"), delay=f.get("delay_minutes", 0), passengers=f.get("passenger_count", 0))
+        for fid, f in state.get("flights", {}).items()},
+        gates={gid: Gate.model_validate(g) for gid, g in state.get("gates", {}).items()},
+        bags={bid: Bag.model_validate(b) for bid, b in state.get("bags", {}).items()},
+        incidents={iid: inc.get("status", "active") for iid, inc in state.get("incidents", {}).items()})
 
-    elif action == 1:  # open_security_lane
-        # Find terminal with longest queue
-        sec = state.get("security", {})
-        worst = max(sec.items(), key=lambda kv: kv[1].get("queue_depth", 0))
-        t_name = worst[0]
-        sec[t_name]["open_lanes"] = min(8, sec[t_name].get("open_lanes", 4) + 1)
-        # Reduce forecast wait by ~15%
-        sec[t_name]["forecast_wait_minutes"] *= 0.85
-        return f"opened_lane_{t_name}"
 
-    elif action == 2:  # reassign_gate
-        # Find a flight needing gate and assign from free pool
-        for fid, f in state.get("flights", {}).items():
-            if f.get("status") in ("approaching", "holding", "landed") and not f.get("gate"):
-                best_terminal = max(
-                    state.get("free_gates", {}).items(),
-                    key=lambda kv: kv[1],
-                )
-                if best_terminal[1] > 0:
-                    f["gate"] = f"reassigned_{best_terminal[0]}"
-                    f["terminal"] = best_terminal[0]
-                    state["free_gates"][best_terminal[0]] -= 1
-                    return f"reassigned_gate_{fid[:8]}"
-        return "no_gate_needed"
-
-    elif action == 3:  # hold_connecting_flight
-        # Reduce delay for approaching flights (simulates hold)
-        held = 0
-        for f in state.get("flights", {}).values():
-            if f.get("status") == "boarding" and f.get("delay_minutes", 0) < 15:
-                f["delay_minutes"] = f.get("delay_minutes", 0) + 5
-                held += 1
-                if held >= 2:
+def _choose_action(compact: EffectState, action: int) -> Action:
+    p = {}
+    if action == 1 and compact.security:
+        terminal = max(compact.security, key=lambda t: compact.security[t].queue)
+        p = {"terminal": terminal, "lanes_open": min(20, compact.security[terminal].lanes + 1)}
+    elif action == 2:
+        for fid, flight in compact.flights.items():
+            if not flight.gate and flight.status in {"approach", "approaching", "holding", "landed"}:
+                gate = next((gid for gid, g in compact.gates.items() if g.available and g.occupant is None), None)
+                if gate:
+                    p = {"flight_id": fid, "gate_id": gate}
                     break
-        return f"held_{held}_flights"
-
-    elif action == 4:  # fast_track_passengers
-        # Reduce security queue depth in worst terminal
-        sec = state.get("security", {})
-        worst = max(sec.items(), key=lambda kv: kv[1].get("queue_depth", 0))
-        t_name = worst[0]
-        sec[t_name]["queue_depth"] = max(0, sec[t_name].get("queue_depth", 0) - 10)
-        return f"fast_tracked_{t_name}"
-
-    elif action == 5:  # redirect_baggage
-        # Symbolic — reduce bottleneck pressure
-        state["bottleneck_count"] = max(0, state.get("bottleneck_count", 0) - 1)
-        return "redirected_baggage"
-
-    elif action == 6:  # redistribute_vehicles
-        # Balance vehicle utilisation
-        for v in state.get("vehicles", {}).values():
-            if v.get("utilisation_pct", 0) > 85:
-                v["utilisation_pct"] = max(60, v["utilisation_pct"] - 15)
-                v["dispatched"] = max(0, v.get("dispatched", 0) - 1)
-        return "redistributed_vehicles"
-
-    return "unknown_action"
+    elif action == 3:
+        fid = next((fid for fid, f in compact.flights.items() if f.status == "boarding"), None)
+        if fid:
+            p = {"flight_id": fid, "hold_minutes": 5}
+    elif action == 5:
+        bag = next(iter(compact.bags), None)
+        if bag:
+            target = next((fid for fid in compact.flights if fid != compact.bags[bag].flight_id), None)
+            if target:
+                p = {"bag_id": bag, "target_flight_id": target}
+    return Action(action_type=ACTION_NAMES[action], parameters=p)
 
 
-def _advance_sim_minute(state: dict) -> None:
-    """Advance the shadow simulation by 1 sim-minute.
+def _advance_shared(state: dict, action: int) -> str:
+    from datetime import timedelta
 
-    Applies lightweight stochastic updates to simulate time passing.
-    This is a deliberately simplified model — not a full simulation engine.
-    """
-    rng = np.random.default_rng()
-
-    # Advance sim_time
+    compact = _compact(state)
+    projected, statuses = step(compact, [_choose_action(compact, action)])
+    state["effect_state"] = projected.model_dump(mode="json")
+    state["bottleneck_count"] = (
+        sum(s.wait > 15 for s in projected.security.values())
+        + sum(f.status in {"approach", "approaching", "holding", "landed"} and not f.gate
+              for f in projected.flights.values())
+        + sum(status not in {"resolved", "contained"} for status in projected.incidents.values())
+    )
+    for name, sec in state.get("security", {}).items():
+        item = projected.security[terminal_name(name)]
+        sec.update(queue_depth=item.queue, open_lanes=item.lanes, forecast_wait_minutes=item.wait)
+    for fid, f in state.get("flights", {}).items():
+        item = projected.flights[fid]
+        f.update(delay_minutes=item.delay, gate=item.gate, terminal=f"Terminal {item.terminal}")
+    state["free_gates"] = {f"Terminal {t}": sum(g.available and g.occupant is None
+                                               for g in projected.gates.values() if g.terminal == t)
+                           for t in projected.security}
     if isinstance(state.get("sim_time"), datetime):
         state["sim_time"] += timedelta(minutes=1)
-
-    # Security queues drift
-    for sec in state.get("security", {}).values():
-        lanes = sec.get("open_lanes", 4)
-        throughput = lanes * 2  # ~2 pax/min/lane
-        arrivals = int(rng.poisson(lam=max(3, throughput * 0.8)))
-        sec["queue_depth"] = max(0, sec.get("queue_depth", 0) + arrivals - throughput)
-        sec["forecast_wait_minutes"] = sec["queue_depth"] / max(1, throughput)
-
-    # Flights: small chance of delay increase
-    for f in state.get("flights", {}).values():
-        if f.get("status") in ("approaching", "holding", "boarding"):
-            if rng.random() < 0.05:
-                f["delay_minutes"] = f.get("delay_minutes", 0) + rng.uniform(1, 5)
-
-    # Vehicle utilisation drift
-    for v in state.get("vehicles", {}).values():
-        v["utilisation_pct"] = float(np.clip(
-            v.get("utilisation_pct", 50) + rng.normal(0, 2), 0, 100,
-        ))
-
-    # Bottleneck stochastic creation/resolution
-    if rng.random() < 0.02:
-        state["bottleneck_count"] = state.get("bottleneck_count", 0) + 1
-    if rng.random() < 0.05 and state.get("bottleneck_count", 0) > 0:
-        state["bottleneck_count"] -= 1
+    return statuses[0]

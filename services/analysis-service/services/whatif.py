@@ -12,9 +12,9 @@ from __future__ import annotations
 import copy
 import logging
 from uuid import uuid4
+from _common.effects import EFFECT_MODEL_VERSION
 
 from models.domain import (
-    ActionType,
     AnalysisLogEntry,
     KPIProjection,
     WhatIfAction,
@@ -59,19 +59,28 @@ def run_what_if(
         raise ValueError("Simulation clock not available yet")
 
     # 1. Compute baseline KPIs from current state
-    baseline = _compute_kpis(state, action_index=-1)
+    from services.effect_adapter import patch_operational, project
+
+    # Compare both arms at the same horizon, including natural queue evolution.
+    untreated, _ = project(state, "no_action", {}, request.horizon_minutes)
+    base_shadow = _create_shadow(state)
+    patch_operational(base_shadow, untreated.baseline)
+    baseline = _compute_kpis(base_shadow, action_index=-1)
 
     # 2. Run each action through the shadow simulation
     projections: list[KPIProjection] = []
     for i, action in enumerate(request.actions):
         shadow = _create_shadow(state)
-        _apply_action_to_shadow(shadow, action, request.horizon_minutes)
+        result, _ = project(state, action.action_type.value, action.parameters, request.horizon_minutes)
+        patch_operational(shadow, result.projected)
         projection = _compute_kpis(shadow, action_index=i)
+        projection.effect_status = result.action_status[0]
         projections.append(projection)
 
         # Log the query
         _log_entry(AnalysisLogEntry(
             id=f"wif-{uuid4().hex[:12]}",
+            effect_model_version=EFFECT_MODEL_VERSION,
             timestamp=now,
             entry_type="what_if",
             action=action,
@@ -117,6 +126,7 @@ def _create_shadow(state: OperationalState) -> OperationalState:
     shadow.baggage_zones = {
         z: copy.copy(bz) for z, bz in state.baggage_zones.items()
     }
+    shadow.baggage_targets = copy.deepcopy(state.baggage_targets)
 
     # Copy vehicles
     shadow.vehicles = {
@@ -137,189 +147,10 @@ def _apply_action_to_shadow(
     horizon_minutes: int,
 ) -> None:
     """Apply the proposed action's effects to the shadow state."""
-    handlers = {
-        ActionType.OPEN_SECURITY_LANE: _sim_open_lane,
-        ActionType.EARLY_GATE_CALL: _sim_early_gate_call,
-        ActionType.REDIRECT_CHECKIN: _sim_redirect_checkin,
-        ActionType.REASSIGN_GATE: _sim_reassign_gate,
-        ActionType.DELAY_TAXI: _sim_delay_taxi,
-        ActionType.SWAP_GATES: _sim_swap_gates,
-        ActionType.HOLD_CONNECTING_FLIGHT: _sim_hold_flight,
-        ActionType.FAST_TRACK_PASSENGERS: _sim_fast_track,
-        ActionType.REBOOK_PASSENGERS: _sim_rebook,
-        ActionType.GROUND_DELAY_PROGRAM: _sim_gdp,
-        ActionType.REDISTRIBUTE_VEHICLES: _sim_redistribute_vehicles,
-        ActionType.DEFER_TASK: _sim_defer_task,
-        ActionType.REDIRECT_BAGGAGE: _sim_redirect_baggage,
-        ActionType.EXPEDITE_LOADING: _sim_expedite_loading,
-    }
-    handler = handlers.get(action.action_type)
-    if handler:
-        handler(shadow, action, horizon_minutes)
+    from services.effect_adapter import patch_operational, project
 
-
-# ── Action simulators ────────────────────────────────────────
-# Each modifies the shadow state to project the action's effect.
-
-
-def _sim_open_lane(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    terminal = action.parameters.get("terminal", "")
-    if terminal in shadow.security:
-        sec = shadow.security[terminal]
-        old_lanes = sec.open_lanes
-        sec.open_lanes = action.parameters.get("new_lane_count", old_lanes + 1)
-        # Project queue reduction: new throughput ratio
-        ratio = old_lanes / sec.open_lanes if sec.open_lanes else 1
-        sec.queue_depth = max(0, int(sec.queue_depth * ratio))
-        sec.forecast_wait_minutes *= ratio
-
-
-def _sim_early_gate_call(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    terminal = action.parameters.get("terminal", "")
-    if terminal in shadow.security:
-        # Reduces gate area crowding — model as 15% queue reduction
-        sec = shadow.security[terminal]
-        sec.queue_depth = max(0, int(sec.queue_depth * 0.85))
-
-
-def _sim_redirect_checkin(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    from_t = action.parameters.get("from_terminal", "")
-    to_t = action.parameters.get("to_terminal", "")
-    if from_t in shadow.security and to_t in shadow.security:
-        transfer = shadow.security[from_t].queue_depth // 3
-        shadow.security[from_t].queue_depth -= transfer
-        shadow.security[to_t].queue_depth += transfer
-
-
-def _sim_reassign_gate(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    # Model: one fewer flight occupying a gate in the congested terminal
-    orig = action.parameters.get("original_terminal", "")
-    for f in shadow.flights.values():
-        if f.terminal == orig and f.status in ("approaching", "holding") and not f.gate:
-            alt = action.parameters.get("alternate_terminal", "")
-            f.terminal = alt
-            break
-
-
-def _sim_delay_taxi(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    terminal = action.parameters.get("terminal", "")
-    hold_min = action.parameters.get("hold_minutes", 10)
-    for f in shadow.flights.values():
-        if f.terminal == terminal and f.status in ("approaching", "holding", "landed"):
-            f.delay_minutes += hold_min
-
-
-def _sim_swap_gates(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    # Minimal model: reduces average delay by improving turnover
-    terminal = action.parameters.get("terminal", "")
-    for f in shadow.flights.values():
-        if f.terminal == terminal and f.status in ("boarding", "ready_for_departure"):
-            f.delay_minutes = max(0, f.delay_minutes - 5)
-
-
-def _sim_hold_flight(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    fid = action.parameters.get("outbound_flight", "")
-    hold_min = action.parameters.get("hold_minutes", 15)
-    if fid in shadow.flights:
-        shadow.flights[fid].delay_minutes += hold_min
-
-
-def _sim_fast_track(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    # Model: reduce security queue in the relevant terminal slightly
-    inbound = action.parameters.get("inbound_flight", "")
-    pax = action.parameters.get("passenger_count", 0)
-    if inbound in shadow.flights:
-        t = shadow.flights[inbound].terminal
-        if t and t in shadow.security:
-            shadow.security[t].queue_depth = max(
-                0, shadow.security[t].queue_depth - pax,
-            )
-
-
-def _sim_rebook(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    # Model: remove connection pressure on outbound flight
-    outbound = action.parameters.get("outbound_flight", "")
-    if outbound in shadow.flights:
-        # No longer need to hold — reduce potential delay
-        shadow.flights[outbound].delay_minutes = max(
-            0, shadow.flights[outbound].delay_minutes - 10,
-        )
-
-
-def _sim_gdp(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    stagger = action.parameters.get("stagger_minutes", 5)
-    i = 0
-    for f in shadow.flights.values():
-        if f.flight_type == "departure" and f.status in (
-            "scheduled", "boarding", "ready_for_departure",
-        ):
-            f.delay_minutes += stagger * i
-            i += 1
-    # GDP reduces holding stack pressure
-    for f in shadow.flights.values():
-        if f.status == "holding":
-            f.delay_minutes = max(0, f.delay_minutes - 10)
-
-
-def _sim_redistribute_vehicles(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    vtype = action.parameters.get("vehicle_type", "")
-    if vtype in shadow.vehicles:
-        v = shadow.vehicles[vtype]
-        # Model: reduce dispatched count by returning 1 vehicle faster
-        v.dispatched = max(0, v.dispatched - 1)
-        v.utilisation_pct = (v.dispatched / v.total * 100) if v.total else 0
-
-
-def _sim_defer_task(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    vtype = action.parameters.get("vehicle_type", "")
-    if vtype in shadow.vehicles:
-        v = shadow.vehicles[vtype]
-        v.dispatched = max(0, v.dispatched - 2)
-        v.utilisation_pct = (v.dispatched / v.total * 100) if v.total else 0
-
-
-def _sim_redirect_baggage(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    zone = action.parameters.get("zone", "")
-    if zone in shadow.baggage_zones:
-        z = shadow.baggage_zones[zone]
-        z.current_count = int(z.current_count * 0.7)
-        z.utilisation_pct = (z.current_count / z.capacity * 100) if z.capacity else 0
-
-
-def _sim_expedite_loading(
-    shadow: OperationalState, action: WhatIfAction, horizon: int,
-) -> None:
-    zone = action.parameters.get("zone", "")
-    if zone in shadow.baggage_zones:
-        z = shadow.baggage_zones[zone]
-        z.current_count = max(0, z.current_count - 25)
-        z.utilisation_pct = (z.current_count / z.capacity * 100) if z.capacity else 0
+    result, _ = project(shadow, action.action_type.value, action.parameters, horizon_minutes)
+    patch_operational(shadow, result.projected)
 
 
 # ── KPI computation ──────────────────────────────────────────
@@ -371,6 +202,7 @@ def _compute_kpis(state: OperationalState, action_index: int) -> KPIProjection:
 
     return KPIProjection(
         action_index=action_index,
+        effect_model_version=EFFECT_MODEL_VERSION,
         delay_minutes_total=total_delay,
         missed_connections=missed,
         avg_queue_depth=avg_queue,

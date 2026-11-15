@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 
@@ -100,6 +101,8 @@ def main() -> None:
     # Try to load RL policy
     model_path = Path(args.model)
     if model_path.exists():
+        from _common.effect_policy import require_compatible
+        require_compatible(model_path)
         from stable_baselines3 import PPO
         rl_model = PPO.load(str(model_path))
         policies["rl_agent"] = lambda obs: int(rl_model.predict(obs, deterministic=True)[0])

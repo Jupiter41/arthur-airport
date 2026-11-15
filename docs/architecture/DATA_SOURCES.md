@@ -12,7 +12,7 @@ REST endpoints or environment variables.
 > synthetic** regardless of the selected source. Real-world modes are opt-in, off by
 > default, used only as reference/calibration/overlay input, and labelled as real data in
 > the dashboard. See `DATA.md §0`, `OVERVIEW.md` ADR-006, and the open policy item in
-> `ROADMAP_REAL_LDT.md §10 G11`.
+> `archive/ROADMAP_REAL_LDT.md §10 G11`.
 
 ## Architecture
 

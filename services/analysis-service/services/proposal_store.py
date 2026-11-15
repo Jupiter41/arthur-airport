@@ -17,6 +17,7 @@ from _common.commands import action_command
 from _common.events import EventEnvelope
 from db.neo4j import get_driver
 from services.approval_queue import Proposal
+from services.decision_history import context_from_discovery, record_stage
 
 ACTIVE = {"pending", "approved", "dispatched"}
 T = TypeVar("T")
@@ -91,6 +92,7 @@ async def initialize() -> None:
             "CREATE CONSTRAINT analysis_runtime_id IF NOT EXISTS FOR (s:AnalysisRuntime) REQUIRE s.id IS UNIQUE",
             "CREATE CONSTRAINT analysis_outbox_id IF NOT EXISTS FOR (e:AnalysisOutbox) REQUIRE e.id IS UNIQUE",
             "CREATE INDEX analysis_outbox_order IF NOT EXISTS FOR (e:AnalysisOutbox) ON (e.revision, e.position)",
+            "CREATE CONSTRAINT decisionrecord_id IF NOT EXISTS FOR (d:DecisionRecord) REQUIRE d.id IS UNIQUE",
         ):
             await (await session.run(query)).consume()
 
@@ -126,6 +128,7 @@ async def record_outcome(proposal_id: str, outcome: dict, clock: datetime) -> di
                 or document.get("actual_outcome") is not None):
             return None
         document["actual_outcome"] = outcome
+        record_stage(document, "measured", clock, measurable=outcome.get("measurable", False))
         document["outcome_measured_at"] = clock.isoformat()
         document["revision"] = revision
         await _save(tx, document)
@@ -157,6 +160,14 @@ async def create(document: dict, clock: datetime) -> dict:
         )).single()
         if duplicate:
             return json.loads(duplicate["document"])
+        row = await (await tx.run(
+            "MATCH (s:AnalysisRuntime {id: 'discovery'}) RETURN s.document AS document",
+        )).single()
+        discovery = json.loads(row["document"]) if row and row.get("document") else None
+        document["decision_context"] = context_from_discovery(discovery, document)
+        record_stage(document, "proposed", clock, proposed_by=document["proposed_by"])
+        if document["status"] == "approved":
+            record_stage(document, "approved", clock, mode="automatic", decided_by=document["proposed_by"])
         document["revision"] = revision
         await _save(tx, document)
         await _outbox(tx, revision, [_fact("ActionProposed", document, clock)])
@@ -190,11 +201,15 @@ async def dispatch(proposal_id: str, clock: datetime, *, approve_by: str | None 
             if approve_by is None:
                 return None
             document.update(status="approved", decided_by=approve_by, decided_at=clock.isoformat())
+            record_stage(document, "approved", clock, mode="human", decided_by=approve_by)
             messages.append(_fact("ActionApproved", document, clock))
         elif document["status"] == "dispatched" and not _due(document, clock):
             return document
         document.update(status="dispatched", command_id=document["id"], dispatched_at=clock.isoformat(),
                         dispatch_attempts=document.get("dispatch_attempts", 0) + 1)
+        record_stage(document, "dispatched", clock, attempt=document["dispatch_attempts"],
+                     command_id=document["id"], command_type=intent.command_type, topic=intent.topic,
+                     delivery="durably_queued")
         if document.get("baseline") is None and baseline is not None:
             # First dispatch is the pre-action observation; retries keep it.
             document["baseline"] = baseline
@@ -217,6 +232,7 @@ async def reject(proposal_id: str, clock: datetime, decided_by: str, reason: str
         if not document or document["status"] != "pending":
             return None
         document.update(status="rejected", decided_by=decided_by, decided_at=clock.isoformat(), reject_reason=reason)
+        record_stage(document, "rejected", clock, decided_by=decided_by, reason=reason)
         document["revision"] = revision
         await _save(tx, document)
         await _outbox(tx, revision, [_fact("ActionRejected", document, clock)])
@@ -235,6 +251,7 @@ async def fail(proposal_id: str, clock: datetime, reason: str) -> dict | None:
         if document["status"] != "approved" and not withdrawn_rebooking:
             return None
         document.update(status="failed", failure_reason=reason)
+        record_stage(document, "failed", clock, reason=reason)
         document["revision"] = revision
         await _save(tx, document)
         await _outbox(tx, revision, [_fact("ActionExecutionFailed", document, clock)])
@@ -260,9 +277,13 @@ async def receipt(kind: str, payload: dict, clock: datetime, topic: str) -> dict
             from services.autonomous import execution_entry
 
             document.update(status="executed", executed_at=clock.isoformat())
+            document["owner_receipt"] = {"event_type": kind, "topic": topic, "sim_time": clock.isoformat(), "payload": deepcopy(payload)}
+            record_stage(document, "executed", clock, receipt=document["owner_receipt"])
             fact = _fact("AutonomousActionApplied", execution_entry(document, clock), clock)
         elif kind == "CommandRejected":
             document.update(status="failed", failure_reason=payload.get("reason") or "Command rejected")
+            document["owner_receipt"] = {"event_type": kind, "topic": topic, "sim_time": clock.isoformat(), "payload": deepcopy(payload)}
+            record_stage(document, "failed", clock, receipt=document["owner_receipt"], reason=document["failure_reason"])
             fact = _fact("ActionExecutionFailed", document, clock)
         else:
             return None

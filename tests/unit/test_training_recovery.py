@@ -89,7 +89,7 @@ class Process:
         if code == 0 and self.artifact_on_exit:
             output = self.cmd[self.cmd.index("--output") + 1]
             with zipfile.ZipFile(output, "w") as archive:
-                archive.writestr("synthetic-test-policy", "test")
+                archive.writestr("data", '{"effect_model_version": "effects-v1"}')
         self.returncode = code
 
     def terminate(self):

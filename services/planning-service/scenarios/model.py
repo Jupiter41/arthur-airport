@@ -180,4 +180,5 @@ def get_results(scenario_id: str) -> dict | None:
     result = get_repository().get("PlanningResult", scenario_id)
     if result is not None:
         result.setdefault("accounting_policy", "legacy-mixed")
+        result.setdefault("effect_model_version", "legacy")
     return result

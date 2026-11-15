@@ -233,4 +233,5 @@ class TestGenerateRecommendations:
             recs[i].priority_score >= recs[i + 1].priority_score
             for i in range(len(recs) - 1)
         )
-        assert all(r.priority_score > 0 for r in recs)
+        assert all(r.priority_score >= 0 for r in recs)
+        assert all(r.impact_value == 0 for r in recs if r.effect_status == "no_effect_model")

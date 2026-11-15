@@ -35,7 +35,7 @@ class Result:
 
 class Driver:
     def __init__(self):
-        self.db = {"proposals": {}, "outbox": {}, "revision": 0, "clock": None, "offset": None}
+        self.db = {"proposals": {}, "outbox": {}, "revision": 0, "clock": None, "offset": None, "discovery": None}
         self.fail_after_outbox = False
         self.lose_commit_ack = False
         self.lock = asyncio.Lock()
@@ -59,6 +59,9 @@ class Driver:
                     driver.lose_commit_ack = False
                     return await self.execute_write(callback)
                 return result
+
+            async def execute_read(self, callback):
+                return await callback(Tx(driver, deepcopy(driver.db)))
 
             async def run(self, query, **params):
                 return await Tx(driver, driver.db).run(query, **params)
@@ -100,6 +103,8 @@ class Tx:
             return Result(sorted(db["outbox"].values(), key=lambda row: (row["revision"], row["position"])))
         elif "DELETE e" in query:
             db["outbox"].pop(params["id"], None)
+        elif "RETURN s.document AS document" in query:
+            return Result([{"document": db["discovery"]}] if db.get("discovery") else [])
         elif "RETURN s.clock_offset" in query:
             return Result([{"offset": db["offset"]}])
         elif "SET s.clock =" in query:
@@ -322,7 +327,7 @@ def test_first_dispatch_records_pre_action_baseline_and_retries_keep_it(context,
     asyncio.run(execution.dispatch(proposal, NOW))
     baseline = document(driver, proposal.id)["baseline"]
     assert baseline["treated"]["wait"] == 24 and set(baseline["controls"]) == {"Terminal A"}
-    assert baseline["predicted"]["delta"] == pytest.approx(-24 / 5)
+    assert baseline["predicted"]["delta"] == pytest.approx(-10.8)
     state.security["Terminal B"] = sec(40)
     retried = execution.approval_queue.get(proposal.id)
     asyncio.run(execution.dispatch(retried, NOW + timedelta(minutes=6)))

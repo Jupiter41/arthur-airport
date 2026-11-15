@@ -169,6 +169,12 @@ async def load_operational_projection(*, tx=None) -> dict:
                 "RETURN properties(w) AS weather ORDER BY w.timestamp DESC LIMIT 1"
             ),
             "baggage": "MATCH (p:BaggageProjection {id: 'latest'}) RETURN p.document AS document",
+            "baggage_targets": (
+                "MATCH (b:Baggage) WHERE NOT b.status IN ['delivered', 'collected'] "
+                "OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight) "
+                "RETURN b.id AS id, b.status AS status, "
+                "coalesce(b.last_scan_zone, b.current_zone) AS zone, f.id AS flight_id"
+            ),
             "security": (
                 "UNWIND ['A', 'B', 'C'] AS terminal "
                 "OPTIONAL MATCH (s:SecurityCheckpoint {terminal: terminal}) "

@@ -19,7 +19,7 @@ def discovery(monkeypatch):
     graph["security"] = [{"terminal": "B", "checkpoint": {
         "queue_depth": 300, "lanes_open": 2, "wait_minutes": 50, "at": "2026-01-01T12:00:00Z"}}]
     database = {"document": None, "outbox": [], "revision": 0, "offset": 1,
-                "clock": {"sim_time": "2026-01-01T12:00:00Z", "tick_number": 1}}
+                "decisions": {}, "clock": {"sim_time": "2026-01-01T12:00:00Z", "tick_number": 1}}
     fail = [False]
     lock = asyncio.Lock()
 
@@ -36,6 +36,11 @@ def discovery(monkeypatch):
                 self.db["document"] = params["document"]
             elif "MATCH (p:ActionProposal)" in query:
                 return Result()
+            elif "MERGE (d:DecisionRecord" in query:
+                existing = self.db["decisions"].setdefault(params["id"], {"bottleneck": params["bottleneck"], "recommendations": "[]"})
+                if existing["recommendations"] == "[]":
+                    existing.update(recommendations=params["recommendations"], ranked_at=params["ranked_at"])
+                existing["resolved_at"] = params["resolved"]
             elif "CREATE (e:AnalysisOutbox)" in query:
                 self.db["outbox"].extend(params["rows"])
                 if fail[0]:

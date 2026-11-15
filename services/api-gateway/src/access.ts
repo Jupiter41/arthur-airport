@@ -73,6 +73,7 @@ const reads = [
   /^\/api\/v1\/sim\/(status|settings|schedule|metrics|history)$/,
   /^\/api\/v1\/network\/(status|airports|arcs|gdps|propagations)(\/[\w-]+)?$/,
   /^\/api\/v1\/analysis\/(bottlenecks|recommendations|approvals|autonomous|autonomous\/log|anomalies)$/,
+  /^\/api\/v1\/analysis\/(decisions(\/[\w-]+)?|calibration)$/,
 ];
 const writes = [
   /^POST \/api\/v1\/sim\/(pause|resume)$/,

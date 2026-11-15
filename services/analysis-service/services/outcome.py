@@ -26,6 +26,7 @@ Pure: no I/O, no global state.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from services.effect_adapter import project
 
 # How long after execution to let effects settle before measuring.
 OUTCOME_DELAY_MIN = 30
@@ -155,20 +156,17 @@ def observe_baseline(action_type: str, parameters: dict, state, now: datetime,
     as the attributed effect, so prediction and outcome can be compared.
     """
     parameters = parameters or {}
-    base = {"version": ATTRIBUTION_VERSION, "observed_at": _utc(now).isoformat()}
+    result, replay = project(state, action_type, parameters)
+    prediction = result.predictions.get(action_type)
+    base = {"version": ATTRIBUTION_VERSION, "observed_at": _utc(now).isoformat(),
+            "effect_model_version": result.effect_model_version, "effect_replay": replay}
     if action_type == "open_security_lane":
         terminal = _terminal_name(parameters.get("terminal"))
         observed = _observed_security(state)
         treated = observed.get(terminal)
-        lanes = getattr((getattr(state, "security", {}) or {}).get(terminal), "open_lanes", None)
-        new_lanes = parameters.get("new_lane_count") or ((lanes or 0) + 1)
-        predicted = None
-        if treated is not None and isinstance(new_lanes, (int, float)) and new_lanes > 1:
-            # Same M/M/c-style proxy as ranking.py: one more lane removes 1/new of the wait.
-            predicted = {"metric": "security_wait_minutes", "delta": -treated["wait"] / float(new_lanes)}
         return {**base, "metric": "security_wait_minutes", "target": terminal,
                 "treated": treated, "controls": {k: v for k, v in observed.items() if k != terminal},
-                "predicted": predicted}
+                "predicted": prediction}
     if action_type == "reassign_gate":
         flight_id = parameters.get("flight_id")
         flights = getattr(state, "flights", {}) or {}
@@ -178,7 +176,7 @@ def observe_baseline(action_type: str, parameters: dict, state, now: datetime,
                           and getattr(f, "status", None) in WAITING_FOR_GATE)[:MAX_CONTROLS]
         treated = None if flight is None else int(getattr(flight, "gate", None) == parameters.get("gate_id"))
         return {**base, "metric": "flight_gated", "target": flight_id, "treated": treated,
-                "requested_gate": parameters.get("gate_id"), "controls": controls, "predicted": _binary_prediction(confidence)}
+                "requested_gate": parameters.get("gate_id"), "controls": controls, "predicted": prediction}
     if action_type in ("resolve_incident", "contain_incident"):
         incident_id = parameters.get("incident_id")
         incidents = getattr(state, "active_incidents", {}) or {}
@@ -191,14 +189,8 @@ def observe_baseline(action_type: str, parameters: dict, state, now: datetime,
         return {**base, "metric": "incident_resolved", "target": incident_id,
                 "treated": None if status is None else int(status in success),
                 "controls": controls, "success_statuses": sorted(success),
-                "predicted": _binary_prediction(confidence)}
+                "predicted": prediction}
     return None
-
-
-def _binary_prediction(confidence: float | None) -> dict | None:
-    if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
-        return None
-    return {"metric": "success_probability", "probability": max(0.0, min(1.0, float(confidence)))}
 
 
 def _not_eligible(method: str, reason: str, **fields) -> dict:

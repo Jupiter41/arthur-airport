@@ -3,6 +3,32 @@
 Port: 8007. Consumes domain facts, detects bottlenecks, projects interventions,
 and proposes actions. It never writes another service's operational entities.
 
+## Shared effects — G4 (2026-11-14)
+
+What-if, ranking, dispatch-time G8 predictions and the seven-choice RL
+environment use [`_common.effects`](../../architecture/EFFECT_MODEL.md).
+Projection parameters and calibration bounds are in `airport.yaml:operations.effects`.
+Ranking consumes the core's projected benefit and cost directly; calibration is
+applied once. What-if compares treated and untreated arms at the same horizon.
+Advisory actions return `effect_status=no_effect_model` and zero projected
+benefit. Holds carry no claimed connection savings without a connection model.
+GDP uses uniform holds; a baggage command redirects one observed bag, with no
+invented reduction in overall bottleneck count. Baggage targets rebuild from
+Neo4j alongside the existing aggregate and update from owner facts.
+
+New outputs carry `effect_model_version=effects-v1`; old records retain a
+`legacy` label. G8 baselines store the dispatch tick/time, compact state, action,
+parameters, horizon and calibration factor for reproducible replay. The replay
+job reports each action's sample count and median relative error; fewer than 20
+eligible outcomes stays `unvalidated`.
+
+PPO policies/checkpoints embed the model version inside their atomic archive.
+Inference, benchmark, resume and promotion refuse incompatible archives. RL
+keeps 22 observations and seven choices. Queue/wait and bottleneck rewards now
+follow deterministic shared effects; no unseeded per-step random effects or
+symbolic baggage rewards remain. Retraining is required after migration;
+synthetic evaluation verifies mechanics, not operational policy quality.
+
 ## Action lifecycle
 
 All entry points (manual Apply, automatic rules, human approval) share a single
@@ -53,7 +79,7 @@ The pure approval queue is a cache rebuilt from Neo4j `ActionProposal` records.
 Dispatch and receipts persist lifecycle state. Confirmed execution logs are
 rebuilt from executed proposals. Missing receipts trigger retries after five
 simulation minutes with the same command ID. Domain mutation/receipt atomicity,
-measured-outcome recovery and remaining work are tracked in `ROADMAP_REAL_LDT.md`.
+measured-outcome recovery and remaining work are tracked in `archive/ROADMAP_REAL_LDT.md`.
 
 ## Coordinated action proposals (Real LDT G7, 2026-10-18)
 
@@ -197,3 +223,18 @@ pseudo-observations and are clamped to [0.25, 2.0]. Ranking multiplies
 evidence. With no eligible outcomes all factors are 1.0. The snapshot is rebuilt
 from persisted proposals at startup, after each tick's measurement pass and on
 `GET /calibration`.
+
+## Durable decision timelines (2026-11-14)
+
+The read-only `GET /api/v1/analysis/decisions` and `/decisions/{id}` expose
+persisted detection, prediction, ranking, authorization, dispatch attempts,
+owner receipt and measurement. List parameters are `limit` (1–100), `offset`,
+`bottleneck_id`, `incident_id`, `status`. Missing IDs return 404. See
+`docs/dashboards/OPERATOR_COCKPIT.md` for the complete presentation contract.
+Discovery retains DecisionRecords; proposal creation captures immutable ranking
+context. Approval uses the canonical execution path, capturing the shared-core
+dispatch prediction and G8 baseline before the command enters the outbox.
+Retries preserve the original baseline. Optional `request_approval: true` on
+the existing apply endpoint requests human review even for a safe action.
+History/receipts are committed with proposal mutations and their existing facts.
+Public deployments expose timeline/calibration reads, never these writes.

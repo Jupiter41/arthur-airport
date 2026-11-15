@@ -1,6 +1,6 @@
 # Use Case Roadmap — Arthur International Airport
 
-> **Verification update (2026-10-17):** see `ROADMAP_REAL_LDT.md` §10 for
+> **Verification update (2026-10-17):** see `archive/ROADMAP_REAL_LDT.md` §10 for
 > delivered behavior, validation boundaries and open gaps. Planning records now
 > persist in Neo4j; owner receipts confirm action execution. Automatic measured
 > savings, full action coverage and a unified effect/recommendation engine remain
@@ -55,7 +55,7 @@ _Source: use case 3.1_
 
 ### 1B. Counterfactual Delay Analysis
 
-**Status:** Functional replay/report path validated locally in `ROADMAP_REAL_LDT.md`
+**Status:** Functional replay/report path validated locally in `archive/ROADMAP_REAL_LDT.md`
 A17, after correcting API request/response mismatches and lost parent settings.
 The graph describes configured interventions and resulting KPIs; it is not a
 measured event-history causal reconstruction. Shared calibrated effects and

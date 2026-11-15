@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from _common.accounting import ACCOUNTING_POLICY
+from _common.effects import EFFECT_MODEL_VERSION
 
 
 @dataclass
@@ -73,6 +74,7 @@ class DayResult:
             "security_utilisation_pct": round(self.security_utilisation_pct, 1),
             "baggage_utilisation_pct": round(self.baggage_utilisation_pct, 1),
             "accounting_policy": ACCOUNTING_POLICY,
+            "effect_model_version": EFFECT_MODEL_VERSION,
             "airline_cost_eur": round(self.airline_cost_eur, 2),
             "total_cost_eur": round(self.total_cost_eur, 2),
             "total_revenue_eur": round(self.total_revenue_eur, 2),
@@ -161,6 +163,7 @@ class ScenarioResults:
     def to_dict(self) -> dict:
         return {
             "accounting_policy": ACCOUNTING_POLICY,
+            "effect_model_version": EFFECT_MODEL_VERSION,
             "scenario_id": self.scenario_id,
             "scenario_name": self.scenario_name,
             "baseline_id": self.baseline_id,
