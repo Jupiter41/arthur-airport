@@ -1,5 +1,7 @@
 # Incident & alert dashboard — specification
 
+> 2026-11-15: Navigation, default views and workflow composition are superseded by [UI_IMPLEMENTATION.md](UI_IMPLEMENTATION.md). Domain and evidence contracts below remain in force.
+
 **File:** `INCIDENT.md`  
 **App:** `art-dashboard` (React + TypeScript)  
 **Route:** `/incidents`  

@@ -1,5 +1,7 @@
 # Operator cockpit and decision history
 
+> 2026-11-15: Navigation, default views and workflow composition are superseded by [UI_IMPLEMENTATION.md](UI_IMPLEMENTATION.md). Domain and evidence contracts below remain in force.
+
 Status: implementation contract, 2026-11-14.
 
 The landing route `/` composes airport state, urgent incidents, approvals and

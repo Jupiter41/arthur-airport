@@ -11,13 +11,13 @@ export function SimClock() {
 
   return (
     <div className="flex items-center gap-2 text-sm font-mono">
-      <span className="text-gray-400">SIM:</span>
+      <span className="text-gray-400">Simulated</span>
       <span className="text-white font-bold">
         Day {day_number} · {hh}:{mm}Z
       </span>
       <span className="text-gray-400">{speed_multiplier}×</span>
       {paused && (
-        <span className="bg-amber-600 text-white text-xs px-1.5 py-0.5 rounded font-bold animate-pulse">
+        <span className="bg-amber-600 text-white text-xs px-1.5 py-0.5 rounded font-bold">
           PAUSED
         </span>
       )}

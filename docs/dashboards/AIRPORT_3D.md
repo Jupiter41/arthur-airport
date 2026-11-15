@@ -1,5 +1,7 @@
 # Airport 3D — implementation contract
 
+> 2026-11-15: Navigation, default views and workflow composition are superseded by [UI_IMPLEMENTATION.md](UI_IMPLEMENTATION.md). Domain and evidence contracts below remain in force.
+
 Updated contract, 2026-11-14: `/ground-ops`, `/passengers` and `/baggage`
 each provide a single 3D on/off switch, default on. Off selects the existing 2D
 view at the same URL (`3d=off`). `/airport-3d` is a compatibility redirect to

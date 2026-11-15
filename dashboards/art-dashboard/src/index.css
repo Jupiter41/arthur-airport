@@ -3,139 +3,66 @@
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply bg-surface text-gray-100 antialiased;
-    font-family: "Inter", system-ui, -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    letter-spacing: -0.01em;
+  :root {
+    color-scheme: dark;
+    --surface: 16 20 26; --card: 23 28 35; --panel: 30 36 44; --hover: 40 48 58; --border: 63 73 85; --accent: 125 190 255;
+    --neutral-50: 249 250 251; --neutral-100: 243 244 246; --neutral-200: 229 231 235; --neutral-300: 209 213 219;
+    --neutral-400: 169 179 193; --neutral-500: 157 168 184; --neutral-600: 91 105 124; --neutral-700: 56 67 82; --neutral-800: 30 36 44; --neutral-900: 20 25 32; --neutral-950: 12 16 22;
   }
-
-  /* Improve default heading contrast */
-  h1, h2, h3 {
-    @apply text-white font-semibold tracking-tight;
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --surface: 241 244 248; --card: 255 255 255; --panel: 232 237 243; --hover: 218 227 237; --border: 175 188 204; --accent: 24 83 154;
+    --neutral-50: 10 18 29; --neutral-100: 17 28 43; --neutral-200: 28 42 61; --neutral-300: 42 57 77;
+    --neutral-400: 67 83 105; --neutral-500: 75 91 112; --neutral-600: 101 117 136; --neutral-700: 202 212 224; --neutral-800: 234 239 245; --neutral-900: 247 249 252; --neutral-950: 255 255 255;
   }
-
-  /* Scrollbar styling for dark theme */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: rgb(15 18 25);
-  }
-  ::-webkit-scrollbar-thumb {
-    background: rgb(47 55 73);
-    border-radius: 3px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgb(75 85 99);
-  }
-
-  /* Better select/input styling in dark mode */
-  select, input[type="text"], input[type="number"], textarea {
-    @apply bg-panel border-panel-border text-gray-100 rounded-xl;
-  }
-  select:focus, input:focus, textarea:focus {
-    @apply ring-2 ring-accent/30 border-accent/40 outline-none;
-  }
+  body { @apply bg-surface text-gray-100 antialiased; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+  h1 { @apply text-2xl font-semibold tracking-tight; }
+  h2 { @apply text-base font-semibold; }
+  h3 { @apply font-medium; }
+  button, input, select, textarea, summary { touch-action: manipulation; }
+  button, select { min-height: 36px; }
+  input:not([type="range"]):not([type="checkbox"]), select, textarea { @apply bg-panel border border-panel-border text-gray-100 rounded-md px-3 py-2; }
+  :focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 3px; }
+  button:disabled { cursor: not-allowed; }
+  :root[data-theme="light"] .text-white { color: rgb(var(--neutral-100)); }
+  :root[data-theme="light"] :is(.text-sky-200,.text-sky-300,.text-cyan-100,.text-cyan-200,.text-cyan-300,.text-blue-300,.text-blue-400) { color: #175b9e; }
+  :root[data-theme="light"] :is(.text-amber-200,.text-amber-300,.text-amber-400,.text-orange-300,.text-yellow-400) { color: #864900; }
+  :root[data-theme="light"] :is(.text-red-300,.text-red-400,.text-rose-300,.text-rose-400) { color: #b42332; }
+  :root[data-theme="light"] :is(.text-green-400,.text-emerald-300,.text-emerald-400) { color: #146747; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--border)); border-radius: 4px; }
 }
-
 @layer components {
-  /* Reusable card pattern — glass-morphism inspired */
-  .card {
-    @apply bg-surface-card border border-panel-border/60 rounded-2xl p-4 shadow-card
-           backdrop-blur-sm transition-shadow duration-200;
-  }
-  .card:hover {
-    @apply shadow-card-hover;
-  }
-  .card-compact {
-    @apply bg-surface-card border border-panel-border/60 rounded-xl p-3 shadow-card;
-  }
-
-  /* Primary action button */
-  .btn-primary {
-    @apply bg-accent hover:bg-accent-hover text-white font-medium px-4 py-2 rounded-xl
-           transition-all duration-200 shadow-sm hover:shadow-glow
-           disabled:opacity-40 disabled:cursor-not-allowed;
-  }
-  .btn-secondary {
-    @apply bg-panel hover:bg-panel-hover text-gray-200 font-medium px-4 py-2 rounded-xl
-           transition-all duration-200 border border-panel-border
-           disabled:opacity-40 disabled:cursor-not-allowed;
-  }
-  .btn-danger {
-    @apply bg-red-600/80 hover:bg-red-500 text-white font-medium px-4 py-2 rounded-xl
-           transition-all duration-200
-           disabled:opacity-40 disabled:cursor-not-allowed;
-  }
-  .btn-sm {
-    @apply text-xs px-3 py-1.5;
-  }
-
-  /* Section label */
-  .section-label {
-    @apply text-[11px] font-semibold uppercase tracking-widest text-gray-500;
-  }
-
-  /* Monospaced data values */
-  .data-value {
-    @apply font-mono text-sm tabular-nums;
-  }
-
-  /* Flash animation for flight row updates */
-  .flash-row {
-    animation: flash 1.5s ease-out;
-  }
-  @keyframes flash {
-    0% { background-color: rgba(59, 130, 246, 0.3); }
-    100% { background-color: transparent; }
-  }
-
-  /* Fade in animation */
-  .animation-fade-in {
-    animation: fadeIn 0.3s ease-in-out;
-  }
-  @keyframes fadeIn {
-    0% { opacity: 0; }
-    100% { opacity: 1; }
-  }
-
-  /* Slide in from top */
-  .animation-slide-down {
-    animation: slideDown 0.4s ease-out;
-  }
-  @keyframes slideDown {
-    0% { transform: translateY(-20px); opacity: 0; }
-    100% { transform: translateY(0); opacity: 1; }
-  }
-
-  /* Slide in from left */
-  .animation-slide-right {
-    animation: slideRight 0.4s ease-out;
-  }
-  @keyframes slideRight {
-    0% { transform: translateX(-20px); opacity: 0; }
-    100% { transform: translateX(0); opacity: 1; }
-  }
-
-  /* Pulse animation */
-  .animation-pulse-glow {
-    animation: pulseGlow 2s ease-in-out infinite;
-  }
-  @keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2); }
-    50% { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0.4); }
-  }
-
-  /* Bounce animation */
-  .animation-bounce-gentle {
-    animation: bounceGentle 3s ease-in-out infinite;
-  }
-  @keyframes bounceGentle {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
-  }
+  .app-shell { @apply grid h-dvh overflow-hidden bg-surface text-gray-100; grid-template-columns: 1fr; }
+  .sidebar { @apply flex flex-col bg-surface-card border-r border-panel-border w-56 h-full overflow-y-auto shrink-0; }
+  .nav-link { @apply flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-300 hover:bg-panel; min-height: 38px; }
+  .nav-link.is-active { @apply bg-panel text-accent font-semibold; box-shadow: inset 3px 0 rgb(var(--accent)); }
+  .app-header { @apply flex flex-wrap justify-between items-center gap-3 px-4 py-3 border-b border-panel-border bg-surface-card shrink-0 z-30; }
+  .page-scroll { @apply flex-1 min-h-0 overflow-auto; scrollbar-gutter: stable; }
+  .page-container { @apply p-4 md:p-6 mx-auto max-w-[1600px]; }
+  .page-scroll > :is(div,section) { min-height: 100%; height: auto; }
+  .card { @apply bg-surface-card border border-panel-border rounded-lg p-4; }
+  .card-compact { @apply bg-surface-card border border-panel-border rounded-md p-3; }
+  .btn-primary { @apply font-medium px-4 py-2 rounded-md disabled:opacity-40; background: #245f9f; color: #fff !important; }
+  .btn-primary:hover { background: #1b4f89; }
+  .btn-secondary { @apply bg-panel hover:bg-panel-hover border border-panel-border text-gray-100 font-medium px-3 py-2 rounded-md disabled:opacity-40; }
+  .btn-danger { @apply bg-red-700 hover:bg-red-600 font-medium px-4 py-2 rounded-md disabled:opacity-40; color: white !important; }
+  .btn-sm { @apply text-xs px-3 py-1.5; }
+  .section-label { @apply text-xs font-medium text-gray-400; }
+  .data-value { @apply text-sm tabular-nums; }
+  .app-dialog { @apply bg-surface-card text-gray-100 border border-panel-border rounded-lg p-5 w-[640px] max-w-[calc(100vw-2rem)] max-h-[90dvh] overflow-y-auto; }
+  .app-dialog::backdrop { background: rgb(0 0 0 / .6); }
+  .search-result { @apply flex flex-wrap justify-between items-center gap-2 p-3 rounded-md hover:bg-panel; }
+  .skip-link { @apply fixed left-4 top-2 p-3 bg-panel text-gray-100 z-[300]; transform: translateY(-150%); }
+  .skip-link:focus { transform: translateY(0); }
+  .view-tab { @apply px-4 py-2 text-sm border-b-2 border-transparent text-gray-300; }
+  .view-tab[aria-current="page"], .view-tab[aria-pressed="true"] { @apply border-accent text-accent; }
+  .flash-row { animation: flash 1.5s ease-out; }
+  @keyframes flash { from { background-color: rgb(96 165 250 / .15); } to { background-color: transparent; } }
 }
-
+@media (min-width: 1024px) { .app-shell { grid-template-columns: 224px minmax(0,1fr); } }
+/* Existing specialist pages inherit readable labels and quieter surfaces. */
+[class*="text-[10px]"], [class*="text-[11px]"] { font-size: .75rem; line-height: 1.4; }
+[class*="tracking-widest"], [class*="tracking-[0."] { letter-spacing: .025em; }
+[class*="backdrop-blur"] { backdrop-filter: none; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }

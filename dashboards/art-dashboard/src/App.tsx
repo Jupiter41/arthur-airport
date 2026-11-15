@@ -1,9 +1,12 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./queryClient";
 import { HeaderBar } from "./components/HeaderBar";
-import { AccessBar } from "./components/AccessBar";
+import { Sidebar } from "./components/Sidebar";
+import { Dialog } from "./components/Dialog";
+import { TeachingRunbook } from "./pages/Decisions/TeachingRunbook";
+import { LabPage } from "./pages/IncidentConsole/LabPage";
 import { OperationalView, LegacySpatialRedirect } from "./components/OperationalView";
 import { WebSocketManager } from "./components/WebSocketManager";
 import FlightBoardPage from "./pages/FlightBoard/FlightBoardPage";
@@ -48,12 +51,16 @@ const PageFallback = () => (
 );
 
 function AppShell() {
+  const [menu, setMenu] = useState(false);
   return (
-    <div className="h-screen flex flex-col bg-surface text-white">
+    <div className="app-shell">
+      <a href="#main-content" className="skip-link">Skip to content</a>
+      <div className="hidden lg:flex min-h-0"><Sidebar /></div>
+      {menu && <Dialog title="Navigation" onClose={() => setMenu(false)}><Sidebar onNavigate={() => setMenu(false)} /></Dialog>}
+      <div className="min-w-0 min-h-0 flex flex-col">
       <WebSocketManager />
-      <HeaderBar />
-      <AccessBar />
-      <main className="flex-1 min-h-0 overflow-hidden">
+      <HeaderBar onMenu={() => setMenu(true)} />
+      <main id="main-content" tabIndex={-1} className="page-scroll">
         <Suspense fallback={<PageFallback />}>
           <Routes>
             <Route path="/" element={<CockpitPage />} />
@@ -68,6 +75,8 @@ function AppShell() {
             <Route path="/world" element={<WorldMapPage />} />
             <Route path="/history" element={<SimHistoryPage />} />
             <Route path="/scenarios" element={<ScenariosPage />} />
+            <Route path="/help" element={<div className="page-container space-y-6"><h1>Help & teaching lab</h1><p className="text-gray-400">Use Operations to monitor the shared airport, Planning for isolated experiments, and System for simulation setup. Search with Ctrl/Cmd K. Board, Map and 3D retain the selected terminal and entity.</p><TeachingRunbook /></div>} />
+            <Route path="/lab" element={<LabPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/debug" element={<DebugPage />} />
             <Route path="/ml" element={<MLTrainingPage />} />
@@ -77,9 +86,11 @@ function AppShell() {
             <Route path="/carbon" element={<CarbonPage />} />
             <Route path="/accessibility" element={<AccessibilityPage />} />
             <Route path="/whatif" element={<WhatIfPage />} />
+          <Route path="*" element={<div className="page-container"><h1>Page not found</h1><a href="/">Return to Overview</a></div>} />
           </Routes>
         </Suspense>
       </main>
+      </div>
     </div>
   );
 }

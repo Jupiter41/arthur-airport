@@ -1,234 +1,25 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, Link } from "react-router-dom";
 import { SimClock } from "./SimClock";
-import { WeatherStrip } from "./WeatherStrip";
-import { IncidentBadge } from "./IncidentBadge";
-import { SimControls } from "./SimControls";
 import { ConnectionStatus } from "./ConnectionStatus";
-import {
-  airportApi,
-  flightsApi,
-  weatherApi,
-  incidentsApi,
-  passengersApi,
-  baggageApi,
-} from "../hooks/useApi";
-import { exportRaw } from "../utils/exportData";
+import { AccessBar } from "./AccessBar";
+import { availableDestinations } from "./navigation";
+import { CommandPalette } from "./CommandPalette";
 
-type NavItem =
-  | { path: string; label: string; icon: string; children?: undefined }
-  | {
-      label: string;
-      icon: string;
-      children: { path: string; label: string; icon: string }[];
-      path?: undefined;
-    };
-
-const NAV_ITEMS: NavItem[] = [
-  { path: "/", label: "Cockpit", icon: "◉" },
-  { path: "/flights", label: "Flights", icon: "✈️" },
-  { path: "/decisions", label: "Decisions", icon: "↗" },
-  {
-    label: "Terminal",
-    icon: "🏢",
-    children: [
-      { path: "/passengers", label: "Passengers", icon: "👥" },
-      { path: "/baggage", label: "Baggage", icon: "🧳" },
-    ],
-  },
-  { path: "/incidents", label: "Incidents", icon: "🚨" },
-  {
-    label: "Ops",
-    icon: "🎛️",
-    children: [
-      { path: "/ground-ops", label: "Ground Ops", icon: "🛬" },
-      { path: "/atc", label: "ATC", icon: "🗼" },
-      { path: "/costs", label: "Costs", icon: "💰" },
-      { path: "/carbon", label: "Carbon", icon: "🌱" },
-      { path: "/accessibility", label: "Accessibility", icon: "♿" },
-      { path: "/world", label: "World", icon: "🗺️" },
-    ],
-  },
-  {
-    label: "Simulation",
-    icon: "⚙️",
-    children: [
-      { path: "/history", label: "History", icon: "📊" },
-      { path: "/scenarios", label: "Scenarios", icon: "🧪" },
-      { path: "/planning", label: "Planning", icon: "📐" },
-      { path: "/whatif", label: "What-If", icon: "🔮" },
-      { path: "/ml", label: "ML Training", icon: "🧠" },
-      { path: "/data-sources", label: "Data Sources", icon: "🔌" },
-      { path: "/settings", label: "Settings", icon: "⚙️" },
-      { path: "/debug", label: "Debug", icon: "🛠️" },
-    ],
-  },
-];
-
-const publicDeployment = import.meta.env.VITE_PUBLIC_DEPLOYMENT === "true";
-const navigation = NAV_ITEMS.map(item => item.children && publicDeployment
-  ? { ...item, children: item.children.filter(child => !["/debug", "/ml", "/planning", "/scenarios", "/whatif", "/data-sources"].includes(child.path)) }
-  : item);
-
-function NavDropdown({
-  item,
-}: {
-  item: Extract<NavItem, { children: unknown[] }>;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+export function HeaderBar({ onMenu }: { onMenu: () => void }) {
   const location = useLocation();
-  const isActive = item.children.some((c) => c.path === location.pathname);
-
+  const destination = availableDestinations.find(d => d.path === location.pathname);
+  const [search, setSearch] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("airport-theme") === "light" ? "light" : "dark");
+  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("airport-theme", theme); }, [theme]);
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    const listener = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSearch(v => !v); } };
+    document.addEventListener("keydown", listener); return () => document.removeEventListener("keydown", listener);
   }, []);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        aria-label={item.label}
-        title={item.label}
-        onClick={() => setOpen((v) => !v)}
-        className={`text-sm font-medium px-3 py-1.5 rounded-xl transition-all duration-200 flex items-center gap-1.5 ${
-          isActive
-            ? "bg-accent/15 text-accent border border-accent/25"
-            : "text-gray-400 hover:text-white hover:bg-panel-hover/60"
-        }`}
-      >
-        <span className="text-base">{item.icon}</span>
-        <span className="hidden lg:inline">{item.label}</span>
-        <span
-          className={`text-[10px] ml-0.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-        >
-          ▾
-        </span>
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1.5 bg-surface-card/95 border border-panel-border rounded-xl shadow-xl shadow-black/40 z-50 min-w-[180px] py-1.5 backdrop-blur-md">
-          {item.children.map((child) => (
-            <NavLink
-              key={child.path}
-              to={child.path}
-              onClick={() => setOpen(false)}
-              className={({ isActive: active }) =>
-                `flex items-center text-sm px-4 py-2 transition-colors rounded-lg mx-1.5 ${
-                  active
-                    ? "bg-accent/15 text-accent"
-                    : "text-gray-300 hover:bg-panel-hover/60 hover:text-white"
-                }`
-              }
-            >
-              <span className="mr-2.5 text-base">{child.icon}</span>
-              {child.label}
-            </NavLink>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function HeaderBar() {
-  const [exporting, setExporting] = useState(false);
-
-  const handleGlobalExport = useCallback(async () => {
-    setExporting(true);
-    try {
-      const [snapshot, flights, weather, incidents, paxSummary, bagSummary] =
-        await Promise.all([
-          airportApi.snapshot().catch(() => null),
-          flightsApi.list({ limit: "500" }).catch(() => null),
-          weatherApi.current().catch(() => null),
-          incidentsApi.list({ limit: "100" }).catch(() => null),
-          passengersApi.summary().catch(() => null),
-          baggageApi.summary().catch(() => null),
-        ]);
-      const archive = {
-        exported_at: new Date().toISOString(),
-        airport_snapshot: snapshot,
-        flights,
-        weather,
-        incidents,
-        passenger_summary: paxSummary,
-        baggage_summary: bagSummary,
-      };
-      exportRaw(archive, `kart-sim-export-${Date.now()}`);
-    } finally {
-      setExporting(false);
-    }
-  }, []);
-
-  return (
-    <header className="bg-surface-card/80 backdrop-blur-md border-b border-panel-border/60 shadow-lg shadow-black/20 relative z-[100] shrink-0">
-      <div className="flex flex-wrap items-center justify-between px-4 min-h-12 py-2 gap-x-4 gap-y-2">
-        {/* Left: Logo + nav */}
-        <div className="flex flex-wrap items-center gap-3 min-w-0 max-w-full">
-          <NavLink to="/" className="flex items-center gap-2 shrink-0">
-            <span className="text-lg">✈️</span>
-            <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-accent to-blue-300 bg-clip-text text-transparent">
-              KART
-            </span>
-          </NavLink>
-
-          <div className="h-5 w-px bg-panel-border/40 hidden md:block" />
-
-          <nav className="flex flex-wrap items-center gap-0.5 min-w-0">
-            {navigation.map((item) =>
-              item.children ? (
-                <NavDropdown key={item.label} item={item} />
-              ) : (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  aria-label={item.label}
-                  title={item.label}
-                  className={({ isActive }) =>
-                    `text-sm font-medium px-3 py-1.5 rounded-xl transition-all duration-200 whitespace-nowrap flex items-center gap-1.5 ${
-                      isActive
-                        ? "bg-accent/15 text-accent border border-accent/25"
-                        : "text-gray-400 hover:text-white hover:bg-panel-hover/60"
-                    }`
-                  }
-                  end={item.path === "/"}
-                >
-                  <span className="text-base">{item.icon}</span>
-                  <span className="hidden lg:inline">{item.label}</span>
-                </NavLink>
-              ),
-            )}
-          </nav>
-        </div>
-
-        {/* Center: Weather (hidden on small screens) */}
-        <div className="hidden xl:flex items-center shrink-0">
-          <WeatherStrip />
-        </div>
-
-        {/* Right: status + controls */}
-        <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
-          <IncidentBadge />
-          <ConnectionStatus />
-          <div className="h-5 w-px bg-panel-border/40 hidden sm:block" />
-          <SimClock />
-          <SimControls />
-          <div className="h-5 w-px bg-panel-border/40" />
-          <button
-            className="text-xs font-medium bg-panel hover:bg-panel-hover text-gray-300 px-3 py-1.5 rounded-lg transition-all duration-200 disabled:opacity-40 border border-panel-border hover:border-gray-500 flex items-center gap-1.5"
-            onClick={handleGlobalExport}
-            disabled={exporting}
-            title="Export full simulation snapshot as JSON"
-          >
-            <span>{exporting ? "…" : "⬇"}</span>
-            <span className="hidden sm:inline">Export</span>
-          </button>
-        </div>
-      </div>
-    </header>
-  );
+  return <header className="app-header">
+    <div className="flex items-center gap-3 min-w-0"><button className="btn-secondary lg:hidden" onClick={onMenu} aria-label="Open navigation">Menu</button><div><p className="text-xs text-gray-400">{destination?.workspace ?? "Operations"}</p><p className="font-medium">{destination?.label ?? "Airport"}</p></div></div>
+    <div className="flex items-center flex-wrap gap-2"><button className="btn-secondary text-sm" onClick={() => setSearch(true)}>Search <kbd className="hidden xl:inline text-xs text-gray-400">Ctrl K</kbd></button><button aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} className="btn-secondary text-sm" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "Light" : "Dark"}</button><AccessBar /></div>
+    <div className="basis-full flex flex-wrap items-center justify-between gap-2 text-xs border-t border-panel-border pt-2"><SimClock /><div className="flex gap-3 items-center"><ConnectionStatus /><Link className="text-gray-300" to="/settings">Simulation controls</Link></div></div>
+    {search && <CommandPalette onClose={() => setSearch(false)} />}
+  </header>;
 }

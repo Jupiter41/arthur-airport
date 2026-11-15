@@ -8,29 +8,12 @@ export default {
         mono: ['"JetBrains Mono"', "ui-monospace", "monospace"],
       },
       colors: {
-        panel: {
-          DEFAULT: "#1e2433",
-          hover: "#2a3142",
-          border: "#2f3749",
-          active: "#141924",
-        },
-        accent: {
-          DEFAULT: "#60a5fa",
-          hover: "#93c5fd",
-          muted: "#3b82f6",
-        },
-        surface: {
-          DEFAULT: "#0f1219",
-          card: "#171d2a",
-          raised: "#1e2433",
-        },
-        // Section-specific accents for visual wayfinding
-        flights: "#60a5fa",
-        passengers: "#34d399",
-        baggage: "#fb923c",
-        incidents: "#f87171",
-        weather: "#a78bfa",
-        ground: "#fbbf24",
+        gray: Object.fromEntries([50,100,200,300,400,500,600,700,800,900,950].map(n => [n, `rgb(var(--neutral-${n}) / <alpha-value>)`])),
+        slate: Object.fromEntries([50,100,200,300,400,500,600,700,800,900,950].map(n => [n, `rgb(var(--neutral-${n}) / <alpha-value>)`])),
+        panel: { DEFAULT: "rgb(var(--panel) / <alpha-value>)", hover: "rgb(var(--hover) / <alpha-value>)", border: "rgb(var(--border) / <alpha-value>)", active: "rgb(var(--surface) / <alpha-value>)" },
+        accent: { DEFAULT: "rgb(var(--accent) / <alpha-value>)", hover: "rgb(var(--accent) / <alpha-value>)", muted: "#2563eb" },
+        surface: { DEFAULT: "rgb(var(--surface) / <alpha-value>)", card: "rgb(var(--card) / <alpha-value>)", raised: "rgb(var(--panel) / <alpha-value>)" },
+        flights: "#60a5fa", passengers: "#34d399", baggage: "#fb923c", incidents: "#f87171", weather: "#a78bfa", ground: "#fbbf24",
       },
       borderRadius: {
         "2xl": "1rem",
