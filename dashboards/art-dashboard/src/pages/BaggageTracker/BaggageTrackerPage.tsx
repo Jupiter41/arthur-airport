@@ -49,7 +49,7 @@ export default function BaggageTrackerPage() {
   const isLoading = queries.map.isLoading && zones.length === 0;
   const hasError = queries.map.isError && zones.length === 0;
 
-  if (isLoading) {
+  if (isLoading && !bagId) {
     return (
       <div className="flex items-center justify-center h-full text-gray-400">
         <div className="flex flex-col items-center gap-2">
@@ -60,7 +60,7 @@ export default function BaggageTrackerPage() {
     );
   }
 
-  if (hasError) {
+  if (hasError && !bagId) {
     return (
       <div className="flex items-center justify-center h-full text-gray-400">
         <div className="flex flex-col items-center gap-2 text-center">
@@ -102,6 +102,12 @@ export default function BaggageTrackerPage() {
         />
       </div>
 
+      {hasError && (
+        <p role="alert" className="text-amber-300">
+          Conveyor observations unavailable. Direct item records remain
+          available below.
+        </p>
+      )}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">
           <ConveyorMap zones={zones} />

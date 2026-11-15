@@ -42,6 +42,11 @@ export function OperationalView({
     const next = new URLSearchParams(params);
     next.set(key, value);
     if (key === "mode") next.delete("3d");
+    if (key === "terminal") {
+      next.delete("entity");
+      next.delete("decision");
+      next.delete("offset");
+    }
     setParams(next);
   }
   return (

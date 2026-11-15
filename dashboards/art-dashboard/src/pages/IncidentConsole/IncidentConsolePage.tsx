@@ -1,9 +1,14 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { DecisionWorkspace } from "../Decisions/DecisionWorkspace";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { AutonomousPanel } from "../../components/AutonomousPanel";
-import type { AnalysisBottleneck, AnalysisRecommendation } from "../../types";
+import type {
+  Incident,
+  AnalysisBottleneck,
+  AnalysisRecommendation,
+} from "../../types";
 import { incidentsApi } from "../../hooks/useApi";
 import {
   useIncidentConsoleQueries,
@@ -63,7 +68,15 @@ export default function IncidentConsolePage() {
     const active = queries.active.data ?? [];
     const resolved = queries.resolved.data ?? [];
     if (queries.active.data && queries.resolved.data) {
-      setIncidents([...active, ...resolved]);
+      const rows = [...active, ...resolved];
+      const selected = selectedId
+        ? useIncidentStore.getState().incidents[selectedId]
+        : undefined;
+      setIncidents(
+        selected && !rows.some((i) => i.id === selected.id)
+          ? [...rows, selected]
+          : rows,
+      );
     }
   }, [queries.active.data, queries.resolved.data, setIncidents]);
 
@@ -71,20 +84,16 @@ export default function IncidentConsolePage() {
     if (queries.alerts.data) setAlerts(queries.alerts.data);
   }, [queries.alerts.data, setAlerts]);
 
+  const targetId = selectedId ?? cascadeViewId;
+  const detailQuery = useQuery({
+    queryKey: ["incidents", "detail", targetId],
+    queryFn: () => incidentsApi.get(targetId!) as Promise<Incident>,
+    enabled: !!targetId,
+    refetchInterval: 30000,
+  });
   useEffect(() => {
-    const targetId = selectedId ?? cascadeViewId;
-    if (!targetId) return;
-    const existing = incidents[targetId];
-    if (existing?.cascade_tree) return;
-    incidentsApi
-      .get(targetId)
-      .then((detail) => {
-        if (detail && typeof detail === "object") {
-          upsertIncident(detail as never);
-        }
-      })
-      .catch(() => {});
-  }, [selectedId, cascadeViewId, incidents, upsertIncident]);
+    if (detailQuery.data) upsertIncident(detailQuery.data);
+  }, [detailQuery.data, upsertIncident]);
 
   const incidentList = Object.values(incidents);
   const activeIncidents = useMemo(
@@ -186,6 +195,17 @@ export default function IncidentConsolePage() {
             </div>
 
             <div className="xl:col-span-2 space-y-3">
+              {detailQuery.isError && (
+                <p role="alert" className="text-amber-300">
+                  Incident details unavailable or stale.{" "}
+                  <button
+                    className="btn-secondary"
+                    onClick={() => void detailQuery.refetch()}
+                  >
+                    Retry
+                  </button>
+                </p>
+              )}
               {selectedIncident && (
                 <IncidentActions incident={selectedIncident} />
               )}
