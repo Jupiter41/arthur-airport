@@ -13,18 +13,18 @@ import { ACTION_ICON } from "./constants";
  * it targets a concrete flight, forwards a command to `flights.commands`) or
  * rejects it.
  */
-export function ApprovalQueue() {
+export function ApprovalQueue({ pendingOnly = false }: { pendingOnly?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data } = useQuery({
+  const { data, isError, isLoading } = useQuery({
     queryKey: ["analysis", "approvals"],
     queryFn: () => analysisApi.approvals(true),
     refetchInterval: 5000,
   });
 
   const approvals: Approval[] = (data?.approvals ?? []).filter(
-    p => p.status !== "rejected",
+    p => pendingOnly ? ["pending", "approved", "dispatched"].includes(p.status) : p.status !== "rejected",
   ).slice(-20).reverse();
 
   async function act(fn: () => Promise<unknown>, id: string) {
@@ -38,6 +38,8 @@ export function ApprovalQueue() {
       await queryClient.invalidateQueries({
         queryKey: ["analysis", "autonomous", "log"],
       });
+      await queryClient.invalidateQueries({ queryKey: ["analysis", "decisions"] });
+      await queryClient.invalidateQueries({ queryKey: ["analysis", "decision"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
     } finally {
@@ -46,6 +48,7 @@ export function ApprovalQueue() {
   }
 
   if (approvals.length === 0) {
+    if (pendingOnly) return <div><h2 className="text-sm mb-2">Pending approvals &amp; commands</h2><p className={isError ? "text-amber-300 text-xs" : "text-gray-500 text-xs"}>{isError ? "Approval queue unavailable." : isLoading ? "Loading approvals…" : "No pending approvals or commands."}</p></div>;
     return null;
   }
 

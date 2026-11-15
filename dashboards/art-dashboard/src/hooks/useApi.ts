@@ -1,6 +1,8 @@
 import { getAuthToken, controlHeaders } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
 import type { WeatherState } from "../types";
+import type { DecisionList, DecisionTimeline } from "../types/decisions";
+import type { BagItem } from "../pages/Airport3D/model";
 import type {
   AuditLogResponse,
   AuditSummary,
@@ -130,6 +132,7 @@ export const flightsApi = {
       method: "POST",
     }),
   runways: () => apiFetch<{ runways: unknown[] }>("/runways"),
+  runwayQueue: () => apiFetch<unknown>("/runways/queue"),
   gates: () => apiFetch<{ gates: unknown[] }>("/gates"),
   turnarounds: () =>
     apiFetch<{ turnarounds: unknown[]; total: number }>("/turnarounds"),
@@ -190,6 +193,7 @@ export const passengersApi = {
 
 // ── Baggage ──
 export const baggageApi = {
+  list: (params: Record<string, string> = {}) => apiFetch<{ items: BagItem[]; total: number }>(`/baggage?${new URLSearchParams(params)}`),
   summary: () => apiFetch<unknown>("/baggage/flow/summary"),
   map: () => apiFetch<unknown>("/baggage/flow/map"),
   flagged: (params?: Record<string, string>) => {
@@ -302,6 +306,9 @@ export interface Approval {
 }
 
 export const analysisApi = {
+  decisions: (params: Record<string, string> = {}) =>
+    apiFetch<DecisionList>(`/analysis/decisions?${new URLSearchParams(params)}`),
+  decision: (id: string) => apiFetch<DecisionTimeline>(`/analysis/decisions/${encodeURIComponent(id)}`),
   bottlenecks: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
     return apiFetch<{ bottlenecks: unknown[]; count: number }>(
@@ -312,10 +319,10 @@ export const analysisApi = {
     apiFetch<{ recommendations: unknown[]; count: number }>(
       "/analysis/recommendations",
     ),
-  applyRecommendation: (id: string) =>
+  applyRecommendation: (id: string, requestApproval = false) =>
     apiFetch<{ applied: boolean; executed: boolean; status: string; proposal_id: string }>(
       `/analysis/recommendations/${encodeURIComponent(id)}/apply`,
-      { method: "POST" },
+      { method: "POST", body: JSON.stringify({ request_approval: requestApproval }) },
     ),
   whatIf: (body: {
     actions: Array<{

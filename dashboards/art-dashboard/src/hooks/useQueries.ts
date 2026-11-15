@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useGroundVehicleStore } from "../stores/groundVehicleStore";
 import {
   flightsApi,
   weatherApi,
@@ -246,7 +248,8 @@ export function useADSBQuery(enabled = true) {
 /* ──────── Ground Vehicles ──────── */
 
 export function useGroundVehiclesQuery() {
-  return useQuery({
+  const vehicles = useGroundVehicleStore(s => s.vehicles);
+  const query = useQuery({
     queryKey: ["ground-vehicles"],
     queryFn: async () => {
       const data = await flightsApi.groundVehicles();
@@ -254,6 +257,8 @@ export function useGroundVehiclesQuery() {
     },
     refetchInterval: 5_000,
   });
+  useEffect(() => { if (query.data) useGroundVehicleStore.getState().setVehicles(query.data.vehicles); }, [query.data]);
+  return { ...query, data: query.data ? { ...query.data, vehicles: Object.values(vehicles), total: Object.keys(vehicles).length } : undefined };
 }
 
 /* ──────── Analysis ──────── */

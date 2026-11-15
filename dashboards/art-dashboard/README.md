@@ -8,7 +8,10 @@ The operator frontend for Arthur International Airport digital twin. The dashboa
 
 | Route         | Name                                                    | Spec                                                                             |
 | ------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `/`           | Flight board (FIDS)                                     | [FLIGHT_BOARD.md](../../docs/dashboards/FLIGHT_BOARD.md)                         |
+| `/`           | Operator cockpit | [OPERATOR_COCKPIT.md](../../docs/dashboards/OPERATOR_COCKPIT.md) |
+| `/flights`    | Flight board (FIDS) | [FLIGHT_BOARD.md](../../docs/dashboards/FLIGHT_BOARD.md) |
+| `/decisions`  | Durable decision timelines and recorded-stage playback | [OPERATOR_COCKPIT.md](../../docs/dashboards/OPERATOR_COCKPIT.md) |
+| `/airport-3d` | 3D airfield, passenger security queues and baggage conveyors | [AIRPORT_3D.md](../../docs/dashboards/AIRPORT_3D.md) |
 | `/baggage`    | Baggage tracker                                         | [BAGGAGE_TRACKER.md](../../docs/dashboards/BAGGAGE_TRACKER.md)                   |
 | `/passengers` | Passenger flow                                          | [PASSENGER_FLOW.md](../../docs/dashboards/PASSENGER_FLOW.md)                     |
 | `/incidents`  | Incident console                                        | [INCIDENT.md](../../docs/dashboards/INCIDENT.md)                                 |

@@ -1,0 +1,53 @@
+{
+  "source": "Neo4j ActionProposal log",
+  "documents": 5,
+  "effect_model_version": "effects-v1",
+  "minimum_samples": 20,
+  "maximum_median_absolute_relative_error": 0.25,
+  "by_action_type": {
+    "contain_incident": {
+      "samples": 0,
+      "median_absolute_relative_error": null,
+      "status": "unvalidated"
+    },
+    "delay_taxi": {
+      "samples": 0,
+      "median_absolute_relative_error": null,
+      "status": "unvalidated"
+    },
+    "ground_delay_program": {
+      "samples": 0,
+      "median_absolute_relative_error": null,
+      "status": "unvalidated"
+    },
+    "hold_connecting_flight": {
+      "samples": 0,
+      "median_absolute_relative_error": null,
+      "status": "unvalidated"
+    },
+    "open_security_lane": {
+      "samples": 1,
+      "median_absolute_relative_error": 0.4068552767619627,
+      "status": "unvalidated"
+    },
+    "reassign_gate": {
+      "samples": 0,
+      "median_absolute_relative_error": null,
+      "status": "unvalidated"
+    },
+    "redirect_baggage": {
+      "samples": 0,
+      "median_absolute_relative_error": null,
+      "status": "unvalidated"
+    },
+    "resolve_incident": {
+      "samples": 0,
+      "median_absolute_relative_error": null,
+      "status": "unvalidated"
+    }
+  },
+  "excluded": {
+    "ineligible_outcome": 4
+  },
+  "causal_claim": false
+}

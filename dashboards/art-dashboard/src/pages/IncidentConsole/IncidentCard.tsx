@@ -1,4 +1,5 @@
 import { StatusBadge } from "../../components/StatusBadge";
+import { Link } from "react-router-dom";
 import { SEVERITY_BORDER, SEVERITY_BG } from "./constants";
 import { formatRelativeTime } from "./utils";
 import type { Incident } from "../../types";
@@ -25,6 +26,7 @@ export function IncidentCard({
         <StatusBadge status={incident.status} />
       </div>
       <div className="text-sm font-bold text-white">{incident.title}</div>
+      <Link className="block text-xs text-sky-300 mt-2" to={`/decisions?incident_id=${encodeURIComponent(incident.id)}`} onClick={e => e.stopPropagation()}>Trace related decisions →</Link>
       <div className="text-xs text-gray-400 mt-1">
         {incident.location} · {formatRelativeTime(incident.started_at)}
       </div>

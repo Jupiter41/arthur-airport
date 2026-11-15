@@ -1,6 +1,4 @@
 import { useState, useEffect } from "react";
-import { useBaggageStore } from "../../stores/baggageStore";
-import { useIncidentStore } from "../../stores/incidentStore";
 import { useBaggageTrackerQueries } from "../../hooks/useQueries";
 import { ExportMenu } from "../../components/ExportMenu";
 import { exportData } from "../../utils/exportData";
@@ -11,51 +9,14 @@ import type { Flight } from "../../types";
 
 /* ──────── Main Page ──────── */
 export default function BaggageTrackerPage() {
-  const zones = useBaggageStore((s) => s.zones);
-  const summary = useBaggageStore((s) => s.summary);
-  const setZones = useBaggageStore((s) => s.setZones);
-  const setSummary = useBaggageStore((s) => s.setSummary);
   const [flaggedOffset, setFlaggedOffset] = useState(0);
   const [flights, setFlights] = useState<Flight[]>([]);
 
-  const incidents = useIncidentStore((s) => s.incidents);
-
-  useEffect(() => {
-    if (zones.length === 0) return;
-    const activeFailures = Object.values(incidents).filter(
-      (i) => i.type === "system_failure" && i.status !== "resolved",
-    );
-    const offlineLocations = new Set(activeFailures.map((i) => i.location));
-
-    let changed = false;
-    const updated = zones.map((z) => {
-      const shouldBeOffline =
-        offlineLocations.has(z.zone_id) ||
-        [...offlineLocations].some((loc) =>
-          z.zone_id.includes(loc.replace("conveyor-", "")),
-        );
-      if (shouldBeOffline && z.status !== "offline") {
-        changed = true;
-        return { ...z, status: "offline" as const };
-      }
-      if (!shouldBeOffline && z.status === "offline") {
-        changed = true;
-        return { ...z, status: "active" as const };
-      }
-      return z;
-    });
-    if (changed) setZones(updated);
-  }, [incidents, zones, setZones]);
-
   const queries = useBaggageTrackerQueries(flaggedOffset);
-
-  useEffect(() => {
-    if (queries.map.data) setZones(queries.map.data);
-  }, [queries.map.data, setZones]);
-
-  useEffect(() => {
-    if (queries.summary.data) setSummary(queries.summary.data);
-  }, [queries.summary.data, setSummary]);
+  // Both dimensions read the same owner projection in React Query. Never
+  // synthesize conveyor failures/recovery from incidents in the browser.
+  const zones = queries.map.data ?? [];
+  const summary = queries.summary.data ?? null;
 
   useEffect(() => {
     if (queries.flights.data) setFlights(queries.flights.data);

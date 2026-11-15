@@ -25,7 +25,9 @@ type NavItem =
     };
 
 const NAV_ITEMS: NavItem[] = [
-  { path: "/", label: "Flights", icon: "✈️" },
+  { path: "/", label: "Cockpit", icon: "◉" },
+  { path: "/flights", label: "Flights", icon: "✈️" },
+  { path: "/decisions", label: "Decisions", icon: "↗" },
   {
     label: "Terminal",
     icon: "🏢",
@@ -40,6 +42,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: "🎛️",
     children: [
       { path: "/ground-ops", label: "Ground Ops", icon: "🛬" },
+      { path: "/atc", label: "ATC", icon: "🗼" },
       { path: "/costs", label: "Costs", icon: "💰" },
       { path: "/carbon", label: "Carbon", icon: "🌱" },
       { path: "/accessibility", label: "Accessibility", icon: "♿" },
@@ -89,6 +92,8 @@ function NavDropdown({
   return (
     <div ref={ref} className="relative">
       <button
+        aria-label={item.label}
+        title={item.label}
         onClick={() => setOpen((v) => !v)}
         className={`text-sm font-medium px-3 py-1.5 rounded-xl transition-all duration-200 flex items-center gap-1.5 ${
           isActive
@@ -173,7 +178,7 @@ export function HeaderBar() {
 
           <div className="h-5 w-px bg-panel-border/40 hidden md:block" />
 
-          <nav className="flex items-center gap-0.5">
+          <nav className="flex flex-wrap items-center gap-0.5 min-w-0">
             {navigation.map((item) =>
               item.children ? (
                 <NavDropdown key={item.label} item={item} />
@@ -181,6 +186,8 @@ export function HeaderBar() {
                 <NavLink
                   key={item.path}
                   to={item.path}
+                  aria-label={item.label}
+                  title={item.label}
                   className={({ isActive }) =>
                     `text-sm font-medium px-3 py-1.5 rounded-xl transition-all duration-200 whitespace-nowrap flex items-center gap-1.5 ${
                       isActive

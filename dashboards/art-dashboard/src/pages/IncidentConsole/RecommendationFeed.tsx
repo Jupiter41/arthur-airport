@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { RecommendationExplanation } from "../Decisions/RecommendationExplanation";
 import { StatusBadge } from "../../components/StatusBadge";
 import { analysisApi } from "../../hooks/useApi";
 import { queryClient } from "../../queryClient";
@@ -86,6 +88,8 @@ export function RecommendationFeed({
               <span className="text-gray-400">Cost:</span> {rec.cost}
             </div>
           </div>
+          <details className="mt-3 text-xs"><summary className="text-sky-300 cursor-pointer">Explain ranking &amp; evidence</summary><div className="mt-2"><RecommendationExplanation recommendation={rec} alternatives={recommendations} /></div></details>
+          <Link className="block text-xs text-sky-300 mt-2" to={`/decisions?bottleneck_id=${encodeURIComponent(rec.bottleneck_id)}`}>Trace this decision →</Link>
           <div className="flex items-center justify-between mt-2">
             <div className="flex items-center gap-2">
               <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">

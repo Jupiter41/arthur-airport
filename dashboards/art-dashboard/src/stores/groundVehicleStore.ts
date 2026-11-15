@@ -6,6 +6,7 @@ interface GroundVehicleState {
   utilisationPct: Record<string, number>;
 
   upsertVehicle: (vehicle: GroundVehicle) => void;
+  setVehicles: (vehicles: GroundVehicle[]) => void;
   updateVehicleStatus: (vehicleId: string, status: string, gateId?: string | null) => void;
   setUtilisation: (pct: Record<string, number>) => void;
   clear: () => void;
@@ -14,6 +15,8 @@ interface GroundVehicleState {
 export const useGroundVehicleStore = create<GroundVehicleState>((set) => ({
   vehicles: {},
   utilisationPct: {},
+
+  setVehicles: (vehicles) => set({ vehicles: Object.fromEntries(vehicles.map(v => [v.id, v])) }),
 
   upsertVehicle: (vehicle) =>
     set((state) => ({

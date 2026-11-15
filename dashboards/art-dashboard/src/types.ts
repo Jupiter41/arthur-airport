@@ -73,6 +73,9 @@ export interface Flight {
   route_category: string | null;
   flight_duration_minutes: number | null;
   arrival_estimated_time: string | null;
+  /** Owner FSM durations from touchdown to taxi start / to on-stand (minutes). */
+  taxi_initial_minutes?: number;
+  taxi_total_minutes?: number;
 }
 
 export interface Runway {
@@ -84,6 +87,11 @@ export interface Runway {
   capacity_per_hour: number;
   current_rate: number;
   queue: string[];
+  length_m?: number;
+  threshold_x?: number;
+  threshold_y?: number;
+  end_x?: number;
+  end_y?: number;
 }
 
 export interface Gate {
@@ -92,6 +100,8 @@ export interface Gate {
   status: string;
   flight_id: string | null;
   flight_number: string | null;
+  position_x?: number;
+  position_y?: number;
 }
 
 // ---------- Passengers ----------
@@ -138,7 +148,7 @@ export interface BaggageFlowSummary {
 export interface BaggageZone {
   zone_id: string;
   zone_type: string;
-  status: "active" | "offline" | "idle";
+  status: "normal" | "degraded" | "active" | "offline" | "idle";
   items: number;
   capacity: number;
   utilisation_pct: number;
@@ -278,6 +288,13 @@ export interface GroundVehicle {
   position_y: number;
   task_name: string | null;
   flight_id: string | null;
+  /** Current trip segment (null when stationary) and its sim-time bounds. */
+  origin_x?: number | null;
+  origin_y?: number | null;
+  target_x?: number | null;
+  target_y?: number | null;
+  dispatched_at?: string | null;
+  arrives_at?: string | null;
 }
 
 // ---------- ADS-B ----------
@@ -419,7 +436,13 @@ export interface AnalysisRecommendation {
   confidence_score: number;
   expiry_sim_time: string;
   priority_rank: number;
-  // Heuristic ranking signals (impact * confidence / cost) — not calibrated.
+  // Shared effects with outcome calibration; synthetic operational units, not euros.
+  calibration_impact_factor?: number;
+  calibration_confidence_factor?: number;
+  calibration_samples?: number;
+  effect_model_version?: string;
+  effect_status?: string;
+  projection?: { metric?: string; delta?: number; probability?: number } | null;
   impact_value?: number;
   cost_value?: number;
   priority_score?: number;

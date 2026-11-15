@@ -1,0 +1,13 @@
+{
+  "effect_model_version": "effects-v1",
+  "training_seed": 42,
+  "timesteps": 50628,
+  "artifact": "tmp-g4-training/rl-policy.zip",
+  "sha256": "5b348341760e59977a780cebaefef91678e16227ceb8e974e041bb2118155313",
+  "evaluation_episodes": 3,
+  "mean_reward": 28.70000089262612,
+  "std_reward": 0.0,
+  "agent_load_and_inference": "passed",
+  "operational_quality_validated": false,
+  "note": "Deterministic synthetic training scenario; reward is not evidence of operational accuracy."
+}

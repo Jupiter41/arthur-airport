@@ -13,6 +13,7 @@ interface FlightStoreState {
     flightId: string,
     status: string,
     delay?: number,
+    facts?: Partial<Pick<Flight, "actual_time" | "gate_id" | "runway_id">>,
   ) => void;
   updateFlightGate: (flightId: string, gateId: string) => void;
   cancelFlight: (flightId: string) => void;
@@ -35,7 +36,7 @@ export const useFlightStore = create<FlightStoreState>((set) => ({
 
   upsertFlight: (f) => set((s) => ({ flights: { ...s.flights, [f.id]: f } })),
 
-  updateFlightStatus: (flightId, status, delay) =>
+  updateFlightStatus: (flightId, status, delay, facts) =>
     set((s) => {
       const existing = s.flights[flightId];
       if (!existing) return s;
@@ -46,6 +47,7 @@ export const useFlightStore = create<FlightStoreState>((set) => ({
             ...existing,
             status: status as Flight["status"],
             delay_minutes: delay ?? existing.delay_minutes,
+            ...facts,
           },
         },
       };

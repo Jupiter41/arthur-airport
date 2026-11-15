@@ -2,7 +2,8 @@ FROM node:22-slim AS builder
 
 WORKDIR /app
 COPY package*.json .
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 COPY . .
 
 # Accept Mapbox token as a build-time arg so Vite can inline it

@@ -4,8 +4,11 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./queryClient";
 import { HeaderBar } from "./components/HeaderBar";
 import { AccessBar } from "./components/AccessBar";
+import { OperationalView, LegacySpatialRedirect } from "./components/OperationalView";
 import { WebSocketManager } from "./components/WebSocketManager";
 import FlightBoardPage from "./pages/FlightBoard/FlightBoardPage";
+const CockpitPage = lazy(() => import("./pages/Cockpit/CockpitPage"));
+const DecisionsPage = lazy(() => import("./pages/Decisions/DecisionsPage"));
 
 // Lazy-load heavyweight pages to reduce initial bundle (~1.5MB savings)
 const BaggageTrackerPage = lazy(
@@ -18,6 +21,7 @@ const IncidentConsolePage = lazy(
   () => import("./pages/IncidentConsole/IncidentConsolePage"),
 );
 const GroundOpsPage = lazy(() => import("./pages/GroundOps/GroundOpsPage"));
+const AtcTrafficPage = lazy(() => import("./pages/Airport3D/AtcBoard"));
 const SimHistoryPage = lazy(() => import("./pages/SimHistory/SimHistoryPage"));
 const ScenariosPage = lazy(() => import("./pages/Scenarios/ScenariosPage"));
 const SettingsPage = lazy(() => import("./pages/Settings/SettingsPage"));
@@ -52,11 +56,15 @@ function AppShell() {
       <main className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<PageFallback />}>
           <Routes>
-            <Route path="/" element={<FlightBoardPage />} />
-            <Route path="/baggage" element={<BaggageTrackerPage />} />
-            <Route path="/passengers" element={<PassengerFlowPage />} />
+            <Route path="/" element={<CockpitPage />} />
+            <Route path="/flights" element={<FlightBoardPage />} />
+            <Route path="/decisions" element={<DecisionsPage />} />
+            <Route path="/airport-3d" element={<LegacySpatialRedirect />} />
+            <Route path="/baggage" element={<OperationalView view="baggage" title="Baggage operations"><BaggageTrackerPage /></OperationalView>} />
+            <Route path="/passengers" element={<OperationalView view="passengers" title="Passenger flow"><PassengerFlowPage /></OperationalView>} />
             <Route path="/incidents" element={<IncidentConsolePage />} />
-            <Route path="/ground-ops" element={<GroundOpsPage />} />
+            <Route path="/ground-ops" element={<OperationalView view="airport" title="Ground operations"><GroundOpsPage /></OperationalView>} />
+            <Route path="/atc" element={<OperationalView view="atc" title="Air traffic control"><AtcTrafficPage /></OperationalView>} />
             <Route path="/world" element={<WorldMapPage />} />
             <Route path="/history" element={<SimHistoryPage />} />
             <Route path="/scenarios" element={<ScenariosPage />} />

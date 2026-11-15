@@ -1,0 +1,426 @@
+{
+  "source": "live_synthetic_stack",
+  "purpose": "3D scene validation",
+  "initial_sim": {
+    "airport": {
+      "name": "Arthur International Airport",
+      "iata": "ART",
+      "icao": "KART",
+      "timezone": "America/Arthur"
+    },
+    "running": true,
+    "paused": true,
+    "sim_time": "2026-01-01T11:43:00+00:00",
+    "real_time": "2026-11-14T15:56:59.863904+00:00",
+    "speed_multiplier": 10,
+    "mode": "REALTIME",
+    "day_number": 1,
+    "tick_number": 343,
+    "real_elapsed_seconds": 2058,
+    "sim_elapsed_minutes": 343,
+    "active_incidents": 0,
+    "weather_category": "CAVOK",
+    "flights_today": 50,
+    "passengers_today": 10725
+  },
+  "lane_receipt": {
+    "event_type": "CommandExecuted",
+    "receipt": {
+      "command_id": "d82e9a5a-9d7c-4722-bbbb-b844e008aeaa",
+      "command_type": "OpenSecurityLane",
+      "reason": null
+    },
+    "applied": true
+  },
+  "flight": {
+    "flight_id": "d6978ea1-6ed0-43b1-9897-28948b993a72",
+    "flight_number": "AX993",
+    "direction": "departure",
+    "gate": "A05",
+    "scheduled_time": "2026-01-01T12:58:00+00:00",
+    "passengers_generated": 0,
+    "baggage_generated": 0
+  },
+  "bags": {
+    "injected": 100,
+    "flight_id": "d6978ea1-6ed0-43b1-9897-28948b993a72",
+    "zone_status": "dropped_off",
+    "baggage_ids": [
+      "4b982118-576c-43b7-9f78-3aeb48cbf180",
+      "30b24c65-7f81-40df-82f4-496e2e0f12bb",
+      "79059a57-3a97-4b1e-bdab-0574751e723d",
+      "4b6d416d-c9ee-43e2-b3ef-add08a61f717",
+      "062439f0-6162-4598-9df1-4207cd2af5f8",
+      "d5307932-29ca-47de-bd71-e901ee8f9859",
+      "9e489c41-c7d3-4d39-9058-752153cb0ed9",
+      "7c841134-3189-4898-a76a-294a42cdb61a",
+      "f213f72b-77ba-4767-af72-77f699df78b4",
+      "c2c9e385-66ea-45b2-8d78-34e3134c85d0",
+      "c0c5ad10-661b-4b79-89ad-7c3e19c198e5",
+      "58bafb1e-0fc3-4f06-b403-94a95dce47fe",
+      "c18d3ab9-e4b1-4154-ab26-fa358fb6e718",
+      "b30e1143-1054-4046-a5d6-e84eed03b9ee",
+      "76240393-c3a6-44c9-b227-c2ea01306994",
+      "f5adda31-1694-449f-8bfe-14c383c5be5e",
+      "cf04498c-8430-4fad-a64a-c93546262971",
+      "769f3487-dbca-4a30-8975-ddb57794eac5",
+      "a42584dd-049b-403f-b2db-aca62b1ec97d",
+      "5468de1e-9fd4-4b05-a53b-f493052ba668",
+      "3922ae16-5239-495c-a7d2-168e88ddd459",
+      "b6b60c49-14b4-4194-b0e7-64ac651f7f7e",
+      "c741c742-55da-4e3f-9f7d-be4e8a122c13",
+      "641586bf-a308-46b3-a9e6-4ae6fe314357",
+      "698c2f24-5a33-4e80-9f27-3272324b12f4",
+      "838534e5-7d14-4879-9e0a-edc6c096f4e1",
+      "6635db61-3cc2-4753-895b-b54612a544bc",
+      "26a37e81-5356-43a3-b366-3cbd53436434",
+      "ee91be13-be4d-4eac-80c1-2f795b7434f0",
+      "f09ddd2c-f710-4d12-905c-1114f530fc00",
+      "1f1074bd-d12f-42a9-a23a-30a1655f010a",
+      "51fcd9c3-5f14-49c9-aa1c-51d069335958",
+      "9324c3ea-3f33-474b-a56b-2b01c01aa596",
+      "dd4a6e11-ed91-4e8f-8d4c-9d8c9343c836",
+      "ab47c8d7-f6b5-485f-8d27-651205e14dfb",
+      "8c134fe9-056c-485c-828d-8ef6a7cf2a51",
+      "41467830-21c9-4b44-bbeb-00f6e0dbcad2",
+      "619d8caf-f864-4548-80cf-9eccf7d95028",
+      "47eef2f0-6d04-4fac-8850-7325cae9cea4",
+      "0a55691a-0c86-4ce5-9e91-c229549e5e7a",
+      "dba232d3-4d6c-43a4-ab25-2c087b0b80ee",
+      "43b21c40-f579-4087-8771-c785f70e47bb",
+      "c4833611-86c0-406c-b8cc-16871b598a7e",
+      "4cb3b8cb-f43b-4a69-a603-d46755b431a6",
+      "3449bf41-f774-4bbe-8258-ae659b494ff7",
+      "91d5891e-5c97-4fc2-8898-7e842d8f2269",
+      "0f7bc307-a08b-4b85-b798-424554565099",
+      "b95fe8d2-8679-4485-9c34-61a31c51ae64",
+      "254e33f8-af13-4d2a-8e6b-509ec903355f",
+      "81049ac5-cf33-4507-ba26-87756929468c",
+      "c5950d46-fd3f-4f6e-9f9d-5f200e316cde",
+      "e13d6e0f-e855-4205-ba20-923fed10883a",
+      "23bb7a5e-cd9f-46e3-a38a-937371a4875e",
+      "41f0cdd4-c712-4249-be92-65c3992887ca",
+      "1fedec0d-7585-4605-85f9-97bdfa8d89a4",
+      "de3b5855-1801-4520-81d3-b45088f6ea93",
+      "145f9eab-d7eb-4b7f-9070-2b130d99b22d",
+      "578474d9-313d-4170-92ec-3cffb9af5d24",
+      "347264c6-9e1d-4fc5-8248-b86046cff4bc",
+      "4953485d-4eac-4d3f-86b3-f06058dbdd17",
+      "fd8ac7a1-3481-405e-bf9c-f59709fd09e2",
+      "f2f255d9-adb0-4d37-b601-25b93027c133",
+      "0516ee91-9315-4b98-9af0-662924c6925c",
+      "16a95f4d-1f59-4423-a0ef-ccb8f27fda72",
+      "36eadb02-7fae-4b08-9df8-9ece38d6af81",
+      "0b0feb33-cd16-40ae-b578-14a94b8f9f92",
+      "ab80aa2d-b939-46e1-a084-0af0363afc70",
+      "b1366eef-761c-4330-bc88-2e258c9764c9",
+      "5437bb9f-990e-4ed8-80d8-031b40916ae7",
+      "a29c45d5-2993-47bf-8e1e-eadd2ddaeb1a",
+      "8dba19dc-c6ff-4f82-b918-3d133d110da5",
+      "55c28384-58d7-4277-8eae-8bfcf9593c35",
+      "45c99d1b-11e3-4710-8d0c-bdc74ca98db4",
+      "f4b22dd8-0a43-4ec6-96c7-4de696ee92db",
+      "798acdaf-dce2-4b59-ac4d-050882319a0e",
+      "541b3878-affa-4035-82b2-03c01f9db84e",
+      "26a82b9a-3684-43b8-9aa6-46b3084d6f44",
+      "04ede652-473b-4d19-bd08-07cd6017d0bc",
+      "641f965a-585d-4248-b2fd-35d91373ee61",
+      "f73433b9-db2c-472e-a502-7b2d46a0403e",
+      "3a9d5c2b-0247-4b60-a425-a87ab399bc6d",
+      "702dd083-3463-4d51-8a6b-9e6f55334b1d",
+      "6849f525-c697-4151-aaa9-05fe6a9a0952",
+      "237f64f7-b5ab-4b21-96a0-2d719d10196e",
+      "41e1b3d5-2619-4a28-a385-cb1ffd06752c",
+      "80c0af7e-a9db-46b4-abbc-1991ddc42095",
+      "7bc404cc-05b5-4ee4-b218-ee3b8e02d741",
+      "77455cce-1c22-477a-a92c-8af1fe21adf1",
+      "bc111e31-10ac-4f9b-807c-6065a25e91de",
+      "b0b3ae67-1548-4060-b708-5f3530d80043",
+      "f9dead9a-afcc-441a-ac86-8fddd2344c37",
+      "d573a287-f86c-4c63-b411-fb7011f16ab4",
+      "b649f365-4bb8-4bfc-bdea-43f6acce6fc1",
+      "aa642403-cdd3-4623-8d5b-839afec390ee",
+      "a825bb2c-aa7e-4517-a6ed-26bcb187c73c",
+      "28f7b079-c24b-41c2-8978-2fea61ca9411",
+      "93c5716c-1c32-433d-a8dc-c242f47127cb",
+      "5fa8f494-9a8d-4b8b-825e-eb9a075a004a",
+      "79834129-be9c-406d-8d81-f5ea9ac3588b",
+      "0c9e7e72-ad77-4639-b7ce-d0a838f2e1af"
+    ]
+  },
+  "security_observed": {
+    "A": {
+      "queue_length": 593,
+      "wait_minutes": 49.4,
+      "lanes_open": 4,
+      "frozen": false
+    },
+    "B": {
+      "queue_length": 42,
+      "wait_minutes": 1.8,
+      "lanes_open": 8,
+      "frozen": false
+    },
+    "C": {
+      "queue_length": 0,
+      "wait_minutes": 0.0,
+      "lanes_open": 8,
+      "frozen": false
+    }
+  },
+  "conveyor_observed": [
+    {
+      "zone_id": "arrival-belt-1",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 2400,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "arrival-belt-2",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 2400,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "arrival-belt-3",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 2400,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "arrival-belt-4",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 2400,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "arrival-belt-5",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 2400,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "arrival-belt-6",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 2400,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "induction-A",
+      "items": 80,
+      "status": "normal",
+      "throughput_per_hour": 600,
+      "utilisation_pct": 100
+    },
+    {
+      "zone_id": "induction-B",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 600,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "induction-C",
+      "items": 204,
+      "status": "normal",
+      "throughput_per_hour": 600,
+      "utilisation_pct": 100
+    },
+    {
+      "zone_id": "make-up-A-1",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-A-2",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-A-3",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-A-4",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-A-5",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-B-1",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-B-2",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-B-3",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-B-4",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-B-5",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-C-1",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-C-2",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-C-3",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-C-4",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "make-up-C-5",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 150,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "screening-unit-1",
+      "items": 5,
+      "status": "normal",
+      "throughput_per_hour": 300,
+      "utilisation_pct": 20
+    },
+    {
+      "zone_id": "screening-unit-2",
+      "items": 5,
+      "status": "normal",
+      "throughput_per_hour": 300,
+      "utilisation_pct": 20
+    },
+    {
+      "zone_id": "screening-unit-3",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 300,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "screening-unit-4",
+      "items": 0,
+      "status": "normal",
+      "throughput_per_hour": 300,
+      "utilisation_pct": 0
+    },
+    {
+      "zone_id": "screening-unit-5",
+      "items": 5,
+      "status": "normal",
+      "throughput_per_hour": 300,
+      "utilisation_pct": 20
+    },
+    {
+      "zone_id": "screening-unit-6",
+      "items": 5,
+      "status": "normal",
+      "throughput_per_hour": 300,
+      "utilisation_pct": 20
+    },
+    {
+      "zone_id": "sorting-matrix",
+      "items": 9,
+      "status": "normal",
+      "throughput_per_hour": 1800,
+      "utilisation_pct": 6
+    }
+  ],
+  "sample_recorded_bag": {
+    "weight_kg": 9.7,
+    "is_dangerous_goods": null,
+    "dg_class": null,
+    "last_scan_zone": "induction-A",
+    "tag": "0767267857",
+    "id": "04ede652-473b-4d19-bd08-07cd6017d0bc",
+    "last_scan_at": "2026-01-01T11:44:00",
+    "carousel": null,
+    "status": "inducted",
+    "passenger": null,
+    "flight": {
+      "id": "d6978ea1-6ed0-43b1-9897-28948b993a72",
+      "flight_number": "AX993",
+      "status": "scheduled"
+    },
+    "scan_history": [
+      {
+        "at": "2026-01-01T11:44:00",
+        "zone": "induction-A",
+        "status": "inducted"
+      }
+    ]
+  },
+  "restored_lane_receipt": {
+    "event_type": "CommandExecuted",
+    "receipt": {
+      "command_id": "dbb58ba6-ddb3-4896-826a-54513e33e24e",
+      "command_type": "OpenSecurityLane",
+      "reason": null
+    },
+    "applied": true
+  },
+  "restored_lane_count": 8,
+  "paused_scene_pixel_comparison": "unchanged conveyor region across two screenshots",
+  "representation": "Schematic placement and aggregate figures are labelled; item scan history is owner data"
+}

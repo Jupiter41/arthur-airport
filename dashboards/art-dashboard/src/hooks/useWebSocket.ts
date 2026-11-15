@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
-import type { KafkaEvent, SimStatus } from "../types";
+import type { Flight, KafkaEvent, SimStatus } from "../types";
 import { useSimStore } from "../stores/simStore";
 import { useFlightStore } from "../stores/flightStore";
 import { useWeatherStore } from "../stores/weatherStore";
@@ -11,6 +11,7 @@ import { getAuthToken } from "./auth";
 import { useConnectionStore } from "../stores/connectionStore";
 import { queryClient } from "../queryClient";
 import { simApi } from "./useApi";
+import { applyBaggageObservation, applySecurityObservation, applyVehicleObservation, reconcileLiveQueries, resetLiveProjectionGuards } from "./liveProjections";
 
 const RAW_WS_URL = (import.meta.env.VITE_WS_URL as string | undefined)
   ?.trim()
@@ -49,25 +50,34 @@ export const eventHandlers: Record<string, EventHandler> = {
         ? (payload.day_of_sim as number)
         : undefined;
     if (nextTick) {
+      if (Date.parse(nextTick) < Date.parse(useSimStore.getState().status.sim_time)) resetLiveProjectionGuards();
       useSimStore.getState().updateFromTick(nextTick, dayOfSim);
     }
   },
 
-  FlightStatusChanged: (payload) => {
+  FlightStatusChanged: (payload, sim_time) => {
     const { flight_id, new_status, delay_minutes } = payload;
     const store = useFlightStore.getState();
     const existing = store.flights[flight_id as string];
     if (existing) {
+      // The owner stamps actual_time at the landed/departed transition, which
+      // is this event's sim_time; the 3D timeline starts from it immediately.
+      const facts: Partial<Pick<Flight, "actual_time" | "gate_id" | "runway_id">> = {};
+      if ((new_status === "landed" || new_status === "departed") && sim_time) facts.actual_time = sim_time;
+      if (typeof payload.gate_id === "string" && payload.gate_id) facts.gate_id = payload.gate_id;
+      if (typeof payload.runway_id === "string" && payload.runway_id) facts.runway_id = payload.runway_id;
       store.updateFlightStatus(
         flight_id as string,
         new_status as string,
         delay_minutes as number | undefined,
+        facts,
       );
     } else {
       // New flight — invalidate the flights query so the board re-fetches
       queryClient.invalidateQueries({ queryKey: ["flights"] });
     }
     store.flashRow(flight_id as string);
+    reconcileLiveQueries("flights"); reconcileLiveQueries("gates"); reconcileLiveQueries("runways");
     setTimeout(
       () => useFlightStore.getState().clearFlash(flight_id as string),
       1500,
@@ -79,6 +89,7 @@ export const eventHandlers: Record<string, EventHandler> = {
     useFlightStore
       .getState()
       .updateFlightGate(flight_id as string, gate_id as string);
+    reconcileLiveQueries("gates");
   },
 
   FlightCancelled: (payload) => {
@@ -181,17 +192,19 @@ export const eventHandlers: Record<string, EventHandler> = {
     );
   },
 
+  GroundVehicleSnapshot: applyVehicleObservation,
+  SecurityQueueUpdated: applySecurityObservation,
+  BaggageZoneSnapshot: applyBaggageObservation,
+  PassengerStatusBatchChanged: () => { reconcileLiveQueries("passengers"); },
+  BaggageStatusBatchChanged: () => {
+    reconcileLiveQueries("baggage", "3d-items"); reconcileLiveQueries("baggage", "detail");
+    reconcileLiveQueries("baggage", "summary"); reconcileLiveQueries("baggage", "flagged");
+  },
   GroundVehicleDispatched: (payload) => {
-    useGroundVehicleStore.getState().upsertVehicle({
-      id: payload.vehicle_id as string,
-      type: payload.vehicle_type as never,
-      status: "dispatched",
-      current_gate: payload.gate_id as string,
-      position_x: 0,
-      position_y: 0,
-      task_name: payload.task_name as string,
-      flight_id: payload.flight_id as string,
-    });
+    // Dispatch facts contain no coordinates. Preserve the last owner position
+    // rather than teleporting the vehicle to (0, 0).
+    useGroundVehicleStore.getState().updateVehicleStatus(payload.vehicle_id as string, "dispatched", payload.gate_id as string);
+    reconcileLiveQueries("ground-vehicles");
   },
 
   GroundVehicleReturned: (payload) => {

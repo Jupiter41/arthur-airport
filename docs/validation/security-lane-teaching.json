@@ -1,0 +1,333 @@
+{
+  "scenario": "security-lane-teaching-v1",
+  "data_source": "live_synthetic_stack",
+  "injected_counts": {
+    "A": 450,
+    "B": 180,
+    "C": 180
+  },
+  "flights": {
+    "C": "102ded1f-0ee0-4015-ad48-ea9e102bba45",
+    "B": "26145ed8-cd8f-41d0-a345-d4bc06a29a84",
+    "A": "534fb149-2d98-484e-8c87-47f5276b8b56"
+  },
+  "setup_owner_receipts": {
+    "A": {
+      "event_type": "CommandExecuted",
+      "receipt": {
+        "command_id": "cdf7b591-27f1-4c16-9949-00c18a350aa0",
+        "command_type": "OpenSecurityLane",
+        "reason": null
+      },
+      "applied": true
+    },
+    "B": {
+      "event_type": "CommandExecuted",
+      "receipt": {
+        "command_id": "669c72c8-92d3-4eca-b8c2-baf1e35f2015",
+        "command_type": "OpenSecurityLane",
+        "reason": null
+      },
+      "applied": true
+    },
+    "C": {
+      "event_type": "CommandExecuted",
+      "receipt": {
+        "command_id": "5c3962e7-a1bf-41cd-a9ab-e04e51f7d6e5",
+        "command_type": "OpenSecurityLane",
+        "reason": null
+      },
+      "applied": true
+    }
+  },
+  "control_interventions_detected": [],
+  "empirical_accuracy": "unvalidated",
+  "decision": {
+    "id": "prop-95c232728b74",
+    "bottleneck_id": "bn-dc41443e159a",
+    "bottleneck": {
+      "id": "bn-dc41443e159a",
+      "type": "security_queue",
+      "severity": "critical",
+      "zone": "Terminal A",
+      "root_cause": "Observed security queue wait is 193 min in Terminal A",
+      "estimated_duration_minutes": 182.7,
+      "affected_entity_count": 578,
+      "detected_at": "2026-01-01T11:11:00Z",
+      "metrics": {
+        "forecast_confidence": 0.0,
+        "forecast_wait_minutes": 192.7,
+        "open_lanes": 1,
+        "queue_depth": 578,
+        "signal_source": "observed"
+      },
+      "resolved_at": null
+    },
+    "recommendation": {
+      "id": "rec-74ef21f43405",
+      "effect_model_version": "effects-v1",
+      "effect_status": "modelled",
+      "projection": {
+        "delta": -111.35259515570934,
+        "metric": "security_wait_minutes"
+      },
+      "bottleneck_id": "bn-dc41443e159a",
+      "action_type": "open_security_lane",
+      "description": "Open an additional security lane in Terminal A (currently 1 open)",
+      "expected_impact": "Projected wait change -111.4 min over 30 sim-minutes",
+      "cost": "1 additional staff member for ~2 hours",
+      "confidence_score": 0.85,
+      "expiry_sim_time": "2026-01-01T11:41:00Z",
+      "priority_rank": 1,
+      "impact_value": 64361.799999999996,
+      "cost_value": 25.0,
+      "priority_score": 2188.3012,
+      "parameters": {
+        "new_lane_count": 2,
+        "terminal": "Terminal A"
+      },
+      "calibration_impact_factor": 1.0,
+      "calibration_confidence_factor": 1.0,
+      "calibration_samples": 0,
+      "executable": true,
+      "execution_status": "available",
+      "applied": false,
+      "applied_at": null
+    },
+    "alternatives": [
+      {
+        "id": "rec-74ef21f43405",
+        "effect_model_version": "effects-v1",
+        "effect_status": "modelled",
+        "projection": {
+          "delta": -111.35259515570934,
+          "metric": "security_wait_minutes"
+        },
+        "bottleneck_id": "bn-dc41443e159a",
+        "action_type": "open_security_lane",
+        "description": "Open an additional security lane in Terminal A (currently 1 open)",
+        "expected_impact": "Projected wait change -111.4 min over 30 sim-minutes",
+        "cost": "1 additional staff member for ~2 hours",
+        "confidence_score": 0.85,
+        "expiry_sim_time": "2026-01-01T11:41:00Z",
+        "priority_rank": 1,
+        "impact_value": 64361.799999999996,
+        "cost_value": 25.0,
+        "priority_score": 2188.3012,
+        "parameters": {
+          "new_lane_count": 2,
+          "terminal": "Terminal A"
+        },
+        "calibration_impact_factor": 1.0,
+        "calibration_confidence_factor": 1.0,
+        "calibration_samples": 0,
+        "executable": true,
+        "execution_status": "available",
+        "applied": false,
+        "applied_at": null
+      },
+      {
+        "id": "rec-d065140a41b9",
+        "effect_model_version": "effects-v1",
+        "effect_status": "modelled",
+        "projection": {
+          "metric": "success_probability",
+          "probability": 0.8
+        },
+        "bottleneck_id": "bn-9ee8ff1692c5",
+        "action_type": "resolve_incident",
+        "description": "Expedite resolution of the security_congestion incident at terminal-A (allocate response resources to accelerate clearance)",
+        "expected_impact": "Clear the active incident and lift its operational restrictions sooner",
+        "cost": "Response resources committed until the incident clears",
+        "confidence_score": 0.8,
+        "expiry_sim_time": "2026-01-01T11:17:00Z",
+        "priority_rank": 2,
+        "impact_value": 24.0,
+        "cost_value": 35.0,
+        "priority_score": 0.5485714285714286,
+        "parameters": {
+          "incident_id": "a02bf96f-97aa-4af2-bbb9-59b1879966c9",
+          "incident_type": "security_congestion",
+          "location": "terminal-A"
+        },
+        "calibration_impact_factor": 1.0,
+        "calibration_confidence_factor": 1.0,
+        "calibration_samples": 0,
+        "executable": true,
+        "execution_status": "rejected",
+        "applied": false,
+        "applied_at": null
+      },
+      {
+        "id": "rec-cd343d4d270c",
+        "effect_model_version": "effects-v1",
+        "effect_status": "missing_parameters",
+        "projection": null,
+        "bottleneck_id": "bn-bda6fc7a098c",
+        "action_type": "reassign_gate",
+        "description": "Reassign gates to reduce turnaround conflicts \u2014 ground handling cost \u20ac50,719 inflated by overtime",
+        "expected_impact": "Reduce ground handling cost by ~10% (\u20ac5,072)",
+        "cost": "~200 EUR pax walk-time cost",
+        "confidence_score": 0.6,
+        "expiry_sim_time": "2026-01-01T11:33:00Z",
+        "priority_rank": 3,
+        "impact_value": 0.0,
+        "cost_value": 5.0,
+        "priority_score": 0.0,
+        "parameters": {
+          "financial_signal": "ground_handling"
+        },
+        "calibration_impact_factor": 1.0,
+        "calibration_confidence_factor": 1.0,
+        "calibration_samples": 0,
+        "executable": false,
+        "execution_status": "advisory",
+        "applied": false,
+        "applied_at": null
+      }
+    ],
+    "description": "Open an additional security lane in Terminal A (currently 1 open)",
+    "status": "measured",
+    "proposal_status": "executed",
+    "proposal_id": "prop-95c232728b74",
+    "action_type": "open_security_lane",
+    "parameters": {
+      "new_lane_count": 2,
+      "terminal": "Terminal A"
+    },
+    "stages": [
+      {
+        "stage": "detected",
+        "at": "2026-01-01T11:11:00Z",
+        "details": {
+          "root_cause": "Observed security queue wait is 193 min in Terminal A"
+        }
+      },
+      {
+        "stage": "predicted",
+        "at": "2026-01-01T11:11:00Z",
+        "details": {
+          "delta": -111.35259515570934,
+          "metric": "security_wait_minutes"
+        }
+      },
+      {
+        "stage": "ranked",
+        "at": "2026-01-01T11:11:00Z",
+        "details": {
+          "evidence": "proposal_snapshot"
+        }
+      },
+      {
+        "stage": "proposed",
+        "at": "2026-01-01T11:11:00+00:00",
+        "details": {
+          "proposed_by": "operator"
+        }
+      },
+      {
+        "stage": "approved",
+        "at": "2026-01-01T11:11:00+00:00",
+        "details": {
+          "mode": "human",
+          "decided_by": "teaching-operator"
+        }
+      },
+      {
+        "stage": "dispatch_prediction",
+        "at": "2026-01-01T11:11:00+00:00",
+        "details": {
+          "metric": "security_wait_minutes",
+          "delta": -111.35259515570934
+        }
+      },
+      {
+        "stage": "dispatched",
+        "at": "2026-01-01T11:11:00+00:00",
+        "details": {
+          "attempt": 1,
+          "command_id": "prop-95c232728b74",
+          "command_type": "OpenSecurityLane",
+          "topic": "passengers.commands",
+          "delivery": "durably_queued"
+        }
+      },
+      {
+        "stage": "executed",
+        "at": "2026-01-01T11:12:00",
+        "details": {
+          "receipt": {
+            "event_type": "CommandExecuted",
+            "topic": "passengers.events",
+            "sim_time": "2026-01-01T11:12:00",
+            "payload": {
+              "command_id": "prop-95c232728b74",
+              "command_type": "OpenSecurityLane",
+              "reason": null
+            }
+          }
+        }
+      },
+      {
+        "stage": "measured",
+        "at": "2026-01-01T11:42:00+00:00",
+        "details": {
+          "measurable": true
+        }
+      }
+    ],
+    "predicted": {
+      "metric": "security_wait_minutes",
+      "delta": -111.35259515570934
+    },
+    "outcome": {
+      "measured_sim_minutes": 30.0,
+      "measurable": true,
+      "target": "security",
+      "terminal": "Terminal A",
+      "current_wait_minutes": 103.3,
+      "open_lanes": 2,
+      "observed_at": "2026-01-01T11:42:00+00:00",
+      "attribution": {
+        "version": "attribution-v1",
+        "method": "difference_in_differences",
+        "calibration_eligible": true,
+        "causal_claim": false,
+        "metric": "security_wait_minutes",
+        "treated_before": 192.7,
+        "treated_after": 103.3,
+        "treated_change": -89.39999999999999,
+        "control_count": 2,
+        "control_change": -10.25,
+        "counterfactual_after": 182.45,
+        "attributed_effect": -79.14999999999999,
+        "predicted_effect": -111.35259515570934
+      }
+    },
+    "receipt": {
+      "event_type": "CommandExecuted",
+      "topic": "passengers.events",
+      "sim_time": "2026-01-01T11:12:00",
+      "payload": {
+        "command_id": "prop-95c232728b74",
+        "command_type": "OpenSecurityLane",
+        "reason": null
+      }
+    },
+    "dispatch_attempts": 1,
+    "failure_reason": null,
+    "effect_model_version": "effects-v1",
+    "context_available": true,
+    "financial_signals": {
+      "total_cost_eur": 3507.0,
+      "total_revenue_eur": 146789.28999999998,
+      "eu261_exposure": 0.0,
+      "last_updated": "2026-01-01T11:10:00Z"
+    },
+    "updated_at": "2026-01-01T11:42:00+00:00",
+    "action_available": false
+  },
+  "note": "One observational example; no randomized causal claim.",
+  "verification_status": "complete_observational_example",
+  "restoration_errors": []
+}
