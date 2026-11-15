@@ -690,9 +690,7 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
 
     from db.neo4j import save_ground_vehicle_projection
     from kafka.producer import emit_ground_vehicle_snapshot
-    vehicles = [dict(v.to_dict(), at=sim_time.isoformat(),
-                     dispatched_at=v.dispatched_at.isoformat() if v.dispatched_at else None,
-                     arrives_at=v.arrives_at.isoformat() if v.arrives_at else None)
+    vehicles = [dict(v.to_dict(), at=sim_time.isoformat())
                 for v in _state.vehicle_pool.vehicles.values()]
     await save_ground_vehicle_projection(vehicles)
     emit_ground_vehicle_snapshot(vehicles, sim_time)

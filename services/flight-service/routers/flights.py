@@ -53,12 +53,30 @@ async def list_flights(
         limit=limit,
         offset=offset,
     )
+    _attach_taxi_durations(flights)
     return {
         "total": total,
         "limit": limit,
         "offset": offset,
         "flights": flights,
     }
+
+
+def _attach_taxi_durations(flights: list[dict]) -> None:
+    """Expose the FSM's own landed→taxiing→at_gate durations (read-only).
+
+    These are the exact values `_process_flight` passes to the state machine,
+    so a client can place a landing aircraft on the owner's timeline without
+    re-implementing the spatial model.
+    """
+    from kafka.consumer import _state
+    from services.spatial import taxi_durations
+
+    for flight in flights:
+        flight.update(taxi_durations(
+            flight.get("runway_id"), flight.get("gate_id"),
+            _state.runway_positions, _state.gate_positions,
+        ))
 
 
 @router.get("/flights/adsb-states")
@@ -128,6 +146,12 @@ async def list_runways():
         rw["current_rate"] = max(int(rq.current_rate), int(observed))
         rw["runway_id"] = rw.get("id", "")
     return {"runways": runways}
+
+
+@router.get("/runways/queue")
+async def runway_queue_snapshot():
+    """Read-only runway sequencing state (no clearances are modelled)."""
+    return get_runway_queue().snapshot(get_sim_time())
 
 
 @router.get("/gates")

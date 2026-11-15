@@ -17,6 +17,7 @@ Routes are grouped by service, listing the HTTP method, path, and a one-line des
 | `GET`  | `/api/v1/flights/{flight_id}`         | Full flight detail including passenger/baggage summary and history    |
 | `GET`  | `/api/v1/flights/{flight_id}/cascade` | Cascade tree of effects triggered by a flight's delay or cancellation |
 | `GET`  | `/api/v1/runways`                     | Current runway operational status and queue depths                    |
+| `GET`  | `/api/v1/runways/queue`               | Read-only runway sequence: arrival/departure order, wake separation, ROT |
 | `GET`  | `/api/v1/gates`                       | All gate statuses, filterable by terminal and status                  |
 | `POST` | `/api/v1/flights/{flight_id}/hold`    | Manually place a flight on hold (operator override)                   |
 | `POST` | `/api/v1/flights/{flight_id}/release` | Release a manually held flight                                        |

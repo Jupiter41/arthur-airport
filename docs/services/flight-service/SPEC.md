@@ -225,6 +225,9 @@ Response `200`:
       "status": "open",
       "current_use": "landing",
       "ils": true,
+      "length_m": 3500,
+      "threshold_x": 100, "threshold_y": 800,
+      "end_x": 900, "end_y": 800,
       "arrivals_queued": 3,
       "departures_queued": 2
     },
@@ -239,6 +242,38 @@ Response `200`:
   ]
 }
 ```
+
+---
+
+#### `GET /runways/queue`
+Read-only snapshot of the owner's runway sequencing state (`services/runway_queue.py`).
+The queue is airport-wide: one arrival heap and one departure heap, ordered by
+`(emergency first, estimated_time, flight_id)`. A runway is assigned only when a
+slot is granted. Nothing in this response is a clearance; the flight owner does
+not model ATC clearances.
+
+Response `200`:
+```json
+{
+  "sim_time": "2024-06-15T14:02:00",
+  "weather_category": "VMC",
+  "ils_required": false,
+  "arrival_rate": 30, "departure_rate": 30,
+  "capacity_per_hour": 60, "current_rate": 22,
+  "runway_free_at": "2024-06-15T14:02:50",
+  "runway_occupied": true,
+  "last_arrival_type": "A320", "last_departure_type": "B77W",
+  "arrivals": [
+    { "position": 1, "flight_id": "uuid", "aircraft_type": "A333",
+      "weight_category": "HEAVY", "estimated_time": "2024-06-15T14:05:00",
+      "emergency": false, "wake_separation_seconds": 138 }
+  ],
+  "departures": []
+}
+```
+`wake_separation_seconds` is the owner's minimum time behind the preceding
+movement in the same queue (the last assigned type for position 1), from the
+ICAO Doc 4444 matrix converted at the follower's approach speed.
 
 ---
 
@@ -257,11 +292,29 @@ Response `200`:
       "status": "occupied",
       "flight_number": "AX412",
       "occupied_until": "2024-06-15T15:45:00Z",
-      "jetbridge": true
+      "jetbridge": true,
+      "position_x": 160, "position_y": 400
     }
   ]
 }
 ```
+
+#### Spatial and timing projection (read-only, 3D twin)
+
+Positions use the seeded 0–1000 layout grid (`fixtures/layout.json`, 1 unit ≈ 1 m).
+These fields only expose state the owner already holds; no client may write them.
+
+- `GET /flights` rows include `actual_time` (stamped at `landed`/`departed`),
+  `aircraft_registration`, and `taxi_initial_minutes` / `taxi_total_minutes`:
+  the exact durations the FSM uses for `landed → taxiing → at_gate`
+  (`taxi_time_from_positions`, defaults 2/8 without positions).
+- `GET /runways` rows include `length_m` and threshold/end coordinates.
+- `GET /gates` rows include `position_x` / `position_y`.
+- `GET /ground-vehicles` rows (and `GroundVehicleSnapshot` payloads) include the
+  current trip: `origin_x`, `origin_y`, `target_x`, `target_y`, `dispatched_at`,
+  `arrives_at`. A trip is a straight apron segment travelled over the owner's
+  transit time; all six are `null` when the vehicle is stationary. Checkpoints
+  written before these fields restore with `null` trips.
 
 ---
 

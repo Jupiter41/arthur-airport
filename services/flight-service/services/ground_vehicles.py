@@ -56,6 +56,12 @@ class GroundVehicle:
     arrives_at: datetime | None = None    # when vehicle reaches gate / depot
     task_name: str | None = None          # which turnaround task it's serving
     flight_id: str | None = None          # which flight it's serving
+    # Current trip endpoints. None when stationary. Class-level None defaults
+    # keep checkpoints written before these fields restorable.
+    origin_x: float | None = None
+    origin_y: float | None = None
+    target_x: float | None = None
+    target_y: float | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -67,7 +73,23 @@ class GroundVehicle:
             "position_y": self.position_y,
             "task_name": self.task_name,
             "flight_id": self.flight_id,
+            # Read-only trip facts: travel is a straight apron segment from
+            # origin to target between dispatched_at and arrives_at.
+            "origin_x": getattr(self, "origin_x", None),
+            "origin_y": getattr(self, "origin_y", None),
+            "target_x": getattr(self, "target_x", None),
+            "target_y": getattr(self, "target_y", None),
+            "dispatched_at": self.dispatched_at.isoformat() if self.dispatched_at else None,
+            "arrives_at": self.arrives_at.isoformat() if self.arrives_at else None,
         }
+
+    def begin_trip(self, to_x: float, to_y: float) -> None:
+        """Record the segment for the trip that starts now."""
+        self.origin_x, self.origin_y = self.position_x, self.position_y
+        self.target_x, self.target_y = to_x, to_y
+
+    def end_trip(self) -> None:
+        self.origin_x = self.origin_y = self.target_x = self.target_y = None
 
 
 @dataclass
@@ -157,6 +179,7 @@ class GroundVehiclePool:
         transit = self._transit_minutes(
             vehicle.position_x, vehicle.position_y, gate_x, gate_y,
         )
+        vehicle.begin_trip(gate_x, gate_y)
         vehicle.status = "dispatched"
         vehicle.current_gate = gate_id
         vehicle.dispatched_at = sim_time
@@ -197,6 +220,7 @@ class GroundVehiclePool:
             v.position_x, v.position_y,
             DEPOT_POSITION["x"], DEPOT_POSITION["y"],
         )
+        v.begin_trip(DEPOT_POSITION["x"], DEPOT_POSITION["y"])
         v.status = "returning"
         v.dispatched_at = sim_time
         v.arrives_at = sim_time + timedelta(minutes=transit)
@@ -213,6 +237,7 @@ class GroundVehiclePool:
             if v.status == "dispatched" and v.arrives_at and sim_time >= v.arrives_at:
                 v.status = "at_gate"
                 v.arrives_at = None
+                v.end_trip()
                 events.append(("arrived_at_gate", v))
 
             elif v.status == "returning" and v.arrives_at and sim_time >= v.arrives_at:
@@ -220,6 +245,7 @@ class GroundVehiclePool:
                 v.position_x = DEPOT_POSITION["x"]
                 v.position_y = DEPOT_POSITION["y"]
                 v.arrives_at = None
+                v.end_trip()
                 events.append(("returned", v))
 
         # Try to fulfill pending requests with newly available vehicles
@@ -240,6 +266,7 @@ class GroundVehiclePool:
             transit = self._transit_minutes(
                 vehicle.position_x, vehicle.position_y, gate_x, gate_y,
             )
+            vehicle.begin_trip(gate_x, gate_y)
             vehicle.status = "dispatched"
             vehicle.current_gate = gate_id
             vehicle.dispatched_at = sim_time

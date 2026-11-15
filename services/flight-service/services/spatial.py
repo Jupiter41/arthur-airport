@@ -125,3 +125,16 @@ def walking_time_to_gate(
     ay = airside.get("y", 400)
 
     return walking_time_minutes(ax, ay, gx, gy, special_assistance)
+
+def taxi_durations(
+    runway_id: Optional[str],
+    gate_id: Optional[str],
+    runway_positions: dict[str, dict],
+    gate_positions: dict[str, dict],
+) -> dict[str, float]:
+    """Read-only projection of the FSM taxi durations for one flight (minutes)."""
+    initial, total = taxi_time_from_positions(
+        runway_positions.get(runway_id) if runway_id else None,
+        gate_positions.get(gate_id) if gate_id else None,
+    )
+    return {"taxi_initial_minutes": round(initial, 3), "taxi_total_minutes": round(total, 3)}

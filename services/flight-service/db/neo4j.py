@@ -183,9 +183,9 @@ async def get_all_flights(
     RETURN f {{
         .id, .flight_number, .airline_code, .direction, .status,
         .aircraft_type, .origin_iata, .destination_iata,
-        .scheduled_time, .estimated_time, .delay_minutes,
+        .scheduled_time, .estimated_time, .actual_time, .delay_minutes,
         .pax_count, .seat_capacity, .flight_type, .route_category,
-        .flight_type, .route_category, .flight_duration_minutes
+        .flight_duration_minutes, .aircraft_registration
     }} AS flight,
     COALESCE(g.id, f.gate_id) AS gate_id,
     r.id AS runway_id,
@@ -633,6 +633,8 @@ async def get_all_gates(terminal: str | None = None, status: str | None = None) 
            g.jetbridge AS jetbridge,
            g.international_capable AS international_capable,
            g.wide_body_capable AS wide_body_capable,
+           g.position_x AS position_x,
+           g.position_y AS position_y,
            f.flight_number AS flight_number,
            f.estimated_time AS occupied_until
     ORDER BY g.id
@@ -650,6 +652,8 @@ async def get_all_gates(terminal: str | None = None, status: str | None = None) 
             "jetbridge": r["jetbridge"],
             "international_capable": r["international_capable"],
             "wide_body_capable": r["wide_body_capable"],
+            "position_x": r["position_x"],
+            "position_y": r["position_y"],
             "flight_number": r["flight_number"],
             "occupied_until": r["occupied_until"],
         })
@@ -732,6 +736,9 @@ async def get_all_runways() -> list[dict]:
            r.status AS status,
            r.current_use AS current_use,
            r.ils AS ils,
+           r.length_m AS length_m,
+           r.threshold_x AS threshold_x, r.threshold_y AS threshold_y,
+           r.end_x AS end_x, r.end_y AS end_y,
            arr_count,
            dep_count
     ORDER BY r.id
@@ -747,6 +754,9 @@ async def get_all_runways() -> list[dict]:
             "status": rec["status"],
             "current_use": rec["current_use"],
             "ils": rec["ils"],
+            "length_m": rec["length_m"],
+            "threshold_x": rec["threshold_x"], "threshold_y": rec["threshold_y"],
+            "end_x": rec["end_x"], "end_y": rec["end_y"],
             "arrivals_queued": rec["arr_count"],
             "departures_queued": rec["dep_count"],
         })

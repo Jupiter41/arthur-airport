@@ -7,6 +7,7 @@ from tests.conftest import import_service_module
 
 _rq = import_service_module("flight", "services.runway_queue")
 RunwayQueue = _rq.RunwayQueue
+separation_seconds = _rq.separation_seconds
 
 
 BASE_TIME = datetime(2025, 6, 15, 10, 0, 0)
@@ -123,3 +124,22 @@ class TestAssignSlots:
         takeoffs = sum(1 for a in assigned if a["operation"] == "takeoff")
         # IMC should prioritize arrivals
         assert landings >= takeoffs
+
+
+def test_snapshot_reports_owner_order_and_wake_separation_without_mutating():
+    from datetime import datetime
+    q = RunwayQueue()
+    q.enqueue_arrival("late", "2026-01-01T12:10:00", aircraft_type="A320")
+    q.enqueue_arrival("heavy", "2026-01-01T12:05:00", aircraft_type="B77W")
+    q.enqueue_arrival("mayday", "2026-01-01T12:20:00", is_emergency=True, aircraft_type="A320")
+    q.enqueue_departure("dep", "2026-01-01T12:00:00", aircraft_type="A320")
+    q.remove("late")
+    snap = q.snapshot(datetime(2026, 1, 1, 12, 0))
+    assert [a["flight_id"] for a in snap["arrivals"]] == ["mayday", "heavy"]
+    assert snap["arrivals"][0]["emergency"] is True
+    assert snap["arrivals"][0]["wake_separation_seconds"] is None  # nothing landed yet
+    assert snap["arrivals"][1]["weight_category"] == "HEAVY"
+    assert snap["arrivals"][1]["wake_separation_seconds"] == separation_seconds("A320", "B77W")
+    assert [d["flight_id"] for d in snap["departures"]] == ["dep"]
+    assert snap["runway_occupied"] is False
+    assert q.snapshot(datetime(2026, 1, 1, 12, 0)) == snap  # read-only

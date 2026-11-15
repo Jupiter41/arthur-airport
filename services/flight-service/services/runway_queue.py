@@ -347,6 +347,46 @@ class RunwayQueue:
 
         return assigned
 
+    def snapshot(self, sim_time: datetime | None) -> dict:
+        """Read-only view of the sequencing state, in owner priority order.
+
+        Mutates nothing: heaps are copied and sorted; lazily removed items are
+        skipped exactly as `_assign_from_queue` would skip them.
+        """
+        def ordered(queue: list[RunwayQueueItem], last_type: str) -> list[dict]:
+            rows, leader = [], last_type
+            for item in sorted(queue):
+                if item.flight_id not in self._queued_flights:
+                    continue
+                rows.append({
+                    "position": len(rows) + 1,
+                    "flight_id": item.flight_id,
+                    "aircraft_type": item.aircraft_type,
+                    "weight_category": get_weight_category(item.aircraft_type),
+                    "estimated_time": item.estimated_time,
+                    "emergency": item.priority[0] == 0,
+                    "wake_separation_seconds": separation_seconds(leader, item.aircraft_type) if leader else None,
+                })
+                leader = item.aircraft_type
+            return rows
+
+        free_at = self._runway_free_at
+        return {
+            "sim_time": sim_time.isoformat() if sim_time else None,
+            "weather_category": self._weather_category,
+            "ils_required": self._ils_required,
+            "arrival_rate": self._arrival_rate,
+            "departure_rate": self._departure_rate,
+            "capacity_per_hour": self.capacity_per_hour,
+            "current_rate": self.current_rate,
+            "runway_free_at": free_at.isoformat() if free_at else None,
+            "runway_occupied": bool(sim_time and self._runway_occupied(sim_time)),
+            "last_arrival_type": self._last_arrival_type or None,
+            "last_departure_type": self._last_departure_type or None,
+            "arrivals": ordered(self._arrival_queue, self._last_arrival_type),
+            "departures": ordered(self._departure_queue, self._last_departure_type),
+        }
+
     @property
     def arrivals_queued(self) -> int:
         return len([i for i in self._arrival_queue if i.flight_id in self._queued_flights])
