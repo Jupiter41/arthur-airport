@@ -130,3 +130,32 @@ def test_timeline_filtering_pagination_and_detail(monkeypatch):
         assert client.get("/api/v1/analysis/decisions?offset=1").json()["decisions"] == []
         assert client.get("/api/v1/analysis/decisions/bn-1").status_code == 200
         assert client.get("/api/v1/analysis/decisions/missing").status_code == 404
+
+
+def test_search_and_terminal_filter_before_pagination(monkeypatch):
+    routes = import_service_module("analysis", "routers.decisions")
+    history = importlib.import_module("services.decision_history")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    base = history.timeline({"id": "bn-1", "bottleneck": discovery()["bottlenecks"][0], "recommendations": [], "resolved_at": None}, None)
+    rows = []
+    for index, zone in enumerate(["Terminal B", "terminal-A", "security-A", "baggage-sorting"]):
+        item = deepcopy(base)
+        item.update(id=f"decision-{index}", description=f"Lane proposal {index}")
+        item["bottleneck"]["zone"] = zone
+        item["parameters"] = {}
+        rows.append(item)
+
+    async def read():
+        return deepcopy(rows)
+
+    monkeypatch.setattr(history, "list_timelines", read)
+    app = FastAPI()
+    app.include_router(routes.router, prefix="/api/v1/analysis")
+    with TestClient(app) as client:
+        result = client.get("/api/v1/analysis/decisions?terminal=A&q=LANE&limit=1&offset=1").json()
+        assert result["total"] == 2
+        assert result["decisions"][0]["id"] == "decision-2"
+        assert client.get("/api/v1/analysis/decisions?q=proposal%203").json()["total"] == 1
+        assert client.get("/api/v1/analysis/decisions?terminal=D").status_code == 422
+        assert client.get("/api/v1/analysis/decisions?q=" + "a" * 201).status_code == 422

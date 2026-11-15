@@ -1,4 +1,10 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { flightsApi } from "../../hooks/useApi";
+import { normalizeTerminal } from "../Airport3D/model";
+import { useSimStore } from "../../stores/simStore";
+import { STATUS_OPTIONS } from "./constants";
 import { useFlightStore } from "../../stores/flightStore";
 import { useFlightBoardQueries } from "../../hooks/useQueries";
 import { useWeatherStore } from "../../stores/weatherStore";
@@ -21,13 +27,22 @@ export default function FlightBoardPage() {
   const setFlights = useFlightStore((s) => s.setFlights);
   const setRunways = useFlightStore((s) => s.setRunways);
   const setCurrent = useWeatherStore((s) => s.setCurrent);
-  const [selectedFlight, setSelectedFlight] = useState<Flight | null>(null);
-  const [bottomExpanded, setBottomExpanded] = useState(true);
+  const [params,setParams] = useSearchParams();
+  const selectedId=params.get("flight");
+  const [bottomExpanded, setBottomExpanded] = useState(false);
+  const simTime=useSimStore(s=>s.status.sim_time);
+  const detail=useQuery({queryKey:["flights","detail",selectedId],queryFn:()=>flightsApi.get(selectedId!) as Promise<Flight>,enabled:!!selectedId,refetchInterval:30000});
+  useEffect(()=>{if(detail.data) useFlightStore.getState().upsertFlight(detail.data);},[detail.data]);
+  const selectedFlight=selectedId ? flights[selectedId] : undefined;
+  const layout=params.get("layout")??"all";
+  const view=params.get("view")??"all";
+  function patch(key:string,value:string) {const next=new URLSearchParams(params); if(value) next.set(key,value); else next.delete(key); next.delete("page"); next.delete("departure_page"); next.delete("arrival_page"); setParams(next,{replace:true});}
+  function select(flight:Flight) {patch("flight",flight.id);}
 
   const queries = useFlightBoardQueries();
 
   useEffect(() => {
-    if (queries.flights.data) setFlights(queries.flights.data);
+    if (queries.flights.data) { const current=selectedId ? useFlightStore.getState().flights[selectedId] : undefined; setFlights(current && !queries.flights.data.some(f=>f.id===current.id) ? [...queries.flights.data,current] : queries.flights.data); }
   }, [queries.flights.data, setFlights]);
 
   useEffect(() => {
@@ -42,17 +57,15 @@ export default function FlightBoardPage() {
   const hasError = queries.flights.isError && Object.keys(flights).length === 0;
 
   const flightList = Object.values(flights);
-  const departures = useMemo(
-    () => flightList.filter((f) => f.direction === "departure"),
-    [flightList],
-  );
-  const arrivals = useMemo(
-    () => flightList.filter((f) => f.direction === "arrival"),
-    [flightList],
-  );
-
-  const handleSelect = useCallback((f: Flight) => setSelectedFlight(f), []);
-
+  const filtered = flightList.filter(f => {
+    const q=(params.get("q")??"").toLowerCase();
+    if(q&&!`${f.flight_number} ${f.origin_iata} ${f.destination_iata} ${f.gate_id??""}`.toLowerCase().includes(q)) return false;
+    if(params.get("terminal")&&params.get("terminal")!=="all"&&normalizeTerminal(f.terminal)!==params.get("terminal")) return false;
+    if(params.get("status")&&f.status!==params.get("status")) return false;
+    if(view==="delayed"&&f.delay_minutes<=15) return false;
+    if(view==="soon"&&(f.direction!=="departure"||Date.parse(f.estimated_time||f.scheduled_time)<Date.parse(simTime)||Date.parse(f.estimated_time||f.scheduled_time)>Date.parse(simTime)+3600000)) return false;
+    return true;
+  });
   const handleExport = useCallback(
     (format: ExportFormat) => {
       const rows = flightList.map((f) => ({
@@ -78,7 +91,9 @@ export default function FlightBoardPage() {
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="page-container space-y-4">
+      <header className="flex flex-wrap justify-between gap-3"><div><h1>Flights</h1><p className="text-sm text-gray-400 mt-1">Current movements · times in UTC · up to 500 loaded records</p></div><ExportMenu onExport={handleExport} /></header>
+      <div className="flex flex-wrap gap-3 items-end"><label className="text-xs text-gray-400">Search<input aria-label="Search flights" value={params.get("q")??""} onChange={e=>patch("q",e.target.value)} placeholder="Flight, route or gate" className="block mt-1" /></label><label className="text-xs text-gray-400">Terminal<select className="block mt-1" value={params.get("terminal")??"all"} onChange={e=>patch("terminal",e.target.value)}><option value="all">All terminals</option>{["A","B","C"].map(t=><option key={t}>{t}</option>)}</select></label><label className="text-xs text-gray-400">Status<select className="block mt-1" value={params.get("status")??""} onChange={e=>patch("status",e.target.value)}><option value="">All statuses</option>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select></label><label className="text-xs text-gray-400">Saved view<select className="block mt-1" value={view} onChange={e=>patch("view",e.target.value)}><option value="all">All movements</option><option value="delayed">Delayed &gt;15 min</option><option value="soon">Departing in next hour</option></select></label><label className="text-xs text-gray-400">Layout<select className="block mt-1" value={layout} onChange={e=>patch("layout",e.target.value)}><option value="all">All flights</option><option value="departure">Departures</option><option value="arrival">Arrivals</option><option value="split">Split board</option></select></label></div>
       <CriticalBanner />
 
       {isLoading && (
@@ -109,26 +124,9 @@ export default function FlightBoardPage() {
 
       {!isLoading && !hasError && (
       <>
-      {/* FIDS panels */}
-      <div className="flex-1 grid grid-cols-2 gap-px bg-gray-700 min-h-0">
-        <div className="bg-gray-900 overflow-hidden">
-          <FIDSPanel
-            flights={departures}
-            direction="departure"
-            flashIds={flashIds}
-            onSelect={handleSelect}
-          />
-        </div>
-        <div className="bg-gray-900 overflow-hidden">
-          <FIDSPanel
-            flights={arrivals}
-            direction="arrival"
-            flashIds={flashIds}
-            onSelect={handleSelect}
-          />
-        </div>
+      <div className={layout === "split" ? "grid grid-cols-1 2xl:grid-cols-2 gap-5" : ""}>
+        {layout === "split" ? (["departure","arrival"] as const).map(direction=><FIDSPanel key={direction} flights={filtered.filter(f=>f.direction===direction)} direction={direction} flashIds={flashIds} onSelect={select}/>) : <FIDSPanel flights={layout === "departure"||layout === "arrival" ? filtered.filter(f=>f.direction===layout) : filtered} direction={layout === "departure"||layout === "arrival" ? layout : "all"} flashIds={flashIds} onSelect={select}/>}
       </div>
-
       {/* Bottom bar — collapsible */}
       <div className="bg-gray-800 border-t border-gray-700/80">
         <div className="flex items-center justify-between px-3 py-2">
@@ -174,16 +172,13 @@ export default function FlightBoardPage() {
         )}
       </div>
 
+      {selectedId && detail.isError && !selectedFlight && <p role="alert" className="card">Selected flight unavailable. <button onClick={()=>detail.refetch()}>Retry</button></p>}
       {/* Detail drawer */}
       {selectedFlight && (
         <>
-          <div
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => setSelectedFlight(null)}
-          />
           <FlightDetailDrawer
             flight={selectedFlight}
-            onClose={() => setSelectedFlight(null)}
+            onClose={() => patch("flight","")}
           />
         </>
       )}

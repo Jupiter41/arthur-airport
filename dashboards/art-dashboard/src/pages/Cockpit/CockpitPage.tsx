@@ -1,13 +1,16 @@
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { flightsApi, incidentsApi, passengersApi, baggageApi } from "../../hooks/useApi";
 import { useFlightStore } from "../../stores/flightStore";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { useConnectionStore } from "../../stores/connectionStore";
 import type { Flight, Gate, Runway, Incident, PassengerFlowSummary, BaggageZone } from "../../types";
-import { DecisionWorkspace } from "../Decisions/DecisionWorkspace";
-import { TeachingRunbook } from "../Decisions/TeachingRunbook";
+import { formatTime } from "../FlightBoard/helpers";
+import { normalizeGate } from "../Airport3D/model";
+import { useSimStore } from "../../stores/simStore";
+import { normalizeTerminal } from "../Airport3D/model";
+
 import { ApprovalQueue } from "../IncidentConsole/ApprovalQueue";
 
 export default function CockpitPage() {
@@ -18,7 +21,7 @@ export default function CockpitPage() {
   const wsConnected = useConnectionStore(s => s.wsConnected);
   // REST reconciles the live stores; components do not read a parallel copy.
   const flightLoad = useQuery({ queryKey: ["flights", "cockpit"], queryFn: async () => (await flightsApi.list({ limit: "500" })).flights as Flight[], refetchInterval: 30_000 });
-  const gateLoad = useQuery({ queryKey: ["gates"], queryFn: async () => (await flightsApi.gates()).gates as Gate[], refetchInterval: 30_000 });
+  const gateLoad = useQuery({ queryKey: ["gates"], queryFn: async () => (await flightsApi.gates()).gates.map(g=>normalizeGate(g as Gate)), refetchInterval: 30_000 });
   const runwayLoad = useQuery({ queryKey: ["runways"], queryFn: async () => (await flightsApi.runways()).runways as Runway[], refetchInterval: 15_000 });
   const incidentLoad = useQuery({ queryKey: ["incidents", "active"], queryFn: async () => (await incidentsApi.list({ status: "active,contained" })).incidents as Incident[], refetchInterval: 30_000 });
   const passenger = useQuery({ queryKey: ["passengers", "summary"], queryFn: () => passengersApi.summary() as Promise<PassengerFlowSummary>, refetchInterval: 5000 });
@@ -34,46 +37,37 @@ export default function CockpitPage() {
   const degraded = [flightLoad.isError && "Flights", gateLoad.isError && "Gates", runwayLoad.isError && "Runways", incidentLoad.isError && "Incidents", passenger.isError && "Passengers", baggage.isError && "Baggage"].filter(Boolean);
   const metric = (ready: boolean, value: number) => ready ? String(value) : "—";
   const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-  return <div className="h-full overflow-y-auto p-4 md:p-6 space-y-6 max-w-[1600px] mx-auto">
-    <header className="flex flex-wrap items-end justify-between gap-4">
-      <div><p className="text-xs uppercase tracking-[0.22em] text-sky-300">Arthur International · KART</p><h1 className="text-3xl mt-2">Airport operations</h1><p className="text-sm text-gray-400 mt-2">See the signal. Understand the decision. Verify the outcome.</p></div>
-      <div className={`text-xs rounded-full border px-3 py-2 ${wsConnected ? "border-emerald-400/30 text-emerald-300" : "border-amber-400/30 text-amber-300"}`}>{wsConnected ? "Live event stream connected" : "Event stream disconnected · REST reconciliation continues"}</div>
-    </header>
-    {degraded.length > 0 && <p role="alert" className="border border-amber-400/30 bg-amber-400/5 rounded-xl p-3 text-sm text-amber-200">Unavailable or stale observations: {degraded.join(", ")}. Showing the last successful observations where available.</p>}
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3" aria-label="Airport indicators">
-      {[["Active flights", metric(!!flightLoad.data, activeFlights.length), "Current flight state"], ["Delayed flights", metric(!!flightLoad.data, activeFlights.filter(f => f.delay_minutes > 15).length), "More than 15 min"], ["Peak security wait", waits.length ? `${Math.max(...waits).toFixed(1)} min` : "—", "Observed terminal wait"], ["Active incidents", metric(!!incidentLoad.data, activeIncidents.length), "Includes contained incidents"]].map(([label, value, note]) => <div key={label} className="card"><p className="text-xs text-gray-400">{label}</p><p className="font-mono text-3xl mt-2 text-gray-100">{value}</p><p className="text-[11px] text-gray-500 mt-2">{note}</p></div>)}
+  const [params, setParams] = useSearchParams();
+  const scope = params.get("terminal") ?? "all";
+  const time = useSimStore(s => s.status.sim_time);
+  const seconds = Date.parse(time);
+  const terminalEntries = Object.entries(security ?? {}).filter(([key]) => scope === "all" || normalizeTerminal(key) === scope);
+  const issues = [
+    ...activeIncidents.filter(i => scope === "all" || i.location.toUpperCase().includes(`-${scope}`) || i.location === "airport-wide").map(i => ({ id: i.id, priority: severityOrder[i.severity] ?? 4, title: i.title || i.type.replace(/_/g," "), location: i.location, detail: i.description, href: `/incidents?incident=${encodeURIComponent(i.id)}`, action: "Inspect incident" })),
+    ...terminalEntries.filter(([,v]) => v.wait_minutes >= 20 || v.frozen).map(([key,v]) => ({ id: key, priority: v.frozen ? 1 : 2, title: v.frozen ? "Security lanes frozen" : "Security wait above 20 min", location: `Terminal ${normalizeTerminal(key)}`, detail: `${v.wait_minutes.toFixed(1)} min wait · ${v.queue_length} queued · ${v.lanes_open} lanes`, href: `/passengers?terminal=${normalizeTerminal(key)}&mode=board`, action: "Review queue & proposals" })),
+    ...(baggage.data ?? []).filter(z => z.utilisation_pct > 90 || z.status === "offline").map(z => ({ id: z.zone_id, priority: z.status === "offline" ? 1 : 2, title: z.status === "offline" ? "Conveyor offline" : "Conveyor above 90% capacity", location: z.zone_id, detail: `${z.items} bags · ${z.utilisation_pct.toFixed(0)}% utilisation`, href: `/baggage?entity=${encodeURIComponent(z.zone_id)}`, action: "Inspect conveyor" })),
+  ].sort((a,b) => a.priority-b.priority || a.location.localeCompare(b.location));
+  const upcoming = activeFlights.filter(f => (scope === "all" || normalizeTerminal(f.terminal) === scope) && Date.parse(f.estimated_time || f.scheduled_time) >= seconds && Date.parse(f.estimated_time || f.scheduled_time) <= seconds + 3600000).sort((a,b) => Date.parse(a.estimated_time || a.scheduled_time)-Date.parse(b.estimated_time || b.scheduled_time));
+  return <div className="page-container space-y-6">
+    <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="section-label">Arthur International · shared simulation</p><h1 className="mt-1">Airport overview</h1><p className="text-sm text-gray-400 mt-2">Current exceptions, airport conditions and actions awaiting a response.</p></div><label className="text-sm">Terminal <select value={scope} onChange={e => { const next = new URLSearchParams(params); next.set("terminal",e.target.value); setParams(next); }}><option value="all">All terminals</option>{["A","B","C"].map(t => <option key={t}>{t}</option>)}</select></label></header>
+    {degraded.length > 0 && <p role="alert" className="border border-amber-400/30 rounded-md p-3 text-sm text-amber-300">Unavailable or stale: {degraded.join(", ")}. Last successful observations remain visible where available.</p>}
+    {!wsConnected && <p className="text-sm text-gray-400">Live connection interrupted. Periodic observation requests continue.</p>}
+    <div className="flex flex-wrap gap-x-8 gap-y-3 py-3 border-y border-panel-border" aria-label="Airport-wide indicators">
+      {[["Active flights",metric(!!flightLoad.data,activeFlights.length),"/flights"],["Delayed >15 min",metric(!!flightLoad.data,activeFlights.filter(f=>f.delay_minutes>15).length),"/flights?view=delayed"],["Peak security wait", waits.length ? `${Math.max(...waits).toFixed(1)} min` : "—","/passengers"],["Active incidents",metric(!!incidentLoad.data,activeIncidents.length),"/incidents"]].map(([label,value,href]) => <Link key={label} to={href} className="hover:text-accent"><span className="block text-xs text-gray-400">{label} · airport-wide</span><strong className="block text-2xl tabular-nums mt-1">{value}</strong></Link>)}
     </div>
-    <div className="grid xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] gap-4 items-start">
-      <section className="card space-y-5" aria-label="Airport operational map">
-        <div className="flex justify-between"><h2 className="text-base">Airfield &amp; terminal pulse</h2><Link to="/ground-ops" className="text-xs text-sky-300">Ground operations →</Link></div>
-        <div className="space-y-2">{runways.map(r => <div key={r.runway_id} className="flex gap-3 items-center"><span className="text-[10px] font-mono w-20 text-gray-400">{r.runway_id}</span><div className="flex-1 bg-panel-active rounded border border-panel-border border-dashed h-8 flex items-center justify-center"><span className={`text-xs ${r.status === "closed" ? "text-rose-300" : "text-gray-300"}`}>{r.status} · {r.current_rate ?? "—"}/{r.capacity_per_hour ?? "—"} ops/h</span></div></div>)}{!runways.length && <p className="text-xs text-gray-500">Runway observations unavailable.</p>}</div>
-        <div className="border-t border-dashed border-panel-border" />
-        <div className="grid sm:grid-cols-3 gap-3">{["A", "B", "C"].map(terminal => {
-          const terminalGates = gates.filter(g => (g.terminal || g.gate_id?.[0] || "").replace(/^T-|^Terminal /, "") === terminal);
-          const sec = security?.[`terminal_${terminal.toLowerCase()}`] ?? security?.[terminal] ?? security?.[`Terminal ${terminal}`];
-          return <div key={terminal} className="bg-panel-active/70 rounded-xl p-3 border border-panel-border/60">
-            <div className="flex justify-between items-center"><h3 className="text-sm">Terminal {terminal}</h3><Link to="/passengers" className="text-xs text-sky-300">Flow ↗</Link></div>
-            <p className={`text-xs mt-3 ${sec && sec.wait_minutes >= 20 ? "text-amber-300" : "text-gray-400"}`}>{sec ? `${sec.wait_minutes.toFixed(1)} min · ${sec.queue_length} queued · ${sec.lanes_open} lanes` : "Security unavailable"}</p>
-            <div className="flex gap-1 flex-wrap mt-3">{terminalGates.map(g => {
-              const occupied = !!g.flight_id || activeFlights.some(f => f.gate_id === g.gate_id);
-              const unavailable = ["closed", "maintenance", "offline"].includes(g.status);
-              return <span key={g.gate_id} title={`${g.gate_id}: ${unavailable ? g.status : occupied ? "occupied" : "available"}`} className={`h-3 w-3 rounded-sm ${unavailable ? "bg-rose-400/70" : occupied ? "bg-sky-400/70" : "bg-gray-600"}`} />;
-            })}</div><p className="text-[10px] text-gray-500 mt-2">{terminalGates.length ? `${terminalGates.length} gates observed` : "Gate observations unavailable"}</p>
-          </div>;
-        })}</div>
-        <p className="text-[10px] text-gray-500">Schematic · gates: blue occupied / gray available / red unavailable</p>
-        <div className="flex gap-2 items-center overflow-x-auto pb-1"><Link to="/baggage" className="text-xs text-orange-300 shrink-0">Conveyor zones →</Link>{baggage.data?.map(zone => <span key={zone.zone_id} className={`text-[10px] px-2 py-1 border rounded whitespace-nowrap ${zone.utilisation_pct > 90 ? "border-amber-400/40 text-amber-200" : "border-panel-border text-gray-400"}`}>{zone.zone_id} · {zone.items} bags · {zone.utilisation_pct.toFixed(0)}%</span>)}{!baggage.data?.length && <span className="text-xs text-gray-500">No conveyor observations available</span>}</div>
+    <div className="grid xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-5 items-start">
+      <section className="card space-y-4" aria-label="Needs attention"><div className="flex justify-between"><h2>Needs attention</h2><span className="text-xs text-gray-400">Severity, then location</span></div>
+        <div className="max-h-[380px] overflow-y-auto pr-1">{issues.map(issue => <Link key={issue.id} to={issue.href} className="block border-t border-panel-border py-3 hover:bg-panel"><div className="flex justify-between gap-3"><h3>{issue.title}</h3><span className={issue.priority <= 1 ? "text-red-400 text-xs" : "text-amber-300 text-xs"}>{issue.priority === 0 ? "Critical" : issue.priority === 1 ? "High" : "Review"}</span></div><p className="text-sm mt-1">{issue.location}</p><p className="text-sm text-gray-400 mt-1">{issue.detail}</p><p className="text-accent text-sm mt-3">{issue.action} →</p></Link>)}</div>
+        {!issues.length && <p className="text-gray-400 text-sm">{degraded.length ? "No exceptions in available observations. Missing data prevents an all-clear assessment." : flightLoad.isLoading || passenger.isLoading || incidentLoad.isLoading ? "Loading airport observations…" : "No exceptions above the displayed thresholds in the latest observations."}</p>}
+        <p className="text-xs text-gray-400">Security ≥20 min or frozen; conveyor &gt;90% or offline; active incidents. Counts use current observations, not forecasts.</p>
       </section>
-      <aside className="space-y-4">
-        <section className="card space-y-3"><div className="flex justify-between"><h2 className="text-sm">Active incidents</h2><Link to="/incidents" className="text-xs text-sky-300">Console →</Link></div>
-          {activeIncidents.sort((a, b) => (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4)).slice(0, 5).map(i => <Link key={i.id} to={`/decisions?incident_id=${encodeURIComponent(i.id)}`} className="block text-sm border-l-2 border-rose-400 pl-3 py-1 hover:bg-panel"><p>{i.description || i.type.replace(/_/g, " ")}</p><p className="text-[10px] text-gray-500 mt-1">{i.location} · {i.severity} · trace decisions →</p></Link>)}
-          {!activeIncidents.length && <p className="text-xs text-gray-500">{incidentLoad.data ? "No active incidents in the latest observation." : "Incident observations unavailable."}</p>}
-        </section>
-        <section className="card"><ApprovalQueue pendingOnly /></section>
-      </aside>
+      <section className="card space-y-4" aria-label="Airport context"><div className="flex justify-between"><h2>Airfield & terminals</h2><Link className="text-sm text-accent" to="/ground-ops?mode=map">Open map →</Link></div>
+        <div className="grid sm:grid-cols-2 gap-3">{runways.map(r => <Link key={r.runway_id} to={`/ground-ops?mode=map&entity=${encodeURIComponent(r.runway_id)}`} className="block bg-panel-active border border-dashed border-panel-border rounded-md p-3"><div className="flex justify-between gap-3"><span className="font-mono">{r.runway_id}</span><span className={r.status === "closed" ? "text-red-400" : "text-gray-300"}>{r.status}</span></div><p className="text-xs text-gray-400 mt-1">{r.current_rate ?? "—"}/{r.capacity_per_hour ?? "—"} movements/h</p></Link>)}</div>
+        {!runways.length && <p className="text-sm text-gray-400">Runway observations unavailable.</p>}
+        <div className="grid sm:grid-cols-3 gap-3">{["A","B","C"].filter(t => scope === "all" || t === scope).map(t => { const gs=gates.filter(g=>normalizeTerminal(g.terminal || g.gate_id?.[0] || "")===t); const sec=Object.entries(security??{}).find(([key])=>normalizeTerminal(key)===t)?.[1]; return <Link key={t} className="rounded-md border border-panel-border p-3 hover:bg-panel" to={`/passengers?terminal=${t}`}><h3>Terminal {t}</h3><p className="text-sm mt-2">{sec ? `${sec.wait_minutes.toFixed(1)} min wait` : "Wait unavailable"}</p><p className="text-xs text-gray-400 mt-2">{gateLoad.data ? `${gs.filter(g=>g.flight_id || activeFlights.some(f=>f.gate_id===g.gate_id)).length}/${gs.length} gates occupied` : "Gates unavailable"}</p></Link>; })}</div>
+        <p className="text-xs text-gray-400">Schematic airport context · select a terminal or runway to investigate.</p>
+      </section>
     </div>
-    <Link to="/ground-ops" className="card block border-cyan-300/20 hover:bg-panel-active"><p className="text-xs uppercase tracking-widest text-cyan-300">Live operations →</p><p className="text-sm text-gray-400 mt-2">Ground operations, passengers and baggage each offer 3D on/off. 3D is on by default.</p></Link>
-    <DecisionWorkspace compact />
-    <TeachingRunbook />
+    <div className="grid xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-5 items-start"><section className="card space-y-3"><h2>Next 60 simulated minutes</h2><p className="text-xs text-gray-400">Scheduled/estimated movements from the loaded flight board · not a forecast. Simulation time: {time || "unavailable"}.</p><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead><tr className="text-gray-400"><th className="py-2">Flight</th><th>Time · UTC</th><th>Gate</th><th>Status</th></tr></thead><tbody>{upcoming.slice(0,10).map(f=><tr key={f.id} className="border-t border-panel-border"><td className="py-3"><Link className="text-accent" to={`/flights?flight=${encodeURIComponent(f.id)}`}>{f.flight_number}</Link></td><td>{formatTime(f.estimated_time||f.scheduled_time)}</td><td>{f.gate_id??"Unassigned"}</td><td>{f.status}</td></tr>)}</tbody></table></div>{!upcoming.length&&<p className="text-gray-400">{flightLoad.data ? "No loaded movements in this time window." : "Flight observations unavailable."}</p>}</section><section className="card"><ApprovalQueue pendingOnly /></section></div>
   </div>;
 }

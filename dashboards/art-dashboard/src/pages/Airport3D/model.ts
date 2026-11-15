@@ -39,7 +39,7 @@ export const QUALITY = {
 
 export const terminalY = (terminal: string) => ({ A: 150, B: 400, C: 650 })[terminal] ?? 400;
 export const gridPoint = (x: number, y: number, height = 0): Point => [(x - 500) / 5, height, (y - 500) / 5];
-export const normalizeTerminal = (value: string) => value.replace(/^T-|^Terminal |^terminal_/i, "").toUpperCase();
+export const normalizeTerminal = (value: string) => value.replace(/^(?:T-|terminal[-_ ]?)/i, "").toUpperCase();
 
 // Gate API historically returns `id`; accept both without rewriting owner data.
 export function normalizeGate(raw: Gate & { id?: string }): Gate {

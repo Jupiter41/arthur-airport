@@ -1,8 +1,9 @@
+import { useAccess } from "../../hooks/auth";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { analysisApi, type Approval } from "../../hooks/useApi";
 import { queryClient } from "../../queryClient";
-import { ACTION_ICON } from "./constants";
 
 /**
  * A9: human Approve/Reject queue for autonomous proposals.
@@ -14,6 +15,8 @@ import { ACTION_ICON } from "./constants";
  * rejects it.
  */
 export function ApprovalQueue({ pendingOnly = false }: { pendingOnly?: boolean }) {
+  const access=useAccess();
+  const canApprove=["approver","admin"].includes(access.role)&&(import.meta.env.VITE_PUBLIC_DEPLOYMENT!=="true"||access.controlling);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,7 +75,7 @@ export function ApprovalQueue({ pendingOnly = false }: { pendingOnly?: boolean }
         >
           <div className="flex items-center justify-between">
             <span className="text-sm text-white font-medium">
-              {ACTION_ICON[p.action_type] ?? "💡"} {p.description}
+              {p.description}
             </span>
             <span className="text-xs text-gray-400">
               {(p.confidence_score * 100).toFixed(0)}% conf.
@@ -85,17 +88,19 @@ export function ApprovalQueue({ pendingOnly = false }: { pendingOnly?: boolean }
             {p.status === "dispatched" ? "Awaiting execution" : p.status}
             {p.failure_reason ? `: ${p.failure_reason}` : ""}
           </div>
+          <Link className="text-accent text-xs block mt-2" to={`/decisions?decision=${encodeURIComponent(p.id)}`}>Review evidence & outcome →</Link>
+          {!canApprove && p.status === "pending" && <p className="text-xs text-gray-400 mt-2">Approval requires an approver account and control where enabled.</p>}
           {["pending", "approved"].includes(p.status) && <div className="flex items-center gap-2 mt-2">
             <button
               className="text-xs font-bold px-3 py-1 rounded bg-green-600 text-white hover:bg-green-500 disabled:opacity-50"
-              disabled={busy === p.id}
+              disabled={busy === p.id || !canApprove}
               onClick={() => act(() => analysisApi.approveProposal(p.id), p.id)}
             >
               {busy === p.id ? "..." : p.status === "approved" ? "Retry dispatch" : "Approve"}
             </button>
             {p.status === "pending" && <button
               className="text-xs font-bold px-3 py-1 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-50"
-              disabled={busy === p.id}
+              disabled={busy === p.id || !canApprove}
               onClick={() =>
                 act(
                   () => analysisApi.rejectProposal(p.id, "operator rejected"),

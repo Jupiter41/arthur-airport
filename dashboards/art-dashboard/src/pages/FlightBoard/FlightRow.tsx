@@ -21,7 +21,7 @@ export const FlightRow = memo(function FlightRow({
       onClick={onClick}
     >
       <td className="px-3 py-2">
-        <span className="font-bold text-white">{flight.flight_number}</span>
+        <button className="font-semibold text-accent" onClick={e => { e.stopPropagation(); onClick(); }} aria-label={`Inspect ${flight.flight_number}`}>{flight.flight_number}</button>
         <span className="ml-2 text-xs bg-gray-700 text-gray-300 px-1.5 rounded">
           {flight.airline_code}
         </span>
@@ -30,9 +30,7 @@ export const FlightRow = memo(function FlightRow({
         <FlightTypeBadge type={flight.flight_type} />
       </td>
       <td className="px-3 py-2 text-sm text-gray-300">
-        {flight.direction === "departure"
-          ? flight.destination_iata
-          : flight.origin_iata}
+        {flight.origin_iata} → {flight.destination_iata}
       </td>
       <td className="px-3 py-2 text-sm text-gray-400 font-mono">
         {flight.gate_id ?? "—"}
@@ -73,41 +71,7 @@ export const FlightRow = memo(function FlightRow({
       <td className="px-3 py-2">
         <StatusBadge status={flight.status} delay={flight.delay_minutes} direction={flight.direction} />
       </td>
-      <td className="px-3 py-2">
-        {flight.status === "boarding" && (
-          <div className="flex items-center gap-2">
-            <div className="w-20 bg-gray-700 rounded-full h-2">
-              <div
-                className="bg-green-500 h-2 rounded-full transition-all duration-700"
-                style={{
-                  width: `${flight.pax_count > 0 ? Math.round((flight.pax_boarded / flight.pax_count) * 100) : 0}%`,
-                }}
-              />
-            </div>
-            <span className="text-xs text-gray-400">
-              {flight.pax_boarded}/{flight.pax_count}
-            </span>
-          </div>
-        )}
-        {flight.direction === "arrival" &&
-          ["approach", "landed", "taxiing", "at_gate", "arrived"].includes(
-            flight.status,
-          ) && (
-            <span className="text-xs text-gray-400">
-              {flight.pax_count > 0 ? `${flight.pax_count} pax` : "—"}
-            </span>
-          )}
-        {flight.direction === "departure" &&
-          ["airborne", "arrived"].includes(flight.status) &&
-          flight.arrival_estimated_time && (
-            <span className="text-xs text-gray-400">
-              ETA {formatTime(flight.arrival_estimated_time)}
-              {flight.status === "arrived" && (
-                <span className="ml-1 text-green-400">✓</span>
-              )}
-            </span>
-          )}
-      </td>
+      <td className="px-3 py-2 tabular-nums">{flight.delay_minutes > 0 ? <span className="text-amber-300">+{flight.delay_minutes} min</span> : <span className="text-gray-400">On time</span>}</td>
     </tr>
   );
 });

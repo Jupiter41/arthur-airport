@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { DecisionWorkspace } from "../Decisions/DecisionWorkspace";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { AutonomousPanel } from "../../components/AutonomousPanel";
 import type {
@@ -16,7 +18,6 @@ import { exportData } from "../../utils/exportData";
 import WhatIfPanel from "./WhatIfPanel";
 import {
   NLQueryPanel,
-  NLInjectPanel,
   AnomalyPanel,
   NarrationFeed,
   ReportGenerator,
@@ -26,7 +27,6 @@ import { IncidentActions } from "./IncidentActions";
 import { CascadeVisualizerPanel, CascadeModal } from "./CascadeTree";
 import { ProtocolBar } from "./ProtocolBar";
 import { AlertFeed } from "./AlertFeed";
-import { InjectModal } from "./InjectModal";
 import { ResolvedList } from "./ResolvedList";
 import { RecommendationFeed } from "./RecommendationFeed";
 import { ApprovalQueue } from "./ApprovalQueue";
@@ -41,10 +41,12 @@ export default function IncidentConsolePage() {
   const setIncidents = useIncidentStore((s) => s.setIncidents);
   const upsertIncident = useIncidentStore((s) => s.upsertIncident);
   const setAlerts = useIncidentStore((s) => s.setAlerts);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [params,setParams]=useSearchParams();
+  const selectedId=params.get("incident");
+  const setSelectedId=(id:string)=>{const next=new URLSearchParams(params);next.set("incident",id);setParams(next,{replace:true});};
   const [cascadeViewId, setCascadeViewId] = useState<string | null>(null);
-  const [injectOpen, setInjectOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>("ops");
+  const activeTab=(params.get("tab")??"ops") as TabId;
+  const setActiveTab=(tab:TabId)=>{const next=new URLSearchParams(params);next.set("tab",tab);setParams(next,{replace:true});};
 
   const queries = useIncidentConsoleQueries();
   // Bottlenecks and recommendations: React Query is the single source of
@@ -55,7 +57,7 @@ export default function IncidentConsolePage() {
   useEffect(() => {
     const active = queries.active.data ?? [];
     const resolved = queries.resolved.data ?? [];
-    if (active.length > 0 || resolved.length > 0) {
+    if (queries.active.data && queries.resolved.data) {
       setIncidents([...active, ...resolved]);
     }
   }, [queries.active.data, queries.resolved.data, setIncidents]);
@@ -100,7 +102,7 @@ export default function IncidentConsolePage() {
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-white">Incident Operations</h2>
         <div className="flex items-center gap-3">
           <ExportMenu
@@ -120,17 +122,13 @@ export default function IncidentConsolePage() {
               exportData(rows, "incidents", fmt);
             }}
           />
-          <button
-            className="text-sm font-bold px-4 py-2 rounded bg-red-600 text-white hover:bg-red-500"
-            onClick={() => setInjectOpen(true)}
-          >
-            + INJECT
-          </button>
+          {import.meta.env.VITE_PUBLIC_DEPLOYMENT!=="true" && <Link className="btn-secondary text-sm" to="/lab">Open incident lab</Link>}
         </div>
       </div>
 
+      {(queries.active.isError || queries.resolved.isError) && <p role="alert" className="text-amber-300">Incident observations unavailable or stale. Empty lists do not establish an all-clear state.</p>}
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-gray-700 pb-0">
+      <div className="flex flex-wrap gap-1 border-b border-gray-700 pb-0">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -141,7 +139,7 @@ export default function IncidentConsolePage() {
                 : "text-gray-400 hover:text-white hover:bg-gray-800/50"
             }`}
           >
-            <span className="mr-1.5">{tab.icon}</span>
+
             {tab.label}
           </button>
         ))}
@@ -150,13 +148,13 @@ export default function IncidentConsolePage() {
       {/* ── Tab: Operations ── */}
       {activeTab === "ops" && (
         <>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="space-y-3">
               <h3 className="text-xs text-gray-400 uppercase tracking-wide">
                 Active Incidents ({activeIncidents.length})
               </h3>
               {activeIncidents.length === 0 && (
-                <div className="text-sm text-gray-400">No active incidents</div>
+                <div className="text-sm text-gray-400">{queries.active.isError ? "Active incidents unavailable." : queries.active.isLoading ? "Loading incidents…" : "No active incidents in the latest observation."}</div>
               )}
               {activeIncidents.map((i) => (
                 <IncidentCard
@@ -168,12 +166,13 @@ export default function IncidentConsolePage() {
               ))}
             </div>
 
-            <div className="col-span-2 space-y-3">
+            <div className="xl:col-span-2 space-y-3">
               {selectedIncident && (
                 <IncidentActions incident={selectedIncident} />
               )}
               <CascadeVisualizerPanel incident={selectedIncident} />
               <ProtocolBar incident={selectedIncident} />
+              {selectedIncident && <DecisionWorkspace compact incidentId={selectedIncident.id} />}
             </div>
           </div>
 
@@ -215,7 +214,7 @@ export default function IncidentConsolePage() {
           <NLQueryPanel />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <NLInjectPanel />
+            <Link className="card text-accent" to="/lab">Create synthetic incidents in the shared-airport lab →</Link>
             <ReportGenerator />
           </div>
         </>
@@ -231,7 +230,7 @@ export default function IncidentConsolePage() {
         />
       )}
 
-      <InjectModal open={injectOpen} onClose={() => setInjectOpen(false)} />
+
     </div>
   );
 }

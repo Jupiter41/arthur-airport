@@ -51,6 +51,7 @@ export function DecisionTimeline({ decision, onSubmitted }: { decision: Timeline
       {!decision.context_available && decision.proposal_id && <p className="text-xs text-amber-300">Original ranking context was not retained for this legacy proposal. Current evidence cannot reconstruct its original rationale.</p>}
     </header>
 
+    <section className="rounded-md border border-panel-border p-3 space-y-2" aria-label="Decision summary"><h3>Next step</h3><p className="text-sm text-gray-300">{historical ? "Recorded history is read-only. Return to latest to review available actions." : decision.status === "pending" ? "An approver must authorize or reject this proposal." : decision.status === "dispatched" ? "Command queued. Awaiting owning-service execution receipt." : decision.status === "awaiting_measurement" ? "Execution confirmed. Awaiting the simulation-time measurement window." : decision.status === "measured" ? "Review predicted, observed and attributed effects below." : decision.status === "failed" || decision.status === "rejected" ? "Review the recorded reason before considering another action." : "Review the recommendation and available actions below."}</p>{rec && <p className="text-sm">{rec.expected_impact} <span className="text-gray-400">· {(rec.calibration_samples??0)<20 ? "Accuracy unvalidated: fewer than 20 eligible outcomes." : "Review calibration evidence."}</span></p>}</section>
     <section className="rounded-xl bg-panel-active p-3 space-y-2" aria-label="Recorded decision playback">
       <div className="flex justify-between text-xs"><span className="text-gray-400">Replay recorded stages · simulation time</span>{historical && <button className="text-sky-300" onClick={() => setCursor(null)}>Return to latest</button>}</div>
       <input aria-label="Recorded stage" type="range" className="w-full accent-sky-400" min={0} max={Math.max(0, decision.stages.length - 1)} value={cursor ?? Math.max(0, decision.stages.length - 1)} disabled={!decision.stages.length} onChange={event => setCursor(Number(event.target.value))} />
@@ -70,7 +71,7 @@ export function DecisionTimeline({ decision, onSubmitted }: { decision: Timeline
       {!stages.length && <li className="text-gray-400 text-sm">No lifecycle timestamps retained.</li>}
     </ol>
 
-    {ranked && rec && <RecommendationExplanation recommendation={rec} alternatives={decision.alternatives} />}
+    {ranked && rec && <details><summary className="text-accent cursor-pointer">Ranking, confidence & recorded alternatives</summary><div className="mt-3"><RecommendationExplanation recommendation={rec} alternatives={decision.alternatives} /></div></details>}
     {ranked && <details className="text-xs text-gray-400"><summary className="cursor-pointer text-sky-300">Financial context at proposal time</summary>
       {Object.keys(decision.financial_signals).length ? <dl className="grid sm:grid-cols-2 gap-3 mt-3">{Object.entries(decision.financial_signals).map(([name, value]) => <div key={name}><dt>{name.replace(/_/g, " ")}</dt><dd className="font-mono mt-1">{typeof value === "number" ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : value ?? "Unavailable"}</dd></div>)}</dl> : <p className="mt-2">No financial signal snapshot was available. The operational ranking score is not a euro saving.</p>}
     </details>}

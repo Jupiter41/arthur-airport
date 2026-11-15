@@ -106,8 +106,8 @@ export const ACTION_ICON: Record<string, string> = {
 
 export const TABS = [
   { id: "ops", label: "Operations", icon: "🚨" },
-  { id: "analysis", label: "Analysis", icon: "📊" },
-  { id: "ai", label: "AI Tools", icon: "🤖" },
+  { id: "analysis", label: "Proposals & analysis", icon: "📊" },
+  { id: "ai", label: "Investigation tools", icon: "🤖" },
   { id: "autonomous", label: "Autonomous", icon: "⚙️" },
 ] as const;
 

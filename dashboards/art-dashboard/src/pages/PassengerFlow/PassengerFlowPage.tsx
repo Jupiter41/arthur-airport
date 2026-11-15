@@ -1,4 +1,7 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { normalizeTerminal } from "../Airport3D/model";
+import { DecisionWorkspace } from "../Decisions/DecisionWorkspace";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { usePassengerFlowQueries } from "../../hooks/useQueries";
 import { ExportMenu } from "../../components/ExportMenu";
@@ -15,7 +18,9 @@ import type { ZoneDensity } from "../../types";
 export default function PassengerFlowPage() {
   const incidents = useIncidentStore((s) => s.incidents);
 
-  const [selectedZone, setSelectedZone] = useState<ZoneDensity | null>(null);
+  const [params, setParams] = useSearchParams();
+  const terminal = params.get("terminal") ?? "all";
+  const setSelectedZone = (zone: ZoneDensity) => { const next = new URLSearchParams(params); next.set("entity",zone.zone_id); setParams(next, { replace: true }); };
 
   const lockedZones = useMemo(() => {
     const set = new Set<string>();
@@ -30,7 +35,8 @@ export default function PassengerFlowPage() {
   // Passenger flow is REST-polled (no live WebSocket stream mutates it), so
   // React Query is the single source of truth — read query data directly.
   const queries = usePassengerFlowQueries();
-  const zones = queries.heatmap.data ?? [];
+  const zones = (queries.heatmap.data ?? []).filter(z => terminal === "all" || normalizeTerminal(z.terminal) === terminal);
+  const selectedZone = zones.find(z => z.zone_id === params.get("entity")) ?? null;
   const summary = queries.summary.data ?? null;
   const connectionsAtRisk = queries.atRisk.data ?? [];
 
@@ -86,9 +92,11 @@ export default function PassengerFlowPage() {
         />
       </div>
 
-      <KPIBar summary={summary} zones={zones} />
+      <p className="text-xs text-gray-400">Airport-wide totals below; zone records use the selected terminal scope.</p>
+      <KPIBar summary={summary} zones={queries.heatmap.data ?? []} />
+      <section className="grid md:grid-cols-3 gap-3" aria-label="Terminal security comparison">{Object.entries(summary?.security ?? {}).filter(([t]) => terminal === "all" || normalizeTerminal(t) === terminal).map(([t,sec]) => <Link key={t} to={`/passengers?terminal=${normalizeTerminal(t)}&mode=board`} className="card"><h3>Terminal {normalizeTerminal(t)}</h3><p className={`text-2xl tabular-nums mt-2 ${sec.wait_minutes >= 20 ? "text-amber-300" : ""}`}>{sec.wait_minutes.toFixed(1)} min</p><p className="text-sm text-gray-400 mt-2">{sec.queue_length} queued · {sec.lanes_open} lanes{sec.frozen ? " · Frozen" : ""}</p></Link>)}</section>
 
-      <SecurityQueueChart summary={summary} />
+      <SecurityQueueChart summary={summary ? {...summary, security:Object.fromEntries(Object.entries(summary.security??{}).filter(([key])=>terminal === "all"||normalizeTerminal(key)===terminal))} : null} />
 
       <AirportHeatmap
         zones={zones}
@@ -96,10 +104,11 @@ export default function PassengerFlowPage() {
         onSelect={setSelectedZone}
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ConnectionRiskList connections={connectionsAtRisk} />
         <ZoneDetailPanel zone={selectedZone} />
       </div>
+      <DecisionWorkspace compact terminal={terminal === "all" ? undefined : terminal} />
     </div>
   );
 }

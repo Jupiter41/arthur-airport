@@ -1,4 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { normalizeTerminal } from "../Airport3D/model";
+import { BaggageInspector } from "../Airport3D/Airport3DPage";
+import { useQuery } from "@tanstack/react-query";
+import { baggageApi } from "../../hooks/useApi";
+import type { BagDetail } from "../Airport3D/model";
 import { useBaggageTrackerQueries } from "../../hooks/useQueries";
 import { ExportMenu } from "../../components/ExportMenu";
 import { exportData } from "../../utils/exportData";
@@ -10,17 +16,17 @@ import type { Flight } from "../../types";
 /* ──────── Main Page ──────── */
 export default function BaggageTrackerPage() {
   const [flaggedOffset, setFlaggedOffset] = useState(0);
-  const [flights, setFlights] = useState<Flight[]>([]);
+  const [params] = useSearchParams();
+  const terminal = params.get("terminal") ?? "all";
+  const bagId = params.get("bag");
+  const bag = useQuery({ queryKey: ["baggage", "detail", bagId], queryFn: () => baggageApi.get(bagId!) as Promise<BagDetail>, enabled: !!bagId });
 
   const queries = useBaggageTrackerQueries(flaggedOffset);
   // Both dimensions read the same owner projection in React Query. Never
   // synthesize conveyor failures/recovery from incidents in the browser.
-  const zones = queries.map.data ?? [];
+  const zones = (queries.map.data ?? []).filter(z => terminal === "all" || z.zone_id.toUpperCase().split(/[-_]/).includes(terminal) || !/[-_][ABC](?:[-_]|$)/i.test(z.zone_id));
+  const flights = (queries.flights.data ?? []).filter((f: Flight) => terminal === "all" || normalizeTerminal(f.terminal) === terminal);
   const summary = queries.summary.data ?? null;
-
-  useEffect(() => {
-    if (queries.flights.data) setFlights(queries.flights.data);
-  }, [queries.flights.data]);
 
   const isLoading = queries.map.isLoading && zones.length === 0;
   const hasError = queries.map.isError && zones.length === 0;
@@ -86,6 +92,9 @@ export default function BaggageTrackerPage() {
         </div>
       </div>
 
+      {params.get("entity") && zones.some(z => z.zone_id === params.get("entity")) && <div className="card"><BaggageInspector zoneId={params.get("entity")!} /></div>}
+      {bagId && <section className="card space-y-3"><h2>Baggage scan history</h2>{bag.isLoading && <p>Loading item…</p>}{bag.isError && <p role="alert">Item records unavailable.</p>}{bag.data && <><p>{bag.data.tag ?? bagId} · {bag.data.status}</p><ol>{bag.data.scan_history?.map((scan,i) => <li key={i} className="border-l border-panel-border pl-3 py-2">{scan.zone} · {scan.status}<time className="block text-gray-400 text-xs">{scan.at}</time></li>)}</ol>{!bag.data.scan_history?.length && <p>No scan history recorded.</p>}</>}</section>}
+      <p className="text-xs text-gray-400">Zone and flight records follow terminal scope. Shared conveyors and airport-wide flagged items remain visible.</p>
       <LoadingProgressPanel flights={flights} />
       <FlaggedItemsPanel
         flagged={queries.flagged.data?.flagged ?? []}

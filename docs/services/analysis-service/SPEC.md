@@ -238,3 +238,8 @@ Retries preserve the original baseline. Optional `request_approval: true` on
 the existing apply endpoint requests human review even for a safe action.
 History/receipts are committed with proposal mutations and their existing facts.
 Public deployments expose timeline/calibration reads, never these writes.
+
+
+## Decision history discovery (2026-11-15)
+
+`GET /api/v1/analysis/decisions` accepts optional `q` (at most 200 characters) and `terminal` (`A`, `B`, `C`). Apply them before pagination and total counting, composably with existing filters. Search is case-insensitive literal text over description, decision/bottleneck IDs, action type and target zone. Terminal matching normalizes explicit terminal/checkpoint/zone identities and never matches a lone letter anywhere in prose. Reads remain analysis-owned and read-only; gateway relays the query unchanged.
