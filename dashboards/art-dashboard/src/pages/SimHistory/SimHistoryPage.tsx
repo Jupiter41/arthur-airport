@@ -101,13 +101,13 @@ export default function SimHistoryPage() {
       )}
 
       {/* Charts row */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <FlightStatsChart days={days} />
         <DelayTrendChart days={days} />
       </div>
 
       {/* Day cards + timeline */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-3">
           <h3 className="text-xs text-gray-400 uppercase tracking-wide">
             Simulation Days ({days.length})

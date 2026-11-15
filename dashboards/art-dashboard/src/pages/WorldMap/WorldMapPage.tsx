@@ -1287,12 +1287,12 @@ export default function WorldMapPage() {
   ]);
 
   return (
-    <section className="h-full w-full flex flex-col bg-slate-950">
+    <section className="min-h-full w-full flex flex-col bg-slate-950">
       <div className="px-4 py-2 border-b border-slate-800 bg-slate-900/95">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-sm sm:text-base font-semibold text-slate-100">
-              Arthur Airport - World View
+              Airport network
             </h1>
             <p className="text-xs text-slate-400">
               {hasMapboxToken
@@ -1373,11 +1373,11 @@ export default function WorldMapPage() {
         </div>
       </div>
 
-      <div className="relative flex-1 min-h-0">
+      <div className="relative flex-1 min-h-[65vh]">
         {/* Wrapper keeps absolute positioning even after Mapbox injects
             position:relative via .mapboxgl-map on the inner div. */}
         <div className="absolute inset-0">
-          <div ref={mapContainerRef} className="w-full h-full" />
+          <div ref={mapContainerRef} className="absolute inset-0" />
         </div>
 
         {/* Unified Control Panel */}
@@ -1392,7 +1392,7 @@ export default function WorldMapPage() {
 
         {/* Search/Navigation Panel */}
         {showSearchPanel && (
-          <div className="absolute top-3 left-3 w-80 rounded border border-slate-700 bg-slate-950/96 text-xs shadow-lg backdrop-blur-sm p-4 max-h-[70vh] overflow-y-auto animation-slide-right">
+          <div className="absolute top-3 left-3 w-80 max-w-[calc(100%-1.5rem)] rounded border border-slate-700 bg-slate-950/96 text-xs shadow-lg backdrop-blur-sm p-4 max-h-[70vh] overflow-y-auto animation-slide-right">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-slate-100">
                 Find Planes & Airports
@@ -1712,7 +1712,7 @@ export default function WorldMapPage() {
       </div>
 
       {/* Timeline Cursor */}
-      <div className="px-4 py-1.5 border-t border-slate-800 bg-slate-900/95 flex items-center gap-3 text-xs">
+      <div className="px-4 py-1.5 border-t border-slate-800 bg-slate-900/95 flex flex-wrap items-center gap-3 text-xs">
         <button
           type="button"
           onClick={() => {

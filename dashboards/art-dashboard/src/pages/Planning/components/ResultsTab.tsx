@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { planningApi } from "../../../hooks/useApi";
@@ -14,9 +15,20 @@ import { ScenarioSelector, Tooltip, formatDuration } from "./shared";
 /* ─── Results Comparison Tab ──────────────────────────────── */
 
 export default function ResultsTab() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("scenario");
+  const setSelectedId = (id: string | null) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set("scenario", id);
+    else next.delete("scenario");
+    setParams(next, { replace: true });
+  };
 
-  const { data: scenarios } = useQuery({
+  const {
+    data: scenarios,
+    isError: scenariosError,
+    isLoading: scenariosLoading,
+  } = useQuery({
     queryKey: ["planning-scenarios"],
     queryFn: () =>
       planningApi.listScenarios({ status: "completed", limit: 50 }),
@@ -45,19 +57,17 @@ export default function ResultsTab() {
 
   // Auto-select first completed scenario; reset if deleted
   useEffect(() => {
-    if (scenarioList.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    if (!selectedId || !scenarioList.find((s) => s.id === selectedId)) {
+    if (!selectedId && scenarioList.length > 0)
       setSelectedId(scenarioList[0].id);
-    }
-  }, [selectedId, scenarioList]);
+  }, [selectedId, scenarios]);
 
   return (
     <div className="space-y-5">
       {r && r.accounting_policy !== "airport-v1" && (
-        <p className="text-amber-400 text-sm">Legacy mixed accounting: rerun this scenario for airport financial results.</p>
+        <p className="text-amber-400 text-sm">
+          Legacy mixed accounting: rerun this scenario for airport financial
+          results.
+        </p>
       )}
       {/* Methodology */}
       <div className="bg-slate-800/30 rounded-lg border border-slate-700/50 p-3">
@@ -71,7 +81,14 @@ export default function ResultsTab() {
         </p>
       </div>
 
-      {scenarioList.length === 0 ? (
+      {scenariosError ? (
+        <p role="alert" className="text-amber-300">
+          Scenario library unavailable. Existing results cannot be inferred from
+          this failure.
+        </p>
+      ) : scenariosLoading ? (
+        <p>Loading scenario library…</p>
+      ) : scenarioList.length === 0 ? (
         <div className="text-center text-slate-500 py-12">
           No completed scenarios. Create one in the Builder tab.
         </div>

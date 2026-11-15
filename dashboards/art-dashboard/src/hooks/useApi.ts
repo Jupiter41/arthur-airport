@@ -95,7 +95,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     if (!res.ok) {
-      const detail = await res.json().catch(() => ({})) as { error?: string };
+      const detail = (await res.json().catch(() => ({}))) as { error?: string };
       const msg = detail.error ?? `API ${res.status}: ${res.statusText}`;
       useConnectionStore.getState().setApiConnected(false, msg);
       throw new Error(msg);
@@ -193,7 +193,10 @@ export const passengersApi = {
 
 // ── Baggage ──
 export const baggageApi = {
-  list: (params: Record<string, string> = {}) => apiFetch<{ items: BagItem[]; total: number }>(`/baggage?${new URLSearchParams(params)}`),
+  list: (params: Record<string, string> = {}) =>
+    apiFetch<{ items: BagItem[]; total: number }>(
+      `/baggage?${new URLSearchParams(params)}`,
+    ),
   summary: () => apiFetch<unknown>("/baggage/flow/summary"),
   map: () => apiFetch<unknown>("/baggage/flow/map"),
   flagged: (params?: Record<string, string>) => {
@@ -201,7 +204,7 @@ export const baggageApi = {
     return apiFetch<unknown>(`/baggage/flagged${qs}`);
   },
   search: (q: string) =>
-    apiFetch<unknown>(`/baggage/search?q=${encodeURIComponent(q)}`),
+    apiFetch<unknown>(`/baggage/tag/${encodeURIComponent(q)}`),
   get: (id: string) => apiFetch<unknown>(`/baggage/${encodeURIComponent(id)}`),
 };
 
@@ -296,7 +299,13 @@ export interface Approval {
   proposed_at: string;
   recommendation_id: string | null;
   bottleneck_id: string | null;
-  status: "pending" | "approved" | "dispatched" | "rejected" | "executed" | "failed";
+  status:
+    | "pending"
+    | "approved"
+    | "dispatched"
+    | "rejected"
+    | "executed"
+    | "failed";
   requires_human: boolean;
   decided_by: string | null;
   decided_at: string | null;
@@ -307,8 +316,11 @@ export interface Approval {
 
 export const analysisApi = {
   decisions: (params: Record<string, string> = {}) =>
-    apiFetch<DecisionList>(`/analysis/decisions?${new URLSearchParams(params)}`),
-  decision: (id: string) => apiFetch<DecisionTimeline>(`/analysis/decisions/${encodeURIComponent(id)}`),
+    apiFetch<DecisionList>(
+      `/analysis/decisions?${new URLSearchParams(params)}`,
+    ),
+  decision: (id: string) =>
+    apiFetch<DecisionTimeline>(`/analysis/decisions/${encodeURIComponent(id)}`),
   bottlenecks: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
     return apiFetch<{ bottlenecks: unknown[]; count: number }>(
@@ -320,10 +332,15 @@ export const analysisApi = {
       "/analysis/recommendations",
     ),
   applyRecommendation: (id: string, requestApproval = false) =>
-    apiFetch<{ applied: boolean; executed: boolean; status: string; proposal_id: string }>(
-      `/analysis/recommendations/${encodeURIComponent(id)}/apply`,
-      { method: "POST", body: JSON.stringify({ request_approval: requestApproval }) },
-    ),
+    apiFetch<{
+      applied: boolean;
+      executed: boolean;
+      status: string;
+      proposal_id: string;
+    }>(`/analysis/recommendations/${encodeURIComponent(id)}/apply`, {
+      method: "POST",
+      body: JSON.stringify({ request_approval: requestApproval }),
+    }),
   whatIf: (body: {
     actions: Array<{
       action_type: string;
@@ -779,8 +796,7 @@ export const planningApi = {
     }),
 
   // Templates
-  listTemplates: () =>
-    apiFetch<TemplateCatalogue>("/planning/templates"),
+  listTemplates: () => apiFetch<TemplateCatalogue>("/planning/templates"),
   createFromTemplate: (template: string, body: Record<string, unknown>) =>
     apiFetch<{
       scenario_id: string;
@@ -870,10 +886,11 @@ export const planningApi = {
 
   // ML models
   trainModels: () =>
-    apiFetch<{ status: string; demand_model_version: string; delay_model_version: string }>(
-      "/planning/ml/train",
-      { method: "POST" },
-    ),
+    apiFetch<{
+      status: string;
+      demand_model_version: string;
+      delay_model_version: string;
+    }>("/planning/ml/train", { method: "POST" }),
   mlStatus: () => apiFetch<MLStatus>("/planning/ml/status"),
 
   // Audit trail

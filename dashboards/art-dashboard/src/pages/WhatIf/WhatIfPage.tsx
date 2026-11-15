@@ -1,9 +1,14 @@
+import { Link, useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { planningApi } from "../../hooks/useApi";
 import { KpiCard } from "../../components/KpiCard";
 import { LoadingState, ErrorState } from "../../components/LoadingState";
-import type { PlanningScenarioSummary, PlanningScenario, ScenarioResults } from "../../types/planning";
+import type {
+  PlanningScenarioSummary,
+  PlanningScenario,
+  ScenarioResults,
+} from "../../types/planning";
 
 type ScenarioRow = PlanningScenarioSummary & {
   parent_scenario_id?: string | null;
@@ -15,7 +20,13 @@ const ACTIONS = ["gdp_start", "gdp_end", "open_security_lanes", "gate_swap"];
 
 export default function WhatIfPage() {
   const qc = useQueryClient();
-  const [selected, setSelected] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const selected = params.get("scenario");
+  const setSelected = (id: string) => {
+    const next = new URLSearchParams(params);
+    next.set("scenario", id);
+    setParams(next, { replace: true });
+  };
   const [action, setAction] = useState("open_security_lanes");
   const [simMinute, setSimMinute] = useState(120);
   const [durationMin, setDurationMin] = useState(60);
@@ -28,7 +39,9 @@ export default function WhatIfPage() {
   });
 
   const list = (scenarios.data?.scenarios ?? []) as ScenarioRow[];
-  const parents = list.filter((s) => !s.parent_scenario_id && s.status === "completed");
+  const parents = list.filter(
+    (s) => !s.parent_scenario_id && s.status === "completed",
+  );
   const parentId = selected ?? parents[0]?.id ?? null;
 
   const replays = useQuery({
@@ -72,12 +85,14 @@ export default function WhatIfPage() {
       if (action === "open_security_lanes") params.lanes = lanes;
       if (action === "gate_swap") params.delta = lanes;
       return planningApi.counterfactualReport(parentId!, {
-        base_interventions: [{
-          action,
-          sim_minute: simMinute,
-          duration_minutes: durationMin,
-          params,
-        }],
+        base_interventions: [
+          {
+            action,
+            sim_minute: simMinute,
+            duration_minutes: durationMin,
+            params,
+          },
+        ],
         shifts: [-60, -30, 0, 30, 60],
       });
     },
@@ -109,6 +124,12 @@ export default function WhatIfPage() {
         </p>
       </div>
 
+      <p className="card text-sm text-gray-300">
+        Isolated replay · changes do not affect the shared airport.{" "}
+        <Link className="text-accent" to="/planning">
+          Open experiment builder →
+        </Link>
+      </p>
       <div className="bg-surface-card border border-panel-border rounded-xl p-4">
         <h2 className="text-sm font-semibold text-white mb-3">
           Parent scenario
@@ -249,10 +270,7 @@ export default function WhatIfPage() {
                 </thead>
                 <tbody className="text-gray-200">
                   {replayList.map((r) => (
-                    <tr
-                      key={r.id}
-                      className="border-b border-panel-border/50"
-                    >
+                    <tr key={r.id} className="border-b border-panel-border/50">
                       <td className="py-2">{r.name}</td>
                       <td>
                         <span
@@ -268,13 +286,17 @@ export default function WhatIfPage() {
                         </span>
                       </td>
                       <td className="text-right font-mono">
-                        {r.results?.kpis.avg_delay_minutes?.mean?.toFixed(2) ?? "—"}
+                        {r.results?.kpis.avg_delay_minutes?.mean?.toFixed(2) ??
+                          "—"}
                       </td>
                       <td className="text-right font-mono">
-                        {r.results?.kpis.missed_connections?.mean?.toFixed(1) ?? "—"}
+                        {r.results?.kpis.missed_connections?.mean?.toFixed(1) ??
+                          "—"}
                       </td>
                       <td className="text-right font-mono">
-                        {r.results?.kpis.eu261_liability_eur?.mean?.toFixed(0) ?? "—"}
+                        {r.results?.kpis.eu261_liability_eur?.mean?.toFixed(
+                          0,
+                        ) ?? "—"}
                       </td>
                       <td className="pl-3 font-mono text-gray-500 text-[10px]">
                         {r.id.slice(0, 8)}

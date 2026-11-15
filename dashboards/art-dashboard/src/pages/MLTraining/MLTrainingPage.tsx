@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { analysisApi } from "../../hooks/useApi";
 import { AutonomousPanel } from "../../components/AutonomousPanel";
-import { TrainingControl, ModelRegistry, TrainingHistory } from "./TrainingComponents";
+import {
+  TrainingControl,
+  ModelRegistry,
+  TrainingHistory,
+} from "./TrainingComponents";
 import { LLMConfigPanel, EnvironmentConfigPanel } from "./ConfigPanels";
 import type { TrainingStatus } from "./types";
 
@@ -41,7 +45,7 @@ export default function MLTrainingPage() {
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
       <h2 className="text-lg font-bold text-white">ML & Agent Training</h2>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <TrainingControl
           activeRun={status?.active_run ?? null}
           onStart={handleStart}
@@ -50,12 +54,12 @@ export default function MLTrainingPage() {
         <AutonomousPanel />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ModelRegistry models={status?.available_models ?? []} />
         <EnvironmentConfigPanel />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <LLMConfigPanel />
       </div>
 

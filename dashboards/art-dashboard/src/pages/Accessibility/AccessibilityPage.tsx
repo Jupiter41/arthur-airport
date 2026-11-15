@@ -38,9 +38,7 @@ export default function AccessibilityPage() {
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
       <div>
-        <h1 className="text-xl font-bold text-white">
-          ♿ Accessibility & Special Assistance
-        </h1>
+        <h1 className="text-xl font-bold text-white">Special assistance</h1>
         <p className="text-xs text-gray-400 mt-0.5">
           ECAC Doc 30 SLA · wheelchair pool monitoring
         </p>

@@ -1,6 +1,9 @@
 export function LoadingState({ message = "Loading…" }: { message?: string }) {
   return (
-    <div className="flex items-center justify-center h-full text-gray-400">
+    <div
+      role="status"
+      className="flex items-center justify-center min-h-48 p-6 text-gray-400"
+    >
       <div className="flex flex-col items-center gap-2">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
         <span>{message}</span>
@@ -21,15 +24,12 @@ export function ErrorState({
   return (
     <div className="flex items-center justify-center h-full text-gray-400">
       <div className="flex flex-col items-center gap-2 text-center">
-        <span className="text-red-400 text-lg">⚠️ {message}</span>
+        <h1 className="text-red-400 text-lg">{message}</h1>
         {detail && (
           <span className="text-sm text-gray-500 max-w-md">{detail}</span>
         )}
         {onRetry && (
-          <button
-            onClick={onRetry}
-            className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm text-white"
-          >
+          <button onClick={onRetry} className="btn-primary mt-2">
             Retry
           </button>
         )}

@@ -39,10 +39,10 @@ export interface InfraChange {
 }
 
 export const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: "builder", label: "Scenario Builder", icon: "🏗️" },
-  { key: "results", label: "Results", icon: "📊" },
-  { key: "investment", label: "Investment", icon: "💰" },
-  { key: "audit", label: "Decision Audit", icon: "📋" },
+  { key: "builder", label: "Baseline & changes", icon: "🏗️" },
+  { key: "results", label: "Compare results", icon: "📊" },
+  { key: "investment", label: "Investment detail", icon: "💰" },
+  { key: "audit", label: "Saved audit", icon: "📋" },
 ];
 
 /* ─── KPI metadata ────────────────────────────────────────── */

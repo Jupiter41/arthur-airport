@@ -20,7 +20,11 @@ export default function PassengerFlowPage() {
 
   const [params, setParams] = useSearchParams();
   const terminal = params.get("terminal") ?? "all";
-  const setSelectedZone = (zone: ZoneDensity) => { const next = new URLSearchParams(params); next.set("entity",zone.zone_id); setParams(next, { replace: true }); };
+  const setSelectedZone = (zone: ZoneDensity) => {
+    const next = new URLSearchParams(params);
+    next.set("entity", zone.zone_id);
+    setParams(next, { replace: true });
+  };
 
   const lockedZones = useMemo(() => {
     const set = new Set<string>();
@@ -35,8 +39,11 @@ export default function PassengerFlowPage() {
   // Passenger flow is REST-polled (no live WebSocket stream mutates it), so
   // React Query is the single source of truth — read query data directly.
   const queries = usePassengerFlowQueries();
-  const zones = (queries.heatmap.data ?? []).filter(z => terminal === "all" || normalizeTerminal(z.terminal) === terminal);
-  const selectedZone = zones.find(z => z.zone_id === params.get("entity")) ?? null;
+  const zones = (queries.heatmap.data ?? []).filter(
+    (z) => terminal === "all" || normalizeTerminal(z.terminal) === terminal,
+  );
+  const selectedZone =
+    zones.find((z) => z.zone_id === params.get("entity")) ?? null;
   const summary = queries.summary.data ?? null;
   const connectionsAtRisk = queries.atRisk.data ?? [];
 
@@ -58,9 +65,12 @@ export default function PassengerFlowPage() {
     return (
       <div className="flex items-center justify-center h-full text-gray-400">
         <div className="flex flex-col items-center gap-2 text-center">
-          <span className="text-red-400 text-lg">⚠️ Failed to load passenger data</span>
+          <span className="text-red-400 text-lg">
+            ⚠️ Failed to load passenger data
+          </span>
           <span className="text-sm text-gray-500">
-            The passenger-service may not be running. Check that the simulation is active.
+            The passenger-service may not be running. Check that the simulation
+            is active.
           </span>
           <button
             onClick={() => queries.heatmap.refetch()}
@@ -92,11 +102,53 @@ export default function PassengerFlowPage() {
         />
       </div>
 
-      <p className="text-xs text-gray-400">Airport-wide totals below; zone records use the selected terminal scope.</p>
+      <p className="text-xs text-gray-400">
+        Airport-wide totals below; zone records use the selected terminal scope.
+      </p>
       <KPIBar summary={summary} zones={queries.heatmap.data ?? []} />
-      <section className="grid md:grid-cols-3 gap-3" aria-label="Terminal security comparison">{Object.entries(summary?.security ?? {}).filter(([t]) => terminal === "all" || normalizeTerminal(t) === terminal).map(([t,sec]) => <Link key={t} to={`/passengers?terminal=${normalizeTerminal(t)}&mode=board`} className="card"><h3>Terminal {normalizeTerminal(t)}</h3><p className={`text-2xl tabular-nums mt-2 ${sec.wait_minutes >= 20 ? "text-amber-300" : ""}`}>{sec.wait_minutes.toFixed(1)} min</p><p className="text-sm text-gray-400 mt-2">{sec.queue_length} queued · {sec.lanes_open} lanes{sec.frozen ? " · Frozen" : ""}</p></Link>)}</section>
+      <section
+        className="grid md:grid-cols-3 gap-3"
+        aria-label="Terminal security comparison"
+      >
+        {Object.entries(summary?.security ?? {})
+          .filter(
+            ([t]) => terminal === "all" || normalizeTerminal(t) === terminal,
+          )
+          .map(([t, sec]) => (
+            <Link
+              key={t}
+              to={`/passengers?terminal=${normalizeTerminal(t)}&mode=board`}
+              className="card"
+            >
+              <h3>Terminal {normalizeTerminal(t)}</h3>
+              <p
+                className={`text-2xl tabular-nums mt-2 ${sec.wait_minutes >= 20 ? "text-amber-300" : ""}`}
+              >
+                {sec.wait_minutes.toFixed(1)} min
+              </p>
+              <p className="text-sm text-gray-400 mt-2">
+                {sec.queue_length} queued · {sec.lanes_open} lanes
+                {sec.frozen ? " · Frozen" : ""}
+              </p>
+            </Link>
+          ))}
+      </section>
 
-      <SecurityQueueChart summary={summary ? {...summary, security:Object.fromEntries(Object.entries(summary.security??{}).filter(([key])=>terminal === "all"||normalizeTerminal(key)===terminal))} : null} />
+      <SecurityQueueChart
+        summary={
+          summary
+            ? {
+                ...summary,
+                security: Object.fromEntries(
+                  Object.entries(summary.security ?? {}).filter(
+                    ([key]) =>
+                      terminal === "all" || normalizeTerminal(key) === terminal,
+                  ),
+                ),
+              }
+            : null
+        }
+      />
 
       <AirportHeatmap
         zones={zones}
@@ -108,7 +160,10 @@ export default function PassengerFlowPage() {
         <ConnectionRiskList connections={connectionsAtRisk} />
         <ZoneDetailPanel zone={selectedZone} />
       </div>
-      <DecisionWorkspace compact terminal={terminal === "all" ? undefined : terminal} />
+      <DecisionWorkspace
+        compact
+        terminal={terminal === "all" ? undefined : terminal}
+      />
     </div>
   );
 }

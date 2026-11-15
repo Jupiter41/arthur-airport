@@ -1,6 +1,72 @@
 import type { ZoneDensity } from "../../types";
 import { normalizeTerminal } from "../Airport3D/model";
 
-export function AirportHeatmap({ zones, lockedZones, onSelect }: { zones: ZoneDensity[]; lockedZones: Set<string>; onSelect: (z:ZoneDensity)=>void }) {
-  return <section className="card space-y-4"><h2>Terminal zones</h2><p className="text-xs text-gray-400">Observed occupancy; absent zones are unavailable, not empty. Select a zone for details.</p>{["A","B","C",""].map(terminal=>{const rows=zones.filter(z=>normalizeTerminal(z.terminal||"")===terminal);return rows.length>0&&<div key={terminal}><h3 className="text-sm mb-2">{terminal?`Terminal ${terminal}`:"Shared zones"}</h3><div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">{rows.map(zone=>{const locked=lockedZones.has(zone.zone_id)||lockedZones.has(`terminal-${terminal}`);return <button key={zone.zone_id} className={`text-left rounded-md border p-3 ${locked||zone.load_pct>=90?"border-amber-400/60":"border-panel-border"}`} onClick={()=>onSelect(zone)}><span className="block text-sm">{zone.zone_id}</span><span className="block text-xl tabular-nums mt-2">{zone.density} <span className="text-xs text-gray-400">passengers</span></span><span className="block text-xs text-gray-400 mt-2">{zone.load_pct}% occupied · {Math.max(0,zone.capacity-zone.density)} spaces{locked?" · Locked down":""}</span><span className="block h-1 bg-panel mt-2 rounded"><span className={`block h-1 rounded ${locked||zone.load_pct>=90?"bg-amber-400":"bg-blue-400"}`} style={{width:`${Math.min(100,zone.load_pct)}%`}}/></span></button>;})}</div></div>;})}{!zones.length&&<p className="text-gray-400">No observed zones in this scope.</p>}</section>;
+export function AirportHeatmap({
+  zones,
+  lockedZones,
+  onSelect,
+}: {
+  zones: ZoneDensity[];
+  lockedZones: Set<string>;
+  onSelect: (z: ZoneDensity) => void;
+}) {
+  return (
+    <section className="card space-y-4">
+      <h2>Terminal zones</h2>
+      <p className="text-xs text-gray-400">
+        Observed occupancy; absent zones are unavailable, not empty. Select a
+        zone for details.
+      </p>
+      {["A", "B", "C", ""].map((terminal) => {
+        const rows = zones.filter(
+          (z) => normalizeTerminal(z.terminal || "") === terminal,
+        );
+        return (
+          rows.length > 0 && (
+            <div key={terminal}>
+              <h3 className="text-sm mb-2">
+                {terminal ? `Terminal ${terminal}` : "Shared zones"}
+              </h3>
+              <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                {rows.map((zone) => {
+                  const locked =
+                    lockedZones.has(zone.zone_id) ||
+                    lockedZones.has(`terminal-${terminal}`);
+                  return (
+                    <button
+                      key={zone.zone_id}
+                      className={`text-left rounded-md border p-3 ${locked || zone.load_pct >= 90 ? "border-amber-400/60" : "border-panel-border"}`}
+                      onClick={() => onSelect(zone)}
+                    >
+                      <span className="block text-sm">{zone.zone_id}</span>
+                      <span className="block text-xl tabular-nums mt-2">
+                        {zone.density}{" "}
+                        <span className="text-xs text-gray-400">
+                          passengers
+                        </span>
+                      </span>
+                      <span className="block text-xs text-gray-400 mt-2">
+                        {zone.load_pct}% occupied ·{" "}
+                        {Math.max(0, zone.capacity - zone.density)} spaces
+                        {locked ? " · Locked down" : ""}
+                      </span>
+                      <span className="block h-1 bg-panel mt-2 rounded">
+                        <span
+                          className={`block h-1 rounded ${locked || zone.load_pct >= 90 ? "bg-amber-400" : "bg-blue-400"}`}
+                          style={{ width: `${Math.min(100, zone.load_pct)}%` }}
+                        />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )
+        );
+      })}
+      {!zones.length && (
+        <p className="text-gray-400">No observed zones in this scope.</p>
+      )}
+    </section>
+  );
 }

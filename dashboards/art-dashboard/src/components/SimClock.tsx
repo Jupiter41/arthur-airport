@@ -1,9 +1,8 @@
 import { useSimStore } from "../stores/simStore";
 
 export function SimClock() {
-  const { sim_time, day_number, paused, speed_multiplier } = useSimStore(
-    (s) => s.status,
-  );
+  const { sim_time, day_number, paused, speed_multiplier, tick_count } =
+    useSimStore((s) => s.status);
 
   const t = new Date(sim_time);
   const hh = t.getUTCHours().toString().padStart(2, "0");
@@ -13,7 +12,9 @@ export function SimClock() {
     <div className="flex items-center gap-2 text-sm font-mono">
       <span className="text-gray-400">Simulated</span>
       <span className="text-white font-bold">
-        Day {day_number} · {hh}:{mm}Z
+        {tick_count > 0
+          ? `Day ${day_number} · ${hh}:${mm} UTC`
+          : "Awaiting source clock"}
       </span>
       <span className="text-gray-400">{speed_multiplier}×</span>
       {paused && (
@@ -21,7 +22,7 @@ export function SimClock() {
           PAUSED
         </span>
       )}
-      {!paused && <span className="text-green-400 text-xs">▶</span>}
+      {!paused && <span className="text-gray-400 text-xs">Running</span>}
     </div>
   );
 }

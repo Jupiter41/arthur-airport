@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { planningApi } from "../../../hooks/useApi";
@@ -6,9 +7,20 @@ import type { ScenarioSummary } from "../types";
 import { MetricCard, CashFlowRow, ScenarioSelector } from "./shared";
 
 export default function InvestmentTab() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("scenario");
+  const setSelectedId = (id: string | null) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set("scenario", id);
+    else next.delete("scenario");
+    setParams(next, { replace: true });
+  };
 
-  const { data: scenarios } = useQuery({
+  const {
+    data: scenarios,
+    isError: scenariosError,
+    isLoading: scenariosLoading,
+  } = useQuery({
     queryKey: ["planning-scenarios"],
     queryFn: () =>
       planningApi.listScenarios({ status: "completed", limit: 50 }),
@@ -38,14 +50,9 @@ export default function InvestmentTab() {
 
   // Auto-select first completed scenario; reset if deleted
   useEffect(() => {
-    if (scenarioList.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    if (!selectedId || !scenarioList.find((s) => s.id === selectedId)) {
+    if (!selectedId && scenarioList.length > 0)
       setSelectedId(scenarioList[0].id);
-    }
-  }, [selectedId, scenarioList]);
+  }, [selectedId, scenarios]);
 
   const hasFinancials = !!(financials && Object.keys(financials).length > 0);
 
@@ -57,23 +64,34 @@ export default function InvestmentTab() {
   return (
     <div className="space-y-5">
       {r && r.accounting_policy !== "airport-v1" && (
-        <p className="text-amber-400 text-sm">Legacy mixed accounting: rerun this scenario for airport profit and investment returns.</p>
+        <p className="text-amber-400 text-sm">
+          Legacy mixed accounting: rerun this scenario for airport profit and
+          investment returns.
+        </p>
       )}
       {/* Methodology */}
       <div className="bg-slate-800/30 rounded-lg border border-slate-700/50 p-3">
         <p className="text-xs text-slate-400 leading-relaxed">
           <strong className="text-slate-300">DCF Investment Analysis:</strong>{" "}
-          Airport benefit = revenue uplift + airport operating cost savings, annualised.
-          Airline delay and compensation savings are informational and excluded from NPV. Cash flows
-          discounted at WACC.{" "}
+          Airport benefit = revenue uplift + airport operating cost savings,
+          annualised. Airline delay and compensation savings are informational
+          and excluded from NPV. Cash flows discounted at WACC.{" "}
           <strong className="text-slate-300">NPV &gt; 0</strong> → investment
           creates value.{" "}
           <strong className="text-slate-300">IRR &gt; WACC</strong> → returns
-          exceed cost of capital. Values use the scenario’s frozen synthetic financial rates.
+          exceed cost of capital. Values use the scenario’s frozen synthetic
+          financial rates.
         </p>
       </div>
 
-      {scenarioList.length === 0 ? (
+      {scenariosError ? (
+        <p role="alert" className="text-amber-300">
+          Scenario library unavailable. Existing results cannot be inferred from
+          this failure.
+        </p>
+      ) : scenariosLoading ? (
+        <p>Loading scenario library…</p>
+      ) : scenarioList.length === 0 ? (
         <div className="text-center text-slate-500 py-12">
           No completed scenarios. Create one in the Builder tab.
         </div>
@@ -108,17 +126,20 @@ export default function InvestmentTab() {
                 <MetricCard
                   label="IRR"
                   value={
-                    financials.irr_meaningful === false || financials.irr_pct == null
+                    financials.irr_meaningful === false ||
+                    financials.irr_pct == null
                       ? "n/a"
                       : `${((financials.irr_pct as number) ?? 0).toFixed(1)}%`
                   }
                   sublabel={
-                    financials.irr_meaningful === false || financials.irr_pct == null
+                    financials.irr_meaningful === false ||
+                    financials.irr_pct == null
                       ? "No real IRR (cashflow has no sign change)"
                       : `${(financials.irr_pct as number) > (financials.discount_rate as number) * 100 ? "Exceeds" : "Below"} ${((financials.discount_rate as number) * 100).toFixed(0)}% WACC`
                   }
                   color={
-                    financials.irr_meaningful === false || financials.irr_pct == null
+                    financials.irr_meaningful === false ||
+                    financials.irr_pct == null
                       ? "text-slate-400"
                       : (financials.irr_pct as number) >
                           (financials.discount_rate as number) * 100
@@ -211,7 +232,13 @@ export default function InvestmentTab() {
                                   isTotal ? "text-white" : "text-slate-400"
                                 }
                               >
-                                {label}{["eu261_avoided_annual", "delay_cost_avoided_annual"].includes(key) ? " (airline; excluded from total)" : ""}
+                                {label}
+                                {[
+                                  "eu261_avoided_annual",
+                                  "delay_cost_avoided_annual",
+                                ].includes(key)
+                                  ? " (airline; excluded from total)"
+                                  : ""}
                               </span>
                               <span
                                 className={`font-mono ${isTotal ? "text-emerald-400" : "text-slate-300"}`}

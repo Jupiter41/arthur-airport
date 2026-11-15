@@ -1,3 +1,5 @@
+import { Link, useSearchParams } from "react-router-dom";
+import { normalizeGate } from "../Airport3D/model";
 import { useEffect, useMemo } from "react";
 import { useFlightStore } from "../../stores/flightStore";
 import { useWeatherStore } from "../../stores/weatherStore";
@@ -44,6 +46,11 @@ export default function GroundOpsPage() {
   const setCurrent = useWeatherStore((s) => s.setCurrent);
   const setIncidents = useIncidentStore((s) => s.setIncidents);
 
+  const [params, setParams] = useSearchParams();
+  const entity = params.get("entity");
+  const selectedFlight = entity ? flights[entity] : undefined;
+  const selectedGate = gates.find((g) => g.gate_id === entity);
+  const selectedRunway = runways.find((r) => r.runway_id === entity);
   const queries = useGroundOpsQueries();
   const adsbQuery = useADSBQuery(true);
   const vehiclesQuery = useGroundVehiclesQuery();
@@ -53,7 +60,7 @@ export default function GroundOpsPage() {
   }, [queries.runways.data, setRunways]);
 
   useEffect(() => {
-    if (queries.gates.data) setGates(queries.gates.data);
+    if (queries.gates.data) setGates(queries.gates.data.map(normalizeGate));
   }, [queries.gates.data, setGates]);
 
   useEffect(() => {
@@ -89,7 +96,7 @@ export default function GroundOpsPage() {
     const m: Record<string, Gate[]> = { A: [], B: [], C: [] };
     for (const g of gates) {
       // terminal_id from backend is "T-A"/"T-B"/"T-C"; normalize to single letter
-      const raw = g.terminal || g.gate_id.charAt(0);
+      const raw = g.terminal || g.gate_id?.charAt(0) || "";
       const term = raw.replace(/^T-/, "");
       (m[term] ??= []).push(g);
     }
@@ -111,11 +118,63 @@ export default function GroundOpsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
-      <h2 className="text-lg font-bold text-white">Ground Operations — KART</h2>
+      <section className="card space-y-3">
+        <label className="text-sm">
+          Inspect airfield entity{" "}
+          <select
+            className="max-w-full"
+            value={entity ?? ""}
+            onChange={(e) => {
+              const next = new URLSearchParams(params);
+              next.set("entity", e.target.value);
+              setParams(next, { replace: true });
+            }}
+          >
+            <option value="">Select entity</option>
+            {runways.map((r) => (
+              <option key={r.runway_id} value={r.runway_id}>
+                Runway {r.runway_id}
+              </option>
+            ))}
+            {gates.map((g) => (
+              <option key={g.gate_id} value={g.gate_id}>
+                Gate {g.gate_id}
+              </option>
+            ))}
+            {flightList.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.flight_number}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedRunway && (
+          <p>
+            {selectedRunway.runway_id} · {selectedRunway.status} ·{" "}
+            {selectedRunway.current_rate}/{selectedRunway.capacity_per_hour}{" "}
+            movements/h
+          </p>
+        )}
+        {selectedGate && (
+          <p>
+            {selectedGate.gate_id} · {selectedGate.status} ·{" "}
+            {selectedGate.flight_number || "No assigned flight observed"}
+          </p>
+        )}
+        {selectedFlight && (
+          <Link
+            className="text-accent block"
+            to={`/flights?flight=${encodeURIComponent(selectedFlight.id)}`}
+          >
+            {selectedFlight.flight_number} · {selectedFlight.status} · inspect
+            flight →
+          </Link>
+        )}
+      </section>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
         {/* Airfield schematic (3 cols) */}
-        <div className="col-span-3">
+        <div className="xl:col-span-3">
           <div className="bg-gray-900 rounded-lg p-4 relative">
             <svg viewBox="0 0 560 330" className="w-full h-auto">
               {/* Background */}
@@ -251,7 +310,7 @@ export default function GroundOpsPage() {
       <WeatherHistoryChart />
 
       {/* Bottom bar */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-5 gap-4">
         <HoldingStackPanel flights={flightList} />
         <GroundStopPanel incidents={activeIncidents} />
         <RunwayQueuePanel runways={runways} flights={flightList} />

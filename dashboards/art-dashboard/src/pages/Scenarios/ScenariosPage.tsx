@@ -269,10 +269,14 @@ export default function ScenariosPage() {
         </div>
       )}
 
+      <p className="mx-4 p-3 border border-amber-400/40 rounded-md text-sm">
+        Shared-airport scenarios change the operational simulation. For an
+        isolated comparison, use Planning → Experiments.
+      </p>
       {/* ── Main content ── */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col xl:flex-row">
         {/* Left panel: scenario list + results list */}
-        <div className="w-80 border-r border-gray-700 flex flex-col overflow-hidden">
+        <div className="w-full xl:w-80 shrink-0 border-r border-gray-700 flex flex-col overflow-hidden">
           {/* Scenario library */}
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             <div className="flex items-center justify-between mb-2">

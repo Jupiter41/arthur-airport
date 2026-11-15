@@ -1,3 +1,4 @@
+import { useAccess } from "../../../hooks/auth";
 import { useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { planningApi } from "../../../hooks/useApi";
@@ -68,6 +69,7 @@ function Section({
   return (
     <div className="bg-slate-800/50 rounded-xl border border-slate-700">
       <button
+        aria-expanded={open}
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-5 py-3 text-left"
       >
@@ -83,11 +85,20 @@ function Section({
 
 export default function ScenarioBuilder() {
   const qc = useQueryClient();
+  const access = useAccess();
+  const canRun =
+    access.role !== "viewer" &&
+    (import.meta.env.VITE_PUBLIC_DEPLOYMENT !== "true" || access.controlling);
   const [templateType, setTemplateType] = useState<TemplateType>("custom");
   const [lastEstimate, setLastEstimate] = useState<string | null>(null);
 
   // Fetch baseline from backend
-  const { data: baseline } = useQuery({
+  const {
+    data: baseline,
+    isLoading: baselineLoading,
+    isError: baselineError,
+    refetch: refreshBaseline,
+  } = useQuery({
     queryKey: ["planning-baseline"],
     queryFn: () => planningApi.getBaseline(),
     staleTime: 60_000,
@@ -239,7 +250,11 @@ export default function ScenarioBuilder() {
     staleTime: 30_000,
   });
 
-  const { data: scenarios, isLoading } = useQuery({
+  const {
+    data: scenarios,
+    isLoading,
+    isError: scenariosError,
+  } = useQuery({
     queryKey: ["planning-scenarios"],
     queryFn: () => planningApi.listScenarios({ limit: 50 }),
     refetchInterval: 5000,
@@ -348,445 +363,510 @@ export default function ScenarioBuilder() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* ── Builder panel (3 cols) ── */}
-        <div className="lg:col-span-3 space-y-4">
-          {/* Template selector */}
-          <Section title="What do you want to evaluate?">
-            <p className="text-xs text-slate-400 mb-3">
-              Choose a template. Each pre-fills realistic cost parameters from
-              Eurocontrol Standard Inputs and ICAO guidelines.
+      <section className="card space-y-3">
+        <h2>1. Baseline</h2>
+        {baselineLoading ? (
+          <p>Loading baseline…</p>
+        ) : baselineError || !baseline ? (
+          <p role="alert" className="text-amber-300">
+            Baseline unavailable. Form values are configuration defaults, not
+            current observations. Retry before creating an experiment.{" "}
+            <button
+              className="btn-secondary ml-2"
+              onClick={() => void refreshBaseline()}
+            >
+              Retry baseline
+            </button>
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-gray-400">
+              Snapshot returned by the planning service. Each run retains its
+              own baseline and immutable financial inputs.
             </p>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              {(Object.keys(TEMPLATE_INFO) as TemplateType[]).map((key) => {
-                const t = TEMPLATE_INFO[key];
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setTemplateType(key)}
-                    className={`text-left rounded-lg p-2 text-xs border transition-colors ${
-                      templateType === key
-                        ? "bg-cyan-600/20 border-cyan-500 text-cyan-300"
-                        : "bg-slate-700/50 border-slate-600 text-slate-300 hover:bg-slate-600/50"
-                    }`}
-                  >
-                    <div className="text-lg mb-0.5">{t.icon}</div>
-                    <div className="font-medium text-white text-[11px] leading-tight">
-                      {t.label}
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="grid sm:grid-cols-3 gap-3">
+              {Object.keys(BASELINE_GATES).map((t) => (
+                <div key={t}>
+                  <h3>Terminal {t}</h3>
+                  <p className="text-sm text-gray-400">
+                    {BASELINE_GATES[t]} gates · {BASELINE_SECURITY[t]} security
+                    lanes
+                  </p>
+                </div>
+              ))}
             </div>
-          </Section>
-
-          {/* Template form */}
-          <Section
-            title={`${TEMPLATE_INFO[templateType].icon} ${TEMPLATE_INFO[templateType].label}`}
-          >
-            <p className="text-xs text-slate-400 mb-3">
-              {TEMPLATE_INFO[templateType].description}
-            </p>
-
-            {templateType === "custom" && (
-              <CustomForm
-                form={form}
-                setForm={setForm}
-                infraDeltas={infraDeltas}
-                setInfraDeltas={setInfraDeltas}
-                hasInfraChanges={hasInfraChanges}
-                costEstimate={costEstimate}
-                baselineGates={BASELINE_GATES}
-                baselineSecurity={BASELINE_SECURITY}
-                baselineScreening={BASELINE_SCREENING}
-                baselineRunways={BASELINE_RUNWAYS}
-                timeEstimate={timeEstimate}
-                isPending={isPending}
-                onSubmit={handleCustomSubmit}
-              />
-            )}
-
-            {templateType === "add_gate" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Terminal
-                    </label>
-                    <select
-                      value={gateTerminal}
-                      onChange={(e) => setGateTerminal(e.target.value)}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+            <details>
+              <summary className="text-sm text-accent">
+                Baseline source & full configuration
+              </summary>
+              <pre className="overflow-auto max-h-64 text-xs mt-3">
+                {JSON.stringify(baseline, null, 2)}
+              </pre>
+            </details>
+          </>
+        )}
+      </section>
+      <h2>2. Changes & run configuration</h2>
+      {!canRun && (
+        <p className="text-sm text-gray-400">
+          Read-only access. Sign in as an operator to configure, create or
+          delete experiments.
+        </p>
+      )}
+      <fieldset disabled={!canRun || baselineLoading || baselineError}>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* ── Builder panel (3 cols) ── */}
+          <div className="lg:col-span-3 space-y-4">
+            {/* Template selector */}
+            <Section title="What do you want to evaluate?">
+              <p className="text-xs text-slate-400 mb-3">
+                Choose a template. Each pre-fills realistic cost parameters from
+                Eurocontrol Standard Inputs and ICAO guidelines.
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                {(Object.keys(TEMPLATE_INFO) as TemplateType[]).map((key) => {
+                  const t = TEMPLATE_INFO[key];
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setTemplateType(key)}
+                      className={`text-left rounded-lg p-2 text-xs border transition-colors ${
+                        templateType === key
+                          ? "bg-cyan-600/20 border-cyan-500 text-cyan-300"
+                          : "bg-slate-700/50 border-slate-600 text-slate-300 hover:bg-slate-600/50"
+                      }`}
                     >
-                      {Object.keys(BASELINE_GATES).map((t) => (
-                        <option key={t} value={t}>
-                          Terminal {t} ({BASELINE_GATES[t]} gates)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Gates to add
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={gateCount}
-                      onChange={(e) => setGateCount(Number(e.target.value))}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    />
-                  </div>
-                </div>
-                <CostPreview
-                  items={[
-                    { label: "CAPEX", value: formatEur(gateCount * 8_000_000) },
-                    {
-                      label: "Annual OPEX",
-                      value: formatEur(gateCount * 120_000),
-                    },
-                    { label: "Horizon", value: "1 month sim / 25yr DCF" },
-                    { label: "MC runs", value: "200" },
-                  ]}
-                />
-                <SubmitButton
-                  onClick={handleTemplateSubmit}
-                  isPending={isPending}
-                  timeEstimate={timeEstimate}
-                />
-              </div>
-            )}
-
-            {templateType === "add_runway" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Runway ID
-                    </label>
-                    <input
-                      value={runwayId}
-                      onChange={(e) => setRunwayId(e.target.value)}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      ILS capable
-                    </label>
-                    <select
-                      value={runwayIls ? "yes" : "no"}
-                      onChange={(e) => setRunwayIls(e.target.value === "yes")}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    >
-                      <option value="yes">Yes (CAT III)</option>
-                      <option value="no">No (visual only)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Length (m)
-                    </label>
-                    <input
-                      type="number"
-                      min={1500}
-                      max={5000}
-                      step={100}
-                      value={runwayLength}
-                      onChange={(e) => setRunwayLength(Number(e.target.value))}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    />
-                  </div>
-                </div>
-                <CostPreview
-                  items={[
-                    { label: "CAPEX", value: "€800M" },
-                    { label: "Annual OPEX", value: "€12M/yr" },
-                    { label: "Horizon", value: "1 year sim / 30yr DCF" },
-                    { label: "MC runs", value: "100" },
-                  ]}
-                />
-                <SubmitButton
-                  onClick={handleTemplateSubmit}
-                  isPending={isPending}
-                  timeEstimate={timeEstimate}
-                />
-              </div>
-            )}
-
-            {templateType === "new_route" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Destination IATA
-                    </label>
-                    <input
-                      value={routeDest}
-                      onChange={(e) =>
-                        setRouteDest(e.target.value.toUpperCase())
-                      }
-                      maxLength={4}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Daily flights
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={routeFlights}
-                      onChange={(e) => setRouteFlights(Number(e.target.value))}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Aircraft
-                    </label>
-                    <select
-                      value={routeAircraft}
-                      onChange={(e) => setRouteAircraft(e.target.value)}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    >
-                      {["A320", "A321", "B738", "B77W", "A333", "E195"].map(
-                        (a) => (
-                          <option key={a} value={a}>
-                            {a}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </div>
-                </div>
-                <CostPreview
-                  items={[
-                    { label: "CAPEX", value: "€0 (demand-side only)" },
-                    { label: "Horizon", value: "1 month sim / 5yr DCF" },
-                    { label: "MC runs", value: "100" },
-                  ]}
-                />
-                <SubmitButton
-                  onClick={handleTemplateSubmit}
-                  isPending={isPending}
-                  timeEstimate={timeEstimate}
-                />
-              </div>
-            )}
-
-            {templateType === "security_lanes" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-3">
-                  {Object.keys(BASELINE_SECURITY).map((t) => (
-                    <div key={t}>
-                      <label className="block text-xs text-slate-400 mb-1">
-                        Terminal {t} ({BASELINE_SECURITY[t]} lanes)
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            setSecLanes((l) => ({
-                              ...l,
-                              [t]: Math.max(
-                                -(BASELINE_SECURITY[t] - 1),
-                                (l[t] ?? 0) - 1,
-                              ),
-                            }))
-                          }
-                          className="w-8 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white"
-                        >
-                          −
-                        </button>
-                        <span
-                          className={`w-8 text-center font-mono text-sm ${
-                            (secLanes[t] ?? 0) > 0
-                              ? "text-cyan-400"
-                              : (secLanes[t] ?? 0) < 0
-                                ? "text-amber-400"
-                                : "text-slate-500"
-                          }`}
-                        >
-                          {(secLanes[t] ?? 0) > 0 ? "+" : ""}
-                          {secLanes[t] ?? 0}
-                        </span>
-                        <button
-                          onClick={() =>
-                            setSecLanes((l) => ({
-                              ...l,
-                              [t]: Math.min(10, (l[t] ?? 0) + 1),
-                            }))
-                          }
-                          className="w-8 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white"
-                        >
-                          +
-                        </button>
+                      <div className="font-medium text-white text-[11px] leading-tight">
+                        {t.label}
                       </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </Section>
+
+            {/* Template form */}
+            <Section title={TEMPLATE_INFO[templateType].label}>
+              <p className="text-xs text-slate-400 mb-3">
+                {TEMPLATE_INFO[templateType].description}
+              </p>
+
+              {templateType === "custom" && (
+                <CustomForm
+                  form={form}
+                  setForm={setForm}
+                  infraDeltas={infraDeltas}
+                  setInfraDeltas={setInfraDeltas}
+                  hasInfraChanges={hasInfraChanges}
+                  costEstimate={costEstimate}
+                  baselineGates={BASELINE_GATES}
+                  baselineSecurity={BASELINE_SECURITY}
+                  baselineScreening={BASELINE_SCREENING}
+                  baselineRunways={BASELINE_RUNWAYS}
+                  timeEstimate={timeEstimate}
+                  isPending={isPending}
+                  onSubmit={handleCustomSubmit}
+                />
+              )}
+
+              {templateType === "add_gate" && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Terminal
+                      </label>
+                      <select
+                        value={gateTerminal}
+                        onChange={(e) => setGateTerminal(e.target.value)}
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      >
+                        {Object.keys(BASELINE_GATES).map((t) => (
+                          <option key={t} value={t}>
+                            Terminal {t} ({BASELINE_GATES[t]} gates)
+                          </option>
+                        ))}
+                      </select>
                     </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Gates to add
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={gateCount}
+                        onChange={(e) => setGateCount(Number(e.target.value))}
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      />
+                    </div>
+                  </div>
+                  <CostPreview
+                    items={[
+                      {
+                        label: "CAPEX",
+                        value: formatEur(gateCount * 8_000_000),
+                      },
+                      {
+                        label: "Annual OPEX",
+                        value: formatEur(gateCount * 120_000),
+                      },
+                      { label: "Horizon", value: "1 month sim / 25yr DCF" },
+                      { label: "MC runs", value: "200" },
+                    ]}
+                  />
+                  <SubmitButton
+                    onClick={handleTemplateSubmit}
+                    isPending={isPending}
+                    timeEstimate={timeEstimate}
+                  />
+                </div>
+              )}
+
+              {templateType === "add_runway" && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Runway ID
+                      </label>
+                      <input
+                        value={runwayId}
+                        onChange={(e) => setRunwayId(e.target.value)}
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        ILS capable
+                      </label>
+                      <select
+                        value={runwayIls ? "yes" : "no"}
+                        onChange={(e) => setRunwayIls(e.target.value === "yes")}
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      >
+                        <option value="yes">Yes (CAT III)</option>
+                        <option value="no">No (visual only)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Length (m)
+                      </label>
+                      <input
+                        type="number"
+                        min={1500}
+                        max={5000}
+                        step={100}
+                        value={runwayLength}
+                        onChange={(e) =>
+                          setRunwayLength(Number(e.target.value))
+                        }
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      />
+                    </div>
+                  </div>
+                  <CostPreview
+                    items={[
+                      { label: "CAPEX", value: "€800M" },
+                      { label: "Annual OPEX", value: "€12M/yr" },
+                      { label: "Horizon", value: "1 year sim / 30yr DCF" },
+                      { label: "MC runs", value: "100" },
+                    ]}
+                  />
+                  <SubmitButton
+                    onClick={handleTemplateSubmit}
+                    isPending={isPending}
+                    timeEstimate={timeEstimate}
+                  />
+                </div>
+              )}
+
+              {templateType === "new_route" && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Destination IATA
+                      </label>
+                      <input
+                        value={routeDest}
+                        onChange={(e) =>
+                          setRouteDest(e.target.value.toUpperCase())
+                        }
+                        maxLength={4}
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Daily flights
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={routeFlights}
+                        onChange={(e) =>
+                          setRouteFlights(Number(e.target.value))
+                        }
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Aircraft
+                      </label>
+                      <select
+                        value={routeAircraft}
+                        onChange={(e) => setRouteAircraft(e.target.value)}
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      >
+                        {["A320", "A321", "B738", "B77W", "A333", "E195"].map(
+                          (a) => (
+                            <option key={a} value={a}>
+                              {a}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                  <CostPreview
+                    items={[
+                      { label: "CAPEX", value: "€0 (demand-side only)" },
+                      { label: "Horizon", value: "1 month sim / 5yr DCF" },
+                      { label: "MC runs", value: "100" },
+                    ]}
+                  />
+                  <SubmitButton
+                    onClick={handleTemplateSubmit}
+                    isPending={isPending}
+                    timeEstimate={timeEstimate}
+                  />
+                </div>
+              )}
+
+              {templateType === "security_lanes" && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    {Object.keys(BASELINE_SECURITY).map((t) => (
+                      <div key={t}>
+                        <label className="block text-xs text-slate-400 mb-1">
+                          Terminal {t} ({BASELINE_SECURITY[t]} lanes)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() =>
+                              setSecLanes((l) => ({
+                                ...l,
+                                [t]: Math.max(
+                                  -(BASELINE_SECURITY[t] - 1),
+                                  (l[t] ?? 0) - 1,
+                                ),
+                              }))
+                            }
+                            className="w-8 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white"
+                          >
+                            −
+                          </button>
+                          <span
+                            className={`w-8 text-center font-mono text-sm ${
+                              (secLanes[t] ?? 0) > 0
+                                ? "text-cyan-400"
+                                : (secLanes[t] ?? 0) < 0
+                                  ? "text-amber-400"
+                                  : "text-slate-500"
+                            }`}
+                          >
+                            {(secLanes[t] ?? 0) > 0 ? "+" : ""}
+                            {secLanes[t] ?? 0}
+                          </span>
+                          <button
+                            onClick={() =>
+                              setSecLanes((l) => ({
+                                ...l,
+                                [t]: Math.min(10, (l[t] ?? 0) + 1),
+                              }))
+                            }
+                            className="w-8 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {(() => {
+                    const totalDelta = Object.values(secLanes).reduce(
+                      (a, b) => a + Math.max(0, b),
+                      0,
+                    );
+                    const annualCost = totalDelta * 365 * 16 * 35;
+                    return totalDelta > 0 ? (
+                      <CostPreview
+                        items={[
+                          { label: "CAPEX", value: "€0 (staffing only)" },
+                          {
+                            label: "Annual staffing",
+                            value: formatEur(annualCost),
+                          },
+                          {
+                            label: "Per lane/yr",
+                            value: `16h/day × €35/h × 365d`,
+                          },
+                          { label: "MC runs", value: "200" },
+                        ]}
+                      />
+                    ) : null;
+                  })()}
+                  <SubmitButton
+                    onClick={handleTemplateSubmit}
+                    isPending={isPending}
+                    timeEstimate={timeEstimate}
+                  />
+                </div>
+              )}
+
+              {templateType === "add_terminal" && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Terminal letter
+                      </label>
+                      <select
+                        value={termLetter}
+                        onChange={(e) => setTermLetter(e.target.value)}
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      >
+                        {["D", "E", "F", "G"].map((l) => (
+                          <option key={l} value={l}>
+                            Terminal {l}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Gates
+                      </label>
+                      <input
+                        type="number"
+                        min={4}
+                        max={30}
+                        value={termGates}
+                        onChange={(e) => setTermGates(Number(e.target.value))}
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Security lanes
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={termSecLanes}
+                        onChange={(e) =>
+                          setTermSecLanes(Number(e.target.value))
+                        }
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Wide-body gates
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={termGates}
+                        value={termWBGates}
+                        onChange={(e) => setTermWBGates(Number(e.target.value))}
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Int'l gates
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={termGates}
+                        value={termIntlGates}
+                        onChange={(e) =>
+                          setTermIntlGates(Number(e.target.value))
+                        }
+                        className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
+                      />
+                    </div>
+                  </div>
+                  <CostPreview
+                    items={[
+                      {
+                        label: "CAPEX",
+                        value: formatEur(termGates * 12_000_000),
+                      },
+                      {
+                        label: "Annual OPEX",
+                        value: formatEur(
+                          termGates * 200_000 + termSecLanes * 365 * 16 * 35,
+                        ),
+                      },
+                      { label: "Horizon", value: "1 year sim / 30yr DCF" },
+                      { label: "MC runs", value: "100" },
+                    ]}
+                  />
+                  <SubmitButton
+                    onClick={handleTemplateSubmit}
+                    isPending={isPending}
+                    timeEstimate={timeEstimate}
+                  />
+                </div>
+              )}
+            </Section>
+          </div>
+
+          {/* ── Scenario list (2 cols) ── */}
+          <div className="lg:col-span-2">
+            <Section title={`Scenarios (${scenarioList.length})`}>
+              {lastEstimate && (
+                <div className="bg-cyan-900/20 border border-cyan-800/50 rounded-lg px-3 py-2 text-xs text-cyan-300 mb-3">
+                  ⏱️ Last created — estimated {lastEstimate}
+                </div>
+              )}
+              {scenariosError ? (
+                <p role="alert" className="text-amber-300">
+                  Scenario library unavailable. No empty-library claim can be
+                  made.
+                </p>
+              ) : isLoading ? (
+                <div className="text-sm text-slate-400 animate-pulse">
+                  Loading…
+                </div>
+              ) : scenarioList.length === 0 ? (
+                <div className="text-sm text-slate-500 text-center py-6">
+                  No scenarios yet. Create one to get started.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                  {scenarioList.map((s) => (
+                    <ScenarioListItem
+                      key={s.id}
+                      scenario={s}
+                      onDelete={(id) => deleteMutation.mutate(id)}
+                    />
                   ))}
                 </div>
-                {(() => {
-                  const totalDelta = Object.values(secLanes).reduce(
-                    (a, b) => a + Math.max(0, b),
-                    0,
-                  );
-                  const annualCost = totalDelta * 365 * 16 * 35;
-                  return totalDelta > 0 ? (
-                    <CostPreview
-                      items={[
-                        { label: "CAPEX", value: "€0 (staffing only)" },
-                        {
-                          label: "Annual staffing",
-                          value: formatEur(annualCost),
-                        },
-                        {
-                          label: "Per lane/yr",
-                          value: `16h/day × €35/h × 365d`,
-                        },
-                        { label: "MC runs", value: "200" },
-                      ]}
-                    />
-                  ) : null;
-                })()}
-                <SubmitButton
-                  onClick={handleTemplateSubmit}
-                  isPending={isPending}
-                  timeEstimate={timeEstimate}
-                />
-              </div>
-            )}
-
-            {templateType === "add_terminal" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Terminal letter
-                    </label>
-                    <select
-                      value={termLetter}
-                      onChange={(e) => setTermLetter(e.target.value)}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    >
-                      {["D", "E", "F", "G"].map((l) => (
-                        <option key={l} value={l}>
-                          Terminal {l}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Gates
-                    </label>
-                    <input
-                      type="number"
-                      min={4}
-                      max={30}
-                      value={termGates}
-                      onChange={(e) => setTermGates(Number(e.target.value))}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Security lanes
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={termSecLanes}
-                      onChange={(e) => setTermSecLanes(Number(e.target.value))}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Wide-body gates
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={termGates}
-                      value={termWBGates}
-                      onChange={(e) => setTermWBGates(Number(e.target.value))}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Int'l gates
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={termGates}
-                      value={termIntlGates}
-                      onChange={(e) => setTermIntlGates(Number(e.target.value))}
-                      className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
-                    />
-                  </div>
-                </div>
-                <CostPreview
-                  items={[
-                    {
-                      label: "CAPEX",
-                      value: formatEur(termGates * 12_000_000),
-                    },
-                    {
-                      label: "Annual OPEX",
-                      value: formatEur(
-                        termGates * 200_000 + termSecLanes * 365 * 16 * 35,
-                      ),
-                    },
-                    { label: "Horizon", value: "1 year sim / 30yr DCF" },
-                    { label: "MC runs", value: "100" },
-                  ]}
-                />
-                <SubmitButton
-                  onClick={handleTemplateSubmit}
-                  isPending={isPending}
-                  timeEstimate={timeEstimate}
-                />
-              </div>
-            )}
-          </Section>
+              )}
+            </Section>
+          </div>
         </div>
-
-        {/* ── Scenario list (2 cols) ── */}
-        <div className="lg:col-span-2">
-          <Section title={`Scenarios (${scenarioList.length})`}>
-            {lastEstimate && (
-              <div className="bg-cyan-900/20 border border-cyan-800/50 rounded-lg px-3 py-2 text-xs text-cyan-300 mb-3">
-                ⏱️ Last created — estimated {lastEstimate}
-              </div>
-            )}
-            {isLoading ? (
-              <div className="text-sm text-slate-400 animate-pulse">
-                Loading…
-              </div>
-            ) : scenarioList.length === 0 ? (
-              <div className="text-sm text-slate-500 text-center py-6">
-                No scenarios yet. Create one to get started.
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-                {scenarioList.map((s) => (
-                  <ScenarioListItem
-                    key={s.id}
-                    scenario={s}
-                    onDelete={(id) => deleteMutation.mutate(id)}
-                  />
-                ))}
-              </div>
-            )}
-          </Section>
-        </div>
-      </div>
+      </fieldset>
     </div>
   );
 }

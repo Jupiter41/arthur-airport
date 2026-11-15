@@ -35,8 +35,10 @@ function FlightActions({ flight }: { flight: Flight }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
-  const access=useAccess();
-  const authorized=access.role!=="viewer" && (import.meta.env.VITE_PUBLIC_DEPLOYMENT!=="true" || access.controlling);
+  const access = useAccess();
+  const authorized =
+    access.role !== "viewer" &&
+    (import.meta.env.VITE_PUBLIC_DEPLOYMENT !== "true" || access.controlling);
   const canHold = HOLDABLE_STATUSES.has(flight.status);
   const canRelease = flight.status === "delayed";
 
@@ -124,7 +126,12 @@ function FlightActions({ flight }: { flight: Flight }) {
         </button>
       )}
 
-      {!authorized && <p className="text-xs text-gray-400">Sign in as an operator and acquire control where required to change this flight.</p>}
+      {!authorized && (
+        <p className="text-xs text-gray-400">
+          Sign in as an operator and acquire control where required to change
+          this flight.
+        </p>
+      )}
       {done && <div className="text-xs text-green-400 mt-2">✓ {done}</div>}
       {error && <div className="text-xs text-red-400 mt-2">{error}</div>}
     </div>
@@ -138,10 +145,40 @@ export function FlightDetailDrawer({
   flight: Flight;
   onClose: () => void;
 }) {
-  const ref=useRef<HTMLDivElement>(null);
-  useEffect(()=>{const previous=document.activeElement;ref.current?.focus();return ()=>{if(previous instanceof HTMLElement&&previous.isConnected)previous.focus();};},[]);
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    const media = window.matchMedia("(max-width: 639px)");
+    const show = () => {
+      const dialog = ref.current;
+      if (!dialog) return;
+      if (dialog.open) dialog.close();
+      if (media.matches) dialog.showModal();
+      else dialog.show();
+    };
+    show();
+    media.addEventListener("change", show);
+    return () => {
+      media.removeEventListener("change", show);
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus();
+    };
+  }, []);
   return (
-    <div ref={ref} tabIndex={-1} onKeyDown={e=>{if(e.key==="Escape")onClose();}} className="fixed right-0 top-0 h-full w-full sm:w-[400px] bg-gray-800 border-l border-gray-700 shadow-2xl z-50 overflow-y-auto" role="dialog" aria-modal="false" aria-label="Flight details">
+    <dialog
+      ref={ref}
+      tabIndex={-1}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+      className="fixed left-auto right-0 top-0 m-0 max-w-none max-h-none h-dvh w-full sm:w-[400px] bg-gray-800 border-l border-gray-700 shadow-2xl z-50 overflow-y-auto"
+      role="dialog"
+      aria-label="Flight details"
+    >
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <h2 className="text-lg font-bold text-white">{flight.flight_number}</h2>
         <button
@@ -279,6 +316,6 @@ export function FlightDetailDrawer({
 
         <FlightActions flight={flight} />
       </div>
-    </div>
+    </dialog>
   );
 }

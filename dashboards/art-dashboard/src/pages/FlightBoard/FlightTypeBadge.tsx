@@ -6,11 +6,5 @@ export function FlightTypeBadge({ type }: { type: string | null }) {
     label: type,
     cls: "bg-gray-700 text-gray-300",
   };
-  return (
-    <span
-      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${style.cls}`}
-    >
-      {style.label}
-    </span>
-  );
+  return <span className={`text-xs text-gray-400 ${""}`}>{style.label}</span>;
 }

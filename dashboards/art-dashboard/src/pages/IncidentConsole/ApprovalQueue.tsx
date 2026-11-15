@@ -14,9 +14,15 @@ import { queryClient } from "../../queryClient";
  * it targets a concrete flight, forwards a command to `flights.commands`) or
  * rejects it.
  */
-export function ApprovalQueue({ pendingOnly = false }: { pendingOnly?: boolean }) {
-  const access=useAccess();
-  const canApprove=["approver","admin"].includes(access.role)&&(import.meta.env.VITE_PUBLIC_DEPLOYMENT!=="true"||access.controlling);
+export function ApprovalQueue({
+  pendingOnly = false,
+}: {
+  pendingOnly?: boolean;
+}) {
+  const access = useAccess();
+  const canApprove =
+    ["approver", "admin"].includes(access.role) &&
+    (import.meta.env.VITE_PUBLIC_DEPLOYMENT !== "true" || access.controlling);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,9 +32,14 @@ export function ApprovalQueue({ pendingOnly = false }: { pendingOnly?: boolean }
     refetchInterval: 5000,
   });
 
-  const approvals: Approval[] = (data?.approvals ?? []).filter(
-    p => pendingOnly ? ["pending", "approved", "dispatched"].includes(p.status) : p.status !== "rejected",
-  ).slice(-20).reverse();
+  const approvals: Approval[] = (data?.approvals ?? [])
+    .filter((p) =>
+      pendingOnly
+        ? ["pending", "approved", "dispatched"].includes(p.status)
+        : p.status !== "rejected",
+    )
+    .slice(-20)
+    .reverse();
 
   async function act(fn: () => Promise<unknown>, id: string) {
     setBusy(id);
@@ -41,8 +52,12 @@ export function ApprovalQueue({ pendingOnly = false }: { pendingOnly?: boolean }
       await queryClient.invalidateQueries({
         queryKey: ["analysis", "autonomous", "log"],
       });
-      await queryClient.invalidateQueries({ queryKey: ["analysis", "decisions"] });
-      await queryClient.invalidateQueries({ queryKey: ["analysis", "decision"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["analysis", "decisions"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["analysis", "decision"],
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
     } finally {
@@ -51,7 +66,23 @@ export function ApprovalQueue({ pendingOnly = false }: { pendingOnly?: boolean }
   }
 
   if (approvals.length === 0) {
-    if (pendingOnly) return <div><h2 className="text-sm mb-2">Pending approvals &amp; commands</h2><p className={isError ? "text-amber-300 text-xs" : "text-gray-500 text-xs"}>{isError ? "Approval queue unavailable." : isLoading ? "Loading approvals…" : "No pending approvals or commands."}</p></div>;
+    if (pendingOnly)
+      return (
+        <div>
+          <h2 className="text-sm mb-2">Pending approvals &amp; commands</h2>
+          <p
+            className={
+              isError ? "text-amber-300 text-xs" : "text-gray-500 text-xs"
+            }
+          >
+            {isError
+              ? "Approval queue unavailable."
+              : isLoading
+                ? "Loading approvals…"
+                : "No pending approvals or commands."}
+          </p>
+        </div>
+      );
     return null;
   }
 
@@ -88,29 +119,49 @@ export function ApprovalQueue({ pendingOnly = false }: { pendingOnly?: boolean }
             {p.status === "dispatched" ? "Awaiting execution" : p.status}
             {p.failure_reason ? `: ${p.failure_reason}` : ""}
           </div>
-          <Link className="text-accent text-xs block mt-2" to={`/decisions?decision=${encodeURIComponent(p.id)}`}>Review evidence & outcome →</Link>
-          {!canApprove && p.status === "pending" && <p className="text-xs text-gray-400 mt-2">Approval requires an approver account and control where enabled.</p>}
-          {["pending", "approved"].includes(p.status) && <div className="flex items-center gap-2 mt-2">
-            <button
-              className="text-xs font-bold px-3 py-1 rounded bg-green-600 text-white hover:bg-green-500 disabled:opacity-50"
-              disabled={busy === p.id || !canApprove}
-              onClick={() => act(() => analysisApi.approveProposal(p.id), p.id)}
-            >
-              {busy === p.id ? "..." : p.status === "approved" ? "Retry dispatch" : "Approve"}
-            </button>
-            {p.status === "pending" && <button
-              className="text-xs font-bold px-3 py-1 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-50"
-              disabled={busy === p.id || !canApprove}
-              onClick={() =>
-                act(
-                  () => analysisApi.rejectProposal(p.id, "operator rejected"),
-                  p.id,
-                )
-              }
-            >
-              Reject
-            </button>}
-          </div>}
+          <Link
+            className="text-accent text-xs block mt-2"
+            to={`/decisions?decision=${encodeURIComponent(p.id)}`}
+          >
+            Review evidence & outcome →
+          </Link>
+          {!canApprove && p.status === "pending" && (
+            <p className="text-xs text-gray-400 mt-2">
+              Approval requires an approver account and control where enabled.
+            </p>
+          )}
+          {["pending", "approved"].includes(p.status) && (
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                className="text-xs font-bold px-3 py-1 rounded bg-green-600 text-white hover:bg-green-500 disabled:opacity-50"
+                disabled={busy === p.id || !canApprove}
+                onClick={() =>
+                  act(() => analysisApi.approveProposal(p.id), p.id)
+                }
+              >
+                {busy === p.id
+                  ? "..."
+                  : p.status === "approved"
+                    ? "Retry dispatch"
+                    : "Approve"}
+              </button>
+              {p.status === "pending" && (
+                <button
+                  className="text-xs font-bold px-3 py-1 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-50"
+                  disabled={busy === p.id || !canApprove}
+                  onClick={() =>
+                    act(
+                      () =>
+                        analysisApi.rejectProposal(p.id, "operator rejected"),
+                      p.id,
+                    )
+                  }
+                >
+                  Reject
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>
