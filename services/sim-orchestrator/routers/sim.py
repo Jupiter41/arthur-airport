@@ -78,7 +78,9 @@ async def sim_status():
                 flights_today = record["cnt"]
 
             result = await session.run(
-                "MATCH (p:Passenger) RETURN count(p) AS cnt"
+                "MATCH (f:Flight) WHERE f.scheduled_time STARTS WITH $prefix "
+                "MATCH (p:Passenger)-[:ON_FLIGHT]->(f) RETURN count(DISTINCT p) AS cnt",
+                prefix=sim_date,
             )
             record = await result.single()
             if record:

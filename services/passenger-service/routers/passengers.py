@@ -28,6 +28,7 @@ from kafka.consumer import (
 from ml.features import build_features, departure_totals
 from ml.inference import is_model_trained, predict_with_source, get_feature_importance
 from services.zones import get_heatmap_zones
+from services.reconciliation import PHYSICAL_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -128,13 +129,12 @@ async def passenger_compare():
     sim_time = get_sim_time()
     by_status = await get_status_counts()
 
-    active = {"checked_in", "security_queue", "airside", "at_gate",
-              "deplaning", "baggage_claim"}
+    active = set(PHYSICAL_STATUSES)
     sim_total = sum(v for k, v in by_status.items() if k in active)
 
     # Split sim departing vs arriving
     dep_statuses = {"checked_in", "security_queue", "airside", "at_gate"}
-    arr_statuses = {"deplaning", "baggage_claim"}
+    arr_statuses = {"deplaning", "customs", "baggage_claim"}
     sim_departing = sum(v for k, v in by_status.items() if k in dep_statuses)
     sim_arriving = sum(v for k, v in by_status.items() if k in arr_statuses)
 
@@ -237,8 +237,7 @@ async def flow_summary():
     by_status, count_observation = await flow_projection.read()
 
     # Compute total in airport (active statuses only)
-    active = {"checked_in", "security_queue", "airside", "at_gate",
-              "deplaning", "baggage_claim"}
+    active = set(PHYSICAL_STATUSES)
     total = sum(v for k, v in by_status.items() if k in active)
 
     # Security summary with forecast

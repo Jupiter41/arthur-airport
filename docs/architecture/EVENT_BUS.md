@@ -964,3 +964,9 @@ airport expense; holding fuel, handling and compensation signals remain airline
 exposure, not airport profit. Planning results expose `accounting_policy`;
 missing policy metadata is read as `legacy-mixed`, requiring a rerun for new
 financial semantics. Rate snapshot/version behavior is unchanged.
+
+### Passenger recovery provenance (2026-11-16)
+
+`PassengerStatusChanged.payload.reconciliation_reason` is optional. Owner tick
+reconciliation sets it to `persisted_flight_state`; `at`/envelope `sim_time` is
+the recovery observation, not a reconstructed historical boarding time.

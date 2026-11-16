@@ -1,7 +1,8 @@
 """Neo4j checkpoint for the shared simulation's clock and operator settings."""
 import json
 import asyncio
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 
 from db.neo4j import get_driver
 from services import clock
@@ -9,6 +10,48 @@ from services.settings import get_settings, update_settings
 from kafka.producer import produce_event
 
 _lock = asyncio.Lock()
+logger = logging.getLogger(__name__)
+
+
+def legacy_clock_bound(values: list[dict], start: datetime) -> datetime | None:
+    """Recorded progress only: future timetables are not clock evidence."""
+    def utc(value) -> datetime | None:
+        try:
+            parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
+        except (ValueError, TypeError):
+            return None
+
+    floor = utc(start)
+    candidates = [parsed for row in values if (parsed := utc(row.get("at"))) is not None]
+    latest = max(candidates, default=floor)
+    return latest if latest > floor else None
+
+
+async def _restore_legacy() -> bool:
+    async with get_driver().session() as session:
+        result = await session.run(
+            "MATCH (f:Flight) WHERE f.actual_time IS NOT NULL AND f.actual_time <> '' "
+            "RETURN DISTINCT f.actual_time AS at "
+            "UNION ALL MATCH (p:PassengerRuntime {id:'latest'}) RETURN p.last_tick_sim_time AS at "
+            "UNION ALL MATCH (b:BaggageOutboxSeq {id:'latest'}) RETURN b.last_tick_sim_time AS at"
+        )
+        rows = await result.data()
+    recovered = legacy_clock_bound(rows, clock.SIM_START_TIME)
+    if recovered is None:
+        return False
+    start = clock.SIM_START_TIME.replace(tzinfo=None)
+    if clock.SIM_START_TIME.tzinfo is not None:
+        start = clock.SIM_START_TIME.astimezone(timezone.utc).replace(tzinfo=None)
+    day = (recovered.date() - start.date()).days + 1
+    tick = max(0, int((recovered - start).total_seconds() // 60))
+    clock.restore_state(recovered, day, tick, clock.get_speed())
+    clock.pause()
+    await checkpoint(command="legacy_clock_recovered")
+    logger.warning("Recovered legacy airport clock at %s (day %s); paused for verification", recovered, day)
+    return True
 
 
 async def checkpoint(*, command: str | None = None) -> None:
@@ -45,7 +88,7 @@ async def restore() -> bool:
         result = await session.run("MATCH (s:SimState {id: 'airport'}) RETURN properties(s) AS state")
         record = await result.single()
     if not record:
-        return False
+        return await _restore_legacy()
     state = record["state"]
     update_settings(json.loads(state["settings_json"]))
     clock.restore_state(datetime.fromisoformat(state["sim_time"]),

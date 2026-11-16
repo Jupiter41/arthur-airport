@@ -512,3 +512,13 @@ simulation clock at the read, not a last-change time or real fetch time.
 No owner clock means null. This is read-only response metadata; no domain
 mutation or additional Kafka event occurs. See the dashboard observation
 contract in `docs/dashboards/UI_IMPLEMENTATION.md`.
+
+### Containment and observed recovery (2026-11-16)
+
+Containment limits impact but does not stop a finite TTR countdown. Both active
+and contained finite-TTR incidents continue toward owner-confirmed resolution.
+`SecurityQueueUpdated` with a valid non-frozen checkpoint and wait below 20
+minutes resolves an existing congestion incident at that terminal. Missing,
+invalid, frozen or older-than-incident observations must not declare recovery.
+A queue update never creates a congestion incident; detection keeps its existing
+consecutive-threshold rule. All resolutions use the existing lifecycle events.

@@ -284,3 +284,20 @@ Response `200`:
 | `sim_day_number` | Gauge | Current simulated day |
 | `sim_events_injected_total` | Counter | Probabilistic events fired by type |
 | `sim_schedule_seeds_total` | Counter | Day schedules seeded |
+
+### Legacy clock recovery without reset (2026-11-16)
+
+If `SimState` is absent, startup must not rewind an already progressed airport.
+Recover a lower bound from recorded flight `actual_time` values and persisted
+owner clock checkpoints; never from future scheduled/estimated flight times or
+wall time. Normalize offsets to UTC, ignore absent/invalid values, and never
+choose a time before `SIM_START_TIME`. Derive day/tick from that simulated
+instant, preserve the existing weather, persist `SimState` and emit
+`SimControlChanged` with command `legacy_clock_recovered`. Legacy recovery
+starts paused for settings/recovery verification; normal durable restarts retain
+the stored pause/speed/settings. A fresh airport with no progress still follows
+the normal first-day initialization path. Existing `SimState` remains authoritative.
+
+`GET /sim/status` counts both `flights_today` and `passengers_today` against
+flights scheduled on the current simulated UTC date. Historical passengers
+retained in the graph must not inflate today's activity count.

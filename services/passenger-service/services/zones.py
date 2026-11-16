@@ -7,6 +7,7 @@ from collections import defaultdict
 from _common.transaction_scope import current
 
 from db.neo4j import get_driver
+from services.reconciliation import PHYSICAL_STATUSES
 
 # Zone capacity definitions — physical space limits for heatmap display.
 # Values calibrated against sim throughput: 420 flights/day, ~50K pax,
@@ -83,8 +84,9 @@ async def rebuild_from_neo4j() -> None:
     async with driver.session() as session:
         result = await session.run(
             "MATCH (p:Passenger) WHERE p.location_zone IS NOT NULL "
-            "AND NOT p.status IN ['departed_airport', 'boarded'] "
-            "RETURN p.location_zone AS zone, count(p) AS n"
+            "AND p.status IN $physical_statuses "
+            "RETURN p.location_zone AS zone, count(p) AS n",
+            physical_statuses=list(PHYSICAL_STATUSES),
         )
         async for record in result:
             _zone_density[record["zone"]] = record["n"]

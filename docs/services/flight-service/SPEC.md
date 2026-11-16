@@ -462,3 +462,11 @@ the winning checkpoint; replay at or before it performs no domain work. REST
 and outbox tasks cannot borrow a tick's transaction. WebSocket fan-out follows
 commit. All domain facts, including fuel, turnaround and vehicle changes, use
 the outbox in every speed mode; BULK snapshots are additional summaries.
+
+### Overdue owner recovery (2026-11-16)
+
+The FSM reads indexed nonterminal flights up to the next 24 hours, including
+older overdue flights. A rolling lower date bound must not strand an active
+movement forever after downtime or clock migration. Terminal history remains
+excluded by status; remote future timetables remain excluded by the upper bound.
+Normal owning-service FSM transitions and facts handle these overdue movements.

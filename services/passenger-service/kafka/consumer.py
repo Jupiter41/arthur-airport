@@ -57,6 +57,9 @@ from ml.inference import load_models, predict
 from ml.training import add_training_row, maybe_flush, maybe_retrain
 from services.connections import evaluate_connecting_passengers
 from services.security import SecuritySystem
+from services.reconciliation import (
+    PHYSICAL_STATUSES, FORWARD_FLIGHT_STATUSES, reconciliation_transition,
+)
 from services.spatial import walking_time_to_gate
 from services import wheelchair
 from services.state_machine import (
@@ -679,7 +682,9 @@ async def _warm_start_departures(sim_time: datetime) -> None:
     """
     cutoff = (sim_time + timedelta(hours=2)).isoformat()
     try:
-        pax_list = await get_passengers_by_status("booked", scheduled_before=cutoff)
+        pax_list = await get_passengers_by_status(
+            "booked", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
+        )
     except Exception as e:
         if current_tick.get() is not None:
             raise
@@ -828,6 +833,7 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
         # TickContribution. All of a tick's domain writes + fact staging then commit
         # in ONE apply_tick_atomic transaction, advancing the durable checkpoint.
         plan = TickContribution()
+        plan.merge(await _reconcile_flight_passengers(sim_time))
         plan.merge(await _advance_booked_to_checkin(sim_time, delta_minutes))
         plan.merge(await _advance_checkin_to_security(sim_time, delta_minutes))
         plan.merge(await _drain_security_queues(sim_time, delta_minutes))
@@ -977,6 +983,51 @@ async def _maybe_emit_bulk_snapshot(sim_time: datetime) -> None:
 CHECKIN_OPEN_MINUTES = 120  # Passengers arrive at check-in T-120 min before departure
 
 
+async def _reconcile_flight_passengers(sim_time: datetime) -> TickContribution:
+    """Recover a bounded cohort in the same atomic tick as normal progression."""
+    from db.neo4j import get_reconciliation_candidates
+    state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    plan = TickContribution()
+    removed: set[str] = set()
+    groups: dict[tuple[str, str], list[str]] = {}
+    for pax in await get_reconciliation_candidates(sim_time):
+        transition = reconciliation_transition(pax, sim_time)
+        if transition is None:
+            continue
+        status, zone = transition
+        pid = pax["id"]
+        removed.add(pid)
+        groups.setdefault(transition, []).append(pid)
+        old_zone = pax.get("location_zone") if pax["status"] in PHYSICAL_STATUSES else None
+        if status == "deplaning":
+            move_passenger(old_zone, zone)
+        elif old_zone:
+            remove_passenger(old_zone)
+        fact = build_passenger_status_changed_fact(
+            passenger_id=pid, name=pax.get("name") or "",
+            previous_status=pax["status"], new_status=status, location_zone=zone,
+            sim_time=sim_time, flight_id=pax["flight_id"], flight_number=pax.get("flight_number"),
+        )
+        fact["payload"]["reconciliation_reason"] = "persisted_flight_state"
+        # Recovery always keeps its evidence, including BULK/sampled ticks.
+        plan.facts.append({"id": fact["event_id"], "document": fact})
+        if pax.get("special_assistance") and status == "departed_airport":
+            await wheelchair.release(pid, sim_time)
+    for (status, zone), ids in groups.items():
+        plan.groups.append({"ids": ids, "status": status, "zone": zone})
+    if removed:
+        # Remove stale queue membership before this candidate's normal drain.
+        for cp in state.security.checkpoints.values():
+            cp.queue = [pid for pid in cp.queue if pid not in removed]
+            cp.sa_queue = [pid for pid in cp.sa_queue if pid not in removed]
+            cp._queue_set.difference_update(removed)
+            cp._sa_queue_set.difference_update(removed)
+        state.security_enqueued.difference_update(removed)
+        state.airside_transitioned.difference_update(removed)
+        logger.info("Reconciled %s passengers with persisted flight state", len(removed))
+    return plan
+
+
 async def _advance_booked_to_checkin(
     sim_time: datetime, delta_minutes: int = 1
 ) -> TickContribution:
@@ -993,7 +1044,9 @@ async def _advance_booked_to_checkin(
     # Only query booked passengers whose flights depart within next 3 hours
     cutoff = (sim_time + timedelta(hours=3)).isoformat()
     try:
-        pax_list = await get_passengers_by_status("booked", scheduled_before=cutoff)
+        pax_list = await get_passengers_by_status(
+            "booked", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
+        )
     except Exception as e:
         if current_tick.get() is not None:
             raise
@@ -1088,7 +1141,9 @@ async def _advance_checkin_to_security(
     # Only query checked_in passengers whose flights depart within next 2 hours
     cutoff = (sim_time + timedelta(hours=2)).isoformat()
     try:
-        pax_list = await get_passengers_by_status("checked_in", scheduled_before=cutoff)
+        pax_list = await get_passengers_by_status(
+            "checked_in", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
+        )
     except Exception as e:
         if current_tick.get() is not None:
             raise
@@ -1312,7 +1367,9 @@ async def _advance_airside_to_gate(sim_time: datetime) -> TickContribution:
     # Time-window: only passengers with flights departing within next 2 hours
     cutoff = (sim_time + timedelta(hours=2)).isoformat()
     try:
-        pax_list = await get_passengers_by_status("airside", scheduled_before=cutoff)
+        pax_list = await get_passengers_by_status(
+            "airside", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
+        )
     except Exception as e:
         if current_tick.get() is not None:
             raise

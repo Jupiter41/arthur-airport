@@ -703,3 +703,21 @@ simulation clock at the read, not a last-change time or real fetch time.
 No owner clock means null. This is read-only response metadata; no domain
 mutation or additional Kafka event occurs. See the dashboard observation
 contract in `docs/dashboards/UI_IMPLEMENTATION.md`.
+
+### Owner-state reconciliation after missed flight facts (2026-11-16)
+
+Each tick reconciles a bounded cohort of passenger records against persisted
+flight state, in the existing owner tick transaction with outbox facts. A finished
+departure cannot retain booked/checked-in/security/airside/at-gate/boarded
+passengers indefinitely: reconcile them to `departed_airport`, without claiming
+a missing boarding event happened. Already boarded passengers on departed or
+airborne departures also leave airport occupancy. Landed arrivals whose at-gate
+fact was missed enter deplaning; diverted arrivals leave airport occupancy.
+Only flights already observed by the current simulation clock are eligible.
+Original flight/passenger history is retained; reconciliation facts use the
+current simulated observation time and identify their recovery reason. A replay
+or failed tick cannot publish partial recovery. Normal departure progression
+excludes terminal flights, so it cannot overwrite a recovery transition in the
+same tick. Physical occupancy includes checked-in, security, airside, gate,
+deplaning, customs, baggage-claim and disrupted passengers; booked, airborne,
+boarded and departed records are excluded from terminal density.

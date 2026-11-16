@@ -1,6 +1,6 @@
 """Clock restart and operator-state durability without external infrastructure."""
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import importlib.util
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -13,6 +13,7 @@ def load_runtime(state=None, failure=False):
     session.__aenter__.return_value = session
     result = AsyncMock()
     result.single.return_value = record
+    result.data.return_value = []
     session.run.return_value = result
     if failure:
         session.run.side_effect = RuntimeError("database unavailable")
@@ -20,7 +21,8 @@ def load_runtime(state=None, failure=False):
     clock = SimpleNamespace(get_state=lambda: {
         "sim_time": now.isoformat(), "day_number": 2, "tick_number": 42,
         "speed_multiplier": 10, "paused": True,
-    }, get_sim_time=lambda: now, pause=Mock(), resume=Mock(), restore_state=Mock())
+    }, get_sim_time=lambda: now, pause=Mock(), resume=Mock(), restore_state=Mock(),
+        SIM_START_TIME=datetime(2024, 6, 15, 6), get_speed=lambda: 60)
     settings = SimpleNamespace(model_dump=lambda: {"daily_flights": 50})
     producer = ModuleType("kafka.producer"); producer.produce_event = Mock()
     db = ModuleType("db.neo4j"); db.get_driver = lambda: SimpleNamespace(session=lambda: session)
@@ -67,3 +69,37 @@ def test_database_failure_pauses_and_does_not_acknowledge_command_event():
         pass
     clock.pause.assert_called_once()
     producer.produce_event.assert_not_called()
+
+
+def test_fresh_airport_without_recorded_progress_still_initializes_normally():
+    module, clock, producer, _, _ = load_runtime()
+    assert asyncio.run(module.restore()) is False
+    clock.restore_state.assert_not_called()
+    producer.produce_event.assert_not_called()
+
+
+def test_legacy_clock_uses_recorded_progress_and_normalizes_utc():
+    module, _, _, _, _ = load_runtime()
+    values = [{"at": "2024-07-06T11:00:00+02:00"}, {"at": "2024-06-19T08:20:00"},
+              {"at": None}, {"at": "invalid"}]
+    assert module.legacy_clock_bound(values, datetime(2024, 6, 15, 6)) == datetime(2024, 7, 6, 9)
+    assert module.legacy_clock_bound([{"at": "2024-06-01T00:00:00"}], datetime(2024, 6, 15, 6)) is None
+
+
+def test_legacy_recovery_persists_clock_and_emits_recovery_without_resetting_weather():
+    module, clock, producer, session, _ = load_runtime()
+    session.run.return_value.data.return_value = [{"at": "2024-07-06T09:00:00"}]
+    assert asyncio.run(module.restore()) is True
+    clock.restore_state.assert_called_once_with(datetime(2024, 7, 6, 9), 22, 30420, 60)
+    clock.pause.assert_called_once()
+    assert "scheduled_time" not in session.run.call_args_list[1].args[0]
+    assert producer.produce_event.call_args.kwargs["payload"]["command"] == "legacy_clock_recovered"
+    assert "MERGE (s:SimState" in session.run.call_args.args[0]
+
+
+def test_legacy_recovery_derives_elapsed_time_from_utc_start():
+    module, clock, _, session, _ = load_runtime()
+    clock.SIM_START_TIME = datetime(2024, 6, 15, 8, tzinfo=timezone(timedelta(hours=2)))
+    session.run.return_value.data.return_value = [{"at": "2024-06-16T06:00:00Z"}]
+    assert asyncio.run(module.restore()) is True
+    assert clock.restore_state.call_args.args[:3] == (datetime(2024, 6, 16, 6), 2, 1440)

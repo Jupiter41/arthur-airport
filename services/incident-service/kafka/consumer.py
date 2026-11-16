@@ -11,7 +11,7 @@ Consumes:
 import logging
 import os
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Awaitable
 
 from confluent_kafka import Consumer
@@ -332,6 +332,8 @@ async def _dispatch(envelope: dict) -> None:
             await _on_baggage_flagged(payload, sim_time)
         case "SecurityCongestionDetected":
             await _on_security_congestion(payload, sim_time)
+        case "SecurityQueueUpdated":
+            await _on_security_queue_updated(payload, sim_time)
         case "AutonomousActionApplied":
             await _on_recommendation_applied(payload, sim_time)
         case _:
@@ -552,6 +554,35 @@ async def _on_baggage_flagged(payload: dict, sim_time: datetime) -> None:
             sim_time=sim_time,
             description="Dangerous goods class 3 item detected — fire risk.",
         )
+
+
+async def _on_security_queue_updated(payload: dict, sim_time: datetime) -> None:
+    """Clear congestion only from a valid, newer owner observation."""
+    terminal = payload.get("terminal")
+    wait = payload.get("wait_minutes")
+    if (terminal not in ("A", "B", "C") or payload.get("frozen") is not False
+            or isinstance(wait, bool) or not isinstance(wait, (int, float))
+            or not 0 <= wait < 20):
+        return
+    existing = await find_active_incident_by_type_and_location(
+        "security_congestion", f"terminal-{terminal}",
+    )
+    if not existing:
+        return
+    try:
+        started = datetime.fromisoformat(existing["started_at"])
+    except (KeyError, TypeError, ValueError):
+        return
+    if started.tzinfo is not None:
+        started = started.astimezone(timezone.utc).replace(tzinfo=None)
+    observed = sim_time
+    if observed.tzinfo is not None:
+        observed = observed.astimezone(timezone.utc).replace(tzinfo=None)
+    if observed < started:
+        return
+    await resolve_incident(existing["id"], sim_time,
+                           note="Owner checkpoint reports security wait below 20 minutes",
+                           resolution_reason="queue_recovered")
 
 
 async def _on_security_congestion(payload: dict, sim_time: datetime) -> None:

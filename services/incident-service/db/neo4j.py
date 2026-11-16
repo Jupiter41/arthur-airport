@@ -216,12 +216,12 @@ async def get_incidents(
 
 
 async def get_active_incidents_with_ttr() -> list[dict]:
-    """Get all active incidents that have a TTR countdown."""
+    """Containment limits impact; finite recovery timers must keep running."""
     async with get_driver().session() as session:
         result = await session.run(
             """
             MATCH (i:Incident)
-            WHERE i.status = 'active'
+            WHERE i.status IN ['active', 'contained']
             RETURN i
             """
         )

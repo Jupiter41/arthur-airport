@@ -299,13 +299,12 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
 async def get_active_flights(sim_time: datetime) -> list[dict]:
     """Get all flights in active (non-terminal) states for FSM processing."""
     driver = get_driver()
-    # Time-window: only consider flights scheduled within ±24h of current sim_time
-    window_start = (sim_time - timedelta(hours=24)).isoformat()
+    # An upper bound avoids loading future timetables. A lower bound would
+    # strand overdue active flights forever after downtime or a clock recovery.
     window_end = (sim_time + timedelta(hours=24)).isoformat()
     query = """
-    MATCH (f:Flight)
+    MATCH (f:Flight) USING INDEX f:Flight(status)
     WHERE f.status IN ['scheduled', 'boarding', 'delayed', 'departed', 'airborne', 'approach', 'landed', 'taxiing', 'at_gate']
-      AND f.scheduled_time >= $window_start
       AND f.scheduled_time <= $window_end
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
     OPTIONAL MATCH (f)-[:USES_RUNWAY]->(r:Runway)
@@ -321,7 +320,7 @@ async def get_active_flights(sim_time: datetime) -> list[dict]:
     f.arrival_estimated_time AS arrival_estimated_time
     """
     async with driver.session() as session:
-        result = await session.run(query, window_start=window_start, window_end=window_end)
+        result = await session.run(query, window_end=window_end)
         records = [record async for record in result]
 
     flights = []

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from _common import neo4j_client
 from _common import outbox as _outbox
+from services.reconciliation import PHYSICAL_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -668,13 +669,40 @@ async def get_zone_density() -> dict[str, int]:
     query = """
     MATCH (p:Passenger)
     WHERE p.location_zone IS NOT NULL
-      AND NOT p.status IN ['departed_airport', 'boarded']
+      AND p.status IN $physical_statuses
     RETURN p.location_zone AS zone, count(p) AS n
     """
     async with driver.session() as session:
-        result = await session.run(query)
+        result = await session.run(query, physical_statuses=list(PHYSICAL_STATUSES))
         records = [record async for record in result]
     return {r["zone"]: r["n"] for r in records}
+
+
+async def get_reconciliation_candidates(sim_time: datetime, limit: int = 2000) -> list[dict]:
+    """Bound recovery reads by the indexed passenger states, never by all history."""
+    if not 1 <= limit <= 10000:
+        raise ValueError("Reconciliation limit must be between 1 and 10000")
+    query = """
+    MATCH (p:Passenger) USING INDEX p:Passenger(status)
+    WHERE p.status IN ['booked','checked_in','security_queue','airside','at_gate','boarded','airborne']
+    WITH p MATCH (p)-[:ON_FLIGHT]->(f:Flight)
+    WHERE f.scheduled_time <= $now
+      AND (CASE WHEN f.actual_time IS NOT NULL AND f.actual_time <> ''
+                THEN f.actual_time ELSE f.scheduled_time END) <= $now
+      AND ((f.direction = 'departure' AND
+            (f.status IN ['arrived','completed'] OR
+             (p.status = 'boarded' AND f.status IN ['departed','airborne'])))
+        OR (f.direction = 'arrival' AND f.status IN ['at_gate','arrived','completed','diverted']
+            AND p.status IN ['airborne','booked','checked_in','boarded']))
+    RETURN p.id AS id, p.name AS name, p.status AS status,
+           p.location_zone AS location_zone, p.special_assistance AS special_assistance,
+           f.id AS flight_id, f.flight_number AS flight_number, f.status AS flight_status,
+           f.direction AS direction, f.actual_time AS actual_time, f.scheduled_time AS scheduled_time
+    LIMIT $limit
+    """
+    async with get_driver().session() as session:
+        result = await session.run(query, now=sim_time.isoformat(), limit=limit)
+        return [dict(row) async for row in result]
 
 
 async def get_passengers_by_status(

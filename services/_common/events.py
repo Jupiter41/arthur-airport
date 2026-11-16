@@ -109,6 +109,7 @@ class FlightCancelledPayload(BaseModel):
 
 
 class PassengerStatusChangedPayload(BaseModel):
+    reconciliation_reason: str | None = None
     passenger_id: str
     pnr: str
     flight_id: str
