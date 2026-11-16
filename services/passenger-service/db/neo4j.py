@@ -683,40 +683,79 @@ async def get_zone_density() -> dict[str, int]:
     return {r["zone"]: r["n"] for r in records}
 
 
+_RECON_LIVE = ['booked', 'checked_in', 'security_queue', 'airside', 'at_gate', 'boarded', 'airborne']
+
+
+def _with_flight(row: dict, flight_key: str = "flight_id") -> dict:
+    """Merge the event-fed flight fields into a passenger row (RC4)."""
+    from _common.flight_view import VIEW
+    flight = VIEW.get(row.get(flight_key)) or {}
+    row.update({
+        "flight_number": flight.get("flight_number"),
+        "estimated_time": flight.get("estimated_time"),
+        "scheduled_time": flight.get("scheduled_time"),
+        "actual_time": flight.get("actual_time"),
+        "flight_status": flight.get("status"),
+        "direction": flight.get("direction"),
+        "flight_type": flight.get("flight_type"),
+        "gate_id": flight.get("gate_id"),
+        "terminal_id": flight.get("terminal_id"),
+    })
+    return row
+
+
+def reconciliation_groups(sim_time: datetime) -> list[dict]:
+    """Finished flights (as consumed from flights.events) and the stale statuses to recover."""
+    from _common.flight_view import VIEW
+    now = sim_time.replace(tzinfo=None).isoformat()
+    groups = []
+    for flight in VIEW.flights.values():
+        scheduled = flight.get("scheduled_time") or ""
+        if not scheduled or scheduled > now or (flight.get("actual_time") or scheduled) > now:
+            continue
+        status, direction = flight.get("status"), flight.get("direction")
+        if direction == "departure" and status in ("arrived", "completed"):
+            statuses = _RECON_LIVE
+        elif direction == "departure" and status in ("departed", "airborne"):
+            statuses = ["boarded"]
+        elif direction == "arrival" and status in ("at_gate", "arrived", "completed", "diverted"):
+            statuses = ["airborne", "booked", "checked_in", "boarded"]
+        else:
+            continue
+        groups.append({"fid": flight["id"], "statuses": statuses})
+    return groups
+
+
 async def get_reconciliation_candidates(sim_time: datetime, limit: int = 2000) -> list[dict]:
-    """Bound recovery reads by the indexed passenger states, never by all history."""
+    """Passengers left behind by finished flights, judged on the event-fed FlightView.
+
+    RC4: flight state comes from the events this consumer has processed, never
+    from the live Flight nodes, so recovery cannot run ahead of the flight event
+    that the primary handler is about to process. Only ``ON_FLIGHT`` identity is
+    traversed in the graph.
+    """
     if not 1 <= limit <= 10000:
         raise ValueError("Reconciliation limit must be between 1 and 10000")
+    groups = reconciliation_groups(sim_time)
+    if not groups:
+        return []
     query = """
-    MATCH (p:Passenger) USING INDEX p:Passenger(status)
-    WHERE p.status IN ['booked','checked_in','security_queue','airside','at_gate','boarded','airborne']
-    // The subquery pins expansion to start from each live passenger. Without it
-    // the planner picks a NodeHashJoin that expands every passenger of every
-    // historical (arrived) departure, which exceeded Neo4j's transaction
-    // memory pool once a few weeks of history had accumulated.
+    UNWIND $groups AS g
+    MATCH (f:Flight {id: g.fid})
     CALL {
-      WITH p
-      MATCH (p)-[:ON_FLIGHT]->(f:Flight)
-      RETURN f
+      WITH f, g
+      MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
+      WHERE p.status IN g.statuses
+      RETURN p
     }
-    WITH p, f
-    WHERE f.scheduled_time <= $now
-      AND (CASE WHEN f.actual_time IS NOT NULL AND f.actual_time <> ''
-                THEN f.actual_time ELSE f.scheduled_time END) <= $now
-      AND ((f.direction = 'departure' AND
-            (f.status IN ['arrived','completed'] OR
-             (p.status = 'boarded' AND f.status IN ['departed','airborne'])))
-        OR (f.direction = 'arrival' AND f.status IN ['at_gate','arrived','completed','diverted']
-            AND p.status IN ['airborne','booked','checked_in','boarded']))
     RETURN p.id AS id, p.name AS name, p.status AS status,
            p.location_zone AS location_zone, p.special_assistance AS special_assistance,
-           f.id AS flight_id, f.flight_number AS flight_number, f.status AS flight_status,
-           f.direction AS direction, f.actual_time AS actual_time, f.scheduled_time AS scheduled_time
+           f.id AS flight_id
     LIMIT $limit
     """
     async with get_driver().session() as session:
-        result = await session.run(query, now=sim_time.isoformat(), limit=limit)
-        return [dict(row) async for row in result]
+        result = await session.run(query, groups=groups, limit=limit)
+        return [_with_flight(dict(row)) async for row in result]
 
 
 # Passenger timestamps a caller may bound a read by (never interpolate input).
@@ -732,29 +771,28 @@ async def get_passengers_by_status(
     due_at: str | None = None,
     include_ids: list[str] | None = None,
 ) -> list[dict]:
-    """Read matching passengers, optionally from indexed eligible flight states.
+    """Read matching passengers, optionally only on flights in given states.
 
-    ``due_field``/``due_at`` keep only passengers whose ``due_field`` timestamp
-    is at or before ``due_at`` (plus any ``include_ids``), so a tick reads the
-    passengers its transition rule can act on instead of the whole status.
-    Timestamps are naive fixed-width ISO strings, so string order is time order.
+    RC4: flight eligibility (``flight_statuses`` / ``scheduled_before``) and the
+    returned flight fields come from the event-fed FlightView; the graph is only
+    traversed by flight identity (``ON_FLIGHT``). ``due_field``/``due_at`` keep
+    only passengers whose ``due_field`` timestamp is at or before ``due_at``
+    (plus any ``include_ids``). Timestamps are naive fixed-width ISO strings.
     """
+    from _common.flight_view import VIEW
     params: dict = {"status": status}
-    if flight_statuses is not None:
-        params["flight_statuses"] = flight_statuses
+    if flight_statuses is not None or scheduled_before:
+        params["fids"] = [f["id"] for f in VIEW.select(
+            statuses=flight_statuses, scheduled_before=scheduled_before)]
+        if not params["fids"]:
+            return []
         start = """
-        MATCH (f:Flight) USING INDEX f:Flight(status)
-        WHERE f.status IN $flight_statuses
+        UNWIND $fids AS fid
+        MATCH (f:Flight {id: fid})
+        CALL { WITH f MATCH (p:Passenger)-[:ON_FLIGHT]->(f) WHERE p.status = $status RETURN p }
         """
-        if scheduled_before:
-            start += " AND f.scheduled_time <= $before "
-        start += " WITH f MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f) "
     else:
         start = "MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f:Flight) "
-        if scheduled_before:
-            start += " WHERE f.scheduled_time <= $before "
-    if scheduled_before:
-        params["before"] = scheduled_before
     if due_field is not None:
         if due_field not in _DUE_FIELDS or due_at is None:
             raise ValueError(f"unsupported due filter: {due_field!r}")
@@ -762,7 +800,6 @@ async def get_passengers_by_status(
         params["include_ids"] = list(include_ids or [])
         start += f" WITH p, f WHERE p.{due_field} <= $due_at OR p.id IN $include_ids "
     query = start + """
-        OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
         RETURN p.id AS id, p.name AS name, f.id AS flight_id,
                p.special_assistance AS special_assistance,
                p.location_zone AS location_zone,
@@ -772,19 +809,29 @@ async def get_passengers_by_status(
                p.baggage_claim_at AS baggage_claim_at,
                p.customs_at AS customs_at,
                p.connection AS connection,
-               p.connection_flight_id AS connection_flight_id,
-               f.flight_number AS flight_number,
-               f.estimated_time AS estimated_time,
-               f.scheduled_time AS scheduled_time,
-               f.status AS flight_status,
-               f.direction AS direction,
-               f.flight_type AS flight_type,
-               g.id AS gate_id,
-               g.terminal_id AS terminal_id
+               p.connection_flight_id AS connection_flight_id
     """
     async with get_driver().session() as session:
         result = await session.run(query, **params)
-        return [dict(r) async for r in result]
+        return [_with_flight(dict(r)) async for r in result]
+
+
+async def get_boarding_counts(flight_ids: list[str]) -> list[dict]:
+    """Own-domain boarding progress for ``BoardingProgress`` (RC4)."""
+    if not flight_ids:
+        return []
+    query = """
+    UNWIND $fids AS fid
+    MATCH (f:Flight {id: fid})
+    CALL {
+      WITH f
+      MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
+      RETURN count(p) AS total, sum(CASE WHEN p.status = 'boarded' THEN 1 ELSE 0 END) AS boarded
+    }
+    RETURN f.id AS flight_id, total, boarded
+    """
+    async with get_driver().session() as session:
+        return [dict(r) async for r in await session.run(query, fids=flight_ids)]
 
 
 async def get_security_queue_members() -> list[dict]:
@@ -831,71 +878,71 @@ CONNECTION_CHECK_STATUSES = (
 
 
 async def get_connecting_passengers() -> list[dict]:
-    """Get all connecting passengers with their flight info."""
-    driver = get_driver()
+    """Connecting passengers; flight/gate details from the event-fed FlightView (RC4)."""
+    from _common.flight_view import VIEW
     query = """
     MATCH (p:Passenger) USING INDEX p:Passenger(status)
     WHERE p.status IN $statuses AND p.connection = true
     MATCH (p)-[:ON_FLIGHT]->(f:Flight)
-    OPTIONAL MATCH (cf:Flight {id: p.connection_flight_id})
     OPTIONAL MATCH (p)-[:CARRIES]->(b:Baggage)
-    OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(ig:Gate)
-    OPTIONAL MATCH (cf)-[:ASSIGNED_TO]->(cg:Gate)
     RETURN p.id AS id, p.name AS name, p.pnr AS pnr,
            p.status AS status, p.connection_risk AS connection_risk,
            p.special_assistance AS special_assistance,
-           f.flight_number AS inbound_flight,
-           f.delay_minutes AS inbound_delay,
-           f.estimated_time AS inbound_estimated,
-           f.status AS inbound_status,
-           ig.id AS inbound_gate_id,
-           cf.flight_number AS connection_flight,
-           cf.estimated_time AS connection_estimated,
-           cf.scheduled_time AS connection_scheduled,
-           cg.id AS connection_gate_id,
+           f.id AS inbound_id, p.connection_flight_id AS connection_flight_id,
            count(b) AS baggage_count
     """
-    async with driver.session() as session:
+    async with get_driver().session() as session:
         result = await session.run(query, statuses=list(CONNECTION_CHECK_STATUSES))
-        return [dict(r) async for r in result]
+        rows = [dict(r) async for r in result]
+    for row in rows:
+        inbound = VIEW.get(row.pop("inbound_id")) or {}
+        onward = VIEW.get(row.pop("connection_flight_id")) or {}
+        row.update({
+            "inbound_flight": inbound.get("flight_number"),
+            "inbound_delay": inbound.get("delay_minutes"),
+            "inbound_estimated": inbound.get("estimated_time"),
+            "inbound_status": inbound.get("status"),
+            "inbound_gate_id": inbound.get("gate_id"),
+            "connection_flight": onward.get("flight_number"),
+            "connection_estimated": onward.get("estimated_time"),
+            "connection_scheduled": onward.get("scheduled_time"),
+            "connection_gate_id": onward.get("gate_id"),
+        })
+    return rows
+
+
+_OPEN_DEPARTURE = ("scheduled", "boarding", "delayed")
+
+
+def _open_departures(start: str, end: str) -> list[dict]:
+    from _common.flight_view import VIEW
+    return [f for f in VIEW.select(statuses=_OPEN_DEPARTURE, direction="departure",
+                                   estimated_from=start, estimated_to=end)
+            if f.get("gate_id")]
 
 
 async def get_departure_flights_in_window(sim_time: datetime, window_min: int = 90) -> list[dict]:
-    """Get departure flights within a time window, grouped by terminal."""
-    driver = get_driver()
-    end_time = sim_time.isoformat()
+    """Departure flights within a time window, grouped by terminal (FlightView, RC4)."""
     from datetime import timedelta
-    window_end = (sim_time + timedelta(minutes=window_min)).isoformat()
-    query = """
-    MATCH (f:Flight)-[:ASSIGNED_TO]->(g:Gate)
-    WHERE f.direction = 'departure'
-      AND f.status IN ['scheduled', 'boarding', 'delayed']
-      AND f.estimated_time >= $start AND f.estimated_time <= $end
-    RETURN g.terminal_id AS terminal_id,
-           count(f) AS flight_count,
-           sum(f.pax_count) AS total_pax
-    """
-    async with driver.session() as session:
-        result = await session.run(query, start=end_time, end=window_end)
-        return [dict(r) async for r in result]
+    start = sim_time.replace(tzinfo=None).isoformat()
+    end = (sim_time.replace(tzinfo=None) + timedelta(minutes=window_min)).isoformat()
+    groups: dict = {}
+    for flight in _open_departures(start, end):
+        entry = groups.setdefault(flight.get("terminal_id"), {
+            "terminal_id": flight.get("terminal_id"), "flight_count": 0, "total_pax": 0})
+        entry["flight_count"] += 1
+        entry["total_pax"] += flight.get("pax_count") or 0
+    return list(groups.values())
 
 
 async def get_forecast_departures(sim_time: datetime, horizon_minutes: int) -> list[dict]:
-    """Read the known schedule once for all future forecast windows."""
+    """The known departure schedule for forecast windows (FlightView, RC4)."""
     from datetime import timedelta
-
-    async with get_driver().session() as session:
-        result = await session.run(
-            "MATCH (f:Flight)-[:ASSIGNED_TO]->(g:Gate) "
-            "WHERE f.direction = 'departure' "
-            "AND f.status IN ['scheduled', 'boarding', 'delayed'] "
-            "AND f.estimated_time >= $start AND f.estimated_time <= $end "
-            "RETURN DISTINCT f.id AS flight_id, f.estimated_time AS estimated_time, "
-            "g.terminal_id AS terminal_id, f.pax_count AS pax_count",
-            start=sim_time.isoformat(),
-            end=(sim_time + timedelta(minutes=horizon_minutes)).isoformat(),
-        )
-        return [dict(row) async for row in result]
+    start = sim_time.replace(tzinfo=None).isoformat()
+    end = (sim_time.replace(tzinfo=None) + timedelta(minutes=horizon_minutes)).isoformat()
+    return [{"flight_id": f["id"], "estimated_time": f.get("estimated_time") or f.get("scheduled_time"),
+             "terminal_id": f.get("terminal_id"), "pax_count": f.get("pax_count")}
+            for f in _open_departures(start, end)]
 
 
 async def get_status_counts() -> dict[str, int]:

@@ -312,3 +312,14 @@ def emit_bulk_state_snapshot(
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:
     await kafka_runtime.wait_for_kafka(max_attempts=max_attempts, delay_s=delay_s)
+
+
+def emit_boarding_progress(flights: list[dict], sim_time: datetime) -> None:
+    """Emit BoardingProgress: boarded/total per boarding departure (RC4).
+
+    flight-service decides departure from this fact instead of counting the
+    passenger owner's nodes. Staged with the tick when called inside one.
+    Never suppressed in BULK mode (it gates departures).
+    """
+    if flights:
+        _produce_event("BoardingProgress", sim_time, {"flights": flights})

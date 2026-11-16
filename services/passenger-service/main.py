@@ -85,6 +85,14 @@ async def lifespan(app: FastAPI):
     # 4. Create constraints and indexes
     await create_constraints_and_indexes()
 
+    # 4b. RC4: bootstrap the event-fed FlightView once (stamped with our own
+    #     tick checkpoint); flights.events advances it from here on.
+    from _common import flight_view
+    from db.neo4j import read_tick_checkpoint
+    checkpoint = await read_tick_checkpoint()
+    loaded = await flight_view.bootstrap(flight_view.VIEW, get_driver, checkpoint)
+    logger.info("FlightView bootstrapped: %d flights (stamp=%s)", loaded, checkpoint)
+
     # 5. Rebuild zone density from Neo4j
     await rebuild_from_neo4j()
 

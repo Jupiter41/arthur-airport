@@ -31,7 +31,6 @@ from db.neo4j import (
     set_manual_hold_in_tx,
     next_outbox_revision,
     get_driver,
-    get_boarded_percentage,
     assign_flight_to_runway_in_tx,
     is_gate_occupied,
     get_flight_by_id,
@@ -102,6 +101,9 @@ class FlightConsumerState:
         self.last_tick_sim_time: datetime | None = None
         self.runway_queue = RunwayQueue()
         self.held_flights: dict[str, dict] = {}
+        # RC4: boarding progress as published by passenger-service (BoardingProgress),
+        # flight_id -> {"boarded", "total", "at"}; never counted from Passenger nodes.
+        self.boarding_progress: dict[str, dict] = {}
         self.incident_affected_gates: set[str] = set()
         self.incident_affected_runways: set[str] = set()
         self.active_incident_locations: dict[str, str] = {}
@@ -315,6 +317,8 @@ _TOPICS = [
     "flights.schedule",
     "baggage.events",
     "flights.commands",
+    # RC4: BoardingProgress only; every other passenger fact is dropped unparsed.
+    "passengers.events",
 ]
 
 
@@ -385,6 +389,10 @@ async def _dispatch(envelope: dict) -> None:
         await _handle_command(envelope)
         return
 
+    if (envelope.get("producer") == "passenger-service"
+            and envelope.get("event_type") != "BoardingProgress"):
+        return  # RC4: flight-service consumes only BoardingProgress from passengers
+
     event_id = envelope.get("event_id", "")
 
     # Idempotency check
@@ -408,6 +416,8 @@ async def _dispatch(envelope: dict) -> None:
             await _on_schedule_seeded(payload, sim_time)
         case "BaggageFlagged":
             await _on_baggage_flagged(payload, sim_time)
+        case "BoardingProgress":
+            _on_boarding_progress(payload, sim_time)
         case _:
             pass
 
@@ -1063,10 +1073,11 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
         open_rw = await get_open_runway(ils_required=_state.runway_queue.ils_required)
         runway_available = open_rw is not None
 
-    # Get boarding percentage for departure flights in boarding state
+    # Boarding percentage for departures in boarding (RC4: from BoardingProgress
+    # events consumed so far, not from the passenger owner's live nodes).
     boarded_pct = 1.0
     if current_status == "boarding" and direction == "departure":
-        boarded_pct = await get_boarded_percentage(flight_id)
+        boarded_pct = boarded_fraction(_state.boarding_progress, flight_id)
         # Fallback only for true positioning flights with no passengers assigned.
         # For normal flights, do not synthesize boarding progress from elapsed time,
         # otherwise flights can depart with unrealistically low onboard counts.
@@ -1193,6 +1204,7 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
                         "reason": "diverted",
                         "direction": direction,
                         "destination_iata": flight.get("destination_iata"),
+                        **_record_fields(flight),
                     })},
             ]
 
@@ -1244,6 +1256,7 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
                     "reason": "crew_readiness",
                     "direction": direction,
                     "destination_iata": flight.get("destination_iata"),
+                    **_record_fields(flight, estimated_time=new_est_str),
                 })}]
 
             async def _crew_delay(tx, _fid=flight_id, _d=new_delay, _est=new_est_str):
@@ -1281,6 +1294,8 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
                     "flight_id": flight_id,
                     "flight_number": flight["flight_number"],
                     "ctot_delay_minutes": ctot_delay,
+                    "delay_minutes": new_delay,
+                    **_record_fields(flight, estimated_time=new_est_str),
                 })}]
 
             async def _ctot(tx, _fid=flight_id, _d=new_delay, _est=new_est_str):
@@ -1330,6 +1345,26 @@ async def _process_flight(flight: dict, sim_time: datetime) -> None:
     await _execute_transition(flight, current_status, new_status, sim_time)
 
 
+def _record_fields(flight: dict, **overrides) -> dict:
+    """Flight record fields carried on every FlightStatusChanged (RC4).
+
+    Non-owners keep an event-fed FlightView instead of reading live Flight
+    nodes, so each fact must carry the schedule/estimate/actual times it moved.
+    """
+    from _common.flight_view import _iso
+    fields = {
+        "scheduled_time": flight.get("scheduled_time"),
+        "estimated_time": flight.get("estimated_time"),
+        "actual_time": flight.get("actual_time"),
+        "flight_type": flight.get("flight_type"),
+        "pax_count": flight.get("pax_count"),
+        "origin_iata": flight.get("origin_iata"),
+        "aircraft_registration": flight.get("aircraft_registration"),
+    }
+    fields.update({k: v for k, v in overrides.items() if v is not None})
+    return {k: (_iso(v) if k.endswith("_time") else v) for k, v in fields.items()}
+
+
 async def _commit_transition(
     flight: dict,
     previous_status: str,
@@ -1369,6 +1404,8 @@ async def _commit_transition(
         "reason": None,
         "direction": direction,
         "destination_iata": flight.get("destination_iata"),
+        **_record_fields(flight, estimated_time=update_kwargs.get("estimated_time"),
+                         actual_time=update_kwargs.get("actual_time")),
     }
     fact = build_fact(event_id, "FlightStatusChanged", sim_time, payload)
     facts = [{"id": event_id, "document": fact}, *(extra_facts or [])]
@@ -1679,6 +1716,7 @@ async def _emit_status_changed_callback(
         reason="turnaround_delay",
         direction=flight.get("direction"),
         destination_iata=flight.get("destination_iata"),
+        record=_record_fields(flight),
     )
 
 
@@ -1745,11 +1783,65 @@ async def _on_incident_status_changed(payload: dict, sim_time: datetime) -> None
         logger.info("Incident resolved at %s; remaining restrictions reconciled", location)
 
 
+FLIGHTS_SCHEDULED_CHUNK = 250
+
+
+def boarded_fraction(progress: dict[str, dict], flight_id: str) -> float:
+    """Boarded share from the latest consumed BoardingProgress (0.0 when none yet)."""
+    entry = progress.get(flight_id)
+    if not entry:
+        return 0.0
+    total = entry.get("total") or 0
+    return 1.0 if total <= 0 else min(1.0, (entry.get("boarded") or 0) / total)
+
+
+def _on_boarding_progress(payload: dict, sim_time: datetime) -> None:
+    """Keep the newest BoardingProgress per flight (older/duplicate facts ignored)."""
+    at = sim_time.isoformat()
+    for item in payload.get("flights") or []:
+        fid = item.get("flight_id")
+        if not fid:
+            continue
+        current = _state.boarding_progress.get(fid)
+        if current is not None and current["at"] > at:
+            continue
+        _state.boarding_progress[fid] = {
+            "boarded": int(item.get("boarded") or 0), "total": int(item.get("total") or 0), "at": at,
+        }
+    # Bounded: drop entries older than a day of sim time.
+    cutoff = (sim_time - timedelta(hours=24)).isoformat()
+    for fid in [k for k, v in _state.boarding_progress.items() if v["at"] < cutoff]:
+        del _state.boarding_progress[fid]
+
+
 async def _on_schedule_seeded(payload: dict, sim_time: datetime) -> None:
-    """Handle FlightScheduleSeeded — log acknowledgment (flights already in Neo4j)."""
+    """Handle FlightScheduleSeeded — publish the owned flight records (RC4).
+
+    The seeder writes the Flight nodes (RC7); flight-service, as their owner,
+    publishes them as ``FlightsScheduled`` so non-owners can maintain an
+    event-fed FlightView instead of reading live Flight nodes. Chunked, staged
+    through the outbox, and deduped on the seeding event's identity.
+    """
+    from _common.flight_view import flight_record
+    from db.neo4j import get_flight_records
     total = payload.get("total_flights", 0)
     sim_day = payload.get("sim_day", 0)
-    logger.info("Flight schedule seeded: day=%d, flights=%d", sim_day, total)
+    ids = list(payload.get("flight_ids") or [])
+    records = [flight_record(row) for row in await get_flight_records(ids)]
+    facts = []
+    for index in range(0, len(records), FLIGHTS_SCHEDULED_CHUNK):
+        chunk = records[index:index + FLIGHTS_SCHEDULED_CHUNK]
+        fact_id = f"fsched:{sim_day}:{payload.get('sim_date', '')}:{index}"
+        facts.append({"id": fact_id, "document": build_fact(
+            fact_id, "FlightsScheduled", sim_time, {
+                "sim_day": sim_day, "part": index // FLIGHTS_SCHEDULED_CHUNK,
+                "part_count": -(-len(records) // FLIGHTS_SCHEDULED_CHUNK), "flights": chunk,
+            })})
+    if facts:
+        await _commit_flight_writes(f"fsched:{sim_day}:{payload.get('sim_date', '')}",
+                                    sim_time, facts, [])
+    logger.info("Flight schedule seeded: day=%d, flights=%d, published=%d",
+                sim_day, total, len(records))
 
 
 async def _on_baggage_flagged(payload: dict, sim_time: datetime) -> None:
@@ -1795,6 +1887,7 @@ def _hold_fact(flight: dict, updated: dict, delay: int, reason: str, sim_time: d
             "reason": reason,
             "direction": flight.get("direction"),
             "destination_iata": flight.get("destination_iata"),
+            **_record_fields(flight, estimated_time=updated.get("estimated_time")),
         })}
 
 
@@ -1892,6 +1985,7 @@ async def release_flight(flight_id: str, sim_time: datetime) -> dict | None:
                 "reason": None,
                 "direction": direction,
                 "destination_iata": flight.get("destination_iata"),
+                **_record_fields(flight),
             })}
 
         updated = await update_flight_status_in_tx(tx, flight_id, new_status)

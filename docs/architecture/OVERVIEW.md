@@ -132,6 +132,17 @@ The simulation orchestrator controls a virtual clock that can run at configurabl
 
 All services consume the `sim.clock` Kafka topic to advance their internal time. No service has a wall-clock dependency.
 
+**Tick watermark and back-pressure (RC4, 2026-11-16).** After committing a tick, each
+owner (flight, passenger, baggage) publishes `TickProcessed {owner, sim_time}` on
+`sim.watermark`. The orchestrator tracks the latest watermark per owner and **holds the
+clock** (does not emit the next tick) while the slowest *live* owner is more than
+`WATERMARK_MAX_LAG_MIN` sim-minutes (default 5) behind the next tick. An owner silent for
+`WATERMARK_STALE_S` wall seconds (default 30) is treated as down and does not hold the
+clock (it is reported instead), so one crashed service cannot freeze the sim. Lag per
+owner and held ticks are Prometheus metrics (`sim_owner_lag_minutes`,
+`sim_clock_held_total`) and appear in `GET /sim/status` as `watermarks`. Lag becomes
+visible back-pressure instead of silently coarsened ticks.
+
 ---
 
 ## 7. Technology decisions (ADRs)
@@ -189,6 +200,31 @@ overlay, aviationweather.gov for live METAR). Every real-data mode is **off by d
 > real-world data. Whether to keep them as clearly-labelled opt-in reference inputs or remove them
 > to reach a literal "no real data anywhere" posture is an **owner decision**; this reconciliation
 > only makes the labelling honest and consistent, and keeps all generated operational data synthetic.
+
+### ADR-007 — Decisions come from consumed events, not another owner's live nodes (RC4)
+
+**Decision.** A service decides only from (a) its own nodes and (b) projections it builds
+from the events it has consumed. Reading another owner's *mutable* state from Neo4j in a
+decision path is the same coupling as a direct HTTP call (rule 1) through a different
+channel. It lets a lagging consumer act on state that is ahead of its position in the
+event stream, which broke causality (reconciliation "stole" 48% of departures, stamped
+up to 64 sim-min late).
+
+- Flight state for non-owners is a `FlightView` (`services/_common/flight_view.py`) fed by
+  `FlightsScheduled`, `FlightStatusChanged`, `FlightGateAssigned`, `FlightCancelled`,
+  `FlightDiverted` and `FlightCTOTAssigned`. These facts carry the flight record fields.
+  The view is bootstrapped once at startup from the owner's nodes, stamped with the reader's
+  own tick checkpoint (facts at or before the stamp are already reflected).
+- flight-service gates departure on `BoardingProgress` from passenger-service, never by
+  counting `Passenger` nodes.
+- Allowed graph reads across domains: relationship traversal by **identity**
+  (`ON_FLIGHT`, `LOADED_ON`, `CARRIES` with `f.id IN $ids`), static topology (`Gate`), and
+  read-only REST/display queries that make no decision.
+- Reconciliation sweeps are a recovery path only: the first ticks after a restart and then
+  hourly (`RECONCILE_BOOT_TICKS`, `RECONCILE_INTERVAL_MIN`).
+
+**Not covered here:** sim-orchestrator's seeder still writes `Flight`/`Passenger`/`Baggage`
+directly (RC7).
 
 ---
 

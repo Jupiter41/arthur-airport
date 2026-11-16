@@ -225,6 +225,26 @@ async def get_all_flights(
     return flights, total
 
 
+async def get_flight_records(flight_ids: list[str]) -> list[dict]:
+    """Own-domain read of flight records for the ``FlightsScheduled`` fact (RC4)."""
+    if not flight_ids:
+        return []
+    query = """
+    UNWIND $ids AS fid
+    MATCH (f:Flight {id: fid})
+    OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
+    RETURN f.id AS id, f.flight_number AS flight_number, f.direction AS direction,
+           f.status AS status, f.scheduled_time AS scheduled_time,
+           f.estimated_time AS estimated_time, f.actual_time AS actual_time,
+           f.delay_minutes AS delay_minutes, coalesce(g.id, f.gate_id) AS gate_id,
+           f.flight_type AS flight_type, f.pax_count AS pax_count,
+           f.destination_iata AS destination_iata, f.origin_iata AS origin_iata,
+           f.aircraft_registration AS aircraft_registration
+    """
+    async with get_driver().session() as session:
+        return await (await session.run(query, ids=flight_ids)).data()
+
+
 async def get_flight_by_id(flight_id: str) -> dict | None:
     """Get a single flight with gate and runway info."""
     driver = get_driver()
@@ -806,28 +826,6 @@ async def get_paired_flight(aircraft_registration: str, direction: str) -> dict 
         result = await session.run(query, reg=aircraft_registration, dir=other_direction)
         record = await result.single()
         return dict(record["flight"]) if record else None
-
-
-async def get_boarded_percentage(flight_id: str) -> float:
-    """Get the percentage of passengers boarded on a flight."""
-    driver = get_driver()
-    query = """
-    MATCH (f:Flight {id: $id})
-    OPTIONAL MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
-    WITH f, count(p) AS total
-    OPTIONAL MATCH (p2:Passenger {status: 'boarded'})-[:ON_FLIGHT]->(f)
-    RETURN total,
-           count(p2) AS boarded,
-           CASE WHEN total = 0 THEN 1.0
-                ELSE toFloat(count(p2)) / total
-           END AS pct
-    """
-    async with driver.session() as session:
-        result = await session.run(query, id=flight_id)
-        record = await result.single()
-        if not record:
-            return 1.0
-        return record["pct"]
 
 
 async def get_cascade_info(flight_id: str) -> dict:

@@ -31,7 +31,7 @@ entity transitions still advance only on `SimClockTick`.
 | `sim.clock`         | sim-orchestrator             | all services                                                                    | 1h        |
 | `flights.events`    | flight-service               | passenger-service, baggage-service, incident-service, cost-service, api-gateway | 7 days    |
 | `flights.schedule`  | sim-orchestrator             | flight-service                                                                  | 7 days    |
-| `passengers.events` | passenger-service            | incident-service, analysis-service, api-gateway                                 | 7 days    |
+| `passengers.events` | passenger-service            | flight-service (`BoardingProgress` only), incident-service, analysis-service, api-gateway | 7 days |
 | `baggage.events`    | baggage-service              | passenger-service, flight-service, incident-service, analysis-service, api-gateway | 7 days |
 | `weather.events`    | weather-service              | flight-service, incident-service, api-gateway                                   | 7 days    |
 | `incidents.events`  | incident-service             | flight-service, passenger-service, baggage-service, cost-service, api-gateway   | 30 days   |
@@ -43,6 +43,7 @@ entity transitions still advance only on `SimClockTick`.
 | `incidents.commands`   | api-gateway, analysis-service | incident-service                                                            | 1h        |
 | `cost.events`          | cost-service                 | api-gateway                                                                  | 7 days    |
 | `analysis.events`      | analysis-service             | api-gateway                                                                  | 7 days    |
+| `sim.watermark`        | flight-, passenger-, baggage-service | sim-orchestrator (`TickProcessed`, RC4)                              | 1h        |
 
 ---
 
@@ -1031,3 +1032,50 @@ on the owner's topic (`passengers.events` / `baggage.events`):
 (1000) ids. `sim_time` is the owner clock at the sweep. analysis-service drops
 archived bags from its per-bag targets on `EntitiesArchived`. Inbox-marker
 pruning publishes nothing: markers are transport metadata, not domain state.
+
+
+### Event-fed projections (RC4, 2026-11-16)
+
+See OVERVIEW.md ADR-007. New and extended contracts:
+
+**`FlightStatusChanged`** (and `FlightCTOTAssigned`) additionally carry the flight record
+fields after the change: `scheduled_time`, `estimated_time`, `actual_time`, `flight_type`,
+`pax_count`, `origin_iata`, `aircraft_registration` (naive ISO times). `FlightCTOTAssigned`
+also carries the resulting `delay_minutes`.
+
+**`FlightsScheduled`** (`flights.events`, producer flight-service). Published when
+flight-service consumes `FlightScheduleSeeded`, from its own `Flight` nodes, in chunks of
+250, deduped on the seeding event:
+
+```json
+{
+  "event_type": "FlightsScheduled",
+  "payload": {"sim_day": 3, "part": 0, "part_count": 4, "flights": [
+    {"id": "uuid", "flight_number": "AX412", "direction": "departure", "status": "scheduled",
+     "scheduled_time": "2024-06-18T06:05:00", "estimated_time": "2024-06-18T06:05:00",
+     "actual_time": null, "delay_minutes": 0, "gate_id": "B07", "flight_type": "domestic",
+     "pax_count": 162, "destination_iata": "XYZ", "origin_iata": "ART",
+     "aircraft_registration": "ART-001"}]}
+}
+```
+
+**`BoardingProgress`** (`passengers.events`, producer passenger-service). Staged with every
+passenger tick for each departure in `boarding` per its FlightView. Never suppressed in BULK
+mode. flight-service keeps the newest entry per flight; with none yet, the boarded share is
+0 (positioning flights with `pax_count = 0` still count as fully boarded).
+
+```json
+{"event_type": "BoardingProgress",
+ "payload": {"flights": [{"flight_id": "uuid", "boarded": 140, "total": 162}]}}
+```
+
+**`TickProcessed`** (`sim.watermark`, retention 1 h, producers flight-, passenger-,
+baggage-service, consumer sim-orchestrator). Produced directly after each committed owner
+tick (a lost watermark is superseded by the next one):
+
+```json
+{"event_type": "TickProcessed", "payload": {"owner": "passenger-service", "sim_time": "2024-06-18T06:05:00"}}
+```
+
+flight-service subscribes to `passengers.events` for `BoardingProgress` only and drops every
+other passenger fact before validation.

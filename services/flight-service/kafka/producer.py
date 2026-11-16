@@ -137,8 +137,9 @@ def emit_flight_status_changed(
     reason: str | None = None,
     direction: str | None = None,
     destination_iata: str | None = None,
+    record: dict | None = None,
 ) -> None:
-    """Emit FlightStatusChanged event."""
+    """Emit FlightStatusChanged event (``record``: RC4 flight record fields)."""
     payload = {
         "flight_id": flight_id,
         "flight_number": flight_number,
@@ -150,6 +151,7 @@ def emit_flight_status_changed(
         "reason": reason,
         "direction": direction,
         "destination_iata": destination_iata,
+        **(record or {}),
     }
     _produce_event("FlightStatusChanged", sim_time, payload, key=flight_id)
     logger.info(

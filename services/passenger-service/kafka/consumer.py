@@ -49,6 +49,7 @@ from kafka.producer import (
     emit_congestion_detected,
     emit_security_queue_updated,
     emit_bulk_state_snapshot,
+    emit_boarding_progress,
     set_bulk_mode,
 )
 from ml.congestion import check_congestion
@@ -569,6 +570,10 @@ _TIMED_EVENTS = frozenset({
 
 
 async def _dispatch_fact(event_type: str, payload: dict, sim_time: datetime, envelope: dict) -> None:
+    # RC4: advance the event-fed FlightView before any handler reads it, so
+    # decisions see flights exactly as of the events consumed so far.
+    from _common.flight_view import VIEW
+    VIEW.apply(event_type, payload, sim_time)
     match event_type:
         case "FlightStatusChanged":
             await _on_flight_status_changed(payload, sim_time, envelope.get("event_id", ""))
@@ -855,8 +860,10 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
         # TickContribution. All of a tick's domain writes + fact staging then commit
         # in ONE apply_tick_atomic transaction, advancing the durable checkpoint.
         plan = TickContribution()
+        reconcile_now = _reconcile_due(sim_time)
         for phase, step in (
-            ("reconcile", lambda: _reconcile_flight_passengers(sim_time)),
+            ("reconcile", lambda: (_reconcile_flight_passengers(sim_time) if reconcile_now
+                                   else _empty_contribution())),
             ("booked_to_checkin", lambda: _advance_booked_to_checkin(sim_time, delta_minutes)),
             ("checkin_to_security", lambda: _advance_checkin_to_security(sim_time, delta_minutes)),
             ("security_drain", lambda: _drain_security_queues(sim_time, delta_minutes)),
@@ -866,6 +873,12 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
         ):
             with phase_timer(phase):
                 plan.merge(await step())
+
+        with phase_timer("boarding_progress"):
+            await _publish_boarding_progress(sim_time)
+            if _state.tick_counter % 60 == 0:
+                from _common.flight_view import VIEW
+                VIEW.evict(sim_time)
 
         with phase_timer("apply"):
             applied = await apply_tick_atomic(
@@ -1007,6 +1020,43 @@ async def _maybe_emit_bulk_snapshot(sim_time: datetime) -> None:
 
 
 CHECKIN_OPEN_MINUTES = 120  # Passengers arrive at check-in T-120 min before departure
+
+
+async def _empty_contribution() -> "TickContribution":
+    return TickContribution()
+
+
+# RC4: reconciliation is a recovery path, not a second primary path. It runs
+# for the first ticks after a (re)start and then hourly, so it can never race
+# the FlightStatusChanged handlers it exists to back up.
+RECONCILE_BOOT_TICKS = int(os.getenv("RECONCILE_BOOT_TICKS", "10"))
+RECONCILE_INTERVAL_MIN = int(os.getenv("RECONCILE_INTERVAL_MIN", "60"))
+_reconcile_cadence: dict = {"boot_ticks": 0, "last": None}
+
+
+def _reconcile_due(sim_time: datetime) -> bool:
+    cadence = _reconcile_cadence
+    if cadence["boot_ticks"] < RECONCILE_BOOT_TICKS:
+        cadence["boot_ticks"] += 1
+        cadence["last"] = sim_time
+        return True
+    last = cadence["last"]
+    if last is None or (sim_time - last).total_seconds() >= RECONCILE_INTERVAL_MIN * 60:
+        cadence["last"] = sim_time
+        return True
+    return False
+
+
+async def _publish_boarding_progress(sim_time: datetime) -> None:
+    """Boarded/total for every departure in ``boarding`` per the FlightView (RC4)."""
+    from _common.flight_view import VIEW
+    from db.neo4j import get_boarding_counts
+    fids = [f["id"] for f in VIEW.select(statuses=["boarding"], direction="departure")]
+    rows = await get_boarding_counts(fids)
+    emit_boarding_progress([
+        {"flight_id": r["flight_id"], "boarded": int(r["boarded"] or 0), "total": int(r["total"] or 0)}
+        for r in rows
+    ], sim_time)
 
 
 async def _reconcile_flight_passengers(sim_time: datetime) -> TickContribution:
