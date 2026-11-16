@@ -323,3 +323,8 @@ def emit_boarding_progress(flights: list[dict], sim_time: datetime) -> None:
     """
     if flights:
         _produce_event("BoardingProgress", sim_time, {"flights": flights})
+
+
+def emit_tick_processed(sim_time: datetime) -> None:
+    """RC4 tick watermark on ``sim.watermark`` (orchestrator back-pressure)."""
+    kafka_runtime.produce_tick_processed(_producer, PRODUCER_NAME, sim_time)

@@ -383,3 +383,8 @@ async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:
         )
         await asyncio.sleep(wait)
     raise RuntimeError(f"Kafka not reachable after {max_attempts} attempts")
+
+
+def emit_tick_processed(sim_time: datetime) -> None:
+    """RC4 tick watermark on ``sim.watermark`` (orchestrator back-pressure)."""
+    kafka_runtime.produce_tick_processed(_producer, PRODUCER_NAME, sim_time)

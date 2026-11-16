@@ -171,6 +171,11 @@ async def lifespan(app: FastAPI):
         init_kafka_consumer()
         start_consumer()
 
+    # RC4: follow owner tick watermarks for clock back-pressure.
+    from services import watermark
+    watermark_stop = asyncio.Event()
+    watermark_task = asyncio.create_task(watermark.run_consumer(watermark_stop))
+
     clock_task = asyncio.create_task(clock.run_clock_loop())
 
     def _clock_done(task: asyncio.Task) -> None:
@@ -187,6 +192,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     clock.stop()
+    watermark_stop.set()
+    watermark_task.cancel()
     clock_task.cancel()
     try:
         await clock_task

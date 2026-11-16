@@ -632,6 +632,8 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     """Commit the entire owner tick, its durable state and facts together."""
     await run_tick("FlightRuntime", "FlightOutbox", _state, tick_snapshot,
                    get_driver, _advance_tick, payload, sim_time, _prepare_tick)
+    from kafka.producer import emit_tick_processed
+    emit_tick_processed(sim_time)
 
 
 async def _advance_tick(payload: dict, sim_time: datetime) -> None:

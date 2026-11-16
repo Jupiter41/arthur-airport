@@ -148,6 +148,7 @@ services:
           "baggage.commands:3:1"
           "incidents.commands:3:1"
           "cost.events:3:1"
+          "sim.watermark:1:1"
         )
         for entry in "$${topics[@]}"; do
           IFS=':' read -r topic partitions replication <<< "$$entry"

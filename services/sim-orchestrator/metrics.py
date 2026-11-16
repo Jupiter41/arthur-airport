@@ -33,3 +33,15 @@ sim_events_injected_total = Counter(
     "Probabilistic events fired",
     ["type"],
 )
+
+sim_owner_lag_minutes = Gauge(
+    "sim_owner_lag_minutes",
+    "Sim-minutes between the clock and each owner's last TickProcessed (RC4)",
+    ["owner"],
+)
+
+sim_clock_held_total = Counter(
+    "sim_clock_held_total",
+    "Clock iterations held because an owner was too far behind (RC4)",
+    ["owner"],
+)

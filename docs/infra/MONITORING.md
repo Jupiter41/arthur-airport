@@ -77,6 +77,8 @@ scrape_configs:
 | `sim_day_number`            | Gauge     | —      | Current simulated day                            |
 | `sim_paused`                | Gauge     | —      | 1 if paused, 0 if running                        |
 | `sim_events_injected_total` | Counter   | `type` | Probabilistic events fired                       |
+| `sim_owner_lag_minutes`     | Gauge     | `owner`| Sim-minutes between the clock and the owner's last `TickProcessed` (RC4) |
+| `sim_clock_held_total`      | Counter   | `owner`| Clock iterations held by back-pressure because this owner lagged (RC4) |
 
 ### 3.2 Flights
 

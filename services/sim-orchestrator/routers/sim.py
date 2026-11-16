@@ -60,7 +60,9 @@ class StatusResponse(BaseModel):
 
 @router.get("/sim/status")
 async def sim_status():
+    from services import watermark
     state = clock.get_state()
+    state["watermarks"] = watermark.TRACKER.status(clock.get_sim_time())
     runtime = load_airport_runtime_config()
     # Get flight/passenger counts from Neo4j
     flights_today = 0
@@ -101,6 +103,7 @@ async def sim_status():
         "real_time": state["real_time"],
         "speed_multiplier": state["speed_multiplier"],
         "mode": state.get("mode", "REALTIME"),
+        "watermarks": state.get("watermarks", {}),
         "day_number": state["day_number"],
         "tick_number": state["tick_number"],
         "real_elapsed_seconds": int(state["tick_number"] * 60 / max(state["speed_multiplier"], 1)),

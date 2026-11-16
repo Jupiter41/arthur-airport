@@ -266,3 +266,24 @@ def publish_confirmed_batch(
         producer.poll(0.1)
     if len(delivered) != len(documents) or any(error is not None for error in delivered):
         raise RuntimeError("Broker batch acknowledgement unavailable; outbox retained")
+
+
+WATERMARK_TOPIC = "sim.watermark"
+
+
+def produce_tick_processed(producer: "Producer | None", owner: str, sim_time: datetime) -> None:
+    """Publish the owner's tick watermark after a committed tick (RC4).
+
+    Best effort and outside the tick transaction: a lost watermark is superseded
+    by the next one, and a watermark must never fail the tick it reports.
+    """
+    if producer is None:
+        return
+    try:
+        produce_event(
+            producer, "TickProcessed", sim_time,
+            {"owner": owner, "sim_time": sim_time.replace(tzinfo=None).isoformat()},
+            producer_name=owner, topic=WATERMARK_TOPIC, key=owner,
+        )
+    except Exception:
+        logger.warning("Tick watermark not produced", exc_info=True)

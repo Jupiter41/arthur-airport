@@ -270,3 +270,8 @@ def emit_bulk_state_snapshot(
 
 async def wait_for_kafka(max_attempts: int = 12, delay_s: float = 5) -> None:
     await kafka_runtime.wait_for_kafka(max_attempts=max_attempts, delay_s=delay_s)
+
+
+def emit_tick_processed(sim_time: datetime) -> None:
+    """RC4 tick watermark on ``sim.watermark`` (orchestrator back-pressure)."""
+    kafka_runtime.produce_tick_processed(_producer, PRODUCER_NAME, sim_time)

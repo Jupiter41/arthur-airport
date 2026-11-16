@@ -136,7 +136,8 @@ def load_clock(emitted):
     producer.emit_clock_tick = lambda **kw: emitted.append(("tick", kw["sim_time"]))
     metrics = ModuleType("metrics")
     for name in ("sim_tick_total", "sim_tick_latency_ms", "sim_speed_multiplier",
-                 "sim_day_number", "sim_paused"):
+                 "sim_day_number", "sim_paused", "sim_owner_lag_minutes",
+                 "sim_clock_held_total"):
         setattr(metrics, name, Mock())
     spec = importlib.util.spec_from_file_location("clock_under_test",
         Path(__file__).resolve().parents[2] / "services/sim-orchestrator/services/clock.py")

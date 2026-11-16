@@ -13,6 +13,8 @@ from metrics import (
     sim_speed_multiplier as m_speed,
     sim_day_number as m_day,
     sim_paused as m_paused,
+    sim_owner_lag_minutes as m_owner_lag,
+    sim_clock_held_total as m_clock_held,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,6 +151,9 @@ def reset_to_start() -> None:
     _running = True
     _events_produced = 0
     _tick_latencies = []
+    watermark = _watermark()
+    if watermark is not None:
+        watermark.TRACKER.reset()  # owners restart from the new clock
     logger.info("Clock reset to %s", _sim_time)
 
 
@@ -166,7 +171,19 @@ def restore_state(
     _speed_multiplier = speed_multiplier
     _events_produced = 0
     _tick_latencies = []
+    watermark = _watermark()
+    if watermark is not None:
+        watermark.TRACKER.reset()
     logger.info("Clock restored to %s (day %d, tick %d)", sim_time, day_number, tick_number)
+
+
+def _watermark():
+    """The RC4 watermark module, or None where it is not importable (isolated tests)."""
+    try:
+        from services import watermark
+    except ImportError:
+        return None
+    return watermark
 
 
 MAX_TICKS_PER_SEC = int(os.getenv("MAX_TICKS_PER_SEC", "10"))
@@ -229,6 +246,18 @@ async def run_clock_loop() -> None:
         tick_start = time.monotonic()
 
         step = _compute_step_minutes()
+
+        # RC4 back-pressure: hold the next tick while a live owner lags too far.
+        watermark = _watermark()
+        if watermark is not None and watermark.ENABLED:
+            for owner, info in watermark.TRACKER.status(_sim_time).items():
+                m_owner_lag.labels(owner=owner).set(info["lag_minutes"])
+            blocking = watermark.TRACKER.blocking(_sim_time + timedelta(minutes=step), step)
+            if blocking:
+                for owner in blocking:
+                    m_clock_held.labels(owner=owner).inc()
+                await asyncio.sleep(0.05)
+                continue
 
         # Advance sim_time minute-by-minute so boundary callbacks fire
         for _ in range(step):

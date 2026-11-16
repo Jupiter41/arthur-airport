@@ -798,6 +798,8 @@ async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
         with tick_timer():
             await run_tick("PassengerRuntime", "PassengerOutbox", _state,
                            _TICK_CODEC, get_driver, _advance_tick, payload, step_time, _prepare_tick)
+        from kafka.producer import emit_tick_processed
+        emit_tick_processed(step_time)
 
 
 async def _advance_tick(payload: dict, sim_time: datetime) -> None:

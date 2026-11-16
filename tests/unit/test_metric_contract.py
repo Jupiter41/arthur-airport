@@ -93,6 +93,8 @@ EXPECTED_METRICS: dict[str, list[tuple[str, str, frozenset[str]]]] = {
         ("sim_day_number", "Gauge", frozenset()),
         ("sim_paused", "Gauge", frozenset()),
         ("sim_events_injected_total", "Counter", frozenset({"type"})),
+        ("sim_owner_lag_minutes", "Gauge", frozenset({"owner"})),
+        ("sim_clock_held_total", "Counter", frozenset({"owner"})),
     ],
 }
 
