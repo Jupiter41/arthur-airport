@@ -695,3 +695,11 @@ Individual tick status notifications remain sampled for display throughput.
 `PassengerStatusBatchChanged` is the unsampled audit fact: `status_groups`
 (`ids`, `status`, `zone`), `dwell_items`, `location_updates` and `risk_updates`
 carry all FSM writes for that tick. Warm-start status cohorts use the same event.
+
+### UI observation timestamps (2026-11-16)
+
+`GET /flow/summary` security rows include nullable `observed_at`: the owner published
+simulation clock at the read, not a last-change time or real fetch time.
+No owner clock means null. This is read-only response metadata; no domain
+mutation or additional Kafka event occurs. See the dashboard observation
+contract in `docs/dashboards/UI_IMPLEMENTATION.md`.

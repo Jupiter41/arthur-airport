@@ -17,3 +17,15 @@ Search uses gateway domain endpoints. The command palette distinguishes navigati
 Experiments expose baseline, changes, run state, comparison and investment/audit views. Shared-airport scenario injection remains in Simulation/Lab with an explicit effect label. Historical decision replay stays read-only and does not rewind the airport.
 
 Dark/light themes share semantic colors and controls. Keyboard focus, skip navigation, labelled sort/filter controls, reduced motion and text alternatives to maps are required. Validation must report actual checks; formative human testing and unavailable backend execution are never marked complete by inference.
+
+### Observation time contract (2026-11-16)
+
+Overview attention records expose nullable `observed_at` in simulation time.
+Passenger security rows and baggage map zones use the owning service's published
+state clock at the read; incident list rows use the incident owner's clock at the
+read. These are as-of observations, not last-change times or wall-clock fetch
+times. No owner clock means null. Event-fed replacements use the fact's `at`
+or envelope `sim_time`, and must retain that time per record. Overview shows
+the full UTC date/time, explicitly unavailable for legacy/missing/invalid times,
+separately from incident start time. A failed refresh retains the original time.
+These read-only response additions do not mutate domain state or create events.

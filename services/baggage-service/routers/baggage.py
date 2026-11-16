@@ -108,7 +108,9 @@ async def flow_summary():
 async def flow_map():
     conveyor = get_conveyor()
     zones = conveyor.get_zone_summary()
-    return {"zones": zones}
+    sim_time = get_sim_time()
+    observed_at = sim_time.isoformat() if sim_time else None
+    return {"zones": [{**zone, "observed_at": observed_at} for zone in zones]}
 
 
 @router.get("/flagged")

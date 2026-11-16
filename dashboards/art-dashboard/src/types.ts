@@ -110,7 +110,7 @@ export interface PassengerFlowSummary {
   by_status: Record<string, number>;
   security: Record<
     string,
-    { queue_length: number; wait_minutes: number; lanes_open: number; frozen?: boolean }
+    { queue_length: number; wait_minutes: number; lanes_open: number; frozen?: boolean; observed_at?: string | null }
   >;
   connections_at_risk: number;
   connections_missed: number;
@@ -146,6 +146,7 @@ export interface BaggageFlowSummary {
 }
 
 export interface BaggageZone {
+  observed_at?: string | null;
   zone_id: string;
   zone_type: string;
   status: "normal" | "degraded" | "active" | "offline" | "idle";
@@ -177,6 +178,7 @@ export type IncidentType =
   | "system_failure";
 
 export interface Incident {
+  observed_at?: string | null;
   id: string;
   type: IncidentType;
   title: string;

@@ -128,17 +128,18 @@ export const eventHandlers: Record<string, EventHandler> = {
     void _zone;
   },
 
-  IncidentCreated: (payload) => {
-    useIncidentStore.getState().upsertIncident(payload as never);
+  IncidentCreated: (payload, sim_time) => {
+    useIncidentStore.getState().upsertIncident({ ...payload, observed_at: sim_time } as never);
   },
 
-  IncidentStatusChanged: (payload) => {
+  IncidentStatusChanged: (payload, sim_time) => {
     const { incident_id, new_status } = payload;
     useIncidentStore
       .getState()
       .updateIncidentStatus(
         incident_id as string,
         new_status as "active" | "contained" | "resolved",
+        { observed_at: sim_time },
       );
   },
 

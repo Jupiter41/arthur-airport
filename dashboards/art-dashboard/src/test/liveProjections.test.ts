@@ -14,7 +14,7 @@ it("updates both dimensions' canonical queue cache without inventing other termi
   queryClient.setQueryData(["passengers", "summary"], summary);
   send("SecurityQueueUpdated", { terminal: "A", queue_depth: 30, lanes_open: 4, wait_minutes: 2.5, frozen: false, at });
   const next = queryClient.getQueryData<PassengerFlowSummary>(["passengers", "summary"])!;
-  expect(next.security.A.queue_length).toBe(30); expect(next.security.B).toEqual(summary.security.B);
+  expect(next.security.A.observed_at).toBe(at); expect(next.security.A.queue_length).toBe(30); expect(next.security.B).toEqual(summary.security.B);
   expect(next.total_in_airport).toBe(200);
   send("SecurityQueueUpdated", { terminal: "A", queue_depth: 1, lanes_open: 1, wait_minutes: 1, frozen: false, at: "2026-01-01T11:59:00Z" });
   expect(queryClient.getQueryData<PassengerFlowSummary>(["passengers", "summary"])!.security.A.queue_length).toBe(30);
@@ -26,9 +26,9 @@ it("waits for a full initial summary instead of initializing missing fields to h
 it("replaces baggage occupancy and failures from full owner snapshots, including empty snapshots", () => {
   const zones = [{ zone_id: "induction-A", items: 50, status: "offline", throughput_per_hour: 0, utilisation_pct: 100 }];
   send("BaggageZoneSnapshot", { zones, at });
-  expect(queryClient.getQueryData(["baggage", "map"])).toEqual(zones);
+  expect(queryClient.getQueryData(["baggage", "map"])).toEqual(zones.map(zone => ({ ...zone, observed_at: at })));
   send("BaggageZoneSnapshot", { zones: [{ zone_id: "bad" }], at });
-  expect(queryClient.getQueryData(["baggage", "map"])).toEqual(zones);
+  expect(queryClient.getQueryData(["baggage", "map"])).toEqual(zones.map(zone => ({ ...zone, observed_at: at })));
   send("BaggageZoneSnapshot", { zones: [], at: "2026-01-01T12:01:00Z" });
   expect(queryClient.getQueryData(["baggage", "map"])).toEqual([]);
 });

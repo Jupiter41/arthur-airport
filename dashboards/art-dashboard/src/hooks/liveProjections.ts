@@ -29,13 +29,13 @@ export function applySecurityObservation(payload: Record<string, unknown>, at: s
     if (!old) { reconcileLiveQueries("passengers", "summary"); return old; }
     const key = Object.keys(old.security).find(k => k.replace(/^T-|^Terminal |^terminal_/i, "").toUpperCase() === terminal) ?? terminal;
     return { ...old, security: { ...old.security, [key]: { queue_length: payload.queue_depth as number,
-      wait_minutes: payload.wait_minutes as number, lanes_open: payload.lanes_open as number, frozen: payload.frozen as boolean } } };
+      wait_minutes: payload.wait_minutes as number, lanes_open: payload.lanes_open as number, frozen: payload.frozen as boolean, observed_at: String(payload.at ?? at) } } };
   });
 }
 export function applyBaggageObservation(payload: Record<string, unknown>, at: string) {
   if (!Array.isArray(payload.zones) || !payload.zones.every(z => record(z) && typeof z.zone_id === "string" &&
       typeof z.status === "string" && numeric(z.items) && z.items >= 0 && numeric(z.throughput_per_hour) && numeric(z.utilisation_pct)) || !fresh("baggage", payload.at ?? at)) return;
-  queryClient.setQueryData<BaggageZone[]>(["baggage", "map"], payload.zones as BaggageZone[]);
+  queryClient.setQueryData<BaggageZone[]>(["baggage", "map"], (payload.zones as BaggageZone[]).map(zone => ({ ...zone, observed_at: String(payload.at ?? at) })));
   reconcileLiveQueries("baggage", "summary");
 }
 export function applyVehicleObservation(payload: Record<string, unknown>, at: string) {

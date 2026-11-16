@@ -23,6 +23,8 @@ import { normalizeGate } from "../Airport3D/model";
 import { useSimStore } from "../../stores/simStore";
 import { normalizeTerminal } from "../Airport3D/model";
 
+import { ObservationTime } from "../../components/ObservationTime";
+
 import { ApprovalQueue } from "../IncidentConsole/ApprovalQueue";
 
 export default function CockpitPage() {
@@ -128,6 +130,7 @@ export default function CockpitPage() {
       )
       .map((i) => ({
         id: i.id,
+        observedAt: i.observed_at,
         priority: severityOrder[i.severity] ?? 4,
         title: i.title || i.type.replace(/_/g, " "),
         location: i.location,
@@ -139,6 +142,7 @@ export default function CockpitPage() {
       .filter(([, v]) => v.wait_minutes >= 20 || v.frozen)
       .map(([key, v]) => ({
         id: key,
+        observedAt: v.observed_at,
         priority: v.frozen ? 1 : 2,
         title: v.frozen
           ? "Security lanes frozen"
@@ -158,6 +162,7 @@ export default function CockpitPage() {
       .filter((z) => z.utilisation_pct > 90 || z.status === "offline")
       .map((z) => ({
         id: z.zone_id,
+        observedAt: z.observed_at,
         priority: z.status === "offline" ? 1 : 3,
         title:
           z.status === "offline"
@@ -302,6 +307,7 @@ export default function CockpitPage() {
                 </div>
                 <p className="text-sm mt-1">{issue.location}</p>
                 <p className="text-sm text-gray-400 mt-1">{issue.detail}</p>
+                <ObservationTime value={issue.observedAt} />
                 <p className="text-accent text-sm mt-3">{issue.action} →</p>
               </Link>
             ))}

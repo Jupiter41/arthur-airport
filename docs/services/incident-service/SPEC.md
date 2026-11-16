@@ -504,3 +504,11 @@ Streams all incident events in real time. Always receives `IncidentAlert` payloa
 | `cascade_depth_max`                   | Gauge     | Deepest cascade in last 24 sim-hours                       |
 | `protocols_activated_total`           | Counter   | Emergency protocols by code                                |
 | `flights_impacted_by_incidents_total` | Counter   | Flights affected by incidents                              |
+
+### UI observation timestamps (2026-11-16)
+
+`GET /incidents` summaries include nullable `observed_at`: the owner published
+simulation clock at the read, not a last-change time or real fetch time.
+No owner clock means null. This is read-only response metadata; no domain
+mutation or additional Kafka event occurs. See the dashboard observation
+contract in `docs/dashboards/UI_IMPLEMENTATION.md`.

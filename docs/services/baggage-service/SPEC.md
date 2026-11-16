@@ -437,3 +437,11 @@ processing; pending facts are deleted only after broker acknowledgement.
 `BaggageStatusBatchChanged` is an unsampled tick audit fact. Its payload contains
 `status_changes` (`id`, `status`, `zone`), `flags` and `loaded_rows`, including
 BULK mode; individual display notifications may still be suppressed.
+
+### UI observation timestamps (2026-11-16)
+
+`GET /flow/map` zones include nullable `observed_at`: the owner published
+simulation clock at the read, not a last-change time or real fetch time.
+No owner clock means null. This is read-only response metadata; no domain
+mutation or additional Kafka event occurs. See the dashboard observation
+contract in `docs/dashboards/UI_IMPLEMENTATION.md`.

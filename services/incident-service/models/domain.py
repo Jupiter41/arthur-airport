@@ -60,6 +60,7 @@ class TimelineEntry(BaseModel):
 
 
 class IncidentSummary(BaseModel):
+    observed_at: Optional[str] = None
     id: str
     type: str
     severity: str

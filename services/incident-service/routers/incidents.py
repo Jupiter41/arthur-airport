@@ -46,6 +46,7 @@ async def list_incidents(
     limit: int = 20,
 ) -> IncidentListResponse:
     limit = min(limit, 100)
+    observed_time = get_sim_time()
     incidents = await get_incidents(
         status=status, type_filter=type, severity=severity, limit=limit
     )
@@ -54,6 +55,7 @@ async def list_incidents(
     summaries = []
     for inc in incidents:
         summaries.append(IncidentSummary(
+            observed_at=observed_time.isoformat() if observed_time else None,
             id=inc["id"],
             type=inc.get("type", ""),
             severity=inc.get("severity", ""),

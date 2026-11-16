@@ -1,3 +1,4 @@
+import { useSimStore } from "../../stores/simStore";
 import { StatusBadge } from "../../components/StatusBadge";
 import { Link } from "react-router-dom";
 import { SEVERITY_BORDER, SEVERITY_BG } from "./constants";
@@ -13,6 +14,7 @@ export function IncidentCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const clock = useSimStore((s) => s.status);
   return (
     <div
       className={`border-l-4 ${SEVERITY_BORDER[incident.severity]} ${SEVERITY_BG[incident.severity]} 
@@ -43,7 +45,7 @@ export function IncidentCard({
         Trace related decisions →
       </Link>
       <div className="text-xs text-gray-400 mt-1">
-        {incident.location} · {formatRelativeTime(incident.started_at)}
+        {incident.location} · {formatRelativeTime(incident.started_at, clock.tick_count > 0 ? clock.sim_time : null)}
       </div>
       {(incident.protocols ?? []).length > 0 && (
         <div className="flex gap-1 mt-2">

@@ -269,6 +269,10 @@ async def flow_summary():
         },
     }
 
+    # As-of the published owner state, never the browser fetch time.
+    for row in sec_summary.values():
+        row["observed_at"] = sim_time.isoformat() if sim_time else None
+
     # Connection counts
     at_risk = get_at_risk_connections()
     conn_at_risk = sum(1 for c in at_risk if c.get("risk_level") == "at_risk")
