@@ -22,8 +22,8 @@ data **wrong**; RC9–RC10 make the **UI and data-source pages** look slow and w
 | RC2  | Each owner rewrites its **whole in-memory state** as one JSON property **every tick**; the baggage one grows without bound (8.6 MB) | baggage-service at 100% CPU, processing about 0.45 ticks/s | 🔴 High | ✅ Done | `inducted_bag_ids` no longer persisted, decode skipped when in sync, double deepcopy removed; checkpoint 8.6 MB → 0.17–2.2 MB, baggage CPU 100% → ~30% (`78a9975`) |
 | RC3  | The outbox drains in 100-row round trips, and every bag/passenger transition is published twice (per-entity + batch) | +0.5–1.3 s before an event reaches Kafka; 340 baggage msgs/s | 🟠 Medium | ✅ Done | Outbox drains 1,000 rows per round trip with delete+read in one query, woken by tick commits; each transition published once (tick hops batch-only, random 2% passenger sampling removed); cost-service unsubscribed from baggage/passenger streams (`dfe4e77`, `9d9e794`) |
 | RC4  | The clock is open-loop with no back-pressure. Services read **other domains' live state from the shared Neo4j** instead of the event stream | passengers deplane/depart from a polling sweep, up to 64 sim-min late; causality broken | 🔴 High | ✅ Done | Event-fed FlightView + BoardingProgress replace live cross-domain decision reads; tick watermark (`sim.watermark`) holds the clock on owner lag; reconciliation boot/hourly only; analysis evaluates on a sim-time cadence (`e08a5f9`, `f4981d9`, `97239a5`, `dc79fb3`). Daytime reconciliation-share re-measurement still to do |
-| RC5  | Passenger flow is a step function (whole flight checked in at T-120 and sent to security at T-45). Boarding isn't gated by flight state | 80% of departures delayed ≥30 min ("boarding_incomplete"); 11.5% of pax board **after** their flight left; no-show rate 0.08% instead of 3% | 🔴 High | ❌ Open | Not started; spec contradiction (§2 vs §3) must be resolved first |
-| RC6  | Baggage-system capacity (1,800 bags/h) is less than generated demand (peak 4,900/h), and the departure handler hides the deficit by teleporting bags | 27–37% of departing bags are "in_hold" **without ever being screened** | 🔴 High | ❌ Open | Not started; requires re-dimensioning bag volume vs BHS capacity |
+| RC5  | Passenger flow is a step function (whole flight checked in at T-120 and sent to security at T-45). Boarding isn't gated by flight state | 80% of departures delayed ≥30 min ("boarding_incomplete"); 11.5% of pax board **after** their flight left; no-show rate 0.08% instead of 3% | 🔴 High | ✅ Done | Spec contradiction resolved in favour of §3: per-passenger `show_up_at` (Beta(3,2) over [T-180, T-45]) drives check-in and security; deterministic per-passenger no-show draw at show-up over the whole cohort; check-in/gate/boarding only for flights still `scheduled`/`boarding`/`delayed`; non-boarded passengers → `missed_flight` on departure; default lanes A 8 / B 12 / C 8 (`6c5cd00`). Unit-tested; live re-measurement still to do |
+| RC6  | Baggage-system capacity (1,800 bags/h) is less than generated demand (peak 4,900/h), and the departure handler hides the deficit by teleporting bags | 27–37% of departing bags are "in_hold" **without ever being screened** | 🔴 High | ✅ Done | Checked bags/pax 1.56 → ~0.9 (per-type λ, no one-bag floor); BHS A 1,800 / B 3,000 / C 1,800 per h, sorting 5,400, all from `airport.yaml`; seed-time check peak ≤ 85% of slowest stage; departure short-ships unloaded bags with `BaggageMissedFlight` instead of teleporting them to `in_hold` (`5220472`). Unit-tested; live re-measurement still to do |
 | RC7  | The seeder writes other domains' entities directly and leaves out cross-domain links | 0 of 39,975 arrival bags linked to a passenger, so every arrival pax leaves claim on the 45-min timeout; 33,651 pax "airborne" on flights that haven't left origin | 🟠 Medium | ❌ Open | Not started; also see the missing `connection_flight_id` finding |
 | RC8  | One-shot event triggers with no reconciliation, and consumers start at `latest` | 39,969 arrival bags from 2024-06-29 stuck `in_hold` permanently | 🟠 Medium | ❌ Open | Not started |
 | RC9  | The gateway forwards the raw firehose to browsers, and the dashboard does no-op store writes per event | about 450 WS msgs/s per tab; ~280 useless React store updates/s | 🟠 Medium | ❌ Open | Not started |
@@ -402,6 +402,24 @@ granularities are published to everyone.
 
 ### RC5 — Passenger flow model produces impossible timelines 🔴
 
+> **Status: ✅ done in code** (`6c5cd00`), not yet re-measured live. All four fix directions:
+> (1) the SPEC now follows §3 — each departing passenger's `show_up_at` is drawn at seed time
+> (Beta(3,2) over [T-180, T-45], mean ≈ T-99) and releases them into check-in, then security
+> 10 min later or at check-in close; records seeded earlier derive the same curve from their
+> ID. (2) Check-in, gate and boarding only act on flights still `scheduled`/`boarding`/`delayed`;
+> the bulk-board of departed flights is gone, and `FlightStatusChanged(departed)` (or
+> reconciliation) moves everyone not boarded to the terminal `missed_flight`
+> (`passengers_missed_flight_total`). (3) The 95% threshold already used `BoardingProgress`
+> (RC4); its `total` now excludes no-shows. (4) The no-show draw is one deterministic hash per
+> passenger at show-up, over the full booked cohort.
+> Offline check over generated days: a 180-pax flight now reaches security over >90 distinct
+> minutes instead of one; with the spread cohort, terminal B (~60% of peak departures) still
+> built a 30–40 min queue at 8 lanes, so B now opens 12 by default (A/C stay at 8).
+> **Deploy note:** lanes persisted on `SecurityCheckpoint` win over the new default, so an
+> existing stack keeps B at 8 until an operator opens more lanes (or the checkpoint is reset).
+> Out of scope: the boot-time `_warm_start_departures` still places near-departure cohorts as a
+> block on a fresh sim (first tick only).
+
 **Evidence** (graph, departures of 2024-07-07)
 
 - Departure delay distribution: 0 min ×22, 1–14 ×16, 15–29 ×34, **30–59 ×113, 60+ ×31**.
@@ -460,6 +478,20 @@ granularities are published to everyone.
 ---
 
 ### RC6 — Baggage system under-dimensioned; deficit masked by teleport-to-hold 🔴
+
+> **Status: ✅ done in code** (`5220472`), not yet re-measured live. Both fix directions:
+> (1) Re-dimensioned both sides, in one place (`config/airport.yaml` `operations.baggage`):
+> checked bags/pax ~ Poisson(λ by flight type: 0.6 domestic … 1.1 long-haul) with no one-bag
+> floor (the floor alone had pushed the mean from 1.2 to 1.56), so ~0.9 bags/pax; BHS
+> induction/screening per terminal A 1,800 · B 3,000 · C 1,800 per h, sorting 5,400 per h.
+> Over generated days peak hourly bags are ≈1,300 (A/C) / ≈2,000 (B) / ≈3,450 (airport),
+> all ≤ 85% of the slowest stage. `_common/bhs_capacity.py` checks this at every seeded day
+> (`sim_bhs_capacity_violations_total`) and a unit test runs it over generated days (and
+> confirms it flags the old 600/300/1,800 sizing). (2) No teleport: at departure only `loaded`
+> bags go to `in_hold`; anything still `dropped_off`/`inducted`/`screening`/`sorting` becomes
+> the terminal `short_shipped`, with one `BaggageMissedFlight` fact per flight in the same
+> transaction and the `baggage_short_shipped_total` KPI. Already seeded days keep their old
+> bag volume until they roll off.
 
 **Evidence**
 
@@ -695,8 +727,8 @@ RC10 fabricated source health ─► "active" sources that are disabled/stale
    hundred ms, and lag drops to under 1 tick.
 2. ~~**RC1**: stop per-tick `count()` gauges, add a time window to the dropped-off
    query. Then add archival/retention of finished entities and inbox pruning.~~ Done.
-3. **RC6 + RC5 model fixes** (spec first): size bag volume against BHS capacity; implement the
-   Beta show-up curve; add `missed_flight` / `short_shipped` outcomes and remove the teleports.
+3. ~~**RC6 + RC5 model fixes** (spec first): size bag volume against BHS capacity; implement the
+   Beta show-up curve; add `missed_flight` / `short_shipped` outcomes and remove the teleports.~~ Done.
 4. **RC4**: replace cross-domain graph reads with event-fed projections; add a tick watermark
    metric, then back-pressure.
 5. **RC7/RC8**: link arrival bags to passengers; add owner-side catch-up sweeps; switch owner
