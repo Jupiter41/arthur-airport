@@ -26,8 +26,8 @@ data **wrong**; RC9–RC10 make the **UI and data-source pages** look slow and w
 | RC6  | Baggage-system capacity (1,800 bags/h) is less than generated demand (peak 4,900/h), and the departure handler hides the deficit by teleporting bags | 27–37% of departing bags are "in_hold" **without ever being screened** | 🔴 High | ✅ Done | Checked bags/pax 1.56 → ~0.9 (per-type λ, no one-bag floor); BHS A 1,800 / B 3,000 / C 1,800 per h, sorting 5,400, all from `airport.yaml`; seed-time check peak ≤ 85% of slowest stage; departure short-ships unloaded bags with `BaggageMissedFlight` instead of teleporting them to `in_hold` (`5220472`); three bugs found live fixed in `b35db23`. Verified live on a reset stack |
 | RC7  | The seeder writes other domains' entities directly and leaves out cross-domain links | 0 of 39,975 arrival bags linked to a passenger, so every arrival pax leaves claim on the 45-min timeout; 33,651 pax "airborne" on flights that haven't left origin | 🟠 Medium | ❌ Open | Not started; also see the missing `connection_flight_id` finding |
 | RC8  | One-shot event triggers with no reconciliation, and consumers start at `latest` | 39,969 arrival bags from 2024-06-29 stuck `in_hold` permanently | 🟠 Medium | ❌ Open | Not started |
-| RC9  | The gateway forwards the raw firehose to browsers, and the dashboard does no-op store writes per event | about 450 WS msgs/s per tab; ~280 useless React store updates/s | 🟠 Medium | ❌ Open | Not started |
-| RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft | 🟡 Low–Med | ❌ Open | Not started |
+| RC9  | The gateway forwards the raw firehose to browsers, and the dashboard does no-op store writes per event | about 450 WS msgs/s per tab; ~280 useless React store updates/s | 🟠 Medium | ✅ Done | Gateway UI delivery policy (`wsDeliveryPolicy.json`): flight/incident/alert facts immediate, clock + snapshots coalesced to the latest per key every 1 s, batch facts as payload-free refetch hints, per-entity facts dropped; dashboard no-op handlers removed, `updateZone` no-op on empty patch, query invalidation throttled to 1/s per key (`3f9d4e5`). Unit-tested; live msg-rate re-measurement still to do |
+| RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft | 🟡 Low–Med | ✅ Done | Owners report a `SourceHealth` block (enabled, items, wall ingest/error, sim observation); gateway derives `unavailable/disabled/error/stale/active` with a reason and clock-labelled timestamps; new `GET /flights/adsb/source` (`83feb91`). Unit-tested |
 | RC11 | History-wide query plans exhaust Neo4j's *shared* transaction memory; coalesced catch-up ticks grow with each failed retry; the clock pauses on any checkpoint error | passenger-service stuck 6 sim-h behind, then the whole sim auto-paused (found during deployment) | 🔴 High | ✅ Done | Query plans pinned, catch-up split into ≤5-min ticks, clock checkpoint retries transient errors, seeding moved off the tick path, transaction pool 0.7 → 1.4 GiB (`78a9975`, `dfe4e77`) |
 
 ### Fixes applied (2026-11-16)
@@ -623,6 +623,19 @@ The durable inboxes already make replays safe.
 
 ### RC9 — UI receives the firehose and re-renders for nothing 🟠
 
+> **Status: ✅ done in code** (`3f9d4e5`), not yet re-measured live. All three fix directions:
+> the gateway classifies every event type in `services/api-gateway/src/wsDeliveryPolicy.json`
+> — `immediate` (flight, incident, alert, weather, cost, control facts, verbatim), `latest`
+> (clock and snapshots, newest envelope per key, at most once per `WS_COALESCE_MS` = 1 s) and
+> `hint` (`*StatusBatchChanged`, coalesced and sent as `{hint, coalesced}` without their row
+> payloads); anything else (per-bag/per-passenger facts, `BoardingProgress`, retention facts) is
+> dropped and counted in `gateway_ws_events_dropped_total{reason}`. The dashboard's handler
+> registry is pinned to that file by a test; the no-op `updateZone(…, {})` handler is gone and
+> `updateZone` returns the same state for an empty patch; `reconcileLiveQueries` throttles each
+> key to one invalidation per second, so a burst of `FlightStatusChanged` costs one refetch of
+> flights/gates/runways per second instead of three per event. Expected: per-tab traffic from
+> ~450 msgs/s to a few per second plus real flight/incident facts.
+
 **Evidence**
 
 - Gateway counters since start: `baggage` **1,110,763** and `passengers` 920,716 events
@@ -653,6 +666,16 @@ no consumer.
 ---
 
 ### RC10 — Data-source status is fabricated at the gateway 🟡
+
+> **Status: ✅ done** (`83feb91`). `_common.data_sources.SourceHealth` is the owner contract
+> (`enabled`, `items`, `last_ingest_at` wall, `last_observation_at` sim, `last_error(_at)` wall).
+> Weather records each hourly evaluation (and an error when historical/live data is missing),
+> the ADS-B cache records polls and failures with `enabled = ADSB_ENABLED` behind the new
+> `GET /flights/adsb/source`, passengers report the owner's last tick. The gateway derives
+> `unavailable | disabled | error | stale | active` (api-gateway SPEC §5a), adds
+> `status_reason` and `last_updated_clock`, and reports passenger `total_in_airport` /
+> `status_counts` and the real baggage flow-summary fields. The review's cases now read
+> ADS-B `disabled` and weather `stale (… sim-min behind the clock)`.
 
 **Evidence** (`GET /api/v1/data-sources`)
 
@@ -759,7 +782,7 @@ RC10 fabricated source health ─► "active" sources that are disabled/stale
    metric, then back-pressure.
 5. **RC7/RC8**: link arrival bags to passengers; add owner-side catch-up sweeps; switch owner
    groups to `earliest`.
-6. **RC9/RC10**: WS allow-list and coalescing, adapter-reported source health. (RC3 done.)
+6. ~~**RC9/RC10**: WS allow-list and coalescing, adapter-reported source health.~~ Done.
 
 ## 6. Reproducing the measurements
 
