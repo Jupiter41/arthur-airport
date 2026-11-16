@@ -126,6 +126,17 @@ drain, ticks run close to budget at daytime peak. Restart analysis-service once 
 done: its rebuild loaded the 1.5M finished `in_hold` bags into memory (L4) before they were
 archived, which leaves its loop CPU-bound and unhealthy until that restart.
 
+**New finding after the round-3 restart (open, RC4 family):** analysis-service still cannot keep
+up with its input. Its consumer lag *grew* from 749k to 770k messages in 90 s after the post-drain
+restart. The cause is `projection_store.evaluate()`. For **every consumer batch** (≤5,000
+messages) it re-reads the whole operational projection from Neo4j, including every non-collected
+`Baggage` row (128k after retention, ≈1.6M before), JSON-round-trips and sorts all rows, and
+hashes them to detect changes. This is CPU-bound on the event loop, so `/health` intermittently
+takes up to 80 s. Before retention the same read allocated 341 MiB and hit
+`MemoryPoolOutOfMemoryError`. Retention cut its size ~12×, but the fix is to evaluate from the
+event-fed state (or on a sim-time cadence) instead of re-projecting the graph per batch, which is
+RC4's "event-fed projections" item.
+
 **Optional, needs your decision:** the services run the pure-Python Neo4j driver.
 `neo4j-rust-ext==6.2.0.0` (official Neo4j package, matching the pinned `neo4j==6.2.0`) speeds up
 record decoding, which is now the main per-row cost (~0.1 ms/row). It is not installed.
