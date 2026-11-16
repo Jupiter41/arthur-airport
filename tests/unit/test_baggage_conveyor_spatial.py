@@ -131,3 +131,17 @@ class TestCrossTerminalDelay:
         # 5-minute tick covers the 4-min delay
         cs.advance_tick("2025-06-15T10:10:00", delta_minutes=5)
         assert cs.transit_queue_depth == 0
+
+
+def test_removing_a_bag_in_cross_terminal_transit_stops_its_delivery():
+    """Live RC6 validation: short-shipped transit bags reappeared as loaded."""
+    cs = ConveyorSystem()
+    cs._zones["sorting-matrix"].queue.append(_make_bag("b1", "A", "C"))
+    cs.advance_tick("2025-06-15T10:05:00")
+    assert cs.transit_queue_depth == 1
+    removed = cs.remove_bag_from_all_zones("b1")
+    assert removed is not None and removed.baggage_id == "b1"
+    assert cs.transit_queue_depth == 0
+    for _ in range(30):
+        cs.advance_tick("2025-06-15T10:06:00")
+    assert sum(cs._zones[f"make-up-C-{n}"].items for n in range(1, 6)) == 0

@@ -66,7 +66,15 @@ class FlightView:
     def _terminal(self, gate_id: str | None) -> str | None:
         if not gate_id:
             return None
-        return self.gate_terminal.get(gate_id)
+        known = self.gate_terminal.get(gate_id)
+        if known:
+            return known
+        # Gate IDs encode their terminal ("B07" → "T-B"). On a cold start the
+        # owner can bootstrap before the orchestrator seeds Gate nodes, leaving
+        # the topology map empty for the life of the process; every bag then
+        # fell back to terminal A (found live during RC6 validation).
+        first = str(gate_id)[:1].upper()
+        return f"T-{first}" if first.isalpha() else None
 
     def _merge(self, flight_id: str, values: dict, at: str | None) -> dict:
         record = self.flights.setdefault(flight_id, {"id": flight_id})

@@ -668,10 +668,13 @@ async def get_flight_baggage(flight_id: str, statuses: list[str] | None = None) 
     if statuses:
         status_filter = "AND b.status IN $statuses"
         params["statuses"] = statuses
+    # The status filter must bind to the bag MATCH. Placed after the OPTIONAL
+    # MATCH it only filtered the optional passenger row and every bag on the
+    # flight was returned (found live during RC6 validation).
     query = f"""
         MATCH (b:Baggage)-[:LOADED_ON]->(f:Flight {{id: $fid}})
+        WHERE true {status_filter}
         OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
-    WHERE true {status_filter}
     RETURN b.id AS id, b.tag AS tag, b.status AS status,
             b.last_scan_zone AS last_scan_zone,
             p.id AS passenger_id

@@ -1104,7 +1104,9 @@ async def _apply_departure_in_hold(
         return
 
     loaded = [bag for bag in bags if bag.get("status") == "loaded"]
-    missed = [bag for bag in bags if bag.get("status") != "loaded"]
+    missed = [bag for bag in bags if bag.get("status") in SHORT_SHIP_STATUSES]
+    if not loaded and not missed:
+        return
     changes = [
         {"id": bag["id"], "status": "in_hold", "zone": "aircraft-hold"} for bag in loaded
     ] + [

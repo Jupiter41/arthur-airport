@@ -187,3 +187,44 @@ def test_departure_queries_only_loaded_and_on_ground_statuses(monkeypatch):
     assert set(statuses) == {"loaded", "dropped_off", "inducted", "screening", "sorting"}
     # Flagged / held-for-review bags are left to the review flow, not the hold.
     assert "flagged" not in statuses and "held_for_review" not in statuses
+
+
+def test_flight_baggage_status_filter_binds_to_the_bag_match(monkeypatch):
+    """Live RC6 validation: the filter sat on the OPTIONAL MATCH and filtered nothing."""
+    db = import_service_module("baggage", "db.neo4j")
+    queries = []
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def run(self, query, **params):
+            queries.append(query)
+
+            class R:
+                def __aiter__(self):
+                    return self
+
+                async def __anext__(self):
+                    raise StopAsyncIteration
+            return R()
+
+    monkeypatch.setattr(db, "get_driver", lambda: type("D", (), {"session": lambda s: Session()})())
+    asyncio.run(db.get_flight_baggage("f1", statuses=["in_hold"]))
+    q = " ".join(queries[0].split())
+    assert q.index("WHERE true AND b.status IN $statuses") < q.index("OPTIONAL MATCH")
+
+
+def test_departure_leaves_flagged_and_finished_bags_alone(monkeypatch):
+    bags = [
+        {"id": "f", "tag": "t-f", "status": "flagged", "passenger_id": None},
+        {"id": "c", "tag": "t-c", "status": "in_hold", "passenger_id": None},
+        {"id": "s", "tag": "t-s", "status": "sorting", "passenger_id": None},
+    ]
+    driver = Driver()
+    consumer = context(monkeypatch, driver, bags)
+    asyncio.run(departed(consumer, "evt-dep"))
+    assert {k: v["status"] for k, v in driver.db["baggage"].items()} == {"s": "short_shipped"}

@@ -153,12 +153,21 @@ class ConveyorSystem:
         return zone_id
 
     def remove_bag_from_all_zones(self, baggage_id: str) -> BagInZone | None:
-        """Remove a bag from whatever zone it's in. Used for offloading."""
+        """Remove a bag from whatever zone it's in — or from cross-terminal transit.
+
+        Used for offloading and short-shipping. A bag between the sorter and a
+        remote make-up area sits in ``_transit_queue``, not in a zone; missing
+        it let short-shipped bags reappear as ``loaded`` minutes later.
+        """
         for zone in self._zones.values():
             for i, bag in enumerate(zone.queue):
                 if bag.baggage_id == baggage_id:
                     del zone.queue[i]
                     return bag
+        for i, transit in enumerate(self._transit_queue):
+            if transit.bag.baggage_id == baggage_id:
+                del self._transit_queue[i]
+                return transit.bag
         return None
 
     def drain_zone(self, zone: ZoneState, delta_minutes: int = 1) -> list[BagInZone]:

@@ -265,3 +265,12 @@ def _reset_view():
     fv = sys.modules.get("_common.flight_view")
     if fv is not None:
         fv.VIEW.load([], [], None)
+
+
+def test_terminal_falls_back_to_the_gate_prefix_on_a_cold_start():
+    """Live RC6 validation: bootstrapped before Gate nodes existed → every bag in A."""
+    fv = _view_module()
+    view = _fresh_view(fv, rows=[{"id": "F1", "direction": "departure", "gate_id": "C12"}], gates=())
+    assert view.get("F1")["terminal_id"] == "T-C"
+    view.apply("FlightGateAssigned", {"flight_id": "F1", "new_gate_id": "B03"}, NOW)
+    assert view.get("F1")["terminal_id"] == "T-B"
