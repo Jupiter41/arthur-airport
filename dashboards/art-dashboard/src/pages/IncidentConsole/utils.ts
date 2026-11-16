@@ -1,5 +1,7 @@
+import { parseSimTime } from "../../utils/simTime";
+
 export function formatRelativeTime(iso: string, simTime: string | null): string {
-  const utc = (value: string) => Date.parse(/Z$|[+-]\d\d:\d\d$/.test(value) ? value : `${value}Z`);
+  const utc = (value: string) => parseSimTime(value).getTime();
   const started = utc(iso);
   const observed = simTime ? utc(simTime) : NaN;
   if (!Number.isFinite(started) || !Number.isFinite(observed)) return "simulation age unavailable";
@@ -11,7 +13,7 @@ export function formatRelativeTime(iso: string, simTime: string | null): string 
 }
 
 export function formatSimTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseSimTime(iso);
   if (Number.isNaN(d.getTime())) return "--:--";
   return `${d.getUTCHours().toString().padStart(2, "0")}:${d.getUTCMinutes().toString().padStart(2, "0")}`;
 }

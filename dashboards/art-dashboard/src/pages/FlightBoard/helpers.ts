@@ -1,8 +1,10 @@
 import type { Flight } from "../../types";
 import type { FlightSortCol, ColumnFilters } from "./constants";
+import { parseSimTime } from "../../utils/simTime";
 
 export function formatTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseSimTime(iso);
+  if (!Number.isFinite(d.getTime())) return "--:--";
   return `${d.getUTCHours().toString().padStart(2, "0")}:${d.getUTCMinutes().toString().padStart(2, "0")}`;
 }
 

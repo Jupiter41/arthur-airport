@@ -19,6 +19,7 @@ import type {
   BaggageZone,
 } from "../../types";
 import { formatTime } from "../FlightBoard/helpers";
+import { parseSimTime } from "../../utils/simTime";
 import { normalizeGate } from "../Airport3D/model";
 import { useSimStore } from "../../stores/simStore";
 import { normalizeTerminal } from "../Airport3D/model";
@@ -113,7 +114,7 @@ export default function CockpitPage() {
   const scope = params.get("terminal") ?? "all";
   const clock = useSimStore((s) => s.status);
   const time = clock.tick_count > 0 ? clock.sim_time : "";
-  const seconds = Date.parse(time);
+  const seconds = parseSimTime(time).getTime();
   const terminalEntries = Object.entries(security ?? {}).filter(
     ([key]) => scope === "all" || normalizeTerminal(key) === scope,
   );
@@ -181,13 +182,13 @@ export default function CockpitPage() {
       (f) =>
         (scope === "all" ||
           normalizeTerminal(f.terminal || f.gate_id?.[0] || "") === scope) &&
-        Date.parse(f.estimated_time || f.scheduled_time) >= seconds &&
-        Date.parse(f.estimated_time || f.scheduled_time) <= seconds + 3600000,
+        parseSimTime(f.estimated_time || f.scheduled_time).getTime() >= seconds &&
+        parseSimTime(f.estimated_time || f.scheduled_time).getTime() <= seconds + 3600000,
     )
     .sort(
       (a, b) =>
-        Date.parse(a.estimated_time || a.scheduled_time) -
-        Date.parse(b.estimated_time || b.scheduled_time),
+        parseSimTime(a.estimated_time || a.scheduled_time).getTime() -
+        parseSimTime(b.estimated_time || b.scheduled_time).getTime(),
     );
   return (
     <div className="page-container space-y-6">

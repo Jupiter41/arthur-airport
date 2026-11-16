@@ -48,3 +48,9 @@ Incident creation facts use `incident_id` and the envelope's simulation time.
 Cascade facts describe relationships and invalidate owner reads; they must not
 be inserted as complete Incident rows. Incident ages use only the source
 simulation clock, with explicit missing/future-clock states.
+
+### UTC clock rendering
+
+Simulation timestamps without an explicit offset represent UTC. The shell clock
+and incident times must normalize these values before parsing, irrespective of
+the browser's local timezone. Invalid clock evidence displays as unavailable.
