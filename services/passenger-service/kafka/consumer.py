@@ -29,8 +29,6 @@ from db.neo4j import (
     get_passengers_by_status,
     get_security_queue_members,
     get_passengers_by_flight,
-    bulk_update_status,
-    bulk_set_dwell,
     get_connecting_passengers,
     get_departure_flights_in_window,
     get_status_counts,
@@ -58,7 +56,7 @@ from ml.training import add_training_row, maybe_flush, maybe_retrain
 from services.connections import evaluate_connecting_passengers
 from services.security import SecuritySystem
 from services.reconciliation import (
-    PHYSICAL_STATUSES, FORWARD_FLIGHT_STATUSES, MISSED_FLIGHT_STATUSES,
+    PHYSICAL_STATUSES, MISSED_FLIGHT_STATUSES,
     PRE_DEPARTURE_FLIGHT_STATUSES, reconciliation_transition,
 )
 from _common.show_up import (
@@ -157,6 +155,8 @@ class PassengerConsumerState:
         self.last_sync_sim_time: datetime | None = None
         # No-show tracking (Phase 1.2)
         self.noshow_rate: float = 0.03  # 2-4% no-show rate (default 3%)
+        # Passengers placed by this tick's warm start (per tick, not checkpointed).
+        self.warm_started_ids: set[str] = set()
         # BTS source management
         self.passenger_source: str = os.getenv("PASSENGER_SOURCE", "simulation").lower()
         self._bts_adapter = None
@@ -689,76 +689,65 @@ class TickContribution:
         self.facts.extend(other.facts)
 
 
-async def _warm_start_departures(sim_time: datetime) -> None:
-    """Pre-advance departure passengers for flights near departure at sim start.
+async def _warm_start_departures(sim_time: datetime) -> "TickContribution":
+    """Place every already-due departure passenger on their own timeline (RC5).
 
-    At sim start all departure passengers are 'booked'.  For flights departing
-    within the next 2 hours, advance passengers to realistic pipeline states
-    as if the airport had already been operating.  This prevents the startup
-    burst from cascading into mass cancellations.
+    On a fresh simulation every passenger whose ``show_up_at`` is past is still
+    ``booked``; releasing them all on the first tick flooded security for about
+    three sim-hours. Each is placed where their free-flow timeline puts them
+    now (``services.warm_start``), as part of the first tick's atomic commit;
+    in-memory queue/zone bookkeeping follows the same rules as the FSM steps.
+    See passenger SPEC "Warm start on a fresh simulation".
     """
-    cutoff = (sim_time + timedelta(hours=2)).isoformat()
+    from services.warm_start import place_departures
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    plan = TickContribution()
+    cutoff = (sim_time + timedelta(minutes=SHOW_UP_WINDOW_START_MIN)).isoformat()
     try:
         pax_list = await get_passengers_by_status(
-            "booked", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
+            "booked", scheduled_before=cutoff,
+            flight_statuses=list(PRE_DEPARTURE_FLIGHT_STATUSES),
+            due_field="show_up_at", due_at=sim_time.isoformat(), include_missing_due=True,
         )
     except Exception as e:
         if current_tick.get() is not None:
             raise
         logger.error("Warm-start query failed: %s", e)
-        return
+        return plan
 
-    flights: dict[str, list[dict]] = {}
-    for pax in pax_list:
-        fid = pax.get("flight_id") or ""
-        flights.setdefault(fid, []).append(pax)
-
-    total_advanced = 0
-    for flight_id, pax_group in flights.items():
-        if not pax_group:
-            continue
-        sample = pax_group[0]
-        if sample.get("direction", "departure") != "departure":
-            continue
-        scheduled = sample.get("scheduled_time") or sample.get("estimated_time")
-        if not scheduled:
-            continue
-        try:
-            sched_dt = datetime.fromisoformat(str(scheduled)).replace(tzinfo=None)
-        except (ValueError, TypeError):
-            continue
-
-        minutes_until = (sched_dt - sim_time).total_seconds() / 60
-        terminal = get_terminal_for_flight(
-            sample.get("gate_id"), sample.get("terminal_id"), flight_id,
-        )
-        gate_id = sample.get("gate_id")
-        ids = [p["id"] for p in pax_group]
-
-        if minutes_until <= 0:
-            # Past departure → boarded
-            zone = zone_for_status("boarded", terminal, gate_id)
-            await bulk_update_status(ids, "boarded", zone, sim_time)
-        elif minutes_until <= 50:
-            # Departs in <50 min → at gate (GATE_OPEN_MINUTES)
-            zone = zone_for_status("at_gate", terminal, gate_id)
-            await bulk_update_status(ids, "at_gate", zone, sim_time)
-        elif minutes_until <= 90:
-            # Departs in 50-90 min → airside (through security already)
-            zone = f"airside-{terminal}"
-            await bulk_update_status(ids, "airside", zone, sim_time)
-            dwell_items = [(pid, 0) for pid in ids]
-            await bulk_set_dwell(dwell_items)
-        elif minutes_until <= 120:
-            # Departs in 90-120 min → checked in (arriving at airport)
-            zone = f"check-in-{terminal}"
-            await bulk_update_status(ids, "checked_in", zone, sim_time)
+    rows = {p["id"]: p for p in pax_list if p.get("direction", "departure") == "departure"}
+    placements = place_departures(
+        rows.values(), sim_time, _state.noshow_rate, lambda _pid: sample_dwell_minutes(),
+    )
+    groups: dict[tuple[str, str], list[str]] = {}
+    for placed in placements:
+        pax = rows[placed.passenger_id]
+        gate_id = pax.get("gate_id")
+        terminal = get_terminal_for_flight(gate_id, pax.get("terminal_id"), pax.get("flight_id") or "")
+        status = placed.status
+        if status == "departed_airport":
+            zone = "no-show"
+        elif status in ("checked_in", "security_queue", "airside"):
+            zone = {"checked_in": "check-in", "security_queue": "security",
+                    "airside": "airside"}[status] + f"-{terminal}"
         else:
-            continue
-
-        total_advanced += len(ids)
-
-    logger.info("Warm-start: advanced %d departure passengers to pipeline states", total_advanced)
+            zone = zone_for_status(status, terminal, gate_id)
+        groups.setdefault((status, zone), []).append(placed.passenger_id)
+        if status == "security_queue":
+            _state.security_enqueued.add(placed.passenger_id)
+            _state.security.enqueue(terminal, placed.passenger_id, bool(pax.get("special_assistance")))
+        if status == "airside":
+            plan.dwell_items.append((placed.passenger_id, placed.dwell_remaining))
+        if status in ("checked_in", "security_queue", "airside", "at_gate"):
+            move_passenger(None, zone)
+    for (status, zone), ids in groups.items():
+        plan.groups.append({"ids": ids, "status": status, "zone": zone})
+    _state.warm_started_ids = {p.passenger_id for p in placements}
+    logger.info(
+        "Warm start: placed %d due departure passengers by their own show-up time (%s)",
+        len(placements), {status: len(ids) for (status, _), ids in groups.items()},
+    )
+    return plan
 
 
 
@@ -844,9 +833,13 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     set_bulk_mode(is_bulk)
 
     try:
-        # Warm-start: pre-advance early departure passengers on first tick
+        # Warm start (fresh state only): place already-due departure passengers
+        # on their own timelines; committed with this tick below.
+        warm = TickContribution()
+        _state.warm_started_ids = set()
         if _state.tick_counter == 1:
-            await _warm_start_departures(sim_time)
+            with phase_timer("warm_start"):
+                warm = await _warm_start_departures(sim_time)
 
         # === Critical path (every tick) ===
 
@@ -866,6 +859,7 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
         # TickContribution. All of a tick's domain writes + fact staging then commit
         # in ONE apply_tick_atomic transaction, advancing the durable checkpoint.
         plan = TickContribution()
+        plan.merge(warm)
         reconcile_now = _reconcile_due(sim_time)
         for phase, step in (
             ("reconcile", lambda: (_reconcile_flight_passengers(sim_time) if reconcile_now
@@ -1141,6 +1135,8 @@ async def _advance_booked_to_checkin(
             break
         if pax.get("direction", "departure") != "departure":
             continue
+        if pax["id"] in _state.warm_started_ids:
+            continue  # placed by this tick's warm start
         scheduled = pax.get("scheduled_time") or pax.get("estimated_time")
         show_up = show_up_time(pax["id"], scheduled, pax.get("show_up_at"))
         if show_up is None or sim_time < show_up:

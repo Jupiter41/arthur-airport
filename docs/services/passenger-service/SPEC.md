@@ -784,6 +784,30 @@ ADR-007); the graph is traversed only by flight identity (`ON_FLIGHT`). Each tic
 also stages `BoardingProgress` (`boarded`/`total` per departure in `boarding`),
 which flight-service uses to decide departure. `total` excludes no-shows (RC5).
 
+### Warm start on a fresh simulation (RC5 follow-up, 2026-11-16)
+
+A fresh simulation starts mid-morning-wave: every booked passenger whose
+`show_up_at` is already past would otherwise be released on the first tick
+(≈4,100 at a 06:00 start), flooding security for about three sim-hours. On the
+owner's first tick, each such departing passenger is instead placed where their
+own free-flow timeline puts them at the start time, computed from `show_up_at`:
+
+| Start time falls…                                   | Placed as         |
+| --------------------------------------------------- | ----------------- |
+| before `show_up_at`                                 | stays `booked`    |
+| no-show draw (`hash(id) < noshow_rate`)             | `departed_airport` (zone `no-show`) |
+| before security entry (`show_up_at + 10`, ≤ T-45)   | `checked_in`      |
+| within `WARM_SECURITY_MINUTES` (5) of security entry | `security_queue` (joins the in-memory queue) |
+| before gate arrival (`max(T-50, airside + dwell)`)  | `airside`, with the remaining dwell |
+| before the passenger's boarding slot (T-35 + rank / 10 pax/min, rank by gate arrival) | `at_gate` |
+| at or after that slot                               | `boarded`         |
+
+Only flights still `scheduled` / `boarding` / `delayed` are considered. The
+placement is one more contribution to the first tick's atomic transaction (status
+writes, dwell, `PassengerStatusBatchChanged`), not a direct write, and the same
+tick's check-in rule skips the placed passengers. It runs once per fresh owner
+state (`tick_counter == 1`); a restored checkpoint never re-runs it.
+
 ### Departure outcome (RC5, 2026-11-16)
 
 On `FlightStatusChanged(departed)` for a departure, in one atomic owner write:

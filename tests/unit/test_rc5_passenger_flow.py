@@ -12,6 +12,7 @@ import json
 import random
 import statistics
 import sys
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import ModuleType
@@ -282,3 +283,98 @@ def test_missed_flight_passengers_are_archived_by_retention(monkeypatch):
     assert "p.missed_flight_at < $before AND p.status = 'missed_flight'" in queries[0]
     *_, missed_task = retention.tasks(lambda: None, batch=10)
     assert missed_task.__name__ == "passenger_archive_missed_flight"
+
+
+# ── warm start on a fresh simulation ───────────────────────────────────────
+
+
+def _warm():
+    import_service_module("passenger", "services.warm_start")
+    return importlib.import_module("services.warm_start")
+
+
+START = datetime(2024, 6, 15, 6, 0)
+
+
+def _row(pid, dep, show):
+    return {"id": pid, "flight_id": f"F{dep:%H%M}", "scheduled_time": dep.isoformat(),
+            "show_up_at": show.isoformat()}
+
+
+def test_warm_start_places_each_passenger_on_their_own_timeline():
+    warm = _warm()
+    dep = START + timedelta(minutes=150)               # 08:30
+    ids = {n: _show_id(prefix=n) for n in ("future", "checkin", "security", "airside", "gate")}
+    rows = [
+        _row(ids["future"], dep, START + timedelta(minutes=5)),     # not due yet
+        _row(ids["checkin"], dep, START - timedelta(minutes=4)),    # security at +6
+        _row(ids["security"], dep, START - timedelta(minutes=12)),  # in lane until +3
+        _row(ids["airside"], dep, START - timedelta(minutes=30)),   # airside since -15
+    ]
+    placed = {p.passenger_id: p for p in warm.place_departures(rows, START, 0.03, lambda _: 25)}
+    assert ids["future"] not in placed
+    assert placed[ids["checkin"]].status == "checked_in"
+    assert placed[ids["security"]].status == "security_queue"
+    assert placed[ids["airside"]].status == "airside"
+    assert placed[ids["airside"]].dwell_remaining == 10         # 25 − 15 elapsed
+
+
+def test_warm_start_no_shows_never_enter_the_airport():
+    warm = _warm()
+    pid = _no_show_id()
+    rows = [_row(pid, START + timedelta(minutes=60), START - timedelta(minutes=40))]
+    [placed] = warm.place_departures(rows, START, 0.03, lambda _: 25)
+    assert placed.status == "departed_airport"
+
+
+def test_warm_start_boards_at_the_boarding_rate_in_gate_arrival_order():
+    warm = _warm()
+    dep = START + timedelta(minutes=20)                # boarding call 05:45 → 15 min in
+    rows = [_row(_show_id(prefix=f"g{i}"), dep, dep - timedelta(minutes=170)) for i in range(200)]
+    placed = warm.place_departures(rows, START, 0.0, lambda _: 25)
+    statuses = Counter(p.status for p in placed)
+    assert statuses == {"boarded": 151, "at_gate": 49}     # ranks 0..150 within 15 min at 10/min
+
+
+def test_warm_start_releases_only_a_few_minutes_of_arrivals_into_security():
+    """The old first tick released every due passenger at once (≈4,100 at 06:00)."""
+    warm = _warm()
+    rng = random.Random(11)
+    rows = []
+    for f in range(60):
+        dep = START + timedelta(minutes=10 + 5 * f)     # departures 06:10 … 11:05
+        for i in range(150):
+            rows.append(_row(f"w{f}-{i}", dep, show_up.draw_show_up(dep, rng)))
+    placed = warm.place_departures(rows, START, 0.03, lambda _: 25)
+    due = sum(1 for r in rows if datetime.fromisoformat(r["show_up_at"]) <= START)
+    statuses = Counter(p.status for p in placed)
+    assert len(placed) == due > 2000
+    assert statuses["security_queue"] < 0.1 * due       # ~5 min of arrivals, not the backlog
+    assert statuses["airside"] + statuses["at_gate"] + statuses["boarded"] > 0.5 * due
+
+
+def test_first_tick_commits_the_warm_start_and_skips_placed_passengers(consumer, monkeypatch):
+    pid_sec = _show_id(prefix="sec")
+    pid_ci = _show_id(prefix="ci")
+    dep = START + timedelta(minutes=150)
+    rows = [
+        {**_pax(pid_sec, "booked", show_up_at=(START - timedelta(minutes=12)).isoformat()),
+         "scheduled_time": dep.isoformat(), "estimated_time": dep.isoformat()},
+        {**_pax(pid_ci, "booked", show_up_at=(START - timedelta(minutes=4)).isoformat()),
+         "scheduled_time": dep.isoformat(), "estimated_time": dep.isoformat()},
+    ]
+    reader = AsyncMock(return_value=rows)
+    monkeypatch.setattr(consumer, "get_passengers_by_status", reader)
+    plan = asyncio.run(consumer._warm_start_departures(START))
+    assert {(g["status"], g["zone"]) : g["ids"] for g in plan.groups} == {
+        ("security_queue", "security-B"): [pid_sec], ("checked_in", "check-in-B"): [pid_ci]}
+    assert consumer._state.security.get("B").queue_depth == 1
+    assert reader.await_args.kwargs["due_field"] == "show_up_at"
+    # The same tick's check-in rule does not move them a second time.
+    again = asyncio.run(consumer._advance_booked_to_checkin(START))
+    assert again.groups == []
+
+
+def test_warm_start_no_longer_writes_outside_the_tick_transaction(consumer):
+    assert not hasattr(consumer, "bulk_update_status")
+    assert not hasattr(consumer, "bulk_set_dwell")

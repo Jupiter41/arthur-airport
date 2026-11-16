@@ -407,12 +407,17 @@ granularities are published to everyone.
 > average delay 0.5 min, 0 ≥ 30 min, 0 `boarding_incomplete` (was 80%), no-shows 2.4%,
 > `missed_flight` 0.6%, 0 passengers boarded after departure; a flight's cohort reaches
 > security over ~110 min / ~77 distinct minutes (was 1 minute); security waits 0–5 min.
-> **Open — cold-start transient:** a fresh sim starts at 06:00 with 4,108 passengers whose
-> `show_up_at` is already past, released on the first tick on top of the block-wise
-> `_warm_start_departures`. Terminal A/B security waits reach 68–89 min for the first ~3
-> sim-hours (security_congestion incidents, `boarding_incomplete` on ~1/3 of 09–10 h
-> departures) and clear by 10:00. Fix: make the warm start place each passenger by their own
-> `show_up_at` timeline instead of releasing the backlog at once.
+> **Cold-start transient — fixed in code, not yet re-measured live:** a fresh sim starts at
+> 06:00 with 4,108 passengers whose `show_up_at` is already past. They were released on the
+> first tick on top of the block-wise `_warm_start_departures`, so terminal A/B security
+> waits reached 68–89 min for the first ~3 sim-hours (security_congestion incidents,
+> `boarding_incomplete` on ~1/3 of 09–10 h departures). The warm start now places each due
+> passenger where their own free-flow timeline puts them at the start time (checked in, in a
+> lane for 5 min, airside with remaining dwell, at the gate, or boarded at 10 pax/min in
+> gate-arrival order; no-shows drawn as usual), committed with the first tick instead of the
+> old direct `bulk_update_status` writes that published no facts (passenger SPEC "Warm start
+> on a fresh simulation"). On a synthetic 60-flight start, fewer than 10% of due passengers
+> land in security.
 >
 > All four fix directions:
 > (1) the SPEC now follows §3 — each departing passenger's `show_up_at` is drawn at seed time
