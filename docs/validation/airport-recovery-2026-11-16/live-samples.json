@@ -1,0 +1,102 @@
+{
+  "before": {
+    "sim_time": "2024-06-19T08:20:00+00:00",
+    "total_in_airport": 246604,
+    "retained_passengers": 1513034
+  },
+  "first": {
+    "sim_time": "2024-07-06T20:12:00",
+    "total_in_airport": 4361,
+    "flight_status_counts": {
+      "arrived": 320,
+      "airborne": 69,
+      "diverted": 2,
+      "boarding": 11,
+      "at_gate": 1,
+      "taxiing": 3,
+      "approach": 1,
+      "scheduled": 13
+    }
+  },
+  "second": {
+    "sim": {
+      "airport": {
+        "name": "Arthur International Airport",
+        "iata": "ART",
+        "icao": "KART",
+        "timezone": "America/Arthur"
+      },
+      "running": true,
+      "paused": false,
+      "sim_time": "2024-07-06T22:42:00",
+      "real_time": "2026-11-16T07:38:38.698504+00:00",
+      "speed_multiplier": 60,
+      "mode": "REALTIME",
+      "day_number": 22,
+      "tick_number": 31242,
+      "real_elapsed_seconds": 31242,
+      "sim_elapsed_minutes": 31242,
+      "active_incidents": 0,
+      "weather_category": "CAVOK",
+      "flights_today": 420,
+      "passengers_today": 68031
+    },
+    "flow": {
+      "sim_time": "2024-07-06T22:42:00",
+      "total_in_airport": 772,
+      "by_status": {
+        "airside": 250,
+        "at_gate": 19,
+        "baggage_claim": 329,
+        "boarded": 246,
+        "departed_airport": 1512016,
+        "security_queue": 174
+      },
+      "counts_observed_sim_time": "2024-07-06T22:37:00",
+      "counts_age_seconds": 3.7,
+      "counts_stale": false,
+      "security": {
+        "A": {
+          "queue_length": 0,
+          "wait_minutes": 0.0,
+          "lanes_open": 8,
+          "frozen": false,
+          "observed_at": "2024-07-06T22:42:00"
+        },
+        "B": {
+          "queue_length": 0,
+          "wait_minutes": 0.0,
+          "lanes_open": 8,
+          "frozen": false,
+          "observed_at": "2024-07-06T22:42:00"
+        },
+        "C": {
+          "queue_length": 0,
+          "wait_minutes": 0.0,
+          "lanes_open": 8,
+          "frozen": false,
+          "observed_at": "2024-07-06T22:42:00"
+        }
+      },
+      "connections_at_risk": 0,
+      "connections_missed": 0,
+      "data_source": "simulation"
+    },
+    "flight_total": 420,
+    "flight_status_counts": {
+      "arrived": 367,
+      "airborne": 49,
+      "diverted": 2,
+      "boarding": 2
+    }
+  },
+  "flight_status_changes_between_samples": 66,
+  "daily_seed_check": {
+    "sim_time": "2024-07-06T23:31:00",
+    "next_day": "2024-07-07",
+    "flights": 420,
+    "distinct_flight_ids": 420,
+    "passengers": 65817,
+    "passenger_outbox_pending": 0
+  }
+}
