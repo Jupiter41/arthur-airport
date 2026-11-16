@@ -47,6 +47,13 @@ tick_processing_last_ms = Gauge(
     ["service"],
 )
 
+tick_phase_seconds = Histogram(
+    "service_tick_phase_seconds",
+    "Wall-clock time spent in one phase of an owner tick",
+    ["service", "phase"],
+    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
+)
+
 # ── State ───────────────────────────────────────────────────
 
 _speed: float = 60.0  # current sim speed multiplier
@@ -82,6 +89,16 @@ def tick_timer():
         budget_seconds = 60.0 / max(_speed, 1.0)
         utilisation = (elapsed / budget_seconds) * 100.0 if budget_seconds > 0 else 0.0
         tick_budget_utilisation_pct.labels(service=_SERVICE).set(utilisation)
+
+
+@contextmanager
+def phase_timer(phase: str):
+    """Attribute part of a tick's wall-clock time to ``phase``."""
+    start = time.monotonic()
+    try:
+        yield
+    finally:
+        tick_phase_seconds.labels(service=_SERVICE, phase=phase).observe(time.monotonic() - start)
 
 
 def get_perf_stats() -> dict:

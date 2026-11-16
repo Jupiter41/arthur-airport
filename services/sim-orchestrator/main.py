@@ -49,9 +49,35 @@ async def _on_hour_boundary(sim_time):
     logger.debug("Hour boundary reached: %s", sim_time)
 
 
+_seed_task: asyncio.Task | None = None
+
+
 async def _on_day_boundary(next_day: int, sim_time):
-    """Clock callback fired at 23:30 — seeds next day's flights, passengers, and baggage."""
-    await seed_day(sim_day=next_day)
+    """Clock callback fired at 23:30 — seeds next day's flights, passengers, and baggage.
+
+    Seeding (~70k passengers, ~100k bags, ~15 s) runs in the background so the
+    clock keeps ticking; ``_on_day_start`` waits for it at midnight only if it
+    has not finished, which only happens at high simulation speeds.
+    """
+    global _seed_task
+    if _seed_task is not None and not _seed_task.done():
+        await _seed_task
+    _seed_task = asyncio.create_task(seed_day(sim_day=next_day), name=f"seed-day-{next_day}")
+
+
+async def _on_day_start(new_day: int, sim_time):
+    """Midnight barrier: the new day's schedule must exist before its first tick."""
+    global _seed_task
+    task, _seed_task = _seed_task, None
+    if task is None:
+        return
+    if not task.done():
+        logger.info("Waiting for day %d seeding to finish before its first tick", new_day)
+    try:
+        await task
+    except Exception:
+        logger.exception("Background seeding of day %d failed; retrying inline", new_day)
+        await seed_day(sim_day=new_day)
 
 
 async def _on_tick(sim_time):
@@ -130,6 +156,7 @@ async def lifespan(app: FastAPI):
         on_day=_on_day_boundary,
         on_tick=_on_tick,
         on_checkpoint=checkpoint,
+        on_day_start=_on_day_start,
     )
 
     # 10. Load scenario definitions

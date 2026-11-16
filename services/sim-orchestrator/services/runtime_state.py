@@ -12,6 +12,19 @@ from kafka.producer import produce_event
 _lock = asyncio.Lock()
 logger = logging.getLogger(__name__)
 
+# A clock checkpoint is retried on transient database errors before the
+# simulation is paused. One lock timeout or a briefly exhausted transaction
+# memory pool must not stop the whole airport until an operator resumes it.
+CHECKPOINT_RETRY_DELAYS_S = (0.2, 0.5, 1.0, 2.0)
+
+
+def _is_transient(exc: BaseException) -> bool:
+    try:
+        from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
+    except ImportError:  # pragma: no cover - driver always present in the service
+        return False
+    return isinstance(exc, (TransientError, ServiceUnavailable, SessionExpired))
+
 
 def legacy_clock_bound(values: list[dict], start: datetime) -> datetime | None:
     """Recorded progress only: future timetables are not clock evidence."""
@@ -62,19 +75,27 @@ async def checkpoint(*, command: str | None = None) -> None:
 async def _write_checkpoint(*, command: str | None = None) -> None:
     state = clock.get_state()
     settings = get_settings().model_dump()
-    try:
-        async with get_driver().session() as session:
-            await session.run(
-                "MERGE (s:SimState {id: 'airport'}) "
-                "SET s.sim_time=$sim_time, s.day_number=$day, s.tick_number=$tick, "
-                "s.speed_multiplier=$speed, s.paused=$paused, s.settings_json=$settings",
-                sim_time=state["sim_time"], day=state["day_number"],
-                tick=state["tick_number"], speed=state["speed_multiplier"],
-                paused=state["paused"], settings=json.dumps(settings),
-            )
-    except Exception:
-        clock.pause()
-        raise
+    delays = iter(CHECKPOINT_RETRY_DELAYS_S)
+    while True:
+        try:
+            async with get_driver().session() as session:
+                await session.run(
+                    "MERGE (s:SimState {id: 'airport'}) "
+                    "SET s.sim_time=$sim_time, s.day_number=$day, s.tick_number=$tick, "
+                    "s.speed_multiplier=$speed, s.paused=$paused, s.settings_json=$settings",
+                    sim_time=state["sim_time"], day=state["day_number"],
+                    tick=state["tick_number"], speed=state["speed_multiplier"],
+                    paused=state["paused"], settings=json.dumps(settings),
+                )
+            break
+        except Exception as exc:
+            delay = next(delays, None) if _is_transient(exc) else None
+            if delay is None:
+                clock.pause()
+                raise
+            logger.warning("Clock checkpoint transient failure; retrying in %.1fs", delay,
+                           exc_info=True)
+            await asyncio.sleep(delay)
     if command:
         produce_event(topic="sim.clock", event_type="SimControlChanged",
                       sim_time=clock.get_sim_time(), key="control",

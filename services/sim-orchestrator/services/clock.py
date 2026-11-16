@@ -36,21 +36,27 @@ _on_hour_boundary = None
 _on_day_boundary = None
 _on_tick = None
 _on_checkpoint = None
+_on_day_start = None
 
 
-def configure_callbacks(on_hour=None, on_day=None, on_tick=None, on_checkpoint=None) -> None:
+def configure_callbacks(on_hour=None, on_day=None, on_tick=None, on_checkpoint=None,
+                        on_day_start=None) -> None:
     """Register callbacks for hour-boundary, day-boundary, and per-tick events.
 
     Args:
         on_hour: Async callable(sim_time) invoked every simulated hour.
         on_day: Async callable(next_day, sim_time) invoked at 23:30 to seed the next day.
         on_tick: Async callable(sim_time) invoked every simulated minute.
+        on_day_start: Async callable(new_day, sim_time) invoked at midnight,
+            before the new day's first tick is emitted (a barrier for work that
+            on_day started in the background).
     """
-    global _on_hour_boundary, _on_day_boundary, _on_tick, _on_checkpoint
+    global _on_hour_boundary, _on_day_boundary, _on_tick, _on_checkpoint, _on_day_start
     _on_hour_boundary = on_hour
     _on_day_boundary = on_day
     _on_tick = on_tick
     _on_checkpoint = on_checkpoint
+    _on_day_start = on_day_start
 
 
 def get_state() -> dict:
@@ -254,6 +260,11 @@ async def run_clock_loop() -> None:
             if _sim_time.date() != prev.date():
                 _sim_day += 1
                 logger.info("Day boundary: now day %d (%s)", _sim_day, _sim_time.date())
+                if _on_day_start:
+                    try:
+                        await _on_day_start(_sim_day, _sim_time)
+                    except Exception as e:
+                        logger.error("Day start callback error: %s", e)
 
         _tick_number += 1
 

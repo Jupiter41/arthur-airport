@@ -103,3 +103,85 @@ def test_legacy_recovery_derives_elapsed_time_from_utc_start():
     session.run.return_value.data.return_value = [{"at": "2024-06-16T06:00:00Z"}]
     assert asyncio.run(module.restore()) is True
     assert clock.restore_state.call_args.args[:3] == (datetime(2024, 6, 16, 6), 2, 1440)
+
+
+def test_transient_checkpoint_failure_is_retried_without_pausing():
+    from neo4j.exceptions import TransientError
+    module, clock, producer, session, _ = load_runtime()
+    module.CHECKPOINT_RETRY_DELAYS_S = (0, 0, 0, 0)
+    ok = session.run.return_value
+    session.run.side_effect = [TransientError("memory pool"), TransientError("lock"), ok]
+    asyncio.run(module.checkpoint(command="tick"))
+    assert session.run.call_count == 3
+    clock.pause.assert_not_called()
+    producer.produce_event.assert_called_once()
+
+
+def test_persistent_transient_failure_still_pauses_after_retries():
+    from neo4j.exceptions import TransientError
+    module, clock, producer, session, _ = load_runtime()
+    module.CHECKPOINT_RETRY_DELAYS_S = (0, 0)
+    session.run.side_effect = TransientError("memory pool")
+    try:
+        asyncio.run(module.checkpoint())
+        assert False, "exhausted retries must reach the caller"
+    except TransientError:
+        pass
+    assert session.run.call_count == 3
+    clock.pause.assert_called_once()
+
+
+def load_clock(emitted):
+    producer = ModuleType("kafka.producer")
+    producer.emit_clock_tick = lambda **kw: emitted.append(("tick", kw["sim_time"]))
+    metrics = ModuleType("metrics")
+    for name in ("sim_tick_total", "sim_tick_latency_ms", "sim_speed_multiplier",
+                 "sim_day_number", "sim_paused"):
+        setattr(metrics, name, Mock())
+    spec = importlib.util.spec_from_file_location("clock_under_test",
+        Path(__file__).resolve().parents[2] / "services/sim-orchestrator/services/clock.py")
+    module = importlib.util.module_from_spec(spec)
+    with patch.dict("sys.modules", {"kafka.producer": producer, "metrics": metrics}):
+        spec.loader.exec_module(module)
+    return module
+
+
+def test_day_seeding_runs_in_background_with_a_midnight_barrier():
+    """Seeding must not stall 23:30-23:59 ticks, yet must finish before day 2 starts."""
+    emitted: list = []
+    clock = load_clock(emitted)
+    clock.restore_state(datetime(2024, 6, 15, 23, 28), 1, 0, 600_000)  # ~0 s per tick
+    seeding = asyncio.Event()
+
+    async def scenario():
+        async def slow_seed():
+            await seeding.wait()
+            emitted.append(("seeded", None))
+
+        task_holder = {}
+        async def on_day(next_day, sim_time):
+            task_holder["task"] = asyncio.create_task(slow_seed())
+
+        async def on_day_start(new_day, sim_time):
+            emitted.append(("day_start", sim_time))
+            await task_holder["task"]
+
+        async def on_tick(sim_time):
+            if sim_time == datetime(2024, 6, 15, 23, 50):
+                # Ticks kept flowing after 23:30 while seeding was still running.
+                assert ("seeded", None) not in emitted
+                seeding.set()
+            if sim_time >= datetime(2024, 6, 16, 0, 1):
+                clock.stop()
+
+        clock.configure_callbacks(on_day=on_day, on_tick=on_tick, on_day_start=on_day_start)
+        clock.MAX_TICKS_PER_SEC = 10_000
+        await asyncio.wait_for(clock.run_clock_loop(), timeout=10)
+
+    asyncio.run(scenario())
+    ticks = [t for kind, t in emitted if kind == "tick"]
+    assert datetime(2024, 6, 15, 23, 40) in ticks           # not blocked by seeding
+    seeded = emitted.index(("seeded", None))
+    midnight = emitted.index(("tick", datetime(2024, 6, 16, 0, 0)))
+    assert seeded < midnight                                 # barrier before day 2
+    assert clock.get_sim_day() == 2

@@ -495,6 +495,26 @@ def test_baggage_on_carousel_stages_location_update_atomically(monkeypatch):
     assert "p1" in consumer._state.passengers_at_carousel  # in-memory set updated post-commit
 
 
+def test_later_arrival_bags_on_a_mapped_carousel_skip_the_flight_read(monkeypatch):
+    """~150 bags per flight must not each repeat the flight read and write."""
+    consumer = _consumer(monkeypatch)
+    db = importlib.import_module("db.neo4j")
+    driver = Driver()
+    monkeypatch.setattr(db, "get_driver", lambda: driver)
+    by_flight = AsyncMock(return_value=[{"id": "p1", "status": "baggage_claim"}])
+    monkeypatch.setattr(consumer, "get_passengers_by_flight", by_flight)
+    payload = {"new_status": "on_carousel", "flight_id": "FL1", "scan_zone": "arrival-belt-3"}
+    asyncio.run(consumer._on_baggage_status_changed(payload, SIM_TIME, "bag-evt-1"))
+    asyncio.run(consumer._on_baggage_status_changed(payload, SIM_TIME, "bag-evt-2"))
+    assert by_flight.await_count == 1
+    assert set(driver.db["inbox"]) == {"bag-evt-1"}
+    # A bag on a different belt for the same flight remaps and re-reads.
+    moved = {**payload, "scan_zone": "arrival-belt-4"}
+    asyncio.run(consumer._on_baggage_status_changed(moved, SIM_TIME, "bag-evt-3"))
+    assert by_flight.await_count == 2
+    assert consumer._state.flight_carousel_zone["FL1"] == "carousel-4"
+
+
 def test_check_connections_stages_missed_risk_and_alerts_atomically(monkeypatch):
     consumer = _consumer(monkeypatch)
     db = importlib.import_module("db.neo4j")
@@ -530,10 +550,13 @@ def test_security_reconciliation_uses_graph_status_over_stale_checkpoint_flags(m
     checkpoint.enqueue("stale")
     consumer._state.security_enqueued.update({"stale", "new"})
     consumer._state.airside_transitioned.add("new")
-    monkeypatch.setattr(consumer, "get_passengers_by_status", AsyncMock(return_value=[{
-        "id": "new", "status": "security_queue", "location_zone": "security-B",
+    full_read = AsyncMock(return_value=[])
+    monkeypatch.setattr(consumer, "get_passengers_by_status", full_read)
+    monkeypatch.setattr(consumer, "get_security_queue_members", AsyncMock(return_value=[{
+        "id": "new", "location_zone": "security-B", "special_assistance": False,
     }]))
     asyncio.run(consumer._sync_security_from_db())
+    full_read.assert_not_awaited()   # lean read suffices when zones carry the terminal
     assert checkpoint.queue == ["new"]
     assert consumer._state.security_enqueued == {"new"}
     assert "new" not in consumer._state.airside_transitioned

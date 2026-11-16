@@ -25,6 +25,9 @@ class TickScope:
     broadcasts: list[dict] = field(default_factory=list)
     flushing: bool = False
     effects: list[Callable[[], None]] = field(default_factory=list)
+    # True when this tick adopted the stored checkpoint (memory was out of sync),
+    # so derived caches must be reconciled against the graph before advancing.
+    restored: bool = False
 
 
 current: ContextVar[TickScope | None] = ContextVar("owner_tick", default=None)
@@ -138,13 +141,14 @@ async def run_tick(
         candidate = copy(state)
         for key in (*codec.fields, *getattr(codec, "publish_fields", ())):
             setattr(candidate, key, deepcopy(getattr(state, key)))
-        if row and row["document"] and not _in_sync(state, row["last_tick"]):
+        restored = bool(row and row["document"] and not _in_sync(state, row["last_tick"]))
+        if restored:
             # Only a process whose memory is not the committed checkpoint (another
             # writer, or a tick whose commit outcome was lost) needs the decode.
             # In steady state the in-memory state *is* the last committed
             # document, and re-decoding it cost a full parse per tick.
             codec.restore(candidate, row["document"])
-        scope = TickScope(tx, candidate)
+        scope = TickScope(tx, candidate, restored=restored)
         token = current.set(scope)
         broadcaster = candidate.ws_broadcast
         async def defer_broadcast(message: dict) -> None:

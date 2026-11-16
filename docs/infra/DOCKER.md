@@ -89,8 +89,9 @@ services:
     environment:
       NEO4J_AUTH: neo4j/art-digital-twin
       NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_dbms_memory_heap_initial__size: 512m
-      NEO4J_dbms_memory_heap_max__size: 1G
+      NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_INITIAL:-1G}
+      NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_MAX:-2G}
+      NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE:-2G}
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
@@ -652,6 +653,18 @@ sim-orchestrator:
   environment:
     DAILY_FLIGHT_TARGET: 1000 # Override config value
 ```
+
+### Runtime tuning variables
+
+Set these in the shell or `.env` before `docker compose up`:
+
+| Variable | Default | Applies to | Notes |
+| -------- | ------- | ---------- | ----- |
+| `NEO4J_HEAP_MAX` / `NEO4J_HEAP_INITIAL` | `2G` / `1G` | neo4j | Transaction memory is capped at 70% of the heap and shared by all owners; below 2G a lagging owner tick can exhaust it |
+| `NEO4J_PAGECACHE` | `2G` | neo4j | Raise toward the store size on large hosts; lower on small ones |
+| `CATCH_UP_MAX_STEP_MIN` | `5` | baggage, passenger | Largest sim-minute step used when replaying a coalesced clock backlog |
+| `BAGGAGE_STATUS_GAUGE_INTERVAL_TICKS` | `60` | baggage | Cadence of the full by-status count gauge |
+| `BAGGAGE_PIPELINE_RECONCILE_TICKS` | `60` | baggage | Cadence of the safety-net pipeline reconcile while memory is in sync |
 
 ### Full configuration reference
 

@@ -714,12 +714,26 @@ async def get_reconciliation_candidates(sim_time: datetime, limit: int = 2000) -
         return [dict(row) async for row in result]
 
 
+# Passenger timestamps a caller may bound a read by (never interpolate input).
+_DUE_FIELDS = frozenset({"deplaning_at", "customs_at", "baggage_claim_at"})
+
+
 async def get_passengers_by_status(
     status: str,
     scheduled_before: str | None = None,
     flight_statuses: list[str] | None = None,
+    *,
+    due_field: str | None = None,
+    due_at: str | None = None,
+    include_ids: list[str] | None = None,
 ) -> list[dict]:
-    """Read matching passengers, optionally from indexed eligible flight states."""
+    """Read matching passengers, optionally from indexed eligible flight states.
+
+    ``due_field``/``due_at`` keep only passengers whose ``due_field`` timestamp
+    is at or before ``due_at`` (plus any ``include_ids``), so a tick reads the
+    passengers its transition rule can act on instead of the whole status.
+    Timestamps are naive fixed-width ISO strings, so string order is time order.
+    """
     params: dict = {"status": status}
     if flight_statuses is not None:
         params["flight_statuses"] = flight_statuses
@@ -736,6 +750,12 @@ async def get_passengers_by_status(
             start += " WHERE f.scheduled_time <= $before "
     if scheduled_before:
         params["before"] = scheduled_before
+    if due_field is not None:
+        if due_field not in _DUE_FIELDS or due_at is None:
+            raise ValueError(f"unsupported due filter: {due_field!r}")
+        params["due_at"] = due_at
+        params["include_ids"] = list(include_ids or [])
+        start += f" WITH p, f WHERE p.{due_field} <= $due_at OR p.id IN $include_ids "
     query = start + """
         OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
         RETURN p.id AS id, p.name AS name, f.id AS flight_id,
@@ -762,6 +782,23 @@ async def get_passengers_by_status(
         return [dict(r) async for r in result]
 
 
+async def get_security_queue_members() -> list[dict]:
+    """Lean read for the per-tick security reconcile (no flight/gate expansion).
+
+    The reconcile only needs identity, zone and assistance flag; the terminal
+    comes from the ``security-<T>`` zone. Rows without a usable zone are rare
+    and resolved by the caller with the full read.
+    """
+    query = """
+    MATCH (p:Passenger {status: 'security_queue'})
+    RETURN p.id AS id, p.location_zone AS location_zone,
+           p.special_assistance AS special_assistance
+    """
+    async with get_driver().session() as session:
+        result = await session.run(query)
+        return [dict(r) async for r in result]
+
+
 async def get_passengers_by_flight(flight_id: str) -> list[dict]:
     """Get all passengers on a specific flight."""
     driver = get_driver()
@@ -778,12 +815,23 @@ async def get_passengers_by_flight(flight_id: str) -> list[dict]:
         return [dict(r) async for r in result]
 
 
+# Every passenger status except the ones a connection check ignores
+# (departed_airport, boarded, missed_connection). Seeking these through the
+# status index avoids a label scan: there is no index on ``connection`` and the
+# label holds every passenger ever seeded.
+CONNECTION_CHECK_STATUSES = (
+    "booked", "checked_in", "security_queue", "airside", "at_gate", "airborne",
+    "deplaning", "customs", "baggage_claim", "disrupted",
+)
+
+
 async def get_connecting_passengers() -> list[dict]:
     """Get all connecting passengers with their flight info."""
     driver = get_driver()
     query = """
-    MATCH (p:Passenger {connection: true})-[:ON_FLIGHT]->(f:Flight)
-    WHERE NOT p.status IN ['departed_airport', 'boarded', 'missed_connection']
+    MATCH (p:Passenger) USING INDEX p:Passenger(status)
+    WHERE p.status IN $statuses AND p.connection = true
+    MATCH (p)-[:ON_FLIGHT]->(f:Flight)
     OPTIONAL MATCH (cf:Flight {id: p.connection_flight_id})
     OPTIONAL MATCH (p)-[:CARRIES]->(b:Baggage)
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(ig:Gate)
@@ -803,7 +851,7 @@ async def get_connecting_passengers() -> list[dict]:
            count(b) AS baggage_count
     """
     async with driver.session() as session:
-        result = await session.run(query)
+        result = await session.run(query, statuses=list(CONNECTION_CHECK_STATUSES))
         return [dict(r) async for r in result]
 
 

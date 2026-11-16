@@ -30,34 +30,66 @@ data **wrong**; RC9–RC10 make the **UI and data-source pages** look slow and w
 | RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft | 🟡 Low–Med |
 | RC11 | History-wide query plans exhaust Neo4j's *shared* transaction memory; coalesced catch-up ticks grow with each failed retry; the clock pauses on any checkpoint error | passenger-service stuck 6 sim-h behind, then the whole sim auto-paused (found during deployment) | 🔴 High |
 
-### Fixes applied (2026-11-16, same day, uncommitted working tree)
+### Fixes applied (2026-11-16)
+
+**Round 1** (commit `78a9975`):
 
 | Change | Where | Addresses |
 | ------ | ----- | --------- |
-| `inducted_bag_ids` removed from the persisted checkpoint (kept as a per-tick copy, rebuilt from `Baggage.status` in `_prepare_tick`, so it's bounded to bags still on the belt). Legacy checkpoints still restore via a new `SnapshotCodec(retired_fields=…)` | `baggage-service/kafka/consumer.py`, `_common/checkpoint.py` | RC2 |
+| `inducted_bag_ids` removed from the persisted checkpoint (kept as a per-tick copy, rebuilt from `Baggage.status`, so it's bounded to bags still on the belt). Legacy checkpoints still restore via a new `SnapshotCodec(retired_fields=…)` | `baggage-service/kafka/consumer.py`, `_common/checkpoint.py` | RC2 |
 | `run_tick` decodes the stored checkpoint only when the in-memory `last_tick_sim_time` differs from the committed one | `_common/transaction_scope.py` | RC2 |
 | Second `deepcopy(conveyor)` skipped inside `run_tick` (the candidate is already a disposable copy) | `baggage-service/kafka/consumer.py` | RC2 |
-| Baggage by-status gauge every 60 ticks (`BAGGAGE_STATUS_GAUGE_INTERVAL_TICKS`) instead of every tick. The passenger gauge reads the existing 15 s flow projection instead of querying inside the tick | baggage / passenger consumers, `passenger-service/services/flow_projection.py` | RC1 |
+| Baggage by-status gauge every 60 ticks (`BAGGAGE_STATUS_GAUGE_INTERVAL_TICKS`). The passenger gauge reads the existing 15 s flow projection instead of querying inside the tick | baggage / passenger consumers, `passenger-service/services/flow_projection.py` | RC1 |
 | Induction query starts from in-window departures in live states, with per-flight expansion (`CALL {}`): **2.6M → 46k db hits** | `baggage-service/db/neo4j.py` | RC1 |
-| Reconciliation query pinned to per-passenger expansion (`CALL {}`): the old plan held about 1.5M rows in a hash join, **713 MiB → negligible** (see RC11) | `passenger-service/db/neo4j.py` | RC1 / RC11 |
+| Reconciliation query pinned to per-passenger expansion (`CALL {}`): the old plan held about 1.5M rows in a hash join, **713 MiB → negligible** | `passenger-service/db/neo4j.py` | RC1 / RC11 |
 | Coalesced clock gaps replayed as ≤5-min owner ticks (`catch_up_times`, `CATCH_UP_MAX_STEP_MIN`) | `_common/transaction_scope.py`, baggage / passenger consumers | RC11 |
 
-New tests cover each behaviour. The unit suite went from 1340 to **1344 passing**. Measured live on
-the `art-ldt-g6` stack after redeploying baggage, passenger and flight (the flight image only
-picks up the shared `_common` change):
+**Round 2** (closing the three items left open by round 1):
 
-| Metric (daytime peak) | Before | After |
-| --------------------- | -----: | ----: |
+| Change | Where | Addresses |
+| ------ | ----- | --------- |
+| Clock checkpoint retries `TransientError` / `ServiceUnavailable` / `SessionExpired` with 0.2 → 2 s backoff, and pauses only after the retries fail | `sim-orchestrator/services/runtime_state.py` | RC11 |
+| Next-day seeding runs as a background task at 23:30. A new `on_day_start` clock callback waits for it at midnight only if it hasn't finished (it only can be late at very high speeds), and reseeds inline if it failed | `sim-orchestrator/services/clock.py`, `main.py` | RC11 |
+| Neo4j heap 1G → 2G (transaction pool 0.7 → 1.4 GiB) and page cache 512M → 2G, both env-overridable (`NEO4J_HEAP_MAX`, `NEO4J_PAGECACHE`) | `docker-compose.yml`, `docs/infra/DOCKER.md` | RC1 / RC11 |
+| Baggage `_prepare_tick` re-reads the full pipeline only after a checkpoint restore, plus every 60 ticks as a safety net. Event handlers already keep the conveyor in sync | `baggage-service/kafka/consumer.py`, `TickScope.restored` | RC1 |
+| Passenger FSM reads bounded to rows the rule can act on: booked ≤ T-120, checked_in ≤ T-45, airside ≤ gate-open, and deplaning/customs/claim by their own due timestamps (`get_passengers_by_status(due_field=…)`, whitelisted fields) | `passenger-service/db/neo4j.py`, `kafka/consumer.py` | RC1 |
+| Lean security-queue reconcile (3 columns, no Flight/Gate expansion) | `passenger-service` | RC1 |
+| Connection check seeks the status index instead of label-scanning every passenger for `connection: true` (no index exists): **4.0M → 665 db hits, 1.5 s → 2 ms** (same result set, checked atomically) | `passenger-service/db/neo4j.py` | RC1 |
+| Arrival bags on a carousel already mapped for their flight skip the per-bag flight read and write. The tick places later passengers | `passenger-service/kafka/consumer.py` | RC3 |
+| Tick observability: `service_tick_processing_seconds` (the existing P6-3 profiler, now wired in) and a new `service_tick_phase_seconds{phase}` covering passenger FSM phases and event handlers | `_common/_profiler.py`, baggage / passenger consumers | – |
+
+Unit suite: 1340 → **1352 passing**, with a test for each behaviour above.
+
+**Measured live** on the `art-ldt-g6` stack at daytime load (≈44k baggage events per 2 min, the
+same as the 08:00 peak), using the default 2G/2G Neo4j settings:
+
+| Metric | Before | After |
+| ------ | -----: | ----: |
 | Baggage checkpoint size | 8.6 MB (growing) | 2.2 MB at peak / 0.17 MB at night, no longer grows with history |
-| Baggage checkpoint decode + copy + encode | ≈480 ms/tick | ≈30 ms (night); decode skipped in steady state |
-| Baggage CPU | 99.96% | ≈60% |
-| BaggageStatusChanged tick→produce p50 / p95 | 2.92 / 4.03 s | **0.69 / 1.69 s** |
-| PassengerStatusChanged tick→produce p50 / p95 | 2.83 / 4.84 s | 1.22–2.46 / 3.3–6.5 s (varies by hour; still open) |
-| Top Neo4j query time per 40 s (baggage status count) | 25.1 s | gone from the top list |
+| Baggage CPU | 99.96% | ≈30% |
+| Passenger CPU | 85% | ≈22% |
+| Neo4j CPU | 81–144% | **≈46%** |
+| Passenger tick (avg) | 1,025 ms (budget 1,000 ms) | **319 ms** |
+| Clock ticks processed by passenger / emitted (2 min) | 97 / 117 (coalescing, lag 3–7) | **120 / 116**, consumer lag 1 (the tick in flight) |
+| BaggageStatusChanged tick→produce p50 / p95 | 2.92 / 4.03 s | **0.17 / 1.08 s** |
+| PassengerStatusChanged tick→produce p50 / p95 | 2.83 / 4.84 s | **0.67 / 1.01 s** |
+| Clock across 23:30 seeding | ~20 s stall (41 of 60 ticks that minute) | worst tick gap **1.19 s** |
+| Passenger 6 sim-h backlog after the RC11 stall | never recovered (OOM loop) | replayed in bounded steps, 0 OOMs |
 
-**Still open:** Neo4j now runs at ~100% CPU and is the shared bottleneck, so passenger-service
-still lags 1–3 ticks at peak. The remaining RC1 work (retention/archival of finished entities,
-page-cache sizing) and RC3–RC10 are not started.
+What's left after outbox delivery is the fixed 0.5–0.7 s produce→broker wait (RC3 outbox polling),
+which wasn't in scope here. RC3 (outbox batching / single event granularity) and RC4–RC10 are
+model and contract changes, still open as described below. Retention/archival of finished
+entities (RC1) is also not done. With bounded queries it is no longer on the hot path, but it
+still drives disk use and the cost of any unbounded read.
+
+**Optional, needs your decision:** the services run the pure-Python Neo4j driver.
+`neo4j-rust-ext==6.2.0.0` (official Neo4j package, matching the pinned `neo4j==6.2.0`) speeds up
+record decoding, which is now the main per-row cost (~0.1 ms/row). It is not installed.
+
+**New finding while measuring:** connecting passengers have no `connection_flight_id` property
+(Neo4j reports the property key as unknown), so `get_connecting_passengers` never resolves the
+onward flight. Connection-risk evaluation runs without connection times or gates. This is the same
+family as RC7 (the seeder omits cross-domain links).
 
 ---
 
@@ -546,13 +578,9 @@ use more than the limit 716.8 MiB"*. `SHOW TRANSACTIONS` showed one passenger tr
 
 **Fixed:** both queries pinned with `CALL {}` subqueries, and catch-up split into ≤5-min ticks.
 After redeploy, passenger replayed the 6-hour backlog with zero OOMs, and the sim was resumed via
-`POST /api/v1/sim/resume`. **Not fixed:** the clock still pauses on a single transient
-checkpoint error. It should retry `TransientError` with backoff and only pause after repeated
-failure.
-
-**Related, not fixed:** `seed_day` runs inside the clock loop at 23:30, so the clock produced
-only 41 of 60 ticks in that minute and every consumer saw a burst. Seeding should run off the
-tick path.
+`POST /api/v1/sim/resume`. In round 2 the clock checkpoint gained a transient-error retry, the
+transaction pool was doubled (2G heap), and `seed_day` moved off the tick path (it had cost 19 of
+60 ticks at 23:30).
 
 ---
 

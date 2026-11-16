@@ -7,6 +7,7 @@ On each tick: advance departure FSM, drain security queues, check congestion,
 """
 
 import asyncio
+from _common._profiler import phase_timer
 from _common.transaction_scope import catch_up_times, current as current_tick, run_tick
 from _common.checkpoint import SnapshotCodec
 from services.security import SecurityCheckpoint
@@ -27,6 +28,7 @@ from confluent_kafka import Consumer
 
 from db.neo4j import (
     get_passengers_by_status,
+    get_security_queue_members,
     get_passengers_by_flight,
     bulk_update_status,
     bulk_set_dwell,
@@ -73,7 +75,12 @@ from services.state_machine import (
     should_depart_airport,
     is_international_flight,
     zone_for_status,
+    BAGGAGE_CLAIM_TIMEOUT_MINUTES,
     BOARDING_RATE_PAX_PER_MIN,
+    CHECKIN_CUTOFF_MINUTES,
+    CUSTOMS_DELAY_MINUTES,
+    DEPLANING_DELAY_MINUTES,
+    GATE_OPEN_MINUTES,
 )
 from services.zones import move_passenger, remove_passenger
 from metrics import (
@@ -548,9 +555,23 @@ async def _dispatch(envelope: dict) -> None:
         if event_id and event_id in _state._idempotency:
             return
 
+    if event_type != "SimClockTick":
+        with phase_timer(f"event:{event_type}" if event_type in _TIMED_EVENTS else "event:other"):
+            await _dispatch_fact(event_type, payload, sim_time, envelope)
+    else:
+        await _on_clock_tick(payload, sim_time)
+
+    _state.check_idempotency(envelope.get("event_id", ""))
+
+
+_TIMED_EVENTS = frozenset({
+    "FlightStatusChanged", "FlightGateAssigned", "FlightCancelled", "IncidentCreated",
+    "IncidentStatusChanged", "WeatherStateChanged", "BaggageStatusChanged",
+})
+
+
+async def _dispatch_fact(event_type: str, payload: dict, sim_time: datetime, envelope: dict) -> None:
     match event_type:
-        case "SimClockTick":
-            await _on_clock_tick(payload, sim_time)
         case "FlightStatusChanged":
             await _on_flight_status_changed(payload, sim_time, envelope.get("event_id", ""))
         case "FlightGateAssigned":
@@ -567,8 +588,6 @@ async def _dispatch(envelope: dict) -> None:
             await _on_baggage_status_changed(payload, sim_time, envelope.get("event_id", ""))
         case _:
             pass
-
-    _state.check_idempotency(envelope.get("event_id", ""))
 
 
 
@@ -764,8 +783,10 @@ _TICK_CODEC = SnapshotCodec(
 
 async def _prepare_tick(candidate: PassengerConsumerState) -> None:
     from db.neo4j import load_security_lanes
-    lanes = await load_security_lanes()
-    await _sync_security_from_db()
+    from _common._profiler import phase_timer
+    with phase_timer("prepare"):
+        lanes = await load_security_lanes()
+        await _sync_security_from_db()
     for terminal, cp in candidate.security.checkpoints.items():
         cp.lanes_open = lanes.get(terminal, cp.lanes_open)
         cp.frozen = _state.security.checkpoints[terminal].frozen
@@ -774,9 +795,12 @@ async def _prepare_tick(candidate: PassengerConsumerState) -> None:
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     from db.neo4j import get_driver
     # Replay a coalesced backlog as bounded steps (see catch_up_times).
+    from _common._profiler import tick_timer, update_speed
+    update_speed(payload.get("speed_multiplier") or 60)
     for step_time in catch_up_times(_state.last_tick_sim_time, sim_time, CATCH_UP_MAX_STEP_MIN):
-        await run_tick("PassengerRuntime", "PassengerOutbox", _state,
-                       _TICK_CODEC, get_driver, _advance_tick, payload, step_time, _prepare_tick)
+        with tick_timer():
+            await run_tick("PassengerRuntime", "PassengerOutbox", _state,
+                           _TICK_CODEC, get_driver, _advance_tick, payload, step_time, _prepare_tick)
 
 
 async def _advance_tick(payload: dict, sim_time: datetime) -> None:
@@ -827,32 +851,39 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
         # 1. ML feature cache (reduced frequency in BULK mode)
         ml_interval = 20 if is_bulk else 5
         if _state.tick_counter % ml_interval == 0:
-            await _ml_tick(sim_time)
+            with phase_timer("ml"):
+                await _ml_tick(sim_time)
 
         # 2b. Drain wheelchair request queue (1C — accessibility).
         #     Its own subsystem (separate Neo4j writes); not part of the FSM tx.
-        await _wheelchair_tick(sim_time)
+        with phase_timer("wheelchair"):
+            await _wheelchair_tick(sim_time)
 
         # G1-a: the six FSM handlers now COMPUTE their intended transitions (reading
         # Neo4j + doing derived in-memory bookkeeping inline) and return them as a
         # TickContribution. All of a tick's domain writes + fact staging then commit
         # in ONE apply_tick_atomic transaction, advancing the durable checkpoint.
         plan = TickContribution()
-        plan.merge(await _reconcile_flight_passengers(sim_time))
-        plan.merge(await _advance_booked_to_checkin(sim_time, delta_minutes))
-        plan.merge(await _advance_checkin_to_security(sim_time, delta_minutes))
-        plan.merge(await _drain_security_queues(sim_time, delta_minutes))
-        plan.merge(await _advance_airside_to_gate(sim_time))
-        plan.merge(await _advance_boarding(sim_time, delta_minutes))
-        plan.merge(await _advance_arrivals(sim_time))
+        for phase, step in (
+            ("reconcile", lambda: _reconcile_flight_passengers(sim_time)),
+            ("booked_to_checkin", lambda: _advance_booked_to_checkin(sim_time, delta_minutes)),
+            ("checkin_to_security", lambda: _advance_checkin_to_security(sim_time, delta_minutes)),
+            ("security_drain", lambda: _drain_security_queues(sim_time, delta_minutes)),
+            ("airside_to_gate", lambda: _advance_airside_to_gate(sim_time)),
+            ("boarding", lambda: _advance_boarding(sim_time, delta_minutes)),
+            ("arrivals", lambda: _advance_arrivals(sim_time)),
+        ):
+            with phase_timer(phase):
+                plan.merge(await step())
 
-        applied = await apply_tick_atomic(
-            sim_time,
-            status_groups=plan.groups,
-            dwell_items=plan.dwell_items,
-            location_updates=plan.location_updates,
-            facts=plan.facts,
-        )
+        with phase_timer("apply"):
+            applied = await apply_tick_atomic(
+                sim_time,
+                status_groups=plan.groups,
+                dwell_items=plan.dwell_items,
+                location_updates=plan.location_updates,
+                facts=plan.facts,
+            )
         if not applied:
             # Single serial consumer: reaching here means the durable checkpoint
             # advanced between the pre-read and the locked write (unexpected).
@@ -865,7 +896,8 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
         # 8. Check connections (reduced in BULK mode)
         conn_interval = 30 if is_bulk else 10
         if _state.tick_counter % conn_interval == 0:
-            await _check_connections(sim_time)
+            with phase_timer("connections"):
+                await _check_connections(sim_time)
 
         # 9. Check congestion (reduced in BULK mode)
         congestion_interval = 20 if is_bulk else 5
@@ -1046,8 +1078,9 @@ async def _advance_booked_to_checkin(
     plan = TickContribution()
     MAX_CHECKIN_PER_TICK = 200 * delta_minutes
 
-    # Only query booked passengers whose flights depart within next 3 hours
-    cutoff = (sim_time + timedelta(hours=3)).isoformat()
+    # Only flights whose check-in has opened (T-120) can move a passenger; a
+    # wider window was read and discarded every tick.
+    cutoff = (sim_time + timedelta(minutes=CHECKIN_OPEN_MINUTES)).isoformat()
     try:
         pax_list = await get_passengers_by_status(
             "booked", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
@@ -1143,8 +1176,8 @@ async def _advance_checkin_to_security(
     plan = TickContribution()
     MAX_CHECKIN_TO_SECURITY_PER_TICK = 80 * delta_minutes  # ~80 pax/min across all terminals
 
-    # Only query checked_in passengers whose flights depart within next 2 hours
-    cutoff = (sim_time + timedelta(hours=2)).isoformat()
+    # Only flights past check-in cutoff (T-45, should_move_to_security_queue).
+    cutoff = (sim_time + timedelta(minutes=CHECKIN_CUTOFF_MINUTES)).isoformat()
     try:
         pax_list = await get_passengers_by_status(
             "checked_in", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
@@ -1281,7 +1314,11 @@ async def _sync_security_from_db() -> dict[str, str]:
     """
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     try:
-        pax_list = await get_passengers_by_status("security_queue")
+        pax_list = await get_security_queue_members()
+        if any(_extract_terminal_from_location(p.get("location_zone") or "") is None
+               for p in pax_list):
+            # Rare: a member without a terminal zone needs its gate/flight.
+            pax_list = await get_passengers_by_status("security_queue")
     except Exception as e:
         if current_tick.get() is not None:
             raise
@@ -1369,8 +1406,9 @@ async def _advance_airside_to_gate(sim_time: datetime) -> TickContribution:
     """Compute airside → at_gate transitions when dwell completes and gate opens."""
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     plan = TickContribution()
-    # Time-window: only passengers with flights departing within next 2 hours
-    cutoff = (sim_time + timedelta(hours=2)).isoformat()
+    # Only flights whose gate has opened (estimated - GATE_OPEN_MINUTES); the
+    # estimate never precedes the schedule, so this scheduled bound is a superset.
+    cutoff = (sim_time + timedelta(minutes=GATE_OPEN_MINUTES)).isoformat()
     try:
         pax_list = await get_passengers_by_status(
             "airside", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
@@ -1620,7 +1658,10 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
 
     # deplaning → customs (international) or baggage_claim (domestic)
     try:
-        deplaning = await get_passengers_by_status("deplaning")
+        deplaning = await get_passengers_by_status(
+            "deplaning", due_field="deplaning_at",
+            due_at=(sim_time - timedelta(minutes=DEPLANING_DELAY_MINUTES)).isoformat(),
+        )
     except Exception:
         if current_tick.get() is not None:
             raise
@@ -1676,7 +1717,10 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
 
     # customs → baggage_claim
     try:
-        in_customs = await get_passengers_by_status("customs")
+        in_customs = await get_passengers_by_status(
+            "customs", due_field="customs_at",
+            due_at=(sim_time - timedelta(minutes=CUSTOMS_DELAY_MINUTES)).isoformat(),
+        )
     except Exception:
         if current_tick.get() is not None:
             raise
@@ -1710,7 +1754,11 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
 
     # baggage_claim → departed_airport
     try:
-        claiming = await get_passengers_by_status("baggage_claim")
+        claiming = await get_passengers_by_status(
+            "baggage_claim", due_field="baggage_claim_at",
+            due_at=(sim_time - timedelta(minutes=BAGGAGE_CLAIM_TIMEOUT_MINUTES)).isoformat(),
+            include_ids=sorted(_state.baggage_collected),
+        )
     except Exception:
         if current_tick.get() is not None:
             raise
@@ -2145,6 +2193,7 @@ async def _on_baggage_status_changed(payload: dict, sim_time: datetime, event_id
 
         # Track flight→carousel mapping so late-arriving passengers get assigned
         # (pure in-memory, idempotent on redelivery).
+        already_mapped = bool(flight_id) and _state.flight_carousel_zone.get(flight_id) == carousel_zone
         if flight_id:
             _state.flight_carousel_zone[flight_id] = carousel_zone
 
@@ -2154,7 +2203,13 @@ async def _on_baggage_status_changed(payload: dict, sim_time: datetime, event_id
             move_ids.append(passenger_id)
         elif not passenger_id and flight_id:
             # Arrival bag — no CARRIES relationship; move all baggage_claim
-            # passengers on this flight to the carousel zone.
+            # passengers on this flight to the carousel zone. Once the flight is
+            # mapped to this carousel, passengers reaching baggage claim later
+            # are placed by the tick (_assign_carousels), so repeating the
+            # flight read + write for every further bag (~150 per flight) only
+            # finds passengers that are already there.
+            if already_mapped:
+                return
             try:
                 pax_list = await get_passengers_by_flight(flight_id)
             except Exception:

@@ -579,7 +579,18 @@ _TICK_CODEC = SnapshotCodec(
 )
 
 
+PIPELINE_RECONCILE_INTERVAL_TICKS = max(1, int(os.getenv("BAGGAGE_PIPELINE_RECONCILE_TICKS", "60")))
+
+
 async def _prepare_tick(candidate: BaggageConsumerState) -> None:
+    scope = current_tick.get()
+    in_sync = scope is not None and not scope.restored
+    if in_sync and candidate.tick_counter % PIPELINE_RECONCILE_INTERVAL_TICKS:
+        # Memory is the committed checkpoint and every out-of-tick mutation
+        # (departure, arrival, offload, redirect, failures) already updates the
+        # conveyor after its own commit, so the full pipeline read (~110k db
+        # hits) only runs periodically as a safety net.
+        return
     # External redirects/offloads may have removed a checkpointed queued bag.
     pipeline = await get_baggage_in_pipeline()
     bags = {bag["id"] for bag in pipeline}
@@ -622,9 +633,12 @@ async def _prepare_tick(candidate: BaggageConsumerState) -> None:
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     from db.neo4j import get_driver
     # Replay a coalesced backlog as bounded steps (see catch_up_times).
+    from _common._profiler import tick_timer, update_speed
+    update_speed(payload.get("speed_multiplier") or 60)
     for step_time in catch_up_times(_state.last_tick_sim_time, sim_time, CATCH_UP_MAX_STEP_MIN):
-        await run_tick("BaggageOutboxSeq", "BaggageOutbox", _state,
-                       _TICK_CODEC, get_driver, _advance_tick, payload, step_time, _prepare_tick)
+        with tick_timer():
+            await run_tick("BaggageOutboxSeq", "BaggageOutbox", _state,
+                           _TICK_CODEC, get_driver, _advance_tick, payload, step_time, _prepare_tick)
 
 
 async def _advance_tick(payload: dict, sim_time: datetime) -> None:
