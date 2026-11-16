@@ -131,6 +131,17 @@ async def lifespan(app: FastAPI):
         )
     )
 
+    # 10. RC1 retention: archive departed passengers / purge old archives /
+    #     prune inbox markers, off the tick path, in bounded transactions.
+    from _common import retention
+    from services import retention as passenger_retention
+    retention_stop = asyncio.Event()
+    retention_task = asyncio.create_task(retention.run(
+        retention_stop, passenger_retention.tasks(get_sim_time),
+        logger=logging.getLogger("passenger-service.retention"),
+        setup=passenger_retention.setup,
+    ))
+
     logger.info("passenger-service startup complete")
     yield
 
@@ -138,6 +149,9 @@ async def lifespan(app: FastAPI):
     stop_consumer()
     outbox_stop.set()
     flow_stop.set()
+    retention_stop.set()
+    with suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.gather(retention_task, return_exceptions=True), timeout=5)
     with suppress(asyncio.TimeoutError):
         await asyncio.wait_for(asyncio.gather(flow_task, return_exceptions=True), timeout=5)
     with suppress(asyncio.TimeoutError):

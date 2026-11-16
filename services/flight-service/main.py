@@ -135,15 +135,33 @@ async def lifespan(app: FastAPI):
 
         adsb_task.add_done_callback(_adsb_done)
 
+    # 9. RC1 retention: prune FlightInbox markers older than Kafka retention.
+    import logging as _logging
+    from _common import retention
+
+    async def flight_prune_inbox() -> int:
+        return await retention.prune_inbox(get_driver, "FlightInbox")
+
+    async def _retention_setup() -> None:
+        await retention.backfill_inbox_seen_at(get_driver, "FlightInbox")
+
+    retention_stop = asyncio.Event()
+    retention_task = asyncio.create_task(retention.run(
+        retention_stop, [flight_prune_inbox],
+        logger=_logging.getLogger("flight-service.retention"), setup=_retention_setup,
+    ))
+
     logger.info("flight-service startup complete")
     yield
 
     # Shutdown
     stop_consumer()
     outbox_stop.set()
+    retention_stop.set()
     try:
         await asyncio.wait_for(
-            asyncio.gather(consumer_task, outbox_task, return_exceptions=True), timeout=15,
+            asyncio.gather(consumer_task, outbox_task, retention_task, return_exceptions=True),
+            timeout=15,
         )
     except asyncio.TimeoutError:
         logger.warning("flight background tasks exceeded shutdown budget")

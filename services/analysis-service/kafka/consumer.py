@@ -222,6 +222,7 @@ async def _dispatch_event(
         "SecurityQueueUpdated": state.on_security_queue_updated,
         "BaggageStatusChanged": state.on_baggage_status_changed,
         "BaggageStatusBatchChanged": state.on_baggage_status_batch_changed,
+        "EntitiesArchived": state.on_entities_archived,
         "BaggageZoneSnapshot": state.on_baggage_zone_snapshot,
         "WeatherStateChanged": state.on_weather_state_changed,
         "IncidentCreated": state.on_incident_created,

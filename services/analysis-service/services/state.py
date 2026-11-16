@@ -375,12 +375,23 @@ class OperationalState:
             bag_id = change.get("id")
             if not bag_id:
                 continue
+            if change.get("status") in {"delivered", "collected"}:
+                # Same rule as the graph rebuild: finished bags are not targets.
+                self.baggage_targets.pop(bag_id, None)
+                continue
             target = self.baggage_targets.get(bag_id) or {}
             self.baggage_targets[bag_id] = {
                 "flight_id": change.get("flight_id") or target.get("flight_id"),
                 "zone": change.get("zone"),
                 "status": change.get("status", "unknown"),
             }
+
+    def on_entities_archived(self, payload: dict) -> None:
+        """Drop archived bags from the per-bag targets (RC1; bounds memory, see L4)."""
+        if payload.get("entity") != "Baggage":
+            return
+        for bag_id in payload.get("ids") or []:
+            self.baggage_targets.pop(bag_id, None)
 
     def on_baggage_zone_snapshot(self, payload: dict) -> None:
         at = _parse_dt(payload.get("at"))

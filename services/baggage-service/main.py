@@ -117,15 +117,27 @@ async def lifespan(app: FastAPI):
         )
     )
 
+    # 9. RC1 retention: archive finished bags / purge old archives / prune
+    #    inbox markers, off the tick path, in bounded transactions.
+    from _common import retention
+    from services import retention as baggage_retention
+    retention_stop = asyncio.Event()
+    retention_task = asyncio.create_task(retention.run(
+        retention_stop, baggage_retention.tasks(get_sim_time),
+        logger=logger, setup=baggage_retention.setup,
+    ))
+
     logger.info("baggage-service startup complete")
     yield
 
     # Shutdown
     stop_consumer()
     outbox_stop.set()
+    retention_stop.set()
     with suppress(asyncio.TimeoutError):
         await asyncio.wait_for(
-            asyncio.gather(consumer_task, outbox_task, return_exceptions=True), timeout=5
+            asyncio.gather(consumer_task, outbox_task, retention_task, return_exceptions=True),
+            timeout=5,
         )
     close_kafka_producer()
     await close_neo4j()

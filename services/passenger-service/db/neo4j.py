@@ -37,6 +37,11 @@ INDEXES = [
     # 1C — find recent assignments by hour for staffing analytics
     "CREATE INDEX wheelchair_assignment_terminal IF NOT EXISTS FOR (a:WheelchairAssignment) ON (a.terminal)",
     "CREATE INDEX wheelchair_assignment_requested IF NOT EXISTS FOR (a:WheelchairAssignment) ON (a.requested_at)",
+    # RC1 retention: seek finished passengers by age, and age out archives/markers.
+    "CREATE INDEX passenger_departed_at IF NOT EXISTS FOR (p:Passenger) ON (p.departed_airport_at)",
+    "CREATE INDEX passenger_archive_at IF NOT EXISTS FOR (p:PassengerArchive) ON (p.archived_at)",
+    "CREATE INDEX passenger_archive_id IF NOT EXISTS FOR (p:PassengerArchive) ON (p.id)",
+    "CREATE INDEX passengerinbox_seen_at IF NOT EXISTS FOR (i:PassengerInbox) ON (i.seen_at)",
 ]
 
 

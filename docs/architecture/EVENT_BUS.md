@@ -1004,3 +1004,30 @@ on its `PassengerStatusBatchChanged.status_groups[]` entry (RC3: no per-passenge
 event). `PassengerStatusChanged.payload.reconciliation_reason` stays optional for
 compatibility. The envelope `sim_time` is the recovery observation, not a
 reconstructed historical boarding time.
+
+
+### Retention facts (RC1, 2026-11-16)
+
+Lifecycle retention (DATA_MODEL.md "Lifecycle retention") is a state change of
+the owner's graph, so each archive/purge transaction stages one fact with it,
+on the owner's topic (`passengers.events` / `baggage.events`):
+
+```json
+{
+  "event_type": "EntitiesArchived",
+  "payload": {"entity": "Baggage", "ids": ["uuid", "..."], "count": 2,
+              "archive_before": "2024-07-07T12:00:00"}
+}
+```
+
+```json
+{
+  "event_type": "EntitiesPurged",
+  "payload": {"entity": "Passenger", "count": 1000, "purge_before": "2024-07-01T12:00:00"}
+}
+```
+
+`entity` is `Passenger` or `Baggage`; `ids` holds at most `RETENTION_BATCH`
+(1000) ids. `sim_time` is the owner clock at the sweep. analysis-service drops
+archived bags from its per-bag targets on `EntitiesArchived`. Inbox-marker
+pruning publishes nothing: markers are transport metadata, not domain state.

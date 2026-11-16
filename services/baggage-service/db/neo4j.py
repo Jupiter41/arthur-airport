@@ -31,6 +31,11 @@ INDEXES = [
     "CREATE INDEX scan_event_baggage_tag IF NOT EXISTS FOR (s:ScanEvent) ON (s.baggage_tag)",
     # G1: deterministic (revision, position) delivery order for the outbox drainer.
     "CREATE INDEX baggage_outbox_order IF NOT EXISTS FOR (o:BaggageOutbox) ON (o.revision, o.position)",
+    # RC1 retention: seek finished bags by (status, age) in key order, and age out archives/markers.
+    "CREATE INDEX baggage_status_scan IF NOT EXISTS FOR (b:Baggage) ON (b.status, b.last_scan_at, b.id)",
+    "CREATE INDEX baggage_archive_at IF NOT EXISTS FOR (b:BaggageArchive) ON (b.archived_at)",
+    "CREATE INDEX baggage_archive_id IF NOT EXISTS FOR (b:BaggageArchive) ON (b.id)",
+    "CREATE INDEX baggageinbox_seen_at IF NOT EXISTS FOR (i:BaggageInbox) ON (i.seen_at)",
 ]
 
 

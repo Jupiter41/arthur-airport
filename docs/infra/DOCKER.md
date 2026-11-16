@@ -665,6 +665,14 @@ Set these in the shell or `.env` before `docker compose up`:
 | `CATCH_UP_MAX_STEP_MIN` | `5` | baggage, passenger | Largest sim-minute step used when replaying a coalesced clock backlog |
 | `BAGGAGE_STATUS_GAUGE_INTERVAL_TICKS` | `60` | baggage | Cadence of the full by-status count gauge |
 | `BAGGAGE_PIPELINE_RECONCILE_TICKS` | `60` | baggage | Cadence of the safety-net pipeline reconcile while memory is in sync |
+| `OUTBOX_BATCH_SIZE` | `1000` | flight, passenger, baggage | Facts per outbox drain round trip (RC3) |
+| `KAFKA_LINGER_MS` | `10` | all Python producers | librdkafka `linger.ms`; coalesces an outbox batch into few produce requests |
+| `RETENTION_ENABLED` | `true` | baggage, passenger, flight, cost | Background lifecycle retention (RC1); `false` keeps all history live |
+| `RETENTION_ARCHIVE_AFTER_H` | `24` | baggage, passenger | Sim-hours after the terminal transition before a finished bag/passenger is archived; `0` disables archival |
+| `RETENTION_PURGE_AFTER_H` | `168` | baggage, passenger | Sim-hours after archival before archived nodes are deleted; `0` keeps archives forever |
+| `INBOX_RETENTION_H` | `168` | baggage, passenger, flight, cost | Wall-clock hours an inbox dedup marker is kept (Kafka topic retention); `0` disables pruning |
+| `RETENTION_BATCH` / `RETENTION_INTERVAL_S` | `1000` / `60` | baggage, passenger, flight, cost | Rows per retention transaction / wall seconds between passes |
+| `RETENTION_MAX_BATCHES_PER_PASS` / `RETENTION_PAUSE_S` | `50` / `0.05` | baggage, passenger, flight, cost | Per-task batch budget per pass, and pause between batches (backlogs drain over several passes) |
 
 ### Full configuration reference
 

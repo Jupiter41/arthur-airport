@@ -109,7 +109,9 @@ async def mark_inbox(tx: _Tx, inbox_label: str, event_id: str, sim_time: Any) ->
         return
     label = _check_label(inbox_label)
     result = await tx.run(
-        f"MERGE (i:{label} {{id: $id}}) SET i.sim_time = $sim_time",
+        # seen_at (wall ms) lets retention prune markers past Kafka retention (RC1).
+        f"MERGE (i:{label} {{id: $id}}) SET i.sim_time = $sim_time, "
+        "i.seen_at = coalesce(i.seen_at, timestamp())",
         id=event_id,
         sim_time=sim_time,
     )

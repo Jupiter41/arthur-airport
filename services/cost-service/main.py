@@ -100,6 +100,21 @@ async def lifespan(app: FastAPI):
 
     # Background fuel-price refresh — no-op when FUEL_PRICE_URL is unset.
     fuel_task = asyncio.create_task(rate_store.refresh_fuel_loop())
+
+    # RC1 retention: prune CostInbox markers older than Kafka retention.
+    from _common import retention
+    from db.neo4j import get_driver as _get_driver
+
+    async def cost_prune_inbox() -> int:
+        return await retention.prune_inbox(_get_driver, "CostInbox")
+
+    async def _retention_setup() -> None:
+        await retention.backfill_inbox_seen_at(_get_driver, "CostInbox")
+
+    retention_stop = asyncio.Event()
+    retention_task = asyncio.create_task(retention.run(
+        retention_stop, [cost_prune_inbox], logger=logger, setup=_retention_setup,
+    ))
     logger.info("cost-service started")
 
     yield
@@ -107,10 +122,12 @@ async def lifespan(app: FastAPI):
     # Shutdown
     stop_consumer()
     outbox_stop.set()
+    retention_stop.set()
     fuel_task.cancel()
     try:
         await asyncio.wait_for(
-            asyncio.gather(consumer_task, outbox_task, fuel_task, return_exceptions=True), timeout=15,
+            asyncio.gather(consumer_task, outbox_task, fuel_task, retention_task,
+                           return_exceptions=True), timeout=15,
         )
     except asyncio.TimeoutError:
         logger.warning("financial background tasks exceeded shutdown budget")

@@ -24,6 +24,8 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    # RC1: inbox markers age out past Kafka retention (_common/retention.py).
+    "CREATE INDEX flightinbox_seen_at IF NOT EXISTS FOR (i:FlightInbox) ON (i.seen_at)",
     "CREATE INDEX flight_number IF NOT EXISTS FOR (f:Flight) ON (f.flight_number)",
     "CREATE INDEX flight_status IF NOT EXISTS FOR (f:Flight) ON (f.status)",
     "CREATE INDEX flight_direction IF NOT EXISTS FOR (f:Flight) ON (f.direction)",
@@ -170,11 +172,13 @@ async def get_all_flights(
     MATCH (f:Flight) {where}
     {gate_match}
     OPTIONAL MATCH (f)-[:USES_RUNWAY]->(r:Runway)
-    OPTIONAL MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
+    // RC1: no label — archived (PassengerArchive) passengers still count for history.
+    OPTIONAL MATCH (p)-[:ON_FLIGHT]->(f)
     WITH f, g, r,
          count(p) AS pax_total,
          sum(CASE WHEN p.status IN ['boarded', 'departed_airport'] THEN 1 ELSE 0 END) AS pax_boarded
-    OPTIONAL MATCH (b:Baggage)-[:LOADED_ON]->(f)
+    // RC1: no label — archived (BaggageArchive) bags still count for history.
+    OPTIONAL MATCH (b)-[:LOADED_ON]->(f)
     WITH f, g, r, pax_total, pax_boarded,
          count(b) AS baggage_count,
          sum(CASE WHEN f.direction = 'departure' AND b.status IN ['loaded', 'in_hold'] THEN 1
@@ -228,7 +232,8 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
     MATCH (f:Flight {id: $id})
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
     OPTIONAL MATCH (f)-[:USES_RUNWAY]->(r:Runway)
-    OPTIONAL MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
+    // RC1: no label — archived (PassengerArchive) passengers still count for history.
+    OPTIONAL MATCH (p)-[:ON_FLIGHT]->(f)
     WITH f, g, r,
          count(p) AS pax_total,
          sum(CASE WHEN p.status IN ['boarded', 'departed_airport'] THEN 1 ELSE 0 END) AS pax_boarded,
@@ -236,7 +241,8 @@ async def get_flight_by_id(flight_id: str) -> dict | None:
          sum(CASE WHEN p.status = 'airside' THEN 1 ELSE 0 END) AS pax_airside,
          sum(CASE WHEN p.status = 'security_queue' THEN 1 ELSE 0 END) AS pax_security,
          sum(CASE WHEN p.connection = true AND p.connection_risk IN ['at_risk', 'missed'] THEN 1 ELSE 0 END) AS pax_connections_at_risk
-    OPTIONAL MATCH (b:Baggage)-[:LOADED_ON]->(f)
+    // RC1: no label — archived (BaggageArchive) bags still count for history.
+    OPTIONAL MATCH (b)-[:LOADED_ON]->(f)
     WITH f, g, r, pax_total, pax_boarded, pax_at_gate, pax_airside, pax_security, pax_connections_at_risk,
          count(b) AS baggage_count,
          sum(CASE WHEN f.direction = 'departure' AND b.status IN ['loaded', 'in_hold'] THEN 1

@@ -478,3 +478,49 @@ capture time), lifecycle `history` and the validated `owner_receipt`.
 These commit with the existing proposal/outbox transaction; domain ownership
 does not change. Restart reads these records from Neo4j. Legacy missing context
 and receipts remain explicitly unavailable.
+
+
+### Lifecycle retention (RC1, 2026-11-16)
+
+The live labels hold **current** operational state only. Each owner runs a
+background sweep (`services/_common/retention.py`), off the tick path, in
+transactions of at most `RETENTION_BATCH` rows:
+
+| Live label | Finished when | Archive label | Owner |
+| ---------- | ------------- | ------------- | ----- |
+| `Passenger` | `status = 'departed_airport'` and `departed_airport_at` older than `RETENTION_ARCHIVE_AFTER_H` (24 sim-h) | `PassengerArchive` | passenger-service |
+| `Baggage` | `status = 'collected'`, or `status = 'in_hold'` with `LOADED_ON` a departure flight; `last_scan_at` older than 24 sim-h | `BaggageArchive` | baggage-service |
+| `ScanEvent` | its bag is archived | `ScanEventArchive` | baggage-service |
+
+- Archival swaps the label (and drops the derived `UnscannedBaggage` /
+  `ReviewBaggage` memberships) and sets `archived_at` (owner sim time).
+  Properties and relationships are kept, so per-flight counts that traverse
+  `ON_FLIGHT` / `LOADED_ON` without a label (flight-service list/detail) still
+  include them. Live queries, live indexes and the `Baggage.tag` / `Passenger.id`
+  uniqueness constraints no longer see archived nodes; single-entity REST lookups
+  return 404 for them.
+- `in_hold` bags of an **arrival** flight are never archived, even when stale
+  (they are the RC8 anomaly, not history).
+- Archives are `DETACH DELETE`d `RETENTION_PURGE_AFTER_H` (168 sim-h) after
+  `archived_at`; a bag's archived scan trail is deleted with it.
+- Inbox markers (`FlightInbox`, `PassengerInbox`, `BaggageInbox`, `CostInbox`)
+  carry `seen_at` (Neo4j `timestamp()`, wall ms, set when first written; legacy
+  markers are stamped once at startup) and are deleted after `INBOX_RETENTION_H`
+  (168 wall-h, the Kafka topic retention): no redelivery can be older.
+- Every archive/purge transaction stages an `EntitiesArchived` /
+  `EntitiesPurged` fact (EVENT_BUS.md) with its mutation.
+
+Indexes added for the sweeps:
+
+```cypher
+CREATE INDEX baggage_status_scan IF NOT EXISTS FOR (b:Baggage) ON (b.status, b.last_scan_at, b.id);
+CREATE INDEX baggage_archive_at IF NOT EXISTS FOR (b:BaggageArchive) ON (b.archived_at);
+CREATE INDEX baggage_archive_id IF NOT EXISTS FOR (b:BaggageArchive) ON (b.id);
+CREATE INDEX passenger_departed_at IF NOT EXISTS FOR (p:Passenger) ON (p.departed_airport_at);
+CREATE INDEX passenger_archive_at IF NOT EXISTS FOR (p:PassengerArchive) ON (p.archived_at);
+CREATE INDEX passenger_archive_id IF NOT EXISTS FOR (p:PassengerArchive) ON (p.id);
+CREATE INDEX flightinbox_seen_at IF NOT EXISTS FOR (i:FlightInbox) ON (i.seen_at);
+CREATE INDEX passengerinbox_seen_at IF NOT EXISTS FOR (i:PassengerInbox) ON (i.seen_at);
+CREATE INDEX baggageinbox_seen_at IF NOT EXISTS FOR (i:BaggageInbox) ON (i.seen_at);
+CREATE INDEX costinbox_seen_at IF NOT EXISTS FOR (c:CostInbox) ON (c.seen_at);
+```

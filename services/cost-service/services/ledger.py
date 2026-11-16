@@ -185,7 +185,7 @@ async def _write_effects(tx: AsyncManagedTransaction, batch: LedgerBatch, envelo
     document = json.dumps(batch.state, allow_nan=False)
     result = await tx.run(
         "MATCH (s:CostRuntime {id: 'latest'}) SET s.document = $document "
-        "CREATE (i:CostInbox {id: $id, sim_time: $sim_time})",
+        "CREATE (i:CostInbox {id: $id, sim_time: $sim_time, seen_at: timestamp()})",
         document=document, id=envelope["event_id"], sim_time=envelope["sim_time"],
     )
     await result.consume()
