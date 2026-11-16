@@ -82,7 +82,7 @@ async def flow_summary():
     by_status = await get_baggage_counts_by_status()
 
     # Compute total in system (exclude terminal states)
-    terminal_states = {"collected", "lost"}
+    terminal_states = {"collected", "lost", "short_shipped"}
     total_in_system = sum(
         v for k, v in by_status.items() if k not in terminal_states
     )
@@ -99,6 +99,8 @@ async def flow_summary():
         "total_in_system": total_in_system,
         "by_status": by_status,
         "flagged_active": flagged_active,
+        # RC6 KPI: bags left behind when their flight departed (still live)
+        "short_shipped": by_status.get("short_shipped", 0),
         "system_failures_active": system_failures,
         "zones": zones,
     }

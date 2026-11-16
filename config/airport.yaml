@@ -58,6 +58,27 @@ simulation:
 # thresholds/reductions apply the published reductions when wind exceeds the
 # threshold (crosswind > 25kt → ×0.85, > 35kt → ×0.60, tailwind > 10kt → ×0.70).
 operations:
+  # RC6 — checked-bag volume and baggage-handling throughput, sized together.
+  # bags_per_pax = Poisson λ of checked bags per passenger by flight type (no
+  # one-bag floor). Throughputs in items/hour; each terminal's screening
+  # capacity is split over its screening units. Seeding warns when peak hourly
+  # bags exceed capacity_headroom × the slowest stage (SIMULATION.md §3).
+  baggage:
+    bags_per_pax:
+      domestic: 0.6
+      international_short: 0.8
+      international_long: 1.1
+      charter: 1.0
+      cargo: 0.0
+    default_bags_per_pax: 0.8
+    max_bags_per_pax: 5
+    induction_per_terminal_hr: { A: 1800, B: 3000, C: 1800 }
+    screening_per_terminal_hr: { A: 1800, B: 3000, C: 1800 }
+    screening_units_per_terminal: 2
+    sorting_matrix_hr: 5400
+    makeup_carousel_hr: 150
+    arrival_belt_hr: 2400
+    capacity_headroom: 0.85
   effects:
     security_pax_per_lane_minute: 3.0
     prediction_horizon_minutes: 30

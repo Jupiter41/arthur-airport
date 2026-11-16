@@ -95,7 +95,10 @@ Each passenger record includes:
 - Nationality (weighted by destination)
 - Connection flag (20% probability)
 - Special assistance flag (5% probability)
-- Baggage count (0–3 bags, Poisson λ=1.2)
+- Checked-bag count: `Poisson(λ)` by flight type, λ from `config/airport.yaml`
+  `operations.baggage.bags_per_pax` (domestic 0.6, international short 0.8,
+  international long 1.1, charter 1.0, cargo 0), capped at 5. Zero bags is a
+  valid outcome (carry-on only); there is no one-bag floor (RC6)
 
 ### Baggage generation
 
@@ -104,6 +107,25 @@ For each passenger with bags, generate baggage records with:
 - Weight sampled from `Normal(18kg, 4kg)`, clamped to [2, 32]
 - Dangerous goods flag: 0.002 probability (realistic DG rate)
 - If DG: assign a random IATA DG class (2, 3, 8, or 9)
+
+Arrival bags use the same per-type λ over the synthetic inbound load.
+
+#### BHS sizing check (RC6)
+
+Bag volume and baggage-handling capacity are sized against each other. After
+generating a day, the seeder buckets departing bags by terminal and scheduled
+departure hour and checks, for every terminal and for the airport as a whole:
+
+```
+peak hourly bags ≤ capacity_headroom (0.85) × min-stage capacity
+```
+
+The min stage is the slowest of induction, that terminal's screening units and
+the shared sorting matrix (airport-wide: Σ induction, Σ screening, sorting).
+A violation is logged as a warning with the offending terminal/hour and counted
+in `sim_bhs_capacity_violations_total`. A unit test runs the check over several
+generated days with the shipped configuration so re-tuning either side can't
+silently reintroduce a structural backlog.
 
 ---
 
@@ -376,12 +398,12 @@ This section makes explicit the simplifications and assumptions underlying the s
 
 | Assumption                                         | Rationale                                           |
 | -------------------------------------------------- | --------------------------------------------------- |
-| Bags/passenger ~ Poisson(λ=1.2)                    | Mean 1.2 bags, some passengers have 0 or 3+         |
+| Checked bags/passenger ~ Poisson(λ by flight type) | Mean ≈0.9 checked bags/pax (pax-weighted); 0 is common (carry-on) |
 | Weight ~ Normal(18kg, 4kg), clamp [2, 32]          | Approximation with max weight cap                   |
 | DG rate = 0.2%                                     | Realistic dangerous goods occurrence                |
 | Detection rates per DG class: 72–95%               | Based on typical X-ray detection performance        |
 | False positive rate = 0.3%                         | Realistic for automated screening                   |
-| Conveyor throughput from IATA BHS design standards | Induction 600, screening 300, sorting 1800 items/hr |
+| Conveyor throughput sized to demand (RC6)          | Induction/screening per terminal A 1,800 · B 3,000 · C 1,800 /h; sorting 5,400/h; peak ≤ 85% of min stage |
 
 ### Weather
 

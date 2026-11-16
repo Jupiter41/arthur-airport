@@ -45,3 +45,9 @@ sim_clock_held_total = Counter(
     "Clock iterations held because an owner was too far behind (RC4)",
     ["owner"],
 )
+
+sim_bhs_capacity_violations_total = Counter(
+    "sim_bhs_capacity_violations_total",
+    "Seeded days whose peak hourly bags exceed the BHS headroom (RC6)",
+    ["scope"],
+)

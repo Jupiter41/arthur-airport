@@ -202,6 +202,62 @@ class EffectParameters(BaseModel):
     calibration_factor_max: float = Field(default=2.0, ge=1)
 
 
+def _default_bags_per_pax() -> dict[str, float]:
+    return {
+        "domestic": 0.6,
+        "international_short": 0.8,
+        "international_long": 1.1,
+        "charter": 1.0,
+        "cargo": 0.0,
+    }
+
+
+class BaggageSystemConfig(BaseModel):
+    """RC6 — checked-bag volume and BHS throughput, sized against each other.
+
+    ``bags_per_pax`` is the Poisson λ of checked bags per passenger by flight
+    type (no one-bag floor). Throughputs are items/hour. Each terminal's
+    screening capacity is split evenly over its screening units.
+    """
+
+    bags_per_pax: dict[str, float] = Field(default_factory=_default_bags_per_pax)
+    default_bags_per_pax: float = Field(default=0.8, ge=0.0)
+    max_bags_per_pax: int = Field(default=5, ge=1)
+    induction_per_terminal_hr: dict[str, int] = Field(
+        default_factory=lambda: {"A": 1800, "B": 3000, "C": 1800}
+    )
+    screening_per_terminal_hr: dict[str, int] = Field(
+        default_factory=lambda: {"A": 1800, "B": 3000, "C": 1800}
+    )
+    screening_units_per_terminal: int = Field(default=2, ge=1)
+    sorting_matrix_hr: int = Field(default=5400, gt=0)
+    makeup_carousel_hr: int = Field(default=150, gt=0)
+    arrival_belt_hr: int = Field(default=2400, gt=0)
+    capacity_headroom: float = Field(default=0.85, gt=0.0, le=1.0)
+
+    def bags_lambda(self, flight_type: str | None) -> float:
+        return self.bags_per_pax.get(flight_type or "", self.default_bags_per_pax)
+
+    def screening_unit_hr(self, terminal: str) -> int:
+        total = self.screening_per_terminal_hr.get(terminal, 0)
+        return max(1, total // self.screening_units_per_terminal)
+
+    def terminal_min_stage_hr(self, terminal: str) -> int:
+        """Slowest stage a bag checked in at ``terminal`` must pass."""
+        return min(
+            self.induction_per_terminal_hr.get(terminal, 0),
+            self.screening_per_terminal_hr.get(terminal, 0),
+            self.sorting_matrix_hr,
+        )
+
+    def airport_min_stage_hr(self) -> int:
+        return min(
+            sum(self.induction_per_terminal_hr.values()),
+            sum(self.screening_per_terminal_hr.values()),
+            self.sorting_matrix_hr,
+        )
+
+
 class AirportOperations(BaseModel):
     """D6 operational constants — tuning an airport is editing one file."""
 
@@ -209,6 +265,7 @@ class AirportOperations(BaseModel):
     apron_speed_m_min: float = Field(default=83.3, gt=0)
     cascade_max_depth: int = Field(default=5, ge=1)
     effects: EffectParameters = Field(default_factory=EffectParameters)
+    baggage: BaggageSystemConfig = Field(default_factory=BaggageSystemConfig)
 
     weather_capacity: dict[str, WeatherCategoryCapacity] = Field(
         default_factory=_default_weather_capacity

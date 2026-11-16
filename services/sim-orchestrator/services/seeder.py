@@ -32,6 +32,26 @@ async def _day_already_seeded(sim_date) -> bool:
         return record and record["cnt"] > 0
 
 
+def _check_bhs_capacity(departure_flights: list[dict], bags: list[dict]) -> list[dict]:
+    """RC6: warn when a seeded day's bag peak exceeds the BHS headroom."""
+    from _common.airport_config import load_airport_runtime_config
+    from _common.bhs_capacity import check_capacity, demand_by_terminal_hour
+
+    cfg = load_airport_runtime_config().operations.baggage
+    demand = demand_by_terminal_hour(bags, {f["id"]: f for f in departure_flights})
+    violations = check_capacity(demand, cfg)
+    if violations:
+        from metrics import sim_bhs_capacity_violations_total
+        for v in violations:
+            sim_bhs_capacity_violations_total.labels(scope=v["scope"]).inc()
+            logger.warning(
+                "BHS sizing: %s peak %d bags at %02dh exceeds %.0f%% of %d/h min-stage capacity",
+                v["scope"], v["peak_bags"], v["hour"], cfg.capacity_headroom * 100,
+                v["capacity_hr"],
+            )
+    return violations
+
+
 async def seed_day(sim_day: int) -> None:
     """Seed a full simulated day: flights, passengers, and baggage.
 
@@ -72,10 +92,11 @@ async def seed_day(sim_day: int) -> None:
 
     # 3. Generate baggage
     flight_type_map = {f["id"]: f.get("flight_type", "") for f in flights}
-    total_bags_departure, _ = await generate_baggage(passengers, seed=rng_seed + 2000, flight_type_map=flight_type_map)
+    total_bags_departure, departure_bags = await generate_baggage(passengers, seed=rng_seed + 2000, flight_type_map=flight_type_map)
     arrival_flights = arrival_flights_for_pax
     total_bags_arrival, _ = await generate_arrival_baggage(arrival_flights, seed=rng_seed + 3000)
     total_bags = total_bags_departure + total_bags_arrival
+    _check_bhs_capacity(departure_flights, departure_bags)
 
     # 4. Emit FlightScheduleSeeded event
     sim_time = get_sim_time() if get_sim_day() >= 1 else SIM_START_TIME

@@ -223,8 +223,8 @@ def test_purge_deletes_archived_bags_and_reports_the_count(monkeypatch):
 def test_baggage_tasks_are_inert_before_the_first_clock_tick(monkeypatch):
     driver = _Driver(lambda q, p: [{"n": 0}])
     module = _baggage_retention(monkeypatch, driver)
-    archive, hold, purge, _ = module.tasks(lambda: None, batch=10)
-    for task in (archive, hold, purge):
+    archive, hold, purge, _, short_shipped = module.tasks(lambda: None, batch=10)
+    for task in (archive, hold, purge, short_shipped):
         assert asyncio.run(task()) == 0
     assert driver.txs == []
 

@@ -1,7 +1,8 @@
 """Baggage lifecycle retention (RC1): archive finished bags, purge old archives.
 
-Finished bags are ``collected`` (arrival) and ``in_hold`` on a *departure*
-flight (the hold left with the aircraft). ``in_hold`` bags of an arrival flight
+Finished bags are ``collected`` (arrival), ``short_shipped`` (left behind at
+departure, RC6) and ``in_hold`` on a *departure* flight (the hold left with the
+aircraft). ``in_hold`` bags of an arrival flight
 are still waiting for the belt — even stale ones (see DATA_FLOW_REVIEW RC8) stay
 live, so they remain visible as the anomaly they are.
 
@@ -41,13 +42,21 @@ async def _archive_tx(tx, ids: list[str], archive_before: str, sim_time: datetim
     ], retention.FACT_REVISION)
 
 
-async def archive_collected(archive_before: str, sim_time: datetime, batch: int) -> int:
-    """Archive one batch of bags collected before ``archive_before``."""
+TERMINAL_STATUSES = ("collected", "short_shipped")
+
+
+async def archive_collected(
+    archive_before: str, sim_time: datetime, batch: int, status: str = "collected"
+) -> int:
+    """Archive one batch of bags in terminal ``status`` scanned before ``archive_before``."""
+    if status not in TERMINAL_STATUSES:
+        raise ValueError(f"not a terminal baggage status: {status}")
+
     async def apply(tx) -> int:
         rows = await (await tx.run(
-            # Pinned: the plain status index would filter every live collected bag.
+            # Pinned: the plain status index would filter every live terminal bag.
             "MATCH (b:Baggage) USING INDEX b:Baggage(status, last_scan_at, id) "
-            "WHERE b.status = 'collected' AND b.last_scan_at < $before AND b.id IS NOT NULL "
+            f"WHERE b.status = '{status}' AND b.last_scan_at < $before AND b.id IS NOT NULL "
             "WITH b LIMIT $batch RETURN b.id AS id",
             before=archive_before, batch=batch,
         )).data()
@@ -159,8 +168,13 @@ def tasks(sim_time: Callable[[], datetime | None], batch: int | None = None) -> 
     async def baggage_prune_inbox() -> int:
         return await retention.prune_inbox(get_driver, "BaggageInbox", batch=batch)
 
+    async def baggage_archive_short_shipped() -> int:
+        now = sim_time()
+        before, _ = retention.cutoffs(now)
+        return await archive_collected(before, now, batch, "short_shipped") if before else 0
+
     return [baggage_archive_collected, baggage_archive_departed_hold,
-            baggage_purge_archive, baggage_prune_inbox]
+            baggage_purge_archive, baggage_prune_inbox, baggage_archive_short_shipped]
 
 
 async def setup() -> None:

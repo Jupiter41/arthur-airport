@@ -73,6 +73,9 @@ loaded
     │
     ▼ (flight departed)
 in_hold
+
+(flight departed while the bag is dropped_off / inducted / screening / sorting)
+──► short_shipped   (terminal; BaggageMissedFlight, never enters in_hold, RC6)
     │
     ▼ (flight landed, at_gate)
 arrived
@@ -93,13 +96,21 @@ loaded / in_hold ──► offloaded ──► on_carousel (return)
 
 ### Conveyor network zones
 
+Throughputs come from `config/airport.yaml` `operations.baggage` (RC6), not from
+code constants. Shipped values:
+
 | Zone | Description | Throughput |
 |---|---|---|
-| `induction-{A/B/C}` | Check-in desk to main belt | 600 items/hr per terminal |
-| `screening-unit-{1–6}` | X-ray and ETD screening | 300 items/hr per unit |
-| `sorting-matrix` | Automated tag-reading sorter | 1,800 items/hr total |
+| `induction-{A/B/C}` | Check-in desk to main belt | A 1,800 · B 3,000 · C 1,800 items/hr (`induction_per_terminal_hr`) |
+| `screening-unit-{1–6}` | Hold-baggage CT/EDS, 2 units per terminal | terminal's `screening_per_terminal_hr` split evenly: A/C 900, B 1,500 items/hr per unit |
+| `sorting-matrix` | Automated tag-reading sorter | 5,400 items/hr total (`sorting_matrix_hr`) |
 | `make-up-{A/B/C}-{1–5}` | Per-gate make-up carousels | 150 items/hr per carousel |
-| `arrival-belt-{1–6}` | Arrival carousels (public) | 200 items/hr per belt |
+| `arrival-belt-{1–6}` | Arrival carousels (public) | 2,400 items/hr per belt |
+
+Terminal B carries the hub carrier (~55–60% of peak-hour bags), so it gets the
+larger induction and screening lines. Demand is sized against this capacity at
+seed time (`SIMULATION.md` "BHS sizing check"): peak hourly bags per terminal
+and airport-wide stay ≤ 85% of the slowest stage.
 
 ### Throughput model
 
@@ -176,6 +187,18 @@ A flagged item transitions to `flagged` status and emits `BaggageFlagged`. If th
 | `baggage.events` | `BaggageStatusChanged` | Event/command-driven transitions; on the tick only `in_hold`, `on_carousel`, `collected` |
 | `baggage.events` | `BaggageStatusBatchChanged` | Every committed tick: all tick transitions (incl. `inducted`/`screening`/`sorting`/`loaded`) |
 | `baggage.events` | `BaggageFlagged` | DG detected or false positive |
+| `baggage.events` | `BaggageMissedFlight` | Flight departed with bags not yet `loaded` (one fact per flight, RC6) |
+
+#### Departure outcome (RC6)
+
+On `FlightStatusChanged(departed)` only `loaded` bags go to `in_hold`. Bags still
+`dropped_off` / `inducted` / `screening` / `sorting` become `short_shipped`, are
+removed from the conveyor, get their own `BaggageStatusChanged`, and are listed
+in one `BaggageMissedFlight` fact — all in the departure's single transaction.
+A `dropped_off` bag the induction tick finds on an already departed/airborne
+flight is short-shipped the same way. There is no fast-track: no bag reaches
+`in_hold` without a `loaded` scan. `short_shipped` is terminal and is archived by
+retention 24 sim-h later, like `collected`.
 
 ---
 
@@ -286,8 +309,10 @@ Response `200`:
     "in_hold": 234,
     "arrived": 0,
     "on_carousel": 89,
-    "collected": 34
+    "collected": 34,
+    "short_shipped": 2
   },
+  "short_shipped": 2,
   "flagged_active": 3,
   "system_failures_active": 0,
   "zones": [
@@ -382,8 +407,6 @@ Filter frame:
 | `NEO4J_USER` | `neo4j` | |
 | `NEO4J_PASSWORD` | `art-digital-twin` | |
 | `KAFKA_BROKERS` | `kafka:9092` | |
-| `SORTING_THROUGHPUT_PER_HR` | `1800` | Sorting matrix capacity |
-| `SCREENING_UNITS` | `6` | Number of active screening units |
 | `DG_FALSE_POSITIVE_RATE` | `0.003` | Screening false positive probability |
 | `LOG_LEVEL` | `INFO` | |
 
@@ -411,6 +434,7 @@ Filter frame:
 | `dangerous_goods_detected_total` | Counter | DG detections by class |
 | `false_positives_total` | Counter | Screening false positives |
 | `offloaded_due_to_cancellation_total` | Counter | Items offloaded from cancelled flights |
+| `baggage_short_shipped_total` | Counter | Bags left behind at departure, by `previous_status` (RC6 KPI) |
 
 
 ### Command execution receipts (Real LDT correction)

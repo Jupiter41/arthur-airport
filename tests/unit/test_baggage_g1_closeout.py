@@ -216,13 +216,14 @@ def test_full_tick_commits_advancement_and_checkpoint_atomically(monkeypatch):
     driver = Driver()
     consumer = _ctx(monkeypatch, driver)
     _mock_gauges(monkeypatch, consumer)
-    # Fast-track (departed) bag → in_hold in one tick; no conveyor drama.
+    # Departed-flight bag → short_shipped in one tick (RC6: no fast-track to hold).
     monkeypatch.setattr(consumer, "get_dropped_off_baggage_for_departures", AsyncMock(
-        return_value=[{"id": "b1", "tag": "t1", "flight_status": "departed"}]))
+        return_value=[{"id": "b1", "tag": "t1", "flight_status": "departed", "flight_id": "f1"}]))
     asyncio.run(consumer._on_clock_tick({}, NOW))
-    assert driver.db["baggage"]["b1"]["status"] == "in_hold"
+    assert driver.db["baggage"]["b1"]["status"] == "short_shipped"
     assert driver.db["last_tick"] == NOW.isoformat()      # checkpoint advanced in-tx
-    assert len(driver.db["outbox"]) == 2  # entity fact + complete transition batch
+    # entity fact + BaggageMissedFlight + complete transition batch
+    assert len(driver.db["outbox"]) == 3
     assert consumer._state.last_tick_sim_time == NOW      # cache advanced post-commit
     assert consumer._state.inducted_bag_ids == {"b1"}
 
@@ -251,8 +252,11 @@ def test_tick_outbox_facts_carry_tick_scoped_stable_ids(monkeypatch):
     asyncio.run(consumer._on_clock_tick({}, NOW))
     import json
     fact = json.loads(next(iter(driver.db["outbox"].values()))["document"])
-    assert fact["event_id"] == f"{NOW.isoformat()}:b1:in_hold"   # deterministic per tick
+    assert fact["event_id"] == f"{NOW.isoformat()}:b1:short_shipped"   # deterministic per tick
     assert fact["payload"]["previous_status"] == "dropped_off"
+    missed = [json.loads(r["document"]) for r in driver.db["outbox"].values()
+              if json.loads(r["document"])["event_type"] == "BaggageMissedFlight"]
+    assert [m["event_id"] for m in missed] == [f"{NOW.isoformat()}::missed_flight"]
 
 
 def test_plan_bag_exit_flag_stages_flagged_fact_evicts_and_commits(monkeypatch):

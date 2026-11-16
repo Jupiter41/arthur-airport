@@ -197,8 +197,9 @@ def test_partial_write_rolls_back_inbox_and_outbox(monkeypatch, failure):
     # The failing storage is transient: the identical input can be retried.
     assert asyncio.run(departed(consumer, "evt-dep")) is None
     assert driver.db["inbox"] == {"evt-dep"}
-    assert len(driver.db["outbox"]) == 2
-    assert driver.db["baggage"]["b1"]["status"] == "in_hold"
+    assert len(driver.db["outbox"]) == 3  # two per-bag facts + BaggageMissedFlight
+    assert driver.db["baggage"]["b1"]["status"] == "short_shipped"  # RC6: never unscreened in_hold
+    assert driver.db["baggage"]["b2"]["status"] == "in_hold"
 
 
 # ── (b) redelivery of the same event_id is deduped, no re-apply/re-emit ────
@@ -208,7 +209,7 @@ def test_redelivery_same_event_id_is_deduped(monkeypatch):
     consumer = context(monkeypatch, driver, DEP_BAGS)
     asyncio.run(departed(consumer, "evt-dep"))
     assert driver.db["inbox"] == {"evt-dep"}
-    assert len(driver.db["outbox"]) == 2
+    assert len(driver.db["outbox"]) == 3
     assert driver.db["baggage"]["b1"]["scans"] == 1
     snapshot = deepcopy(driver.db)
 
@@ -220,7 +221,7 @@ def test_redelivery_same_event_id_is_deduped(monkeypatch):
     # A genuinely new input is still processed.
     asyncio.run(departed(consumer, "evt-dep-2"))
     assert driver.db["inbox"] == {"evt-dep", "evt-dep-2"}
-    assert len(driver.db["outbox"]) == 4
+    assert len(driver.db["outbox"]) == 6
 
 
 def test_staged_facts_carry_stable_ids_and_full_envelope(monkeypatch):
@@ -228,13 +229,20 @@ def test_staged_facts_carry_stable_ids_and_full_envelope(monkeypatch):
     consumer = context(monkeypatch, driver, DEP_BAGS)
     asyncio.run(departed(consumer, "evt-dep"))
     facts = [json.loads(r["document"]) for r in driver.db["outbox"].values()]
-    by_bag = {f["payload"]["baggage_id"]: f for f in facts}
+    by_bag = {f["payload"]["baggage_id"]: f for f in facts if "baggage_id" in f["payload"]}
     assert set(by_bag) == {"b1", "b2"}
-    assert by_bag["b1"]["event_id"] == "evt-dep:b1:in_hold"  # stable, not a uuid
+    assert by_bag["b1"]["event_id"] == "evt-dep:b1:short_shipped"  # stable, not a uuid
     assert by_bag["b1"]["event_type"] == "BaggageStatusChanged"
     assert by_bag["b1"]["payload"]["previous_status"] == "inducted"
-    assert by_bag["b1"]["payload"]["new_status"] == "in_hold"
+    assert by_bag["b1"]["payload"]["new_status"] == "short_shipped"
+    assert by_bag["b2"]["event_id"] == "evt-dep:b2:in_hold"
     assert by_bag["b2"]["payload"]["previous_status"] == "loaded"
+    assert by_bag["b2"]["payload"]["new_status"] == "in_hold"
+    [missed] = [f for f in facts if f["event_type"] == "BaggageMissedFlight"]
+    assert missed["event_id"] == "evt-dep:f1:missed_flight"
+    assert missed["payload"]["count"] == 1
+    assert missed["payload"]["baggage_ids"] == ["b1"]
+    assert missed["payload"]["by_previous_status"] == {"inducted": 1}
 
 
 # ── (c) outbox drains in (revision, position) order; delete only on ack ────

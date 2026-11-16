@@ -11,21 +11,17 @@ from services.fixtures import get_fixtures
 
 logger = logging.getLogger(__name__)
 
-POISSON_LAMBDA = 1.2
 DG_PROBABILITY = 0.002
 WEIGHT_MEAN_KG = 18.0
 WEIGHT_STD_KG = 4.0
 WEIGHT_MIN_KG = 2.0
 WEIGHT_MAX_KG = 32.0
 
-# Bags-per-passenger multiplier by flight type (Gap 3)
-BAGS_LAMBDA_BY_TYPE: dict[str, float] = {
-    "domestic": 1.0,
-    "international_short": 1.2,
-    "international_long": 1.5,
-    "cargo": 0.0,  # cargo flights carry freight, not pax bags
-    "charter": 1.3,
-}
+
+def _bag_config():
+    """RC6: checked-bag λ by flight type lives in config/airport.yaml."""
+    from _common.airport_config import load_airport_runtime_config
+    return load_airport_runtime_config().operations.baggage
 
 
 def _generate_tag(counter: int) -> str:
@@ -63,18 +59,15 @@ async def generate_baggage(
 
     all_baggage: list[dict] = []
     tag_counter = _unique_tag_start()
+    cfg = _bag_config()
 
     for pax in passengers:
-        # Determine bags-per-pax lambda based on flight type
+        # Checked bags per passenger ~ Poisson(λ by flight type). Zero is a
+        # valid outcome (carry-on only): no one-bag floor (RC6).
         flight_id = pax.get("flight_id", "")
-        ft = (flight_type_map or {}).get(flight_id, "")
-        lam = BAGS_LAMBDA_BY_TYPE.get(ft, POISSON_LAMBDA)
-
+        lam = cfg.bags_lambda((flight_type_map or {}).get(flight_id, ""))
         bag_count = int(np_rng.poisson(lam)) if lam > 0 else 0
-        # Ensure at least 1 bag per non-cargo passenger
-        if lam > 0 and bag_count == 0:
-            bag_count = 1
-        bag_count = min(bag_count, 5)  # reasonable cap
+        bag_count = min(bag_count, cfg.max_bags_per_pax)
 
         for _ in range(bag_count):
             bag_id = str(uuid4())
@@ -127,6 +120,7 @@ async def generate_arrival_baggage(
     all_baggage: list[dict] = []
     tag_counter = _unique_tag_start()
     flight_pax_counts: dict[str, int] = {}
+    cfg = _bag_config()
 
     for flight in arrival_flights:
         seat_capacity = int(flight.get("seat_capacity") or 0)
@@ -136,8 +130,11 @@ async def generate_arrival_baggage(
         # Synthetic inbound load factor around 80%.
         load_factor = max(0.5, min(1.0, float(np_rng.normal(0.8, 0.12))))
         pax_count = max(1, round(seat_capacity * load_factor))
-        bag_count = int(np_rng.poisson(max(1.0, pax_count * POISSON_LAMBDA)))
-        bag_count = max(1, min(bag_count, seat_capacity * 3))
+        lam = cfg.bags_lambda(flight.get("flight_type"))
+        bag_count = int(np_rng.poisson(pax_count * lam)) if lam > 0 else 0
+        bag_count = min(bag_count, seat_capacity * cfg.max_bags_per_pax)
+        if bag_count == 0:
+            continue
 
         # Track pax_count to update the arrival Flight node
         flight_pax_counts[flight["id"]] = pax_count

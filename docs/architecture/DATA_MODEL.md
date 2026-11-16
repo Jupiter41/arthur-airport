@@ -140,7 +140,7 @@ completed legacy backfill, whose label writes commit in batches of at most 1,000
 | `id`                 | String   | UUID                                                                                                                                       |
 | `tag`                | String   | 10-digit barcode e.g. `"0074123456"`                                                                                                       |
 | `weight_kg`          | Float    |                                                                                                                                            |
-| `status`             | Enum     | `dropped_off` · `inducted` · `screening` · `sorting` · `loaded` · `in_hold` · `arrived` · `on_carousel` · `collected` · `lost` · `flagged` |
+| `status`             | Enum     | `dropped_off` · `inducted` · `screening` · `sorting` · `loaded` · `in_hold` · `arrived` · `on_carousel` · `collected` · `lost` · `flagged` · `offloaded` · `held_for_review` · `short_shipped` (terminal: not loaded when its flight departed, RC6) |
 | `is_dangerous_goods` | Boolean  | DG flag                                                                                                                                    |
 | `dg_class`           | String   | IATA DG class if flagged                                                                                                                   |
 | `carousel`           | Integer  | arrival carousel number (1–6)                                                                                                              |
@@ -489,7 +489,7 @@ transactions of at most `RETENTION_BATCH` rows:
 | Live label | Finished when | Archive label | Owner |
 | ---------- | ------------- | ------------- | ----- |
 | `Passenger` | `status = 'departed_airport'` and `departed_airport_at` older than `RETENTION_ARCHIVE_AFTER_H` (24 sim-h) | `PassengerArchive` | passenger-service |
-| `Baggage` | `status = 'collected'`, or `status = 'in_hold'` with `LOADED_ON` a departure flight; `last_scan_at` older than 24 sim-h | `BaggageArchive` | baggage-service |
+| `Baggage` | `status IN ['collected', 'short_shipped']`, or `status = 'in_hold'` with `LOADED_ON` a departure flight; `last_scan_at` older than 24 sim-h | `BaggageArchive` | baggage-service |
 | `ScanEvent` | its bag is archived | `ScanEventArchive` | baggage-service |
 
 - Archival swaps the label (and drops the derived `UnscannedBaggage` /

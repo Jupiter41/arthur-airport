@@ -198,6 +198,15 @@ class BaggageFlaggedPayload(BaseModel):
     at: Optional[datetime] = None
 
 
+class BaggageMissedFlightPayload(BaseModel):
+    """RC6: bags not loaded when their flight departed (one fact per flight)."""
+    flight_id: str
+    count: int
+    baggage_ids: list[str]
+    by_previous_status: dict[str, int]
+    at: Optional[datetime] = None
+
+
 # ── weather.events ───────────────────────────────────────────
 
 
@@ -304,6 +313,7 @@ PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "SecurityQueueUpdated": SecurityQueueUpdatedPayload,
     "BaggageStatusChanged": BaggageStatusChangedPayload,
     "BaggageFlagged": BaggageFlaggedPayload,
+    "BaggageMissedFlight": BaggageMissedFlightPayload,
     "WeatherStateChanged": WeatherStateChangedPayload,
     "METARIssued": METARIssuedPayload,
     "IncidentCreated": IncidentCreatedPayload,

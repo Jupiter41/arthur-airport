@@ -20,6 +20,7 @@ class BaggageStatus(str, Enum):
     FLAGGED = "flagged"
     OFFLOADED = "offloaded"
     HELD_FOR_REVIEW = "held_for_review"
+    SHORT_SHIPPED = "short_shipped"  # not loaded when its flight departed (RC6)
 
 
 class ZoneStatus(str, Enum):

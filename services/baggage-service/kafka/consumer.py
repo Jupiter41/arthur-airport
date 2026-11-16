@@ -40,6 +40,7 @@ from kafka.producer import (
     emit_bulk_state_snapshot,
     build_status_changed_fact,
     build_flagged_fact,
+    build_missed_flight_fact,
     set_bulk_mode,
     is_bulk_mode,
 )
@@ -62,6 +63,7 @@ from metrics import (
     screening_false_positives_total as m_false_pos,
     envelope_invalid_total as m_envelope_invalid,
     baggage_commands_total as m_commands,
+    baggage_short_shipped_total as m_short_shipped,
 )
 from application.commands import parse_command, RedirectBaggage
 
@@ -470,7 +472,11 @@ INDUCTION_WINDOW = timedelta(minutes=90)
 # to are published per bag (BaggageStatusChanged); pipeline-internal hops
 # (inducted → screening → sorting → loaded) are published only inside the
 # tick's BaggageStatusBatchChanged, which carries every transition.
-PER_BAG_TICK_STATUSES = frozenset({"in_hold", "on_carousel", "collected"})
+PER_BAG_TICK_STATUSES = frozenset({"in_hold", "on_carousel", "collected", "short_shipped"})
+# RC6: only a bag with a ``loaded`` scan may go to the hold. Anything still on
+# the ground when its flight leaves is short-shipped, never teleported.
+SHORT_SHIP_STATUSES = ("dropped_off", "inducted", "screening", "sorting")
+SHORT_SHIP_ZONE = "short-ship"
 
 
 class _TickPlan:
@@ -490,6 +496,8 @@ class _TickPlan:
         self.inducted_ids: list[str] = []
         self.ws: list[tuple[str, dict]] = []
         self.metrics: list[tuple] = []
+        # RC6: flight_id → short-shipped bag rows (one BaggageMissedFlight each)
+        self.short_shipped: dict[str, list[dict]] = {}
 
 
 def _plan_status_change(
@@ -547,6 +555,11 @@ async def _apply_tick(plan: _TickPlan, sim_time: datetime) -> bool:
             )
         await set_loaded_on_timestamps_tx(tx, plan.loaded_rows, sim_time)
         facts = list(plan.facts)
+        for flight_id, missed in plan.short_shipped.items():
+            facts.append(build_missed_flight_fact(
+                id_base=sim_time.isoformat(), flight_id=flight_id,
+                bags=missed, sim_time=sim_time,
+            ))
         facts.extend(outbox.transition_batch_facts(
             "BaggageStatusBatchChanged", sim_time, "baggage-service", {
                 "status_changes": plan.status_changes, "flags": plan.flags,
@@ -570,6 +583,8 @@ def _apply_tick_metrics(plan: _TickPlan) -> None:
             m_flagged.inc(1)
         elif op[0] == "flag_fp":
             m_false_pos.inc()
+        elif op[0] == "short_shipped":
+            m_short_shipped.labels(previous_status=op[1]).inc()
 
 
 
@@ -803,8 +818,9 @@ async def _maybe_emit_baggage_bulk_snapshot(sim_time: datetime) -> None:
 async def _plan_induction(plan: _TickPlan, sim_time: datetime, delta_minutes: int = 1) -> None:
     """Plan induction of dropped_off bags (no DB write — folded into the tick tx).
 
-    For flights already departed/airborne, fast-track to 'in_hold'. For flights
-    still at the airport within the 90-min window, induct onto the belt. The
+    For flights already departed/airborne the bag missed its flight: it becomes
+    'short_shipped' (RC6 — never fast-tracked to 'in_hold'). For flights still
+    at the airport within the 90-min window, induct onto the belt. The
     in-memory conveyor (rebuildable cache) is populated here in the compute phase
     under ``_on_clock_tick``'s snapshot; the ``inducted_ids`` are added to the
     cache only after the tick commits.
@@ -832,11 +848,15 @@ async def _plan_induction(plan: _TickPlan, sim_time: datetime, delta_minutes: in
 
         flight_status = bag.get("flight_status", "scheduled")
 
-        # For flights already departed/airborne — fast-track to in_hold
+        # Flight already departed/airborne — the bag missed it (RC6)
         if flight_status in ("departed", "airborne"):
             batch_count += 1
             bag_in_zone = None
-            status, zone = "in_hold", "aircraft-hold"
+            status, zone = "short_shipped", SHORT_SHIP_ZONE
+            plan.short_shipped.setdefault(bag.get("flight_id") or "", []).append(
+                {"id": bag_id, "previous_status": "dropped_off"}
+            )
+            plan.metrics.append(("short_shipped", "dropped_off"))
         else:
             # For flights still at the airport: check 90-min window
             est_time_str = bag.get("estimated_time")
@@ -1061,47 +1081,65 @@ def _status_changed_fact(
 async def _apply_departure_in_hold(
     flight_id: str, sim_time: datetime, event_id: str
 ) -> None:
-    """Flight departed → all its bags go to 'in_hold', atomically (gap G1).
+    """Flight departed → loaded bags to 'in_hold', the rest short-shipped (RC6).
 
-    Bags still in the conveyor (inducted/screening/sorting) or not yet inducted
-    (dropped_off) are fast-tracked: in reality they would have been processed
-    before departure. Within ONE ``session.execute_write`` we (a) check the
-    durable BaggageInbox and skip if this input was already applied, (b) write
-    the bag status + ScanEvent trail, (c) mark the inbox, and (d) stage the
-    BaggageStatusChanged facts in the outbox — so a crash can never leave the
-    domain mutated without the facts staged, nor re-apply on redelivery. The
-    in-memory conveyor (a Neo4j-derived, rebuildable cache per rule #3) and the
-    WebSocket fan-out run only *after* the commit succeeds.
+    Only bags with a ``loaded`` scan go to the hold. Bags still ``dropped_off`` /
+    ``inducted`` / ``screening`` / ``sorting`` missed the flight: they become
+    ``short_shipped`` and are listed in one ``BaggageMissedFlight`` fact. There
+    is no fast-track — an unscreened bag can never be reported as loaded.
+
+    Within ONE ``session.execute_write`` we (a) check the durable BaggageInbox
+    and skip if this input was already applied, (b) write the bag statuses +
+    ScanEvent trail, (c) mark the inbox, and (d) stage the facts in the outbox —
+    so a crash can never leave the domain mutated without the facts staged, nor
+    re-apply on redelivery. The in-memory conveyor (a Neo4j-derived, rebuildable
+    cache per rule #3) and the WebSocket fan-out run only *after* the commit.
     """
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     from db.neo4j import get_flight_baggage
     bags = await get_flight_baggage(
-        flight_id,
-        statuses=["loaded", "sorting", "screening", "inducted", "dropped_off"],
+        flight_id, statuses=["loaded", *SHORT_SHIP_STATUSES],
     )
     if not bags:
         return
 
+    loaded = [bag for bag in bags if bag.get("status") == "loaded"]
+    missed = [bag for bag in bags if bag.get("status") != "loaded"]
     changes = [
-        {"id": bag["id"], "status": "in_hold", "zone": "aircraft-hold"} for bag in bags
+        {"id": bag["id"], "status": "in_hold", "zone": "aircraft-hold"} for bag in loaded
+    ] + [
+        {"id": bag["id"], "status": "short_shipped", "zone": SHORT_SHIP_ZONE} for bag in missed
     ]
     # BULK speed mode suppresses per-bag facts (aggregated via BulkStateSnapshot),
     # matching emit_baggage_status_changed; the domain write + inbox stay atomic.
     suppress = is_bulk_mode()
-    facts = [] if suppress else [
+    per_bag = [] if suppress else [
         _status_changed_fact(
             event_id=event_id,
             baggage_id=bag["id"],
             tag=bag["tag"],
             previous_status=bag.get("status", "loaded"),
-            new_status="in_hold",
-            scan_zone="aircraft-hold",
+            new_status=new_status,
+            scan_zone=zone,
             sim_time=sim_time,
             passenger_id=bag.get("passenger_id"),
             flight_id=flight_id,
         )
-        for bag in bags
+        for group, new_status, zone in (
+            (loaded, "in_hold", "aircraft-hold"),
+            (missed, "short_shipped", SHORT_SHIP_ZONE),
+        )
+        for bag in group
     ]
+    facts = list(per_bag)
+    if missed:
+        # The flight-level outcome is never sampled away, even in BULK mode.
+        facts.append(build_missed_flight_fact(
+            id_base=event_id or sim_time.isoformat(),
+            flight_id=flight_id,
+            bags=[{"id": bag["id"], "previous_status": bag.get("status")} for bag in missed],
+            sim_time=sim_time,
+        ))
 
     async def apply(tx) -> bool:
         if await outbox.inbox_seen(tx, "BaggageInbox", event_id):
@@ -1120,11 +1158,21 @@ async def _apply_departure_in_hold(
 
     # Post-commit only: derived cache + fan-out + metrics. Safe to re-run on a
     # redelivery whose commit ack was lost (the write above is idempotent).
-    for bag in bags:
+    for bag in loaded:
         _state.conveyor.remove_bag_from_all_zones(bag["id"])
-        _track_transition(bag.get("status", "loaded"), "in_hold")
+        _track_transition("loaded", "in_hold")
+    for bag in missed:
+        _state.conveyor.remove_bag_from_all_zones(bag["id"])
+        previous = bag.get("status") or "unknown"
+        _track_transition(previous, "short_shipped")
+        m_short_shipped.labels(previous_status=previous).inc()
+    if missed:
+        logger.info(
+            "Flight %s departed with %d of %d bags short-shipped",
+            flight_id, len(missed), len(bags),
+        )
     if _state.ws_broadcast and not suppress:
-        for fact in facts:
+        for fact in per_bag:
             await _state.ws_broadcast({
                 "event_type": "BaggageStatusChanged",
                 "payload": fact["document"]["payload"],

@@ -65,6 +65,12 @@ baggage_offloaded_total = Counter(
     ["reason"],
 )
 
+baggage_short_shipped_total = Counter(
+    "baggage_short_shipped_total",
+    "Bags not loaded when their flight departed (RC6)",
+    ["previous_status"],
+)
+
 envelope_invalid_total = Counter(
     "envelope_invalid_total",
     "Rejected Kafka envelopes",

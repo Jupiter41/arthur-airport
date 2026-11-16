@@ -57,6 +57,7 @@ EXPECTED_METRICS: dict[str, list[tuple[str, str, frozenset[str]]]] = {
         ("dangerous_goods_detected_total", "Counter", frozenset({"dg_class"})),
         ("screening_false_positives_total", "Counter", frozenset()),
         ("baggage_offloaded_total", "Counter", frozenset({"reason"})),
+        ("baggage_short_shipped_total", "Counter", frozenset({"previous_status"})),
         ("conveyor_segment_load", "Gauge", frozenset({"zone_id"})),
         ("conveyor_transit_queue", "Gauge", frozenset()),
         ("conveyor_delay_total", "Counter", frozenset({"terminal"})),
@@ -95,6 +96,7 @@ EXPECTED_METRICS: dict[str, list[tuple[str, str, frozenset[str]]]] = {
         ("sim_events_injected_total", "Counter", frozenset({"type"})),
         ("sim_owner_lag_minutes", "Gauge", frozenset({"owner"})),
         ("sim_clock_held_total", "Counter", frozenset({"owner"})),
+        ("sim_bhs_capacity_violations_total", "Counter", frozenset({"scope"})),
     ],
 }
 

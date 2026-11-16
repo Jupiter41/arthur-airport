@@ -55,18 +55,26 @@ class ZoneState:
         return self.items > capacity_5min
 
 
-# Zone throughput capacities from SPEC.md §3
-# Arrival belts at 2400/hr = 40 bags/min to handle peak arrival volumes
-# (a real carousel clears a ~150-bag flight in ~5 min, shared across 2 belts/terminal)
-ZONE_THROUGHPUT: dict[str, int] = {
-    "induction-A": 600, "induction-B": 600, "induction-C": 600,
-    "screening-unit-1": 300, "screening-unit-2": 300,
-    "screening-unit-3": 300, "screening-unit-4": 300,
-    "screening-unit-5": 300, "screening-unit-6": 300,
-    "sorting-matrix": 1800,
-    **{f"make-up-{t}-{n}": 150 for t in "ABC" for n in range(1, 6)},
-    **{f"arrival-belt-{n}": 2400 for n in range(1, 7)},
-}
+def _zone_throughput() -> dict[str, int]:
+    """Zone capacities (items/hr) from config/airport.yaml ``operations.baggage``.
+
+    RC6: sized against generated bag demand (SIMULATION.md "BHS sizing check"),
+    so the code no longer carries its own copy of SPEC.md §3 numbers.
+    """
+    from _common.airport_config import load_airport_runtime_config
+
+    cfg = load_airport_runtime_config().operations.baggage
+    zones: dict[str, int] = {
+        f"induction-{t}": cfg.induction_per_terminal_hr.get(t, 0) for t in "ABC"
+    }
+    for t, units in TERMINAL_SCREENING.items():
+        for unit in units:
+            zones[unit] = cfg.screening_unit_hr(t)
+    zones["sorting-matrix"] = cfg.sorting_matrix_hr
+    zones.update({f"make-up-{t}-{n}": cfg.makeup_carousel_hr for t in "ABC" for n in range(1, 6)})
+    zones.update({f"arrival-belt-{n}": cfg.arrival_belt_hr for n in range(1, 7)})
+    return zones
+
 
 # Mapping terminals to screening units (2 per terminal)
 TERMINAL_SCREENING: dict[str, list[str]] = {
@@ -74,6 +82,8 @@ TERMINAL_SCREENING: dict[str, list[str]] = {
     "B": ["screening-unit-3", "screening-unit-4"],
     "C": ["screening-unit-5", "screening-unit-6"],
 }
+
+ZONE_THROUGHPUT: dict[str, int] = _zone_throughput()
 
 # Mapping terminals to make-up areas
 TERMINAL_MAKEUP: dict[str, list[str]] = {

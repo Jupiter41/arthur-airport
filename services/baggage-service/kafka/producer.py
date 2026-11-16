@@ -219,6 +219,37 @@ def build_flagged_fact(
     return {"id": stable_id, "document": envelope}
 
 
+def build_missed_flight_fact(
+    *,
+    id_base: str,
+    flight_id: str,
+    bags: list[dict],
+    sim_time: datetime,
+) -> dict:
+    """Build one BaggageMissedFlight outbox fact for a departed flight (RC6).
+
+    ``bags`` are the short-shipped bag rows (``id``, ``previous_status``).
+    Never suppressed in BULK mode: it is an aggregate outcome, one per flight.
+    """
+    by_previous: dict[str, int] = {}
+    for bag in bags:
+        prev = bag.get("previous_status") or "unknown"
+        by_previous[prev] = by_previous.get(prev, 0) + 1
+    payload = {
+        "flight_id": flight_id,
+        "count": len(bags),
+        "baggage_ids": [bag["id"] for bag in bags],
+        "by_previous_status": by_previous,
+        "at": sim_time.isoformat(),
+    }
+    envelope = kafka_runtime.build_envelope(
+        "BaggageMissedFlight", sim_time, payload, PRODUCER_NAME
+    )
+    stable_id = f"{id_base}:{flight_id}:missed_flight"
+    envelope["event_id"] = stable_id
+    return {"id": stable_id, "document": envelope}
+
+
 def emit_zone_snapshot(payload: dict, sim_time: datetime) -> None:
     """Aggregate facts are never suppressed by per-bag BULK sampling."""
     _produce_event("BaggageZoneSnapshot", sim_time, payload, key="zones")

@@ -38,7 +38,15 @@ collected
 
 (flight cancelled at any point)
 loaded / in_hold → offloaded → on_carousel (return to passenger)
+
+(flight departed before the bag was loaded — RC6)
+dropped_off / inducted / screening / sorting → short_shipped (terminal)
 ```
+
+- **Never teleport to the hold.** Only a `loaded` bag goes to `in_hold` at
+  departure; the rest become `short_shipped` plus one `BaggageMissedFlight` per
+  flight. Zone throughputs come from `config/airport.yaml` `operations.baggage`,
+  sized so seeded peak demand stays under 85% of the slowest stage.
 
 ---
 

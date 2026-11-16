@@ -79,6 +79,7 @@ scrape_configs:
 | `sim_events_injected_total` | Counter   | `type` | Probabilistic events fired                       |
 | `sim_owner_lag_minutes`     | Gauge     | `owner`| Sim-minutes between the clock and the owner's last `TickProcessed` (RC4) |
 | `sim_clock_held_total`      | Counter   | `owner`| Clock iterations held by back-pressure because this owner lagged (RC4) |
+| `sim_bhs_capacity_violations_total` | Counter | `scope` | Seeded days whose peak hourly bags exceed 85% of the slowest BHS stage, per terminal or `airport` (RC6) |
 
 ### 3.2 Flights
 
@@ -124,6 +125,7 @@ scrape_configs:
 | `dangerous_goods_detected_total`  | Counter | `dg_class`   | DG detections by class                |
 | `screening_false_positives_total` | Counter | —            | False positive detections             |
 | `baggage_offloaded_total`         | Counter | `reason`     | Offloads (cancellation, incident)     |
+| `baggage_short_shipped_total`     | Counter | `previous_status` | Bags not loaded when their flight departed (RC6 KPI) |
 | `envelope_invalid_total`          | Counter | `reason`     | Rejected Kafka envelopes              |
 
 ### 3.5 Weather

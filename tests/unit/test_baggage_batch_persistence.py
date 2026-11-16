@@ -51,21 +51,22 @@ def test_induction_plans_batch_then_commits_atomically_with_per_bag_facts(monkey
     assert plan.status_changes == [
         {"id": "b1", "status": "inducted", "zone": "induction-B",
          "previous_status": "dropped_off", "flight_id": None},
-        {"id": "b2", "status": "in_hold", "zone": "aircraft-hold",
+        {"id": "b2", "status": "short_shipped", "zone": "short-ship",
          "previous_status": "dropped_off", "flight_id": None}]
     assert plan.inducted_ids == ["b1", "b2"]
     assert consumer._state.inducted_bag_ids == set()
     assert consumer._state.conveyor.get_zone("induction-B").items == 1
     assert [(f["document"]["payload"]["baggage_id"], f["document"]["payload"]["new_status"])
-            for f in plan.facts] == [("b2", "in_hold")]  # RC3: induction is batch-only
+            for f in plan.facts] == [("b2", "short_shipped")]  # RC3: induction is batch-only
     for f in plan.facts:
         assert f["document"]["payload"]["previous_status"] == "dropped_off"
 
     # Apply phase: one transaction commits every transition + fact + checkpoint.
     assert asyncio.run(consumer._apply_tick(plan, NOW)) is True
     assert driver.db["baggage"]["b1"]["status"] == "inducted"
-    assert driver.db["baggage"]["b2"]["status"] == "in_hold"
-    assert len(driver.db["outbox"]) == 2  # one public per-bag fact + the batch
+    assert driver.db["baggage"]["b2"]["status"] == "short_shipped"  # RC6: no fast-track
+    # one public per-bag fact + BaggageMissedFlight + the batch
+    assert len(driver.db["outbox"]) == 3
     batch = next(json.loads(r["document"]) for r in driver.db["outbox"].values()
                  if json.loads(r["document"])["event_type"] == "BaggageStatusBatchChanged")
     assert len(batch["payload"]["status_changes"]) == 2
@@ -101,9 +102,10 @@ def test_failed_tick_write_rolls_back_and_leaves_bags_eligible_for_retry(monkeyp
     assert driver.db["last_tick"] is None
 
 
-def test_departure_removes_fast_tracked_bags_from_conveyor(monkeypatch):
-    """G1: departure now writes status + inbox + outbox in one tx, then clears
-    the (Neo4j-derived) conveyor cache and stages facts rather than emitting."""
+def test_departure_short_ships_unloaded_bags_and_clears_conveyor(monkeypatch):
+    """G1 + RC6: departure writes status + inbox + outbox in one tx, then clears
+    the (Neo4j-derived) conveyor cache. A bag still on the belt is short-shipped,
+    never moved to the hold unscreened."""
     from tests.unit.test_baggage_outbox import Driver  # container-free fake driver
 
     consumer = context(monkeypatch)
@@ -122,11 +124,14 @@ def test_departure_removes_fast_tracked_bags_from_conveyor(monkeypatch):
     # Conveyor cache cleared only after the commit succeeded.
     assert consumer._state.conveyor.get_zone("induction-B").items == 0
     # Domain write + durable inbox + one staged fact all committed atomically.
-    assert driver.db["baggage"]["b1"]["status"] == "in_hold"
+    assert driver.db["baggage"]["b1"]["status"] == "short_shipped"
     assert driver.db["inbox"] == {"evt-dep"}
-    fact = json.loads(next(iter(driver.db["outbox"].values()))["document"])
+    facts = [json.loads(r["document"]) for r in driver.db["outbox"].values()]
+    [fact] = [f for f in facts if f["event_type"] == "BaggageStatusChanged"]
     assert fact["payload"]["previous_status"] == "inducted"
-    assert fact["payload"]["new_status"] == "in_hold"
+    assert fact["payload"]["new_status"] == "short_shipped"
+    [missed] = [f for f in facts if f["event_type"] == "BaggageMissedFlight"]
+    assert missed["payload"]["baggage_ids"] == ["b1"]
 
 
 def test_recovery_preserves_screening_metadata_arrivals_and_repeated_rebuild(monkeypatch):

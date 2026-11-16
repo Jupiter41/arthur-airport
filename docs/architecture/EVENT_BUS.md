@@ -285,7 +285,8 @@ default; ECAC Doc 30 reference).
 
 Published per bag for every transition applied by a domain event or command,
 and, on the owner tick, only for the transitions other domains react to:
-`in_hold`, `on_carousel`, `collected` (`flagged` travels as `BaggageFlagged`).
+`in_hold`, `on_carousel`, `collected`, `short_shipped` (`flagged` travels as
+`BaggageFlagged`).
 Pipeline-internal tick hops (`inducted`, `screening`, `sorting`, `loaded`) are
 published only inside `BaggageStatusBatchChanged`.
 
@@ -301,6 +302,30 @@ published only inside `BaggageStatusBatchChanged`.
     "new_status": "loaded",
     "scan_zone": "make-up-area-B",
     "at": "2024-06-15T13:55:00.000Z"
+  }
+}
+```
+
+#### `BaggageMissedFlight` (RC6, 2026-11-16)
+
+One fact per departed flight that left bags behind. When `FlightStatusChanged
+(departed)` arrives, only `loaded` bags move to `in_hold`; every bag still
+`dropped_off` / `inducted` / `screening` / `sorting` becomes `short_shipped`
+(its own `BaggageStatusChanged`, `scan_zone: "short-ship"`), is removed from the
+conveyor, and is listed here. A bag that is still `dropped_off` when the
+induction tick finds its flight already departed is short-shipped the same way.
+Bags are never moved to `in_hold` without a `loaded` scan. Staged in the same
+transaction as the status writes; idempotent on the input `event_id`.
+
+```json
+{
+  "event_type": "BaggageMissedFlight",
+  "payload": {
+    "flight_id": "uuid",
+    "count": 3,
+    "baggage_ids": ["uuid", "uuid", "uuid"],
+    "by_previous_status": {"screening": 2, "dropped_off": 1},
+    "at": "2024-06-15T14:05:00.000Z"
   }
 }
 ```
@@ -958,7 +983,7 @@ Each transition is published **once**, at one granularity:
 | Domain    | Owner tick transitions                                    | Event/command-driven transitions |
 | --------- | --------------------------------------------------------- | -------------------------------- |
 | passenger | `PassengerStatusBatchChanged` only                         | `PassengerStatusChanged` per passenger |
-| baggage   | `BaggageStatusBatchChanged` (all) + `BaggageStatusChanged` per bag for `in_hold` / `on_carousel` / `collected` only | `BaggageStatusChanged` per bag |
+| baggage   | `BaggageStatusBatchChanged` (all) + `BaggageStatusChanged` per bag for `in_hold` / `on_carousel` / `collected` / `short_shipped` only | `BaggageStatusChanged` per bag |
 
 Consumers needing every baggage hop (analysis-service) read the batch. BULK
 mode additionally suppresses the per-entity events; batches are never
