@@ -95,6 +95,8 @@ Each passenger record includes:
 - Nationality (weighted by destination)
 - Connection flag (20% probability)
 - Special assistance flag (5% probability)
+- Departures: `show_up_at = T-180 + 135 min × Beta(3, 2)` (mean ≈ T-99), the
+  passenger's own arrival time that drives check-in and security (RC5)
 - Checked-bag count: `Poisson(λ)` by flight type, λ from `config/airport.yaml`
   `operations.baggage.bags_per_pax` (domestic 0.6, international short 0.8,
   international long 1.1, charter 1.0, cargo 0), capped at 5. Zero bags is a

@@ -79,6 +79,9 @@ operations:
     makeup_carousel_hr: 150
     arrival_belt_hr: 2400
     capacity_headroom: 0.85
+  # RC5: default open security lanes per terminal at 180 pax/h/lane. B hosts the
+  # hub carrier (~55–60% of peak departures). SECURITY_LANES_OPEN overrides all.
+  security_lanes_open: { A: 8, B: 12, C: 8 }
   effects:
     security_pax_per_lane_minute: 3.0
     prediction_horizon_minutes: 30

@@ -266,6 +266,10 @@ class AirportOperations(BaseModel):
     cascade_max_depth: int = Field(default=5, ge=1)
     effects: EffectParameters = Field(default_factory=EffectParameters)
     baggage: BaggageSystemConfig = Field(default_factory=BaggageSystemConfig)
+    # RC5: default open security lanes per terminal (B hosts the hub carrier).
+    security_lanes_open: dict[str, int] = Field(
+        default_factory=lambda: {"A": 8, "B": 12, "C": 8}
+    )
 
     weather_capacity: dict[str, WeatherCategoryCapacity] = Field(
         default_factory=_default_weather_capacity

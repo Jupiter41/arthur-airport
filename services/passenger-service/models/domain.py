@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 
 class PassengerStatus(str, Enum):
+    BOOKED = "booked"
     CHECKED_IN = "checked_in"
     SECURITY_QUEUE = "security_queue"
     AIRSIDE = "airside"
@@ -17,6 +18,7 @@ class PassengerStatus(str, Enum):
     BAGGAGE_CLAIM = "baggage_claim"
     DEPARTED_AIRPORT = "departed_airport"
     MISSED_CONNECTION = "missed_connection"
+    MISSED_FLIGHT = "missed_flight"  # RC5: flight departed before boarding
     DISRUPTED = "disrupted"
 
 

@@ -66,20 +66,34 @@ keep their existing behavior. Historical passenger records are not rewritten.
 ### Departure flow
 
 ```
+booked
+    │
+    ▼ (per passenger: sim ≥ show_up_at, drawn at seed time — §3)
+    ├──► departed_airport  (zone "no-show": deterministic no-show draw, never enters the airport)
 checked_in
     │
-    ▼ (sim: check-in closes T-45 min)
+    ▼ (per passenger: show_up_at + 10 min check-in processing, at the latest at check-in close T-45)
 security_queue
     │
     ▼ (sim: throughput rate, queue drain model)
 airside
     │
-    ▼ (sim: T-30 min gate open)
+    ▼ (sim: gate open T-50 + dwell + walk)
 at_gate
     │
-    ▼ (sim: boarding call T-20 min)
+    ▼ (sim: boarding call T-35, only while the flight is scheduled/boarding/delayed)
 boarded
+    │
+    ▼ (FlightStatusChanged: departed)
+departed_airport
+
+(FlightStatusChanged: departed, passenger not yet boarded)
+booked / checked_in / security_queue / airside / at_gate ──► missed_flight (terminal)
 ```
+
+A passenger only progresses toward a flight that is still on the ground and
+open: `scheduled`, `boarding` or `delayed`. Nobody checks in, clears to the gate
+or boards once the flight is `departed` / `airborne` / `taxiing` (RC5).
 
 ### Arrival flow
 
@@ -100,10 +114,14 @@ departed_airport
 
 | Transition                           | Trigger                                     | Notes                                          |
 | ------------------------------------ | ------------------------------------------- | ---------------------------------------------- |
-| `checked_in` → `security_queue`      | SimClockTick: check-in cutoff T-45          | Batched — all pax on flight move together      |
+| `booked` → `checked_in`              | SimClockTick: `sim_time ≥ show_up_at`       | Per passenger; `show_up_at ~ T-180 + 135·Beta(3,2)` (§3) |
+| `booked` → `departed_airport` (`no-show`) | SimClockTick: `sim_time ≥ show_up_at`  | Per passenger, deterministic draw `hash(id) < noshow_rate` (3%) over the whole booked cohort |
+| `checked_in` → `security_queue`      | SimClockTick: `show_up_at + 10 min`, or check-in close T-45 | Per passenger (no flight-wide batch)  |
 | `security_queue` → `airside`         | SimClockTick: per queue drain rate          | Rate = `security_lanes_open × 180 pax/hr/lane` |
-| `airside` → `at_gate`                | SimClockTick: T-30 min OR gate open         | Stochastic: ~80% arrive before T-15 min        |
-| `at_gate` → `boarded`                | SimClockTick: boarding call                 | Progressive: 10 pax/min boarding rate          |
+| `airside` → `at_gate`                | SimClockTick: gate open + dwell + walk      | Flight still `scheduled`/`boarding`/`delayed`  |
+| `at_gate` → `boarded`                | SimClockTick: boarding call                 | Progressive: 10 pax/min; flight still `scheduled`/`boarding`/`delayed` — never after departure |
+| `boarded` → `departed_airport`       | FlightStatusChanged: `departed`             | All boarded passengers of the flight           |
+| any pre-boarding status → `missed_flight` | FlightStatusChanged: `departed`        | Terminal; one `PassengerStatusChanged` each; removed from queues and zones (RC5) |
 | `deplaning` → `baggage_claim`        | SimClockTick: T+15 after at_gate            | All arrival pax                                |
 | `baggage_claim` → `departed_airport` | BaggageStatusChanged (collected) OR timeout | Timeout = T+45 min                             |
 
@@ -164,7 +182,33 @@ time distribution that peaks at T-90 minutes before departure.
 
 ```
 arrival_distribution: Beta(α=3, β=2) over window [T-180, T-45]
+show_up_at = scheduled_time − 180 min + 135 min × Beta(3, 2)      (mean ≈ T-99)
 ```
+
+`show_up_at` is drawn per passenger at seed time and stored on the `Passenger`
+node (RC5). This distribution — not a flight-wide batch — is what releases
+passengers into check-in and then security, so a flight's cohort reaches security
+spread over about two hours instead of in one minute. Records seeded before
+RC5 (no `show_up_at`) derive the same distribution deterministically from their
+ID. After check-in, a passenger joins security `CHECKIN_PROCESS_MINUTES` (10)
+later, or at check-in close (T-45) if that comes first.
+
+#### No-shows (RC5)
+
+Each booked passenger gets exactly one no-show draw, when their `show_up_at`
+is reached: `hash(passenger_id) < noshow_rate` (default 0.03). It covers the
+full booked cohort, is deterministic (a replayed tick re-derives the same
+outcome, no per-flight "drawn" set is checkpointed), and a no-show never enters
+the airport (`departed_airport`, zone `no-show`). `BoardingProgress.total`
+excludes no-shows, so the 95% departure threshold is measured against the
+passengers who actually showed up.
+
+#### Lanes per terminal
+
+Default open lanes come from `config/airport.yaml` `operations.security_lanes_open`
+(A 8, B 12, C 8 — B hosts the hub carrier and ~55–60% of peak departures).
+`SECURITY_LANES_OPEN`, when set, overrides every terminal. Lane commands and the
+persisted `SecurityCheckpoint` lanes still take precedence at runtime.
 
 ### Gate dwell time
 
@@ -607,6 +651,7 @@ Supports filter frame:
 | `security_wait_minutes`         | Gauge   | Estimated wait time per terminal                     |
 | `connections_at_risk_total`     | Gauge   | Pax with at-risk connections                         |
 | `connections_missed_total`      | Counter | Missed connections (cumulative)                      |
+| `passengers_missed_flight_total` | Counter | Passengers not boarded when their flight departed (RC5) |
 | `passenger_alerts_issued_total` | Counter | Alerts by type                                       |
 | `zone_load_pct`                 | Gauge   | Load percentage per zone                             |
 | `security_congestion_active`    | Gauge   | 1 if congestion incident active, per terminal        |
@@ -714,10 +759,11 @@ and judges flights on the event-fed FlightView (flights as consumed from
 `FlightStatusChanged` handlers it backs up.
 
 A reconciling tick reconciles a bounded cohort of passenger records against the
-consumed flight state, in the existing owner tick transaction with outbox facts. A finished
-departure cannot retain booked/checked-in/security/airside/at-gate/boarded
-passengers indefinitely: reconcile them to `departed_airport`, without claiming
-a missing boarding event happened. Already boarded passengers on departed or
+consumed flight state, in the existing owner tick transaction with outbox facts. A
+departed, airborne or finished departure cannot retain booked/checked-in/security/
+airside/at-gate passengers: reconcile them to `missed_flight` (RC5), without
+claiming a missing boarding event happened; boarded passengers go to
+`departed_airport`. Already boarded passengers on departed or
 airborne departures also leave airport occupancy. Landed arrivals whose at-gate
 fact was missed enter deplaning; diverted arrivals leave airport occupancy.
 Only flights already observed by the current simulation clock are eligible.
@@ -736,4 +782,16 @@ Every FSM read that depends on a flight (status, schedule/estimate, gate, termin
 flight type) takes it from the FlightView fed by `flights.events` (OVERVIEW.md
 ADR-007); the graph is traversed only by flight identity (`ON_FLIGHT`). Each tick
 also stages `BoardingProgress` (`boarded`/`total` per departure in `boarding`),
-which flight-service uses to decide departure.
+which flight-service uses to decide departure. `total` excludes no-shows (RC5).
+
+### Departure outcome (RC5, 2026-11-16)
+
+On `FlightStatusChanged(departed)` for a departure, in one atomic owner write:
+boarded passengers → `departed_airport` (zone `departed`); every passenger still
+`booked` / `checked_in` / `security_queue` / `airside` / `at_gate` →
+`missed_flight` (zone `missed-flight`, stamps `missed_flight_at`), each with its
+own `PassengerStatusChanged`. After commit they leave the in-memory security
+queues and zone density, and assisted passengers release their wheelchair.
+`missed_flight` is terminal and archived by retention 24 sim-h after
+`missed_flight_at`, like `departed_airport`. Metric:
+`passengers_missed_flight_total`.

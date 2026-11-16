@@ -107,6 +107,7 @@ scrape_configs:
 | `security_lanes_open`      | Gauge   | `terminal`   | Open lanes                    |
 | `connections_at_risk`      | Gauge   | `risk_level` | watch / at_risk / missed      |
 | `connections_missed_total` | Counter | —            | Cumulative missed connections |
+| `passengers_missed_flight_total` | Counter | —      | Passengers not boarded when their flight departed (RC5) |
 | `passenger_alerts_total`   | Counter | `type`       | Alerts by type                |
 | `zone_load_pct`            | Gauge   | `zone_id`    | Load % per zone               |
 

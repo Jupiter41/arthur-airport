@@ -37,6 +37,11 @@ connections_missed_total = Counter(
     "Cumulative missed connections",
 )
 
+passengers_missed_flight_total = Counter(
+    "passengers_missed_flight_total",
+    "Passengers not boarded when their flight departed (RC5)",
+)
+
 passenger_alerts_total = Counter(
     "passenger_alerts_total",
     "Alerts by type",

@@ -43,6 +43,7 @@ EXPECTED_METRICS: dict[str, list[tuple[str, str, frozenset[str]]]] = {
         ("security_lanes_open", "Gauge", frozenset({"terminal"})),
         ("connections_at_risk", "Gauge", frozenset({"risk_level"})),
         ("connections_missed_total", "Counter", frozenset()),
+        ("passengers_missed_flight_total", "Counter", frozenset()),
         ("passenger_alerts_total", "Counter", frozenset({"type"})),
         ("zone_load_pct", "Gauge", frozenset({"zone_id"})),
         ("envelope_invalid_total", "Counter", frozenset({"reason"})),

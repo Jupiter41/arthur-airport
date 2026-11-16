@@ -10,6 +10,7 @@ from scipy.stats import beta as beta_dist
 from services.airport_config import load_airport_runtime_config
 from db.neo4j import get_driver
 from services.fixtures import get_fixtures
+from _common.show_up import draw_show_up
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,8 @@ async def generate_passengers(
     Returns (total_pax_count, list of passenger dicts).
     """
     rng = random.Random(seed)
+    # Separate stream so adding show-up draws leaves names/PNRs/seats unchanged.
+    show_up_rng = random.Random(None if seed is None else seed + 7)
     fixtures = get_fixtures()
     first_names = fixtures["first_names"]
     surnames = fixtures["surnames"]
@@ -104,6 +107,8 @@ async def generate_passengers(
                 pass
 
         pax_count = round(seat_cap * load_factor)
+        scheduled_time = flight.get("scheduled_time")
+        draws_show_up = initial_status == "booked" and bool(scheduled_time)
 
         passengers = []
         for i in range(pax_count):
@@ -134,6 +139,10 @@ async def generate_passengers(
                 "connection": is_connection,
                 "connection_flight_id": None,
                 "flight_id": flight["id"],
+                # RC5: each departing passenger's own airport arrival time.
+                "show_up_at": (
+                    draw_show_up(scheduled_time, show_up_rng).isoformat() if draws_show_up else None
+                ),
             }
             passengers.append(pax)
 
@@ -171,7 +180,8 @@ async def _persist_passengers(passengers: list[dict]) -> None:
                     seat: p.seat,
                     special_assistance: p.special_assistance,
                     connection: p.connection,
-                    connection_flight_id: p.connection_flight_id
+                    connection_flight_id: p.connection_flight_id,
+                    show_up_at: p.show_up_at
                 })
                 CREATE (pax)-[:ON_FLIGHT]->(f)
                 """,

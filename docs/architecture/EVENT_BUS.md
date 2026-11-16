@@ -1087,7 +1087,8 @@ flight-service consumes `FlightScheduleSeeded`, from its own `Flight` nodes, in 
 **`BoardingProgress`** (`passengers.events`, producer passenger-service). Staged with every
 passenger tick for each departure in `boarding` per its FlightView. Never suppressed in BULK
 mode. flight-service keeps the newest entry per flight; with none yet, the boarded share is
-0 (positioning flights with `pax_count = 0` still count as fully boarded).
+0 (positioning flights with `pax_count = 0` still count as fully boarded). `total` counts the
+flight's passengers minus no-shows (`departed_airport` in zone `no-show`, RC5).
 
 ```json
 {"event_type": "BoardingProgress",

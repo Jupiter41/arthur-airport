@@ -111,14 +111,16 @@ A single flight movement (arrival or departure). Each physical flight has two no
 | `name`                 | String   | generated fake name                                                                                                      |
 | `pnr`                  | String   | booking reference (6-char fake)                                                                                          |
 | `nationality`          | String   | ISO 3166-1 alpha-2                                                                                                       |
-| `status`               | Enum     | `checked_in` · `security_queue` · `airside` · `at_gate` · `boarded` · `deplaning` · `baggage_claim` · `departed_airport` |
+| `status`               | Enum     | `booked` · `checked_in` · `security_queue` · `airside` · `at_gate` · `boarded` · `airborne` · `deplaning` · `customs` · `baggage_claim` · `departed_airport` · `missed_flight` (terminal: flight departed before boarding, RC5) · `missed_connection` · `disrupted` |
 | `location_zone`        | String   | current zone: `"check-in"`, `"security"`, `"gate-B07"`, etc.                                                             |
 | `seat`                 | String   | e.g. `"23A"`                                                                                                             |
 | `special_assistance`   | Boolean  | requires assistance                                                                                                      |
 | `connection`           | Boolean  | has a connecting flight                                                                                                  |
 | `connection_flight_id` | String   | if `connection=true`                                                                                                     |
+| `show_up_at`           | DateTime | departures: airport arrival time `T-180 + 135·Beta(3,2)` min, drawn at seed time (RC5)                                     |
 | `checked_in_at`        | DateTime |                                                                                                                          |
 | `boarded_at`           | DateTime |                                                                                                                          |
+| `missed_flight_at`     | DateTime | set when the flight departed before the passenger boarded (RC5)                                                          |
 
 ---
 
@@ -488,7 +490,7 @@ transactions of at most `RETENTION_BATCH` rows:
 
 | Live label | Finished when | Archive label | Owner |
 | ---------- | ------------- | ------------- | ----- |
-| `Passenger` | `status = 'departed_airport'` and `departed_airport_at` older than `RETENTION_ARCHIVE_AFTER_H` (24 sim-h) | `PassengerArchive` | passenger-service |
+| `Passenger` | `status = 'departed_airport'` and `departed_airport_at` (or `status = 'missed_flight'` and `missed_flight_at`, RC5) older than `RETENTION_ARCHIVE_AFTER_H` (24 sim-h) | `PassengerArchive` | passenger-service |
 | `Baggage` | `status IN ['collected', 'short_shipped']`, or `status = 'in_hold'` with `LOADED_ON` a departure flight; `last_scan_at` older than 24 sim-h | `BaggageArchive` | baggage-service |
 | `ScanEvent` | its bag is archived | `ScanEventArchive` | baggage-service |
 
@@ -517,6 +519,7 @@ CREATE INDEX baggage_status_scan IF NOT EXISTS FOR (b:Baggage) ON (b.status, b.l
 CREATE INDEX baggage_archive_at IF NOT EXISTS FOR (b:BaggageArchive) ON (b.archived_at);
 CREATE INDEX baggage_archive_id IF NOT EXISTS FOR (b:BaggageArchive) ON (b.id);
 CREATE INDEX passenger_departed_at IF NOT EXISTS FOR (p:Passenger) ON (p.departed_airport_at);
+CREATE INDEX passenger_missed_flight_at IF NOT EXISTS FOR (p:Passenger) ON (p.missed_flight_at);
 CREATE INDEX passenger_archive_at IF NOT EXISTS FOR (p:PassengerArchive) ON (p.archived_at);
 CREATE INDEX passenger_archive_id IF NOT EXISTS FOR (p:PassengerArchive) ON (p.id);
 CREATE INDEX flightinbox_seen_at IF NOT EXISTS FOR (i:FlightInbox) ON (i.seen_at);

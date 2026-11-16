@@ -9,6 +9,15 @@ import os
 
 
 LANES_PER_TERMINAL = int(os.getenv("SECURITY_LANES_OPEN", "8"))
+
+
+def default_lanes(terminal: str) -> int:
+    """Open lanes at start-up: ``SECURITY_LANES_OPEN`` if set, else airport.yaml (RC5)."""
+    if os.getenv("SECURITY_LANES_OPEN"):
+        return LANES_PER_TERMINAL
+    from _common.airport_config import load_airport_runtime_config
+    lanes = load_airport_runtime_config().operations.security_lanes_open
+    return int(lanes.get(terminal, LANES_PER_TERMINAL))
 BASE_THROUGHPUT_PER_LANE = 180  # pax/hr
 SA_LANE_THROUGHPUT = 20  # pax/hr — fixed, immune to congestion
 SA_LANE_BREACH_THROUGHPUT = 10  # pax/hr during security_breach
@@ -23,7 +32,7 @@ class SecurityCheckpoint:
 
     def __init__(self, terminal: str, lanes_open: int | None = None):
         self.terminal = terminal
-        self.lanes_open = lanes_open or LANES_PER_TERMINAL
+        self.lanes_open = lanes_open or default_lanes(terminal)
         self.queue: list[str] = []  # passenger IDs in main queue
         self._queue_set: set[str] = set()  # O(1) membership check
         self.sa_queue: list[str] = []  # special assistance queue

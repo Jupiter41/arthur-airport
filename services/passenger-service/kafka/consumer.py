@@ -15,7 +15,6 @@ from _common import kafka_runtime
 import json
 import logging
 import os
-import random
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Callable, Awaitable
@@ -59,7 +58,11 @@ from ml.training import add_training_row, maybe_flush, maybe_retrain
 from services.connections import evaluate_connecting_passengers
 from services.security import SecuritySystem
 from services.reconciliation import (
-    PHYSICAL_STATUSES, FORWARD_FLIGHT_STATUSES, reconciliation_transition,
+    PHYSICAL_STATUSES, FORWARD_FLIGHT_STATUSES, MISSED_FLIGHT_STATUSES,
+    PRE_DEPARTURE_FLIGHT_STATUSES, reconciliation_transition,
+)
+from _common.show_up import (
+    SHOW_UP_WINDOW_START_MIN, is_no_show, security_due, show_up_time,
 )
 from services.spatial import walking_time_to_gate
 from services import wheelchair
@@ -67,7 +70,6 @@ from services.state_machine import (
     get_terminal_for_flight,
     sample_dwell_minutes,
     should_move_to_at_gate,
-    should_move_to_security_queue,
     should_start_boarding,
     should_move_to_baggage_claim,
     should_clear_customs,
@@ -76,7 +78,6 @@ from services.state_machine import (
     zone_for_status,
     BAGGAGE_CLAIM_TIMEOUT_MINUTES,
     BOARDING_RATE_PAX_PER_MIN,
-    CHECKIN_CUTOFF_MINUTES,
     CUSTOMS_DELAY_MINUTES,
     DEPLANING_DELAY_MINUTES,
     GATE_OPEN_MINUTES,
@@ -89,6 +90,7 @@ from metrics import (
     security_lanes_open as m_sec_lanes,
     connections_at_risk as m_connections_at_risk,
     connections_missed_total as m_connections_missed,
+    passengers_missed_flight_total as m_missed_flight,
     passenger_alerts_total as m_passenger_alerts,
     envelope_invalid_total as m_envelope_invalid,
     pax_commands_total as m_commands,
@@ -154,7 +156,6 @@ class PassengerConsumerState:
         self.last_mode: str = "REALTIME"
         self.last_sync_sim_time: datetime | None = None
         # No-show tracking (Phase 1.2)
-        self.noshow_drawn_flights: set[str] = set()  # flights that had no-show draw
         self.noshow_rate: float = 0.03  # 2-4% no-show rate (default 3%)
         # BTS source management
         self.passenger_source: str = os.getenv("PASSENGER_SOURCE", "simulation").lower()
@@ -770,11 +771,14 @@ _TICK_CODEC = SnapshotCodec(
         "last_tick_sim_time", "sim_day", "security", "security_enqueued",
         "airside_transitioned", "baggage_collected", "passengers_at_carousel",
         "flight_carousel_zone", "current_mode", "last_mode", "last_sync_sim_time",
-        "noshow_drawn_flights", "tick_counter",
+        "tick_counter",
     ),
     publish_fields=(
         "alerts", "at_risk_connections", "cached_flights_next_90", "cached_pax_next_90",
     ),
+    # RC5: the no-show draw is a deterministic per-passenger hash, so the
+    # ever-growing per-flight "drawn" set is no longer checkpointed.
+    retired_fields=("noshow_drawn_flights",),
 )
 
 
@@ -1021,9 +1025,6 @@ async def _maybe_emit_bulk_snapshot(sim_time: datetime) -> None:
     logger.info("BulkStateSnapshot emitted (pax): %s", summary.get("by_status", {}))
 
 
-CHECKIN_OPEN_MINUTES = 120  # Passengers arrive at check-in T-120 min before departure
-
-
 async def _empty_contribution() -> "TickContribution":
     return TickContribution()
 
@@ -1104,22 +1105,27 @@ async def _reconcile_flight_passengers(sim_time: datetime) -> TickContribution:
 async def _advance_booked_to_checkin(
     sim_time: datetime, delta_minutes: int = 1
 ) -> TickContribution:
-    """Compute booked → checked_in transitions at T-120 (check-in opens).
+    """Compute booked → checked_in (or no-show) transitions, per passenger (RC5).
 
-    Batched: up to MAX_CHECKIN_PER_TICK passengers per tick to simulate
-    gradual arrival at the airport.  Scales with ``delta_minutes`` so that
-    high-speed tick skipping doesn't reduce throughput. Returns the intended
-    transitions (G1-a); the caller commits them in the single tick transaction.
+    Each departing passenger arrives at their own ``show_up_at`` (drawn at seed
+    time from Beta(3,2) over [T-180, T-45]); there is no flight-wide release.
+    At show-up, the passenger's single deterministic no-show draw is taken over
+    the whole booked cohort: a no-show goes straight to ``departed_airport``
+    (zone ``no-show``) and never enters the airport. Only flights still on the
+    ground and open are eligible. Capped at MAX_CHECKIN_PER_TICK per tick
+    (scaled by ``delta_minutes``); the remainder is picked up next tick.
     """
+    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     plan = TickContribution()
     MAX_CHECKIN_PER_TICK = 200 * delta_minutes
 
-    # Only flights whose check-in has opened (T-120) can move a passenger; a
-    # wider window was read and discarded every tick.
-    cutoff = (sim_time + timedelta(minutes=CHECKIN_OPEN_MINUTES)).isoformat()
+    # Earliest show-up is T-180; only passengers already due are read.
+    cutoff = (sim_time + timedelta(minutes=SHOW_UP_WINDOW_START_MIN)).isoformat()
     try:
         pax_list = await get_passengers_by_status(
-            "booked", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
+            "booked", scheduled_before=cutoff,
+            flight_statuses=list(PRE_DEPARTURE_FLIGHT_STATUSES),
+            due_field="show_up_at", due_at=sim_time.isoformat(), include_missing_due=True,
         )
     except Exception as e:
         if current_tick.get() is not None:
@@ -1127,86 +1133,71 @@ async def _advance_booked_to_checkin(
         logger.error("Failed to get booked passengers: %s", e)
         return plan
 
-    # Group by flight
-    flights: dict[str, list[dict]] = {}
-    for pax in pax_list:
-        fid = pax.get("flight_id") or ""
-        flights.setdefault(fid, []).append(pax)
-
+    checkin_ids: dict[str, list[str]] = {}
+    noshow_ids: list[str] = []
     total_moved = 0
-
-    for flight_id, pax_group in flights.items():
-        if not pax_group:
-            continue
+    for pax in pax_list:
         if total_moved >= MAX_CHECKIN_PER_TICK:
             break
-        sample = pax_group[0]
-        scheduled = sample.get("scheduled_time") or sample.get("estimated_time")
-        if not scheduled:
+        if pax.get("direction", "departure") != "departure":
             continue
-        direction = sample.get("direction", "departure")
-        if direction != "departure":
+        scheduled = pax.get("scheduled_time") or pax.get("estimated_time")
+        show_up = show_up_time(pax["id"], scheduled, pax.get("show_up_at"))
+        if show_up is None or sim_time < show_up:
             continue
-
-        try:
-            sched_dt = datetime.fromisoformat(str(scheduled)).replace(tzinfo=None)
-        except (ValueError, TypeError):
+        total_moved += 1
+        if is_no_show(pax["id"], _state.noshow_rate):
+            noshow_ids.append(pax["id"])
             continue
-
-        if sim_time < sched_dt - timedelta(minutes=CHECKIN_OPEN_MINUTES):
-            continue
-
-        terminal = get_terminal_for_flight(
-            sample.get("gate_id"), sample.get("terminal_id"), flight_id
-        )
+        flight_id = pax.get("flight_id") or ""
+        terminal = get_terminal_for_flight(pax.get("gate_id"), pax.get("terminal_id"), flight_id)
         new_zone = f"check-in-{terminal}"
+        checkin_ids.setdefault(new_zone, []).append(pax["id"])
+        move_passenger(None, new_zone)
+        # 1C — register SA passengers with the wheelchair pool on check-in.
+        if pax.get("special_assistance"):
+            try:
+                await wheelchair.request(
+                    terminal=terminal,
+                    passenger_id=pax["id"],
+                    sim_time=sim_time,
+                    scheduled_dep_iso=str(scheduled) if scheduled else None,
+                    flight_id=flight_id,
+                    name=pax.get("name"),
+                )
+            except Exception as exc:
+                if current_tick.get() is not None:
+                    raise
+                logger.warning("wheelchair request failed for %s: %s", pax["id"], exc)
 
-        remaining = MAX_CHECKIN_PER_TICK - total_moved
-        batch = pax_group[:remaining]
-        ids = [p["id"] for p in batch]
-        plan.groups.append({"ids": ids, "status": "checked_in", "zone": new_zone})
-        for pax in batch:
-            move_passenger(None, new_zone)
-            # 1C — register SA passengers with the wheelchair pool on check-in.
-            if pax.get("special_assistance"):
-                try:
-                    await wheelchair.request(
-                        terminal=terminal,
-                        passenger_id=pax["id"],
-                        sim_time=sim_time,
-                        scheduled_dep_iso=str(scheduled) if scheduled else None,
-                        flight_id=flight_id,
-                        name=pax.get("name"),
-                    )
-                except Exception as exc:
-                    if current_tick.get() is not None:
-                        raise
-                    logger.warning("wheelchair request failed for %s: %s", pax["id"], exc)
-        total_moved += len(batch)
-
+    for zone, ids in checkin_ids.items():
+        plan.groups.append({"ids": ids, "status": "checked_in", "zone": zone})
+    if noshow_ids:
+        plan.groups.append({"ids": noshow_ids, "status": "departed_airport", "zone": "no-show"})
+        logger.info("No-shows at show-up time: %d passengers", len(noshow_ids))
     return plan
 
 
 async def _advance_checkin_to_security(
     sim_time: datetime, delta_minutes: int = 1
 ) -> TickContribution:
-    """Compute checked_in → security_queue transitions at T-45.
+    """Compute checked_in → security_queue transitions, per passenger (RC5).
 
-    Batched: moves up to MAX_CHECKIN_TO_SECURITY_PER_TICK passengers per tick
-    across all flights to prevent security queue overload.  Scales with
-    ``delta_minutes`` so high-speed tick skipping doesn't reduce throughput.
+    A passenger joins security ``CHECKIN_PROCESS_MINUTES`` after showing up, or
+    at check-in close (T-45) if that comes first — never as a whole flight.
+    Capped at MAX_CHECKIN_TO_SECURITY_PER_TICK (scaled by ``delta_minutes``).
     The in-memory SecuritySystem enqueue stays inline (derived state, rebuildable
     from Neo4j); the DB status write + facts are returned for the atomic commit.
     """
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     plan = TickContribution()
-    MAX_CHECKIN_TO_SECURITY_PER_TICK = 80 * delta_minutes  # ~80 pax/min across all terminals
+    MAX_CHECKIN_TO_SECURITY_PER_TICK = 150 * delta_minutes
 
-    # Only flights past check-in cutoff (T-45, should_move_to_security_queue).
-    cutoff = (sim_time + timedelta(minutes=CHECKIN_CUTOFF_MINUTES)).isoformat()
+    cutoff = (sim_time + timedelta(minutes=SHOW_UP_WINDOW_START_MIN)).isoformat()
     try:
         pax_list = await get_passengers_by_status(
-            "checked_in", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
+            "checked_in", scheduled_before=cutoff,
+            flight_statuses=list(PRE_DEPARTURE_FLIGHT_STATUSES),
         )
     except Exception as e:
         if current_tick.get() is not None:
@@ -1214,62 +1205,32 @@ async def _advance_checkin_to_security(
         logger.error("Failed to get checked_in passengers: %s", e)
         return plan
 
-    # Group by flight for batched processing
-    flights: dict[str, list[dict]] = {}
-    for pax in pax_list:
-        fid = pax.get("flight_id") or ""
-        flights.setdefault(fid, []).append(pax)
-
+    ids_by_zone: dict[str, list[str]] = {}
     total_moved = 0
-
-    for flight_id, pax_group in flights.items():
-        if not pax_group:
-            continue
+    for pax in pax_list:
         if total_moved >= MAX_CHECKIN_TO_SECURITY_PER_TICK:
             break
-
-        # Use first passenger's flight info (same flight)
-        sample = pax_group[0]
-        scheduled = sample.get("scheduled_time") or sample.get("estimated_time")
-        if not scheduled:
+        if pax.get("direction", "departure") != "departure":
             continue
-
-        # Only departure flights
-        direction = sample.get("direction", "departure")
-        if direction != "departure":
+        pid = pax["id"]
+        if pid in _state.security_enqueued:
             continue
-
-        if not should_move_to_security_queue(sim_time, scheduled):
+        scheduled = pax.get("scheduled_time") or pax.get("estimated_time")
+        show_up = show_up_time(pid, scheduled, pax.get("show_up_at"))
+        if show_up is None or not security_due(show_up, scheduled, sim_time):
             continue
-
         terminal = get_terminal_for_flight(
-            sample.get("gate_id"), sample.get("terminal_id"), flight_id
+            pax.get("gate_id"), pax.get("terminal_id"), pax.get("flight_id") or ""
         )
+        _state.security_enqueued.add(pid)
+        _state.security.enqueue(terminal, pid, bool(pax.get("special_assistance")))
+        new_zone = f"security-{terminal}"
+        ids_by_zone.setdefault(new_zone, []).append(pid)
+        move_passenger(pax.get("location_zone") or f"check-in-{terminal}", new_zone)
+        total_moved += 1
 
-        ids_to_move = []
-        for pax in pax_group:
-            if total_moved >= MAX_CHECKIN_TO_SECURITY_PER_TICK:
-                break
-            pid = pax["id"]
-            if pid in _state.security_enqueued:
-                continue
-            _state.security_enqueued.add(pid)
-            is_sa = bool(pax.get("special_assistance"))
-            _state.security.enqueue(terminal, pid, is_sa)
-            ids_to_move.append(pid)
-            total_moved += 1
-
-        if ids_to_move:
-            new_zone = f"security-{terminal}"
-            plan.groups.append(
-                {"ids": ids_to_move, "status": "security_queue", "zone": new_zone}
-            )
-
-            for pax in pax_group:
-                if pax["id"] in ids_to_move:
-                    old_zone = pax.get("location_zone") or f"check-in-{terminal}"
-                    move_passenger(old_zone, new_zone)
-
+    for zone, ids in ids_by_zone.items():
+        plan.groups.append({"ids": ids, "status": "security_queue", "zone": zone})
     return plan
 
 
@@ -1418,8 +1379,10 @@ async def _advance_airside_to_gate(sim_time: datetime) -> TickContribution:
     # estimate never precedes the schedule, so this scheduled bound is a superset.
     cutoff = (sim_time + timedelta(minutes=GATE_OPEN_MINUTES)).isoformat()
     try:
+        # RC5: nobody walks to the gate of a flight that has already left.
         pax_list = await get_passengers_by_status(
-            "airside", scheduled_before=cutoff, flight_statuses=list(FORWARD_FLIGHT_STATUSES),
+            "airside", scheduled_before=cutoff,
+            flight_statuses=list(PRE_DEPARTURE_FLIGHT_STATUSES),
         )
     except Exception as e:
         if current_tick.get() is not None:
@@ -1484,21 +1447,22 @@ async def _advance_airside_to_gate(sim_time: datetime) -> TickContribution:
 async def _advance_boarding(
     sim_time: datetime, delta_minutes: int = 1
 ) -> TickContribution:
-    """Compute at_gate → boarded (and no-show → departed_airport) transitions.
+    """Compute at_gate → boarded transitions, gated by the aircraft (RC5).
 
-    Progressive boarding at BOARDING_RATE. The once-per-flight no-show random
-    draw and in-memory zone bookkeeping stay inline (a replayed tick is skipped
-    wholesale before this runs, so the draw never repeats); the DB status writes +
-    facts are returned for the atomic tick commit (G1-a).
+    Progressive boarding at BOARDING_RATE while the flight is still
+    ``scheduled`` / ``boarding`` / ``delayed`` and the boarding call is due.
+    Nobody boards a departed, taxiing or airborne aircraft: passengers left at
+    the gate become ``missed_flight`` on ``FlightStatusChanged(departed)``. The
+    no-show draw happens at show-up time over the whole cohort, not here. The DB
+    status writes + facts are returned for the atomic tick commit (G1-a).
     """
-    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     plan = TickContribution()
     # Time-window: only passengers with flights departing within next 1.5 hours
     cutoff = (sim_time + timedelta(hours=1, minutes=30)).isoformat()
     try:
         pax_list = await get_passengers_by_status(
             "at_gate", scheduled_before=cutoff,
-            flight_statuses=["boarding", "scheduled", "delayed", "airborne", "departed", "taxiing"],
+            flight_statuses=list(PRE_DEPARTURE_FLIGHT_STATUSES),
         )
     except Exception as e:
         if current_tick.get() is not None:
@@ -1520,47 +1484,9 @@ async def _advance_boarding(
         sample = pax_group[0]
         estimated = sample.get("estimated_time")
         flight_status = sample.get("flight_status", "scheduled")
-
-        if not estimated:
+        if not estimated or not should_start_boarding(sim_time, estimated, flight_status):
             continue
-
-        # P1-2-3: No-show draw — once per flight when boarding starts
-        if flight_id not in _state.noshow_drawn_flights:
-            boarding_eligible = (
-                should_start_boarding(sim_time, estimated, flight_status)
-                or flight_status in ("airborne", "departed", "taxiing")
-            )
-            if boarding_eligible:
-                _state.noshow_drawn_flights.add(flight_id)
-                noshow_ids: set[str] = set()
-                noshow_rate = _state.noshow_rate
-                for pax in pax_group:
-                    if random.random() < noshow_rate:
-                        noshow_ids.add(pax["id"])
-                if noshow_ids:
-                    noshow_move_ids: list[str] = []
-                    for pax in pax_group:
-                        if pax["id"] in noshow_ids:
-                            old_zone = pax.get("location_zone") or ""
-                            noshow_move_ids.append(pax["id"])
-                            remove_passenger(old_zone)
-                    if noshow_move_ids:
-                        plan.groups.append({
-                            "ids": noshow_move_ids,
-                            "status": "departed_airport",
-                            "zone": "no-show",
-                        })
-                    pax_group = [p for p in pax_group if p["id"] not in noshow_ids]
-                    logger.info("No-shows on flight %s: %d passengers", flight_id, len(noshow_ids))
-
-        # If flight is already airborne/departed, bulk-board all remaining pax
-        if flight_status in ("airborne", "departed", "taxiing"):
-            to_board = pax_group
-        elif should_start_boarding(sim_time, estimated, flight_status):
-            # Board up to BOARDING_RATE × delta passengers per tick
-            to_board = pax_group[:boarding_rate]
-        else:
-            continue
+        to_board = pax_group[:boarding_rate]
 
         ids = [p["id"] for p in to_board]
         gate_id = sample.get("gate_id")
@@ -1930,17 +1856,57 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime, event_id:
                 facts.append({"id": fact["event_id"], "document": fact})
                 bookkeeping.append(("remove", pax.get("location_zone") or ""))
 
+        # RC5: the aircraft left without everyone not yet boarded. They miss the
+        # flight; nothing boards them afterwards.
+        missed = [pax for pax in pax_list if pax.get("status") in MISSED_FLIGHT_STATUSES]
+        if missed:
+            missed_ids = [p["id"] for p in missed]
+            groups.append({"ids": missed_ids, "status": "missed_flight", "zone": "missed-flight"})
+            for pax in missed:
+                fact = build_passenger_status_changed_fact(
+                    passenger_id=pax["id"],
+                    name=pax.get("name", ""),
+                    previous_status=pax.get("status", "at_gate"),
+                    new_status="missed_flight",
+                    location_zone="missed-flight",
+                    sim_time=sim_time,
+                    flight_id=flight_id,
+                )
+                facts.append({"id": fact["event_id"], "document": fact})
+                if pax.get("status") != "booked":
+                    bookkeeping.append(("remove", pax.get("location_zone") or ""))
+                bookkeeping.append(("missed", pax["id"], bool(pax.get("special_assistance"))))
+
     if groups:
         applied = await apply_status_change_atomic(event_id, groups, facts, sim_time)
         if applied:
+            missed_ids: set[str] = set()
             for item in bookkeeping:
                 if item[0] == "move":
                     move_passenger(item[1], item[2])
+                elif item[0] == "missed":
+                    missed_ids.add(item[1])
+                    m_missed_flight.inc()
+                    if item[2]:
+                        try:
+                            await wheelchair.release(item[1], sim_time)
+                        except Exception as exc:
+                            logger.debug("wheelchair release failed: %s", exc)
                 else:
                     remove_passenger(item[1])
-            if departed_count:
+            if missed_ids:
+                # Derived queue membership (rebuildable): drop the missed cohort.
+                for cp in _state.security.checkpoints.values():
+                    cp.queue = [pid for pid in cp.queue if pid not in missed_ids]
+                    cp.sa_queue = [pid for pid in cp.sa_queue if pid not in missed_ids]
+                    cp._queue_set.difference_update(missed_ids)
+                    cp._sa_queue_set.difference_update(missed_ids)
+                _state.security_enqueued.difference_update(missed_ids)
+                _state.airside_transitioned.difference_update(missed_ids)
+            if departed_count or missed_ids:
                 logger.info(
-                    "Flight %s departed: %d passengers departed_airport", flight_id, departed_count
+                    "Flight %s departed: %d passengers departed_airport, %d missed_flight",
+                    flight_id, departed_count, len(missed_ids),
                 )
 
     # Delay: update load factor

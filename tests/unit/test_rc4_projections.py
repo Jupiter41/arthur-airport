@@ -199,7 +199,11 @@ def test_reconciliation_only_sees_flights_finished_in_the_consumed_stream(monkey
     ])
     db, _ = _passenger_db(monkeypatch, [])
     groups = {g["fid"]: g["statuses"] for g in db.reconciliation_groups(NOW)}
-    assert groups == {"DEP": ["boarded"], "ARR": ["airborne", "booked", "checked_in", "boarded"]}
+    # RC5: a departed flight also recovers everyone it left behind (→ missed_flight).
+    assert groups == {
+        "DEP": ["boarded", "booked", "checked_in", "security_queue", "airside", "at_gate"],
+        "ARR": ["airborne", "booked", "checked_in", "boarded"],
+    }
 
 
 def test_departure_window_comes_from_the_view(monkeypatch):

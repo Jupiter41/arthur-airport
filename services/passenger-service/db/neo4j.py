@@ -39,6 +39,7 @@ INDEXES = [
     "CREATE INDEX wheelchair_assignment_requested IF NOT EXISTS FOR (a:WheelchairAssignment) ON (a.requested_at)",
     # RC1 retention: seek finished passengers by age, and age out archives/markers.
     "CREATE INDEX passenger_departed_at IF NOT EXISTS FOR (p:Passenger) ON (p.departed_airport_at)",
+    "CREATE INDEX passenger_missed_flight_at IF NOT EXISTS FOR (p:Passenger) ON (p.missed_flight_at)",
     "CREATE INDEX passenger_archive_at IF NOT EXISTS FOR (p:PassengerArchive) ON (p.archived_at)",
     "CREATE INDEX passenger_archive_id IF NOT EXISTS FOR (p:PassengerArchive) ON (p.id)",
     "CREATE INDEX passengerinbox_seen_at IF NOT EXISTS FOR (i:PassengerInbox) ON (i.seen_at)",
@@ -180,7 +181,7 @@ async def get_passenger_by_id(passenger_id: str) -> dict | None:
         .seat, .connection, .connection_flight_id, .special_assistance,
         .checked_in_at, .security_queue_at, .airside_at, .at_gate_at,
         .boarded_at, .deplaning_at, .baggage_claim_at, .departed_airport_at,
-        .dwell_minutes, .connection_risk
+        .missed_flight_at, .show_up_at, .dwell_minutes, .connection_risk
     } AS passenger,
     f { .id, .flight_number, .status, .estimated_time, .scheduled_time } AS flight,
     g.id AS gate_id,
@@ -208,6 +209,7 @@ async def get_passenger_by_id(passenger_id: str) -> dict | None:
             ("deplaning", "deplaning_at"),
             ("baggage_claim", "baggage_claim_at"),
             ("departed_airport", "departed_airport_at"),
+            ("missed_flight", "missed_flight_at"),
         ]:
             ts = pax.get(ts_key)
             if ts:
@@ -255,6 +257,7 @@ _VALID_STATUSES = frozenset({
     "booked", "checked_in", "security_queue", "airside", "at_gate",
     "boarded", "deplaning", "customs", "baggage_claim", "departed_airport",
     "missed_connection", "disrupted", "no_show", "cancelled",
+    "missed_flight",  # RC5: flight departed before the passenger boarded
 })
 
 
@@ -717,7 +720,8 @@ def reconciliation_groups(sim_time: datetime) -> list[dict]:
         if direction == "departure" and status in ("arrived", "completed"):
             statuses = _RECON_LIVE
         elif direction == "departure" and status in ("departed", "airborne"):
-            statuses = ["boarded"]
+            # RC5: boarded → departed_airport; anyone not boarded → missed_flight.
+            statuses = ["boarded", "booked", "checked_in", "security_queue", "airside", "at_gate"]
         elif direction == "arrival" and status in ("at_gate", "arrived", "completed", "diverted"):
             statuses = ["airborne", "booked", "checked_in", "boarded"]
         else:
@@ -759,7 +763,7 @@ async def get_reconciliation_candidates(sim_time: datetime, limit: int = 2000) -
 
 
 # Passenger timestamps a caller may bound a read by (never interpolate input).
-_DUE_FIELDS = frozenset({"deplaning_at", "customs_at", "baggage_claim_at"})
+_DUE_FIELDS = frozenset({"deplaning_at", "customs_at", "baggage_claim_at", "show_up_at"})
 
 
 async def get_passengers_by_status(
@@ -770,6 +774,7 @@ async def get_passengers_by_status(
     due_field: str | None = None,
     due_at: str | None = None,
     include_ids: list[str] | None = None,
+    include_missing_due: bool = False,
 ) -> list[dict]:
     """Read matching passengers, optionally only on flights in given states.
 
@@ -777,7 +782,8 @@ async def get_passengers_by_status(
     returned flight fields come from the event-fed FlightView; the graph is only
     traversed by flight identity (``ON_FLIGHT``). ``due_field``/``due_at`` keep
     only passengers whose ``due_field`` timestamp is at or before ``due_at``
-    (plus any ``include_ids``). Timestamps are naive fixed-width ISO strings.
+    (plus any ``include_ids``, and rows without the field when
+    ``include_missing_due``). Timestamps are naive fixed-width ISO strings.
     """
     from _common.flight_view import VIEW
     params: dict = {"status": status}
@@ -798,7 +804,8 @@ async def get_passengers_by_status(
             raise ValueError(f"unsupported due filter: {due_field!r}")
         params["due_at"] = due_at
         params["include_ids"] = list(include_ids or [])
-        start += f" WITH p, f WHERE p.{due_field} <= $due_at OR p.id IN $include_ids "
+        missing = f" OR p.{due_field} IS NULL" if include_missing_due else ""
+        start += f" WITH p, f WHERE p.{due_field} <= $due_at OR p.id IN $include_ids{missing} "
     query = start + """
         RETURN p.id AS id, p.name AS name, f.id AS flight_id,
                p.special_assistance AS special_assistance,
@@ -808,6 +815,7 @@ async def get_passengers_by_status(
                p.deplaning_at AS deplaning_at,
                p.baggage_claim_at AS baggage_claim_at,
                p.customs_at AS customs_at,
+               p.show_up_at AS show_up_at,
                p.connection AS connection,
                p.connection_flight_id AS connection_flight_id
     """
@@ -826,6 +834,8 @@ async def get_boarding_counts(flight_ids: list[str]) -> list[dict]:
     CALL {
       WITH f
       MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
+      // RC5: no-shows never came to the airport and are off the manifest.
+      WHERE NOT (p.status = 'departed_airport' AND p.location_zone = 'no-show')
       RETURN count(p) AS total, sum(CASE WHEN p.status = 'boarded' THEN 1 ELSE 0 END) AS boarded
     }
     RETURN f.id AS flight_id, total, boarded

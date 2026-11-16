@@ -9,6 +9,11 @@ FORWARD_FLIGHT_STATUSES = (
     "scheduled", "boarding", "delayed", "departed", "airborne",
     "approach", "landed", "taxiing", "at_gate",
 )
+# RC5: a departing passenger only progresses toward a flight still on the ground
+# and open. Nobody checks in, clears to the gate or boards after departure.
+PRE_DEPARTURE_FLIGHT_STATUSES = ("scheduled", "boarding", "delayed")
+# Statuses that become ``missed_flight`` when the flight departs without them.
+MISSED_FLIGHT_STATUSES = ("booked", "checked_in", "security_queue", "airside", "at_gate")
 
 
 def reconciliation_transition(pax: dict, sim_time: datetime) -> tuple[str, str] | None:
@@ -27,9 +32,12 @@ def reconciliation_transition(pax: dict, sim_time: datetime) -> tuple[str, str] 
         return None
     status, flight = pax.get("status"), pax.get("flight_status")
     if pax.get("direction") == "departure":
-        if flight in ("arrived", "completed") and status in (
-            "booked", "checked_in", "security_queue", "airside", "at_gate", "boarded", "airborne",
-        ):
+        left = flight in ("departed", "airborne", "approach", "landed", "taxiing",
+                          "at_gate", "arrived", "completed")
+        if left and status in MISSED_FLIGHT_STATUSES:
+            # RC5: the aircraft left without them — never board them afterwards.
+            return "missed_flight", "missed-flight"
+        if flight in ("arrived", "completed") and status in ("boarded", "airborne"):
             return "departed_airport", "flight-finished"
         if flight in ("departed", "airborne") and status == "boarded":
             return "departed_airport", "departed"

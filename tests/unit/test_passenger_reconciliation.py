@@ -13,8 +13,12 @@ NOW = datetime(2024, 7, 6, 9)
 
 
 @pytest.mark.parametrize("direction,flight,status,expected", [
-    ("departure", "arrived", "at_gate", ("departed_airport", "flight-finished")),
-    ("departure", "completed", "airside", ("departed_airport", "flight-finished")),
+    # RC5: never boarded before the aircraft left → missed the flight.
+    ("departure", "arrived", "at_gate", ("missed_flight", "missed-flight")),
+    ("departure", "completed", "airside", ("missed_flight", "missed-flight")),
+    ("departure", "departed", "security_queue", ("missed_flight", "missed-flight")),
+    ("departure", "airborne", "booked", ("missed_flight", "missed-flight")),
+    ("departure", "arrived", "boarded", ("departed_airport", "flight-finished")),
     ("departure", "airborne", "boarded", ("departed_airport", "departed")),
     ("departure", "boarding", "at_gate", None),
     ("departure", "arrived", "departed_airport", None),
@@ -54,8 +58,8 @@ def test_recovery_batches_transitions_without_resurrecting_security_membership(m
     }]))
     plan = asyncio.run(consumer._reconcile_flight_passengers(NOW))
     # RC3: recovery is published once, inside the tick batch, with its reason.
-    assert plan.groups == [{"ids": ["stranded"], "status": "departed_airport",
-                            "zone": "flight-finished",
+    assert plan.groups == [{"ids": ["stranded"], "status": "missed_flight",
+                            "zone": "missed-flight",
                             "reconciliation_reason": "persisted_flight_state"}]
     assert plan.facts == []
     assert state.security.get("A").queue_depth == 0

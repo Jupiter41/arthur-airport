@@ -1,6 +1,7 @@
 """Passenger lifecycle retention (RC1): archive departed passengers, purge archives.
 
-A passenger is finished once ``departed_airport`` (both directions end there).
+A passenger is finished once ``departed_airport`` (both directions end there) or
+``missed_flight`` (the departure left without them, RC5).
 Archival swaps ``Passenger`` → ``PassengerArchive`` ``RETENTION_ARCHIVE_AFTER_H``
 simulated hours after ``departed_airport_at``; relationships (``ON_FLIGHT``,
 ``CARRIES``) are kept so per-flight history counts still resolve. See
@@ -18,12 +19,20 @@ from db.neo4j import get_driver
 PRODUCER = "passenger-service"
 
 
-async def archive_departed(archive_before: str, sim_time: datetime, batch: int) -> int:
-    """Archive one batch of passengers that left the airport before ``archive_before``."""
+# Terminal status → the timestamp it stamps (``<status>_at``).
+FINISHED = {"departed_airport": "departed_airport_at", "missed_flight": "missed_flight_at"}
+
+
+async def archive_departed(
+    archive_before: str, sim_time: datetime, batch: int, status: str = "departed_airport"
+) -> int:
+    """Archive one batch of finished passengers (``departed_airport`` / ``missed_flight``)."""
+    at_field = FINISHED[status]
+
     async def apply(tx) -> int:
         rows = await (await tx.run(
-            "MATCH (p:Passenger) WHERE p.departed_airport_at < $before "
-            "AND p.status = 'departed_airport' "
+            f"MATCH (p:Passenger) WHERE p.{at_field} < $before "
+            f"AND p.status = '{status}' "
             "WITH p LIMIT $batch "
             "REMOVE p:Passenger SET p:PassengerArchive, p.archived_at = $at "
             "RETURN p.id AS id",
@@ -76,7 +85,13 @@ def tasks(sim_time: Callable[[], datetime | None], batch: int | None = None) -> 
     async def passenger_prune_inbox() -> int:
         return await retention.prune_inbox(get_driver, "PassengerInbox", batch=batch)
 
-    return [passenger_archive_departed, passenger_purge_archive, passenger_prune_inbox]
+    async def passenger_archive_missed_flight() -> int:
+        now = sim_time()
+        before, _ = retention.cutoffs(now)
+        return await archive_departed(before, now, batch, "missed_flight") if before else 0
+
+    return [passenger_archive_departed, passenger_purge_archive, passenger_prune_inbox,
+            passenger_archive_missed_flight]
 
 
 async def setup() -> None:

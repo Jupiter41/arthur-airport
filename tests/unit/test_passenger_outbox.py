@@ -221,7 +221,8 @@ def test_flight_departed_stages_facts_atomically_without_direct_emit(monkeypatch
     monkeypatch.setattr(consumer, "get_passengers_by_flight", AsyncMock(return_value=[
         {"id": "p1", "name": "A", "status": "boarded", "location_zone": "gate-1"},
         {"id": "p2", "name": "B", "status": "boarded", "location_zone": "gate-1"},
-        {"id": "p3", "name": "C", "status": "airside", "location_zone": "hall"},  # not eligible
+        {"id": "p3", "name": "C", "status": "airside", "location_zone": "hall"},  # RC5: missed
+        {"id": "p4", "name": "D", "status": "departed_airport", "location_zone": "no-show"},
     ]))
     # A direct Kafka emit on the canonical path would be a regression.
     monkeypatch.setattr(consumer, "emit_passenger_status_changed",
@@ -231,10 +232,10 @@ def test_flight_departed_stages_facts_atomically_without_direct_emit(monkeypatch
     asyncio.run(consumer._on_flight_status_changed(payload, SIM_TIME, "flight-evt-1"))
 
     assert set(driver.db["inbox"]) == {"flight-evt-1"}
-    assert len(driver.db["outbox"]) == 2  # only the two boarded passengers
+    assert len(driver.db["outbox"]) == 3  # two boarded + one missed; the no-show is untouched
     docs = [json.loads(row["document"]) for row in driver.db["outbox"].values()]
     assert all(d["event_type"] == "PassengerStatusChanged" for d in docs)
-    assert {d["payload"]["new_status"] for d in docs} == {"departed_airport"}
-    assert {d["payload"]["passenger_id"] for d in docs} == {"p1", "p2"}
+    outcome = {d["payload"]["passenger_id"]: d["payload"]["new_status"] for d in docs}
+    assert outcome == {"p1": "departed_airport", "p2": "departed_airport", "p3": "missed_flight"}
     # publish_confirmed exists and is wired for the delivery loop.
     assert callable(producer.publish_confirmed)

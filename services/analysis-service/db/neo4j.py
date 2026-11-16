@@ -99,7 +99,7 @@ async def query_connection_clusters(min_cluster_size: int = 5, *, tx=None) -> li
             MATCH (p:Passenger {connection: true})-[:ON_FLIGHT]->(inbound:Flight)
             WHERE inbound.direction = 'arrival'
               AND inbound.delay_minutes > 0
-              AND NOT p.status IN ['boarded', 'departed_airport', 'missed_connection']
+              AND NOT p.status IN ['boarded', 'departed_airport', 'missed_connection', 'missed_flight']
             MATCH (outbound:Flight {id: p.connection_flight_id})
             WHERE outbound.id <> inbound.id AND outbound.direction = 'departure'
               AND outbound.status IN ['scheduled', 'boarding']
