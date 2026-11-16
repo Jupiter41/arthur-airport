@@ -80,6 +80,39 @@ async def restore_owner_checkpoint(
     return True
 
 
+def catch_up_times(last: datetime | None, target: datetime, max_step_minutes: int) -> list[datetime]:
+    """Split a coalesced clock gap into bounded owner ticks ending at ``target``.
+
+    A consumer that falls behind receives only the latest SimClockTick. Applying
+    a multi-hour gap as one tick moves tens of thousands of entities in a single
+    transaction, which can exhaust Neo4j's shared transaction memory and then
+    fail on every retry, so the owner never recovers. Bounded steps keep each
+    transaction the size of a normal tick.
+    """
+    from datetime import timedelta
+    if last is None or target <= last or max_step_minutes < 1:
+        return [target]
+    step = timedelta(minutes=max_step_minutes)
+    times: list[datetime] = []
+    cursor = last
+    while target - cursor > step:
+        cursor += step
+        times.append(cursor)
+    times.append(target)
+    return times
+
+
+def _in_sync(state: Any, stored_last_tick: str | None) -> bool:
+    """True when ``state`` already reflects the committed checkpoint tick."""
+    if not stored_last_tick:
+        return False
+    local = getattr(state, "last_tick_sim_time", None)
+    if local is None:
+        return False
+    local_iso = local.isoformat() if isinstance(local, datetime) else str(local)
+    return local_iso == stored_last_tick
+
+
 async def run_tick(
     runtime_label: str, outbox_label: str, state: Any, codec: Checkpoint,
     get_driver: Callable[[], Any], advance: Callable[[dict, datetime], Awaitable[None]],
@@ -105,7 +138,11 @@ async def run_tick(
         candidate = copy(state)
         for key in (*codec.fields, *getattr(codec, "publish_fields", ())):
             setattr(candidate, key, deepcopy(getattr(state, key)))
-        if row and row["document"]:
+        if row and row["document"] and not _in_sync(state, row["last_tick"]):
+            # Only a process whose memory is not the committed checkpoint (another
+            # writer, or a tick whose commit outcome was lost) needs the decode.
+            # In steady state the in-memory state *is* the last committed
+            # document, and re-decoding it cost a full parse per tick.
             codec.restore(candidate, row["document"])
         scope = TickScope(tx, candidate)
         token = current.set(scope)

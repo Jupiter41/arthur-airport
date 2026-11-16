@@ -685,7 +685,16 @@ async def get_reconciliation_candidates(sim_time: datetime, limit: int = 2000) -
     query = """
     MATCH (p:Passenger) USING INDEX p:Passenger(status)
     WHERE p.status IN ['booked','checked_in','security_queue','airside','at_gate','boarded','airborne']
-    WITH p MATCH (p)-[:ON_FLIGHT]->(f:Flight)
+    // The subquery pins expansion to start from each live passenger. Without it
+    // the planner picks a NodeHashJoin that expands every passenger of every
+    // historical (arrived) departure, which exceeded Neo4j's transaction
+    // memory pool once a few weeks of history had accumulated.
+    CALL {
+      WITH p
+      MATCH (p)-[:ON_FLIGHT]->(f:Flight)
+      RETURN f
+    }
+    WITH p, f
     WHERE f.scheduled_time <= $now
       AND (CASE WHEN f.actual_time IS NOT NULL AND f.actual_time <> ''
                 THEN f.actual_time ELSE f.scheduled_time END) <= $now

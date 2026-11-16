@@ -187,3 +187,63 @@ def test_replayed_tick_reconciles_new_external_input_without_reapplying_domain()
     assert list(original.queue) == ["new external input"]
     assert original.counter == 1
     assert driver.data == before
+
+
+class CountingCodec(SnapshotCodec):
+    """Records how often the stored checkpoint is decoded."""
+
+    def __init__(self):
+        super().__init__((), ("queue", "counter", "last_tick_sim_time"))
+        self.restores = 0
+
+    def restore(self, state, document):
+        self.restores += 1
+        super().restore(state, document)
+
+
+def test_in_sync_owner_skips_checkpoint_decode_but_stale_owner_restores():
+    driver, owner, codec = Driver(), state(), CountingCodec()
+    async def advance(payload, clock):
+        scope = current.get()
+        scope.state.counter += 1
+        scope.state.last_tick_sim_time = clock
+    for minute in (1, 2, 3):
+        asyncio.run(run_tick("TestRuntime", "TestOutbox", owner, codec,
+                             lambda: driver, advance, {}, NOW.replace(minute=minute)))
+    # Steady state: memory already is the committed checkpoint, so no re-decode.
+    assert codec.restores == 0 and owner.counter == 3
+    # A second owner instance (stale memory) must adopt the committed checkpoint.
+    stale = state()
+    asyncio.run(run_tick("TestRuntime", "TestOutbox", stale, codec,
+                         lambda: driver, advance, {}, NOW.replace(minute=4)))
+    assert codec.restores == 1 and stale.counter == 4
+
+
+def test_retired_checkpoint_field_is_ignored_on_restore():
+    legacy = SnapshotCodec((), ("queue", "counter", "last_tick_sim_time", "dropped"))
+    current_codec = SnapshotCodec((), ("queue", "counter", "last_tick_sim_time"),
+                                  retired_fields=("dropped",))
+    original = state()
+    original.dropped = {"b1", "b2"}
+    restored = state()
+    current_codec.restore(restored, legacy.dump(original))
+    assert list(restored.queue) == ["p1"] and not hasattr(restored, "dropped")
+    with pytest.raises(ValueError, match="Unknown checkpoint field"):
+        CODEC.restore(state(), legacy.dump(original))
+
+
+def test_catch_up_splits_coalesced_gap_into_bounded_steps():
+    from datetime import timedelta
+    from _common.transaction_scope import catch_up_times
+    start = NOW
+    # A 350-minute backlog becomes 70 five-minute owner ticks ending on target.
+    times = catch_up_times(start, start + timedelta(minutes=350), 5)
+    assert len(times) == 70 and times[-1] == start + timedelta(minutes=350)
+    assert all(b - a == timedelta(minutes=5) for a, b in zip([start, *times], times))
+    # Normal and uneven gaps.
+    assert catch_up_times(start, start + timedelta(minutes=1), 5) == [start + timedelta(minutes=1)]
+    assert catch_up_times(start, start + timedelta(minutes=7), 5) == [
+        start + timedelta(minutes=5), start + timedelta(minutes=7)]
+    # Cold start and replays pass straight through to the replay guard.
+    assert catch_up_times(None, start, 5) == [start]
+    assert catch_up_times(start, start, 5) == [start]

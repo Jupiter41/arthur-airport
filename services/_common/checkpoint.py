@@ -45,10 +45,16 @@ def _decode(value: Any, types: dict[str, type]) -> Any:
 
 
 class SnapshotCodec:
-    def __init__(self, types: Sequence[type], fields: Sequence[str], publish_fields: Sequence[str] = ()) -> None:
+    def __init__(
+        self, types: Sequence[type], fields: Sequence[str], publish_fields: Sequence[str] = (),
+        retired_fields: Sequence[str] = (),
+    ) -> None:
         self.types = {t.__name__: t for t in types}
         self.fields = fields
         self.publish_fields = publish_fields
+        # Fields older checkpoints may still carry; skipped on restore so a
+        # field can be removed without invalidating the stored checkpoint.
+        self.retired_fields = frozenset(retired_fields)
 
     def dump(self, state: Any) -> str:
         values = {k: getattr(state, k) for k in self.fields}
@@ -59,6 +65,8 @@ class SnapshotCodec:
         if saved["version"] != 1:
             raise ValueError("Unsupported checkpoint version")
         for key, value in _decode(saved["state"], self.types).items():
+            if key in self.retired_fields:
+                continue
             if key not in self.fields:
                 raise ValueError(f"Unknown checkpoint field: {key}")
             setattr(state, key, value)

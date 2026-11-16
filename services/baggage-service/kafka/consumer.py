@@ -5,7 +5,7 @@ Consumes: SimClockTick, FlightStatusChanged, FlightCancelled,
 On each tick: advances conveyor pipeline, inducts new bags, screens items.
 """
 
-from _common.transaction_scope import current as current_tick, run_tick, bind_transaction
+from _common.transaction_scope import catch_up_times, current as current_tick, run_tick, bind_transaction
 from _common.checkpoint import SnapshotCodec
 from services.conveyor import TransitBag, ZoneState
 from _common import kafka_runtime
@@ -459,6 +459,9 @@ async def _execute_command(envelope: dict) -> str | None:
 
 
 BULK_SNAPSHOT_INTERVAL_SIM_MIN = int(os.getenv("BULK_SNAPSHOT_INTERVAL_MIN", "60"))
+STATUS_GAUGE_INTERVAL_TICKS = max(1, int(os.getenv("BAGGAGE_STATUS_GAUGE_INTERVAL_TICKS", "60")))
+# Bags are inducted at most this long before departure (SPEC §2 induction window).
+INDUCTION_WINDOW = timedelta(minutes=90)
 
 
 class _TickPlan:
@@ -558,12 +561,21 @@ def _apply_tick_metrics(plan: _TickPlan) -> None:
 
 
 
+CATCH_UP_MAX_STEP_MIN = int(os.getenv("CATCH_UP_MAX_STEP_MIN", "5"))
+
+
 _TICK_CODEC = SnapshotCodec(
     [ConveyorSystem, BagInZone, TransitBag, ZoneState],
     (
-        "last_tick_sim_time", "conveyor", "inducted_bag_ids", "current_mode",
+        "last_tick_sim_time", "conveyor", "current_mode",
         "last_mode", "last_sync_sim_time", "tick_counter",
     ),
+    # ``inducted_bag_ids`` is a derived guard rebuilt from persisted bag status
+    # in ``_prepare_tick``. Checkpointing it made the document grow with every
+    # bag ever inducted (5.8 MB after ~1 h), re-encoded on every tick. As a
+    # publish field it is still isolated per tick and rolled back on failure.
+    publish_fields=("inducted_bag_ids",),
+    retired_fields=("inducted_bag_ids",),
 )
 
 
@@ -572,6 +584,10 @@ async def _prepare_tick(candidate: BaggageConsumerState) -> None:
     pipeline = await get_baggage_in_pipeline()
     bags = {bag["id"] for bag in pipeline}
     present = set()
+    # Bounded induction guard: only bags still on the belt can be confused with
+    # a queued drop-off. Bags past the pipeline are no longer ``dropped_off`` in
+    # Neo4j, so the induction query cannot return them again.
+    candidate.inducted_bag_ids = set(bags)
     for zone in candidate.conveyor.get_all_zones().values():
         zone.queue = type(zone.queue)(b for b in zone.queue if b.baggage_id in bags)
         present.update(b.baggage_id for b in zone.queue)
@@ -581,7 +597,6 @@ async def _prepare_tick(candidate: BaggageConsumerState) -> None:
     ]
     present.update(b.bag.baggage_id for b in candidate.conveyor._transit_queue)
     for bag in pipeline:
-        candidate.inducted_bag_ids.add(bag["id"])
         if bag["id"] in present or bag.get("status") not in {
             "inducted", "screening", "sorting", "arrived", "offloaded",
         }:
@@ -606,8 +621,10 @@ async def _prepare_tick(candidate: BaggageConsumerState) -> None:
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     from db.neo4j import get_driver
-    await run_tick("BaggageOutboxSeq", "BaggageOutbox", _state,
-                   _TICK_CODEC, get_driver, _advance_tick, payload, sim_time, _prepare_tick)
+    # Replay a coalesced backlog as bounded steps (see catch_up_times).
+    for step_time in catch_up_times(_state.last_tick_sim_time, sim_time, CATCH_UP_MAX_STEP_MIN):
+        await run_tick("BaggageOutboxSeq", "BaggageOutbox", _state,
+                       _TICK_CODEC, get_driver, _advance_tick, payload, step_time, _prepare_tick)
 
 
 async def _advance_tick(payload: dict, sim_time: datetime) -> None:
@@ -643,7 +660,9 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     sim_time_str = sim_time.isoformat()
 
     # ── compute phase: mutate the in-memory conveyor under a rollback snapshot ──
-    conveyor_snapshot = deepcopy(_state.conveyor)
+    # Inside ``run_tick`` the state is already a disposable deep copy that is
+    # discarded on failure, so a second multi-MB copy is pure overhead.
+    conveyor_snapshot = None if current_tick.get() is not None else deepcopy(_state.conveyor)
     plan = _TickPlan()
     # 1. Induct new bags (dropped_off → inducted / fast-tracked in_hold)
     await _plan_induction(plan, sim_time, delta_minutes)
@@ -658,12 +677,14 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     try:
         committed = await _apply_tick(plan, sim_time)
     except Exception:
-        _state.conveyor = conveyor_snapshot  # roll back the in-memory advance
+        if conveyor_snapshot is not None:
+            _state.conveyor = conveyor_snapshot  # roll back the in-memory advance
         raise
     if not committed:
         # Durable replay/crash-resume: this tick was already applied; discard the
         # recomputed advance and realign the in-memory checkpoint.
-        _state.conveyor = conveyor_snapshot
+        if conveyor_snapshot is not None:
+            _state.conveyor = conveyor_snapshot
         _state.last_tick_sim_time = sim_time
         return
 
@@ -675,9 +696,10 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
         for event_type, ws_payload in plan.ws:
             await _state.ws_broadcast({"event_type": event_type, "payload": ws_payload})
 
-    # 4. Update Prometheus gauges (reduced frequency in BULK mode)
-    gauge_interval = 20 if is_bulk else 1
-    if _baggage_tick_n % gauge_interval == 0:
+    # 4. Update Prometheus gauges. The by-status count scans every Baggage node
+    #    ever created (2M+ db hits after a few weeks of sim), so it runs on a
+    #    coarse cadence instead of on the per-tick critical path.
+    if _baggage_tick_n % STATUS_GAUGE_INTERVAL_TICKS == 0:
         try:
             counts = await get_baggage_counts_by_status()
             for status, count in counts.items():
@@ -758,7 +780,7 @@ async def _plan_induction(plan: _TickPlan, sim_time: datetime, delta_minutes: in
     """
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     try:
-        bags = await get_dropped_off_baggage_for_departures(sim_time)
+        bags = await get_dropped_off_baggage_for_departures(sim_time + INDUCTION_WINDOW)
     except Exception as e:
         logger.error("Failed to query dropped_off bags: %s", e)
         raise
@@ -790,7 +812,7 @@ async def _plan_induction(plan: _TickPlan, sim_time: datetime, delta_minutes: in
             if est_time_str:
                 try:
                     est_time = datetime.fromisoformat(str(est_time_str)).replace(tzinfo=None)
-                    if est_time - sim_time > timedelta(minutes=90):
+                    if est_time - sim_time > INDUCTION_WINDOW:
                         continue
                 except (ValueError, TypeError):
                     pass

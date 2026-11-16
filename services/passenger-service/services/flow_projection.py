@@ -33,6 +33,11 @@ async def refresh() -> None:
         _failed = False
 
 
+def cached() -> dict[str, int] | None:
+    """Last successful counts without querying (for per-tick gauges)."""
+    return dict(_counts) if _counts is not None else None
+
+
 async def read() -> tuple[dict[str, int], dict]:
     if _counts is None:
         await refresh()

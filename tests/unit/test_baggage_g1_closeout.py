@@ -296,3 +296,24 @@ def test_tick_rollback_leaves_conveyor_and_checkpoint_unchanged(monkeypatch):
     # Conveyor restored to the pre-tick snapshot: the compute-phase induct+advance
     # of b1 (into a screening zone) is fully rolled back — no cache/DB drift.
     assert sum(z.items for z in consumer._state.conveyor.get_all_zones().values()) == 0
+
+
+def test_tick_checkpoint_excludes_unbounded_induction_guard(monkeypatch):
+    """The induction guard is derived state and must not grow the checkpoint."""
+    driver = Driver()
+    consumer = _ctx(monkeypatch, driver)
+    _mock_gauges(monkeypatch, consumer)
+    query = AsyncMock(return_value=[{"id": "b1", "tag": "t1", "flight_status": "departed"}])
+    monkeypatch.setattr(consumer, "get_dropped_off_baggage_for_departures", query)
+    asyncio.run(consumer._on_clock_tick({}, NOW))
+    stored = json.loads(driver.db["document"])
+    keys = {key["value"] if isinstance(key, dict) else key for key, _ in stored["state"]["value"]}
+    assert "inducted_bag_ids" not in keys
+    # The query is bounded by the induction horizon, not the whole backlog.
+    query.assert_awaited_once_with(NOW + consumer.INDUCTION_WINDOW)
+    # Legacy checkpoints that still carry the guard keep restoring.
+    legacy = deepcopy(stored)
+    legacy["state"]["value"].append(["inducted_bag_ids", {"type": "set", "value": ["old"]}])
+    restored = consumer.BaggageConsumerState()
+    consumer._TICK_CODEC.restore(restored, json.dumps(legacy))
+    assert restored.last_tick_sim_time == NOW

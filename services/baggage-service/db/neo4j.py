@@ -676,15 +676,34 @@ async def get_flight_baggage(flight_id: str, statuses: list[str] | None = None) 
         return [dict(r) async for r in result]
 
 
-async def get_dropped_off_baggage_for_departures(sim_time: datetime) -> list[dict]:
-    """Get baggage in 'dropped_off' status linked to departure flights.
+# Departure states whose dropped-off bags can still be inducted or fast-tracked
+# (completed/arrived/cancelled flights are history and never take new bags).
+INDUCTION_FLIGHT_STATUSES = ("scheduled", "boarding", "delayed", "departed", "airborne")
+
+
+async def get_dropped_off_baggage_for_departures(horizon: datetime) -> list[dict]:
+    """Get 'dropped_off' baggage on departures due no later than ``horizon``.
+
     Includes flights in any non-terminal state so we can catch up if the service
-    started after flights had already departed."""
+    started after flights had already departed (their estimate is in the past).
+    Bags for flights beyond the induction horizon are filtered before the
+    passenger/gate expansion instead of being returned and dropped every tick.
+    A missing estimate is kept so the caller's fallback still applies.
+    """
     driver = get_driver()
     query = """
-    MATCH (b:Baggage {status: 'dropped_off'})-[:LOADED_ON]->(f:Flight)
-    WHERE f.direction = 'departure'
-      AND f.status <> 'cancelled'
+    MATCH (f:Flight) USING INDEX f:Flight(status)
+    WHERE f.status IN $live_statuses
+      AND f.direction = 'departure'
+      AND (f.estimated_time IS NULL OR f.estimated_time = ''
+           OR f.estimated_time <= $horizon)
+    // Expand per in-window flight. Matching from the bag side let the planner
+    // expand every bag of every historical departure (2.6M db hits per tick).
+    CALL {
+      WITH f
+      MATCH (b:Baggage {status: 'dropped_off'})-[:LOADED_ON]->(f)
+      RETURN b
+    }
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
     OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
     RETURN b.id AS id, b.tag AS tag, b.is_dangerous_goods AS is_dg,
@@ -697,7 +716,9 @@ async def get_dropped_off_baggage_for_departures(sim_time: datetime) -> list[dic
            g.terminal_id AS terminal_id
     """
     async with driver.session() as session:
-        result = await session.run(query)
+        result = await session.run(
+            query, horizon=horizon.isoformat(), live_statuses=list(INDUCTION_FLIGHT_STATUSES),
+        )
         return [dict(r) async for r in result]
 
 

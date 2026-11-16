@@ -7,7 +7,7 @@ On each tick: advance departure FSM, drain security queues, check congestion,
 """
 
 import asyncio
-from _common.transaction_scope import current as current_tick, run_tick
+from _common.transaction_scope import catch_up_times, current as current_tick, run_tick
 from _common.checkpoint import SnapshotCodec
 from services.security import SecurityCheckpoint
 from _common import kafka_runtime
@@ -745,6 +745,9 @@ async def _warm_start_departures(sim_time: datetime) -> None:
 
 
 
+CATCH_UP_MAX_STEP_MIN = int(os.getenv("CATCH_UP_MAX_STEP_MIN", "5"))
+
+
 _TICK_CODEC = SnapshotCodec(
     [SecuritySystem, SecurityCheckpoint],
     (
@@ -770,8 +773,10 @@ async def _prepare_tick(candidate: PassengerConsumerState) -> None:
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     from db.neo4j import get_driver
-    await run_tick("PassengerRuntime", "PassengerOutbox", _state,
-                   _TICK_CODEC, get_driver, _advance_tick, payload, sim_time, _prepare_tick)
+    # Replay a coalesced backlog as bounded steps (see catch_up_times).
+    for step_time in catch_up_times(_state.last_tick_sim_time, sim_time, CATCH_UP_MAX_STEP_MIN):
+        await run_tick("PassengerRuntime", "PassengerOutbox", _state,
+                       _TICK_CODEC, get_driver, _advance_tick, payload, step_time, _prepare_tick)
 
 
 async def _advance_tick(payload: dict, sim_time: datetime) -> None:
@@ -890,15 +895,15 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
                 load_models()
             maybe_flush(sim_time)
 
-        # 11. Update Prometheus gauges (reduced in BULK mode)
+        # 11. Update Prometheus gauges from the 15 s flow projection. A direct
+        #     count scans every Passenger ever seeded (1.5M+ after a few weeks
+        #     of sim) and used to run inside the tick transaction.
         gauge_interval = 20 if is_bulk else 5
         if _state.tick_counter % gauge_interval == 0:
-            try:
-                status_counts = await get_status_counts()
-                for status, count in status_counts.items():
-                    m_pax_in_airport.labels(status=status).set(count)
-            except Exception:
-                pass
+            from services import flow_projection
+            status_counts = flow_projection.cached() or {}
+            for status, count in status_counts.items():
+                m_pax_in_airport.labels(status=status).set(count)
 
         # Persist public measured snapshots inside the owner tick transaction.
         from db.neo4j import save_security_projection
