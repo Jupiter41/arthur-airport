@@ -243,3 +243,16 @@ Public deployments expose timeline/calibration reads, never these writes.
 ## Decision history discovery (2026-11-15)
 
 `GET /api/v1/analysis/decisions` accepts optional `q` (at most 200 characters) and `terminal` (`A`, `B`, `C`). Apply them before pagination and total counting, composably with existing filters. Search is case-insensitive literal text over description, decision/bottleneck IDs, action type and target zone. Terminal matching normalizes explicit terminal/checkpoint/zone identities and never matches a lone letter anywhere in prose. Reads remain analysis-owned and read-only; gateway relays the query unchanged.
+
+
+### Evaluation cadence (RC4, 2026-11-16)
+
+Event handlers update the in-memory operational state for every consumed message.
+The full evaluation (`projection_store.evaluate()`, which re-reads the operational
+projection from Neo4j, then bottleneck detection, recommendations and autonomous
+actions) runs once per `ANALYSIS_EVAL_INTERVAL_MIN` (5) sim-minutes of consumed
+clock instead of once per consumer batch, and the consumer loop yields every
+`ANALYSIS_YIELD_EVERY` messages. Before this, a backlog made the evaluation
+CPU-bound on the event loop and the consumer fell further behind its input.
+Analysis remains a read-only observer of the graph: its recommendations reach
+owners only as commands, which each owner validates against its own state.

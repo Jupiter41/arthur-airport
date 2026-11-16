@@ -114,6 +114,33 @@ TOPICS = [
 ]
 
 
+# RC4: the evaluation re-reads the whole operational projection from Neo4j, so
+# it runs once per EVAL_INTERVAL_MIN of sim time instead of once per consumer
+# batch (up to ~10/s), and the loop yields every YIELD_EVERY messages so health
+# and REST stay responsive while a backlog is replayed.
+EVAL_INTERVAL_MIN = float(os.getenv("ANALYSIS_EVAL_INTERVAL_MIN", "5"))
+YIELD_EVERY = int(os.getenv("ANALYSIS_YIELD_EVERY", "500"))
+_last_evaluated: dict = {"sim_time": None}
+
+
+def evaluation_due(sim_time, last=None) -> bool:
+    """True when at least EVAL_INTERVAL_MIN sim-minutes passed since the last evaluation."""
+    if sim_time is None:
+        return False
+    last = _last_evaluated["sim_time"] if last is None else last
+    if last is None or sim_time < last:
+        return True
+    return (sim_time - last).total_seconds() >= EVAL_INTERVAL_MIN * 60
+
+
+def _tick_time(tick: dict | None):
+    from datetime import datetime as _dt
+    try:
+        return _dt.fromisoformat(str(tick["sim_time"]).replace("Z", "")).replace(tzinfo=None)
+    except (TypeError, KeyError, ValueError):
+        return None
+
+
 async def run_consumer() -> None:
     """Main Kafka consumer loop — poll events and update operational state."""
     global _consumer, _running, _neo4j_tick_counter
@@ -138,7 +165,9 @@ async def run_consumer() -> None:
             msgs = await loop.run_in_executor(None, lambda: _consumer.consume(num_messages=5000, timeout=0.1))
             latest_tick = None
 
-            for msg in msgs:
+            for index, msg in enumerate(msgs):
+                if index and index % YIELD_EVERY == 0:
+                    await asyncio.sleep(0)
                 if msg.error():
                     logger.warning("Consumer error: %s", msg.error())
                     continue
@@ -173,7 +202,11 @@ async def run_consumer() -> None:
             # Per-entity events and receipts above are never sampled or skipped.
             if latest_tick is None and msgs and state.sim_time is not None:
                 latest_tick = {"sim_time": state.sim_time.isoformat()}
+            tick_time = _tick_time(latest_tick)
+            if latest_tick is not None and not evaluation_due(tick_time):
+                latest_tick = None
             if latest_tick is not None:
+                _last_evaluated["sim_time"] = tick_time
                 while _running:
                     try:
                         await _on_tick(latest_tick)

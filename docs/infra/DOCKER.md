@@ -672,6 +672,10 @@ Set these in the shell or `.env` before `docker compose up`:
 | `RETENTION_PURGE_AFTER_H` | `168` | baggage, passenger | Sim-hours after archival before archived nodes are deleted; `0` keeps archives forever |
 | `INBOX_RETENTION_H` | `168` | baggage, passenger, flight, cost | Wall-clock hours an inbox dedup marker is kept (Kafka topic retention); `0` disables pruning |
 | `RETENTION_BATCH` / `RETENTION_INTERVAL_S` | `1000` / `60` | baggage, passenger, flight, cost | Rows per retention transaction / wall seconds between passes |
+| `WATERMARK_BACKPRESSURE` | `true` | sim-orchestrator | Hold the clock while a live owner lags (RC4); `false` reports lag only |
+| `WATERMARK_MAX_LAG_MIN` / `WATERMARK_STALE_S` | `5` / `30` | sim-orchestrator | Allowed owner lag (sim-min, at least 2 x step) / wall seconds before a silent owner stops holding the clock |
+| `RECONCILE_BOOT_TICKS` / `RECONCILE_INTERVAL_MIN` | `10` / `60` | passenger | Reconciliation runs for the first ticks after start, then every N sim-minutes (RC4) |
+| `ANALYSIS_EVAL_INTERVAL_MIN` / `ANALYSIS_YIELD_EVERY` | `5` / `500` | analysis | Sim-minutes between graph re-evaluations (was every consumer batch); messages between event-loop yields |
 | `RETENTION_MAX_BATCHES_PER_PASS` / `RETENTION_PAUSE_S` | `50` / `0.05` | baggage, passenger, flight, cost | Per-task batch budget per pass, and pause between batches (backlogs drain over several passes) |
 
 ### Full configuration reference

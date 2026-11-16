@@ -220,3 +220,40 @@ def test_passenger_command_waits_for_clock_and_retries_before_offset_commit(monk
     monkeypatch.setattr(consumer, "_handle_command", handle)
     asyncio.run(exercise())
     assert calls == ["execute", "execute", "commit", "close"]
+
+
+def test_analysis_evaluates_on_a_sim_time_cadence(monkeypatch):
+    """RC4: the graph re-projection runs once per interval, not once per batch."""
+    consumer = context("analysis", monkeypatch)
+    monkeypatch.setattr(consumer, "EVAL_INTERVAL_MIN", 5)
+    monkeypatch.setattr(consumer, "_last_evaluated", {"sim_time": None})
+    ticks = [{"event_type": "SimClockTick", "payload": {"sim_time": f"2026-01-01T10:0{m}:00"}}
+             for m in range(8)]
+    batches = [[Message(t)] for t in ticks]
+
+    class Broker:
+        def __init__(self, config):
+            pass
+
+        def commit(self, **kwargs):
+            pass
+
+        def subscribe(self, topics):
+            pass
+
+        def consume(self, *args, **kwargs):
+            if batches:
+                return batches.pop(0)
+            consumer.stop_consumer()
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(consumer, "Consumer", Broker)
+    monkeypatch.setattr(consumer, "_dispatch_event", AsyncMock())
+    evaluate = AsyncMock()
+    monkeypatch.setattr(consumer, "_on_tick", evaluate)
+    asyncio.run(consumer.run_consumer())
+    assert [c.args[0]["sim_time"] for c in evaluate.await_args_list] == [
+        "2026-01-01T10:00:00", "2026-01-01T10:05:00"]

@@ -707,8 +707,14 @@ contract in `docs/dashboards/UI_IMPLEMENTATION.md`.
 
 ### Owner-state reconciliation after missed flight facts (2026-11-16)
 
-Each tick reconciles a bounded cohort of passenger records against persisted
-flight state, in the existing owner tick transaction with outbox facts. A finished
+**Updated by RC4:** reconciliation runs only for the first `RECONCILE_BOOT_TICKS`
+(10) ticks after a start and then every `RECONCILE_INTERVAL_MIN` (60) sim-minutes,
+and judges flights on the event-fed FlightView (flights as consumed from
+`flights.events`), never on the live Flight nodes, so it cannot run ahead of the
+`FlightStatusChanged` handlers it backs up.
+
+A reconciling tick reconciles a bounded cohort of passenger records against the
+consumed flight state, in the existing owner tick transaction with outbox facts. A finished
 departure cannot retain booked/checked-in/security/airside/at-gate/boarded
 passengers indefinitely: reconcile them to `departed_airport`, without claiming
 a missing boarding event happened. Already boarded passengers on departed or
@@ -722,3 +728,12 @@ excludes terminal flights, so it cannot overwrite a recovery transition in the
 same tick. Physical occupancy includes checked-in, security, airside, gate,
 deplaning, customs, baggage-claim and disrupted passengers; booked, airborne,
 boarded and departed records are excluded from terminal density.
+
+
+### Event-fed flight state and BoardingProgress (RC4, 2026-11-16)
+
+Every FSM read that depends on a flight (status, schedule/estimate, gate, terminal,
+flight type) takes it from the FlightView fed by `flights.events` (OVERVIEW.md
+ADR-007); the graph is traversed only by flight identity (`ON_FLIGHT`). Each tick
+also stages `BoardingProgress` (`boarded`/`total` per departure in `boarding`),
+which flight-service uses to decide departure.
