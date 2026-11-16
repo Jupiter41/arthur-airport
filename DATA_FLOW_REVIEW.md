@@ -21,7 +21,7 @@ data **wrong**; RC9–RC10 make the **UI and data-source pages** look slow and w
 | RC1  | The live operational graph keeps all history, and per-tick queries scan it by status | baggage/passenger ticks take 1–2 s; Neo4j 81% CPU; 11 GB tx logs | 🔴 High | ✅ Done | Hot-path queries bounded and Neo4j memory raised (`78a9975`, `dfe4e77`). Lifecycle retention added: finished passengers/bags/scan events archived 24 sim-h after their terminal transition, archives purged after 168 sim-h, inbox markers pruned after the 168 h Kafka retention (`873dab8`, `8e1c160`) |
 | RC2  | Each owner rewrites its **whole in-memory state** as one JSON property **every tick**; the baggage one grows without bound (8.6 MB) | baggage-service at 100% CPU, processing about 0.45 ticks/s | 🔴 High | ✅ Done | `inducted_bag_ids` no longer persisted, decode skipped when in sync, double deepcopy removed; checkpoint 8.6 MB → 0.17–2.2 MB, baggage CPU 100% → ~30% (`78a9975`) |
 | RC3  | The outbox drains in 100-row round trips, and every bag/passenger transition is published twice (per-entity + batch) | +0.5–1.3 s before an event reaches Kafka; 340 baggage msgs/s | 🟠 Medium | ✅ Done | Outbox drains 1,000 rows per round trip with delete+read in one query, woken by tick commits; each transition published once (tick hops batch-only, random 2% passenger sampling removed); cost-service unsubscribed from baggage/passenger streams (`dfe4e77`, `9d9e794`) |
-| RC4  | The clock is open-loop with no back-pressure. Services read **other domains' live state from the shared Neo4j** instead of the event stream | passengers deplane/depart from a polling sweep, up to 64 sim-min late; causality broken | 🔴 High | ❌ Open | Not started; needs event-fed projections and a tick watermark |
+| RC4  | The clock is open-loop with no back-pressure. Services read **other domains' live state from the shared Neo4j** instead of the event stream | passengers deplane/depart from a polling sweep, up to 64 sim-min late; causality broken | 🔴 High | ✅ Done | Event-fed FlightView + BoardingProgress replace live cross-domain decision reads; tick watermark (`sim.watermark`) holds the clock on owner lag; reconciliation boot/hourly only; analysis evaluates on a sim-time cadence (`e08a5f9`, `f4981d9`, `97239a5`, `dc79fb3`). Daytime reconciliation-share re-measurement still to do |
 | RC5  | Passenger flow is a step function (whole flight checked in at T-120 and sent to security at T-45). Boarding isn't gated by flight state | 80% of departures delayed ≥30 min ("boarding_incomplete"); 11.5% of pax board **after** their flight left; no-show rate 0.08% instead of 3% | 🔴 High | ❌ Open | Not started; spec contradiction (§2 vs §3) must be resolved first |
 | RC6  | Baggage-system capacity (1,800 bags/h) is less than generated demand (peak 4,900/h), and the departure handler hides the deficit by teleporting bags | 27–37% of departing bags are "in_hold" **without ever being screened** | 🔴 High | ❌ Open | Not started; requires re-dimensioning bag volume vs BHS capacity |
 | RC7  | The seeder writes other domains' entities directly and leaves out cross-domain links | 0 of 39,975 arrival bags linked to a passenger, so every arrival pax leaves claim on the 45-min timeout; 33,651 pax "airborne" on flights that haven't left origin | 🟠 Medium | ❌ Open | Not started; also see the missing `connection_flight_id` finding |
@@ -343,6 +343,14 @@ granularities are published to everyone.
 ---
 
 ### RC4 — Open-loop clock + cross-domain reads of the shared graph ⇒ causality violations 🔴
+
+> **Status: ✅ done** (`e08a5f9`, `f4981d9`, `97239a5`, `dc79fb3`). See OVERVIEW.md ADR-007.
+> Verified live after deploy: both FlightViews bootstrapped 970 flights; all three owners report
+> `TickProcessed` within 1 tick of the clock (`/api/v1/sim/status` → `watermarks`); analysis is
+> responsive again (health 1.7 ms, 22% CPU) and its old 1.4M backlog is shrinking (−1.3k / 90 s,
+> slowly). **Not yet measured:** the share of `departed_airport` produced by reconciliation at
+> daytime load (sim was at night during deploy). Still out of scope: the seeder writing other
+> domains' nodes (RC7), and analysis re-reading the graph, now 1× per 5 sim-min.
 
 **Evidence**
 
