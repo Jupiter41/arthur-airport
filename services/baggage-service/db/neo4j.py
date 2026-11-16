@@ -689,42 +689,44 @@ INDUCTION_FLIGHT_STATUSES = ("scheduled", "boarding", "delayed", "departed", "ai
 async def get_dropped_off_baggage_for_departures(horizon: datetime) -> list[dict]:
     """Get 'dropped_off' baggage on departures due no later than ``horizon``.
 
-    Includes flights in any non-terminal state so we can catch up if the service
-    started after flights had already departed (their estimate is in the past).
-    Bags for flights beyond the induction horizon are filtered before the
-    passenger/gate expansion instead of being returned and dropped every tick.
-    A missing estimate is kept so the caller's fallback still applies.
+    RC4: flight eligibility (non-terminal departure, estimate within the horizon
+    or missing) and the flight/gate fields come from the event-fed FlightView;
+    the graph is traversed by flight identity only (``LOADED_ON``). Flights that
+    already departed are kept so their bags fast-track to the hold.
     """
-    driver = get_driver()
+    from _common.flight_view import VIEW
+    limit = horizon.replace(tzinfo=None).isoformat()
+    fids = [f["id"] for f in VIEW.select(
+        statuses=INDUCTION_FLIGHT_STATUSES, direction="departure",
+        predicate=lambda f: not f.get("estimated_time") or f["estimated_time"] <= limit)]
+    if not fids:
+        return []
     query = """
-    MATCH (f:Flight) USING INDEX f:Flight(status)
-    WHERE f.status IN $live_statuses
-      AND f.direction = 'departure'
-      AND (f.estimated_time IS NULL OR f.estimated_time = ''
-           OR f.estimated_time <= $horizon)
-    // Expand per in-window flight. Matching from the bag side let the planner
-    // expand every bag of every historical departure (2.6M db hits per tick).
+    UNWIND $fids AS fid
+    MATCH (f:Flight {id: fid})
+    // Expand per in-window flight (bag-side matching expanded all history).
     CALL {
       WITH f
       MATCH (b:Baggage {status: 'dropped_off'})-[:LOADED_ON]->(f)
       RETURN b
     }
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
-    OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
     RETURN b.id AS id, b.tag AS tag, b.is_dangerous_goods AS is_dg,
            b.dg_class AS dg_class, b.weight_kg AS weight_kg,
-           f.id AS flight_id, f.flight_number AS flight_number,
-           f.estimated_time AS estimated_time,
-           f.status AS flight_status,
-           p.id AS passenger_id,
-           g.id AS gate_id,
-           g.terminal_id AS terminal_id
+           f.id AS flight_id, p.id AS passenger_id
     """
-    async with driver.session() as session:
-        result = await session.run(
-            query, horizon=horizon.isoformat(), live_statuses=list(INDUCTION_FLIGHT_STATUSES),
-        )
-        return [dict(r) async for r in result]
+    async with get_driver().session() as session:
+        rows = [dict(r) async for r in await session.run(query, fids=fids)]
+    for row in rows:
+        flight = VIEW.get(row["flight_id"]) or {}
+        row.update({
+            "flight_number": flight.get("flight_number"),
+            "estimated_time": flight.get("estimated_time"),
+            "flight_status": flight.get("status"),
+            "gate_id": flight.get("gate_id"),
+            "terminal_id": flight.get("terminal_id"),
+        })
+    return rows
 
 
 async def set_baggage_carousel(baggage_id: str, carousel: int, sim_time: datetime) -> None:
@@ -802,16 +804,21 @@ async def get_baggage_in_pipeline() -> list[dict]:
     WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived', 'offloaded']
     OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)
     OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
-    OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
     RETURN b.id AS id, b.tag AS tag, b.status AS status,
            coalesce(b.last_scan_zone, b.current_zone) AS current_zone,
            b.last_scan_at AS last_scan_at, f.id AS flight_id,
            b.is_dangerous_goods AS is_dg, b.dg_class AS dg_class,
-           p.id AS passenger_id, g.id AS gate_id, g.terminal_id AS terminal_id
+           p.id AS passenger_id
     """
+    from _common.flight_view import VIEW
     async with driver.session() as session:
         result = await session.run(query)
-        return [dict(record) async for record in result]
+        rows = [dict(record) async for record in result]
+    for row in rows:  # RC4: gate/terminal as consumed from flights.events
+        flight = VIEW.get(row.get("flight_id")) or {}
+        row["gate_id"] = flight.get("gate_id")
+        row["terminal_id"] = flight.get("terminal_id")
+    return rows
 
 
 async def get_active_system_failures() -> dict[str, str]:

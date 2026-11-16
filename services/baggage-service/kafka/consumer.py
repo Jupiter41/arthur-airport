@@ -293,6 +293,10 @@ async def _dispatch(envelope: dict) -> None:
         if event_id and event_id in _state._idempotency:
             return
 
+    # RC4: advance the event-fed FlightView before any handler or tick reads it.
+    from _common.flight_view import VIEW
+    VIEW.apply(event_type, payload, sim_time)
+
     match event_type:
         case "SimClockTick":
             await _on_clock_tick(payload, sim_time)
@@ -721,6 +725,9 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     # 4. Update Prometheus gauges. The by-status count scans every Baggage node
     #    ever created (2M+ db hits after a few weeks of sim), so it runs on a
     #    coarse cadence instead of on the per-tick critical path.
+    if _baggage_tick_n % 60 == 0:
+        from _common.flight_view import VIEW
+        VIEW.evict(sim_time)  # RC4: bounded event-fed flight view
     if _baggage_tick_n % STATUS_GAUGE_INTERVAL_TICKS == 0:
         try:
             counts = await get_baggage_counts_by_status()

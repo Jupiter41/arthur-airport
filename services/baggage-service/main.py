@@ -68,6 +68,15 @@ async def ws_broadcast(message: dict) -> None:
     _ws_clients -= disconnected
 
 
+async def _baggage_checkpoint():
+    """Our own committed tick time (BaggageOutboxSeq), or None before the first tick."""
+    from datetime import datetime
+    async with get_driver().session() as session:
+        row = await (await session.run(
+            "MATCH (s:BaggageOutboxSeq {id: 'latest'}) RETURN s.last_tick_sim_time AS at")).single()
+    return datetime.fromisoformat(row["at"]) if row and row["at"] else None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan manager for baggage-service.
@@ -86,6 +95,13 @@ async def lifespan(app: FastAPI):
 
     # 4. Create constraints and indexes
     await create_constraints_and_indexes()
+
+    # 4b. RC4: bootstrap the event-fed FlightView once, stamped with our own
+    #     tick checkpoint; flights.events advances it from here on.
+    from _common import flight_view
+    checkpoint = await _baggage_checkpoint()
+    loaded = await flight_view.bootstrap(flight_view.VIEW, get_driver, checkpoint)
+    logger.info("FlightView bootstrapped: %d flights (stamp=%s)", loaded, checkpoint)
 
     # 5. Register WebSocket broadcast callback
     set_ws_broadcast(ws_broadcast)
