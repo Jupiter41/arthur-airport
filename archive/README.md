@@ -8,6 +8,10 @@ but must not treat archived plans as current specifications or priorities.
   accepted local gap scopes closed through G4/A59. Recorded follow-ups and
   empirical-validation limits remain relevant historical context.
 
+- `UI_TODO.md` — archived UI delivery checklist. Remaining human usability,
+  assistive-technology and actual browser-zoom acceptance is active in
+  [`UI_ACCEPTANCE.md`](../docs/dashboards/UI_ACCEPTANCE.md).
+
 - `docs-old/` — early planning docs, per-sprint notes, and bug reports from the
   bring-up phase (formerly `docs/old/`, including a stale nested
   `lessons-learned/`). Superseded by the current `docs/` tree and the active,

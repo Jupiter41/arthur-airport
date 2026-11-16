@@ -1,0 +1,4054 @@
+{
+  "date": "2026-11-16",
+  "method": "Rendered DOM measurements of composited text colors, control dimensions and associated labels. Primary route states; not a WCAG certification. 720x450 is equivalent reflow, not actual browser zoom.",
+  "samples": [
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport overview",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        963
+      ],
+      "path": "/",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Flights",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        981
+      ],
+      "path": "/flights",
+      "small": [
+        {
+          "size": [
+            13,
+            13
+          ],
+          "tag": "INPUT",
+          "text": "",
+          "type": "checkbox"
+        }
+      ],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Ground operations",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        2832
+      ],
+      "path": "/ground-ops",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Air traffic control",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/atc",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Passenger flow",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        2394
+      ],
+      "path": "/passengers",
+      "small": [
+        {
+          "size": [
+            153,
+            20
+          ],
+          "tag": "A",
+          "text": "Explore all decisions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Baggage operations",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        1117
+      ],
+      "path": "/baggage",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Special assistance",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/accessibility",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        3542
+      ],
+      "path": "/incidents",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Decision history",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/decisions",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Experiments",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        1506
+      ],
+      "path": "/planning",
+      "small": [
+        {
+          "size": [
+            263,
+            17
+          ],
+          "tag": "A",
+          "text": "Shared-airport scenarios are in System.",
+          "type": null
+        },
+        {
+          "size": [
+            347.7,
+            17
+          ],
+          "tag": "A",
+          "text": "Replay a completed experiment with interventions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔮 What-If Replay",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/whatif",
+      "small": [
+        {
+          "size": [
+            181.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open experiment builder →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        866
+      ],
+      "path": "/history",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "💰 Cost Dashboard",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        1339
+      ],
+      "path": "/costs",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🌱 Carbon Footprint",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/carbon",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport network",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/world",
+      "small": [
+        {
+          "size": [
+            54.9,
+            14
+          ],
+          "tag": "A",
+          "text": "© Mapbox",
+          "type": null
+        },
+        {
+          "size": [
+            96.9,
+            14
+          ],
+          "tag": "A",
+          "text": "© OpenStreetMap",
+          "type": null
+        },
+        {
+          "size": [
+            99.4,
+            14
+          ],
+          "tag": "A",
+          "text": "Improve this map",
+          "type": null
+        },
+        {
+          "size": [
+            45.5,
+            14
+          ],
+          "tag": "A",
+          "text": "© Maxar",
+          "type": null
+        },
+        {
+          "size": [
+            88,
+            23
+          ],
+          "tag": "A",
+          "text": "Mapbox homepage",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        1490
+      ],
+      "path": "/scenarios",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Simulation controls",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        1837
+      ],
+      "path": "/settings",
+      "small": [
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 05:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 06:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 07:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 08:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 09:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 10:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 11:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 12:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 13:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 14:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 15:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 16:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 17:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 18:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 19:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 20:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 21:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 22:00",
+          "type": "range"
+        }
+      ],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Incident lab",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/lab",
+      "small": [
+        {
+          "size": [
+            82.1,
+            17
+          ],
+          "tag": "A",
+          "text": "Experiments",
+          "type": null
+        },
+        {
+          "size": [
+            184.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open incident operations →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔌 Data Sources",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/data-sources",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        1368
+      ],
+      "path": "/ml",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🛠️ Debug Panel",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/debug",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Help & teaching lab",
+      "height": 900,
+      "main": [
+        1208,
+        1208,
+        780,
+        780
+      ],
+      "path": "/help",
+      "small": [],
+      "unlabelled": [],
+      "width": 1440,
+      "theme": "dark"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport overview",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        963
+      ],
+      "path": "/",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Flights",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        864
+      ],
+      "path": "/flights",
+      "small": [
+        {
+          "size": [
+            13,
+            13
+          ],
+          "tag": "INPUT",
+          "text": "",
+          "type": "checkbox"
+        }
+      ],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Ground operations",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        2883
+      ],
+      "path": "/ground-ops",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Air traffic control",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        779
+      ],
+      "path": "/atc",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Passenger flow",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        2394
+      ],
+      "path": "/passengers",
+      "small": [
+        {
+          "size": [
+            153,
+            20
+          ],
+          "tag": "A",
+          "text": "Explore all decisions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Baggage operations",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        1091
+      ],
+      "path": "/baggage",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Special assistance",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        600
+      ],
+      "path": "/accessibility",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        3542
+      ],
+      "path": "/incidents",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Decision history",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        600
+      ],
+      "path": "/decisions",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Experiments",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        1522
+      ],
+      "path": "/planning",
+      "small": [
+        {
+          "size": [
+            263,
+            17
+          ],
+          "tag": "A",
+          "text": "Shared-airport scenarios are in System.",
+          "type": null
+        },
+        {
+          "size": [
+            347.7,
+            17
+          ],
+          "tag": "A",
+          "text": "Replay a completed experiment with interventions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔮 What-If Replay",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        663
+      ],
+      "path": "/whatif",
+      "small": [
+        {
+          "size": [
+            181.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open experiment builder →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        866
+      ],
+      "path": "/history",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "💰 Cost Dashboard",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        1339
+      ],
+      "path": "/costs",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🌱 Carbon Footprint",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        757
+      ],
+      "path": "/carbon",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport network",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        655
+      ],
+      "path": "/world",
+      "small": [
+        {
+          "size": [
+            54.9,
+            14
+          ],
+          "tag": "A",
+          "text": "© Mapbox",
+          "type": null
+        },
+        {
+          "size": [
+            96.9,
+            14
+          ],
+          "tag": "A",
+          "text": "© OpenStreetMap",
+          "type": null
+        },
+        {
+          "size": [
+            99.4,
+            14
+          ],
+          "tag": "A",
+          "text": "Improve this map",
+          "type": null
+        },
+        {
+          "size": [
+            45.5,
+            14
+          ],
+          "tag": "A",
+          "text": "© Maxar",
+          "type": null
+        },
+        {
+          "size": [
+            88,
+            23
+          ],
+          "tag": "A",
+          "text": "Mapbox homepage",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        1490
+      ],
+      "path": "/scenarios",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Simulation controls",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        1839
+      ],
+      "path": "/settings",
+      "small": [
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 05:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 06:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 07:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 08:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 09:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 10:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 11:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 12:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 13:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 14:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 15:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 16:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 17:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 18:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 19:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 20:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 21:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 22:00",
+          "type": "range"
+        }
+      ],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Incident lab",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        613
+      ],
+      "path": "/lab",
+      "small": [
+        {
+          "size": [
+            82.1,
+            17
+          ],
+          "tag": "A",
+          "text": "Experiments",
+          "type": null
+        },
+        {
+          "size": [
+            184.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open incident operations →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔌 Data Sources",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        2645
+      ],
+      "path": "/data-sources",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        1368
+      ],
+      "path": "/ml",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🛠️ Debug Panel",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        600
+      ],
+      "path": "/debug",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Help & teaching lab",
+      "height": 720,
+      "main": [
+        1048,
+        1048,
+        600,
+        600
+      ],
+      "path": "/help",
+      "small": [],
+      "unlabelled": [],
+      "width": 1280,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport overview",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        1496
+      ],
+      "path": "/",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Flights",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        1130
+      ],
+      "path": "/flights",
+      "small": [
+        {
+          "size": [
+            13,
+            13
+          ],
+          "tag": "INPUT",
+          "text": "",
+          "type": "checkbox"
+        }
+      ],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Ground operations",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        3257
+      ],
+      "path": "/ground-ops",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Air traffic control",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        941
+      ],
+      "path": "/atc",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Passenger flow",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        3774
+      ],
+      "path": "/passengers",
+      "small": [
+        {
+          "size": [
+            153,
+            20
+          ],
+          "tag": "A",
+          "text": "Explore all decisions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Baggage operations",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        1584
+      ],
+      "path": "/baggage",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Special assistance",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        903
+      ],
+      "path": "/accessibility",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        3406
+      ],
+      "path": "/incidents",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Decision history",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        903
+      ],
+      "path": "/decisions",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Experiments",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        2087
+      ],
+      "path": "/planning",
+      "small": [
+        {
+          "size": [
+            347.7,
+            17
+          ],
+          "tag": "A",
+          "text": "Replay a completed experiment with interventions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔮 What-If Replay",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        903
+      ],
+      "path": "/whatif",
+      "small": [
+        {
+          "size": [
+            181.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open experiment builder →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        1189
+      ],
+      "path": "/history",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "💰 Cost Dashboard",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        2095
+      ],
+      "path": "/costs",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🌱 Carbon Footprint",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        1093
+      ],
+      "path": "/carbon",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport network",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        903
+      ],
+      "path": "/world",
+      "small": [
+        {
+          "size": [
+            54.9,
+            14
+          ],
+          "tag": "A",
+          "text": "© Mapbox",
+          "type": null
+        },
+        {
+          "size": [
+            96.9,
+            14
+          ],
+          "tag": "A",
+          "text": "© OpenStreetMap",
+          "type": null
+        },
+        {
+          "size": [
+            99.4,
+            14
+          ],
+          "tag": "A",
+          "text": "Improve this map",
+          "type": null
+        },
+        {
+          "size": [
+            45.5,
+            14
+          ],
+          "tag": "A",
+          "text": "© Maxar",
+          "type": null
+        },
+        {
+          "size": [
+            88,
+            23
+          ],
+          "tag": "A",
+          "text": "Mapbox homepage",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        1565
+      ],
+      "path": "/scenarios",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Simulation controls",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        2069
+      ],
+      "path": "/settings",
+      "small": [
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 05:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 06:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 07:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 08:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 09:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 10:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 11:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 12:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 13:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 14:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 15:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 16:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 17:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 18:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 19:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 20:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 21:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 22:00",
+          "type": "range"
+        }
+      ],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Incident lab",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        903
+      ],
+      "path": "/lab",
+      "small": [
+        {
+          "size": [
+            82.1,
+            17
+          ],
+          "tag": "A",
+          "text": "Experiments",
+          "type": null
+        },
+        {
+          "size": [
+            184.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open incident operations →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔌 Data Sources",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        2542
+      ],
+      "path": "/data-sources",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        1612
+      ],
+      "path": "/ml",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🛠️ Debug Panel",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        903
+      ],
+      "path": "/debug",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Help & teaching lab",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        903
+      ],
+      "path": "/help",
+      "small": [],
+      "unlabelled": [],
+      "width": 768,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport overview",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        2149
+      ],
+      "path": "/",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Flights",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        1165
+      ],
+      "path": "/flights",
+      "small": [
+        {
+          "size": [
+            13,
+            13
+          ],
+          "tag": "INPUT",
+          "text": "",
+          "type": "checkbox"
+        }
+      ],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Ground operations",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        4005
+      ],
+      "path": "/ground-ops",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Air traffic control",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        1567
+      ],
+      "path": "/atc",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Passenger flow",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        6337
+      ],
+      "path": "/passengers",
+      "small": [
+        {
+          "size": [
+            153,
+            20
+          ],
+          "tag": "A",
+          "text": "Explore all decisions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Baggage operations",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        1401
+      ],
+      "path": "/baggage",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Special assistance",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        877
+      ],
+      "path": "/accessibility",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        3854
+      ],
+      "path": "/incidents",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Decision history",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        645
+      ],
+      "path": "/decisions",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Experiments",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        2611
+      ],
+      "path": "/planning",
+      "small": [
+        {
+          "size": [
+            347.7,
+            17
+          ],
+          "tag": "A",
+          "text": "Replay a completed experiment with interventions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔮 What-If Replay",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        1049
+      ],
+      "path": "/whatif",
+      "small": [
+        {
+          "size": [
+            181.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open experiment builder →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        1598
+      ],
+      "path": "/history",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "💰 Cost Dashboard",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        2531
+      ],
+      "path": "/costs",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🌱 Carbon Footprint",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        1515
+      ],
+      "path": "/carbon",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport network",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        832
+      ],
+      "path": "/world",
+      "small": [
+        {
+          "size": [
+            88,
+            23
+          ],
+          "tag": "A",
+          "text": "Mapbox homepage",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        1602
+      ],
+      "path": "/scenarios",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Simulation controls",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        3241
+      ],
+      "path": "/settings",
+      "small": [
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 05:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 06:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 07:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 08:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 09:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 10:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 11:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 12:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 13:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 14:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 15:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 16:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 17:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 18:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 19:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 20:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 21:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 22:00",
+          "type": "range"
+        }
+      ],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Incident lab",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        799
+      ],
+      "path": "/lab",
+      "small": [
+        {
+          "size": [
+            82.1,
+            17
+          ],
+          "tag": "A",
+          "text": "Experiments",
+          "type": null
+        },
+        {
+          "size": [
+            184.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open incident operations →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔌 Data Sources",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        3651
+      ],
+      "path": "/data-sources",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        1729
+      ],
+      "path": "/ml",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🛠️ Debug Panel",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        645
+      ],
+      "path": "/debug",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Help & teaching lab",
+      "height": 844,
+      "main": [
+        382,
+        382,
+        645,
+        645
+      ],
+      "path": "/help",
+      "small": [],
+      "unlabelled": [],
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport overview",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        1496
+      ],
+      "path": "/",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Flights",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        741
+      ],
+      "path": "/flights",
+      "small": [
+        {
+          "size": [
+            13,
+            13
+          ],
+          "tag": "INPUT",
+          "text": "",
+          "type": "checkbox"
+        }
+      ],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Ground operations",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        3370
+      ],
+      "path": "/ground-ops",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Air traffic control",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        1451
+      ],
+      "path": "/atc",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Passenger flow",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        4044
+      ],
+      "path": "/passengers",
+      "small": [
+        {
+          "size": [
+            153,
+            20
+          ],
+          "tag": "A",
+          "text": "Explore all decisions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Baggage operations",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        1553
+      ],
+      "path": "/baggage",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Special assistance",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        859
+      ],
+      "path": "/accessibility",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        3406
+      ],
+      "path": "/incidents",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Decision history",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        329
+      ],
+      "path": "/decisions",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Experiments",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        1906
+      ],
+      "path": "/planning",
+      "small": [
+        {
+          "size": [
+            347.7,
+            17
+          ],
+          "tag": "A",
+          "text": "Replay a completed experiment with interventions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔮 What-If Replay",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        1013
+      ],
+      "path": "/whatif",
+      "small": [
+        {
+          "size": [
+            181.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open experiment builder →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        1598
+      ],
+      "path": "/history",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "💰 Cost Dashboard",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        2263
+      ],
+      "path": "/costs",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🌱 Carbon Footprint",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        1515
+      ],
+      "path": "/carbon",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport network",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        508
+      ],
+      "path": "/world",
+      "small": [
+        {
+          "size": [
+            54.9,
+            14
+          ],
+          "tag": "A",
+          "text": "© Mapbox",
+          "type": null
+        },
+        {
+          "size": [
+            96.9,
+            14
+          ],
+          "tag": "A",
+          "text": "© OpenStreetMap",
+          "type": null
+        },
+        {
+          "size": [
+            99.4,
+            14
+          ],
+          "tag": "A",
+          "text": "Improve this map",
+          "type": null
+        },
+        {
+          "size": [
+            45.5,
+            14
+          ],
+          "tag": "A",
+          "text": "© Maxar",
+          "type": null
+        },
+        {
+          "size": [
+            88,
+            23
+          ],
+          "tag": "A",
+          "text": "Mapbox homepage",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        1565
+      ],
+      "path": "/scenarios",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Simulation controls",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        2868
+      ],
+      "path": "/settings",
+      "small": [
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 05:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 06:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 07:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 08:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 09:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 10:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 11:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 12:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 13:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 14:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 15:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 16:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 17:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 18:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 19:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 20:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 21:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 22:00",
+          "type": "range"
+        }
+      ],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Incident lab",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        618
+      ],
+      "path": "/lab",
+      "small": [
+        {
+          "size": [
+            82.1,
+            17
+          ],
+          "tag": "A",
+          "text": "Experiments",
+          "type": null
+        },
+        {
+          "size": [
+            184.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open incident operations →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔌 Data Sources",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        2746
+      ],
+      "path": "/data-sources",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        1612
+      ],
+      "path": "/ml",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🛠️ Debug Panel",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        511
+      ],
+      "path": "/debug",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Help & teaching lab",
+      "height": 450,
+      "main": [
+        712,
+        712,
+        329,
+        329
+      ],
+      "path": "/help",
+      "small": [],
+      "unlabelled": [],
+      "width": 720,
+      "theme": "light",
+      "check": "200-percent-equivalent-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport overview",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        2186
+      ],
+      "path": "/",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Flights",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        1259
+      ],
+      "path": "/flights",
+      "small": [
+        {
+          "size": [
+            13,
+            13
+          ],
+          "tag": "INPUT",
+          "text": "",
+          "type": "checkbox"
+        }
+      ],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Ground operations",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        4201
+      ],
+      "path": "/ground-ops",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Air traffic control",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        1677
+      ],
+      "path": "/atc",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Passenger flow",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        6397
+      ],
+      "path": "/passengers",
+      "small": [
+        {
+          "size": [
+            153,
+            20
+          ],
+          "tag": "A",
+          "text": "Explore all decisions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Baggage operations",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        1415
+      ],
+      "path": "/baggage",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Special assistance",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        895
+      ],
+      "path": "/accessibility",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        3914
+      ],
+      "path": "/incidents",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Decision history",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        625
+      ],
+      "path": "/decisions",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Experiments",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        2895
+      ],
+      "path": "/planning",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔮 What-If Replay",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        1107
+      ],
+      "path": "/whatif",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        1665
+      ],
+      "path": "/history",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "💰 Cost Dashboard",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        2615
+      ],
+      "path": "/costs",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🌱 Carbon Footprint",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        1515
+      ],
+      "path": "/carbon",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Airport network",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        848
+      ],
+      "path": "/world",
+      "small": [
+        {
+          "size": [
+            88,
+            23
+          ],
+          "tag": "A",
+          "text": "Mapbox homepage",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        1712
+      ],
+      "path": "/scenarios",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Simulation controls",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        3340
+      ],
+      "path": "/settings",
+      "small": [
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 05:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 06:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 07:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 08:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 09:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 10:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 11:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 12:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 13:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 14:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 15:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 16:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 17:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 18:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 19:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 20:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 21:00",
+          "type": "range"
+        },
+        {
+          "size": [
+            1,
+            1
+          ],
+          "tag": "INPUT",
+          "text": "Departure weight at 22:00",
+          "type": "range"
+        }
+      ],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "rechecked after responsive repair"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Incident lab",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        899
+      ],
+      "path": "/lab",
+      "small": [
+        {
+          "size": [
+            82.1,
+            17
+          ],
+          "tag": "A",
+          "text": "Experiments",
+          "type": null
+        },
+        {
+          "size": [
+            184.5,
+            17
+          ],
+          "tag": "A",
+          "text": "Open incident operations →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🔌 Data Sources",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        3959
+      ],
+      "path": "/data-sources",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        1769
+      ],
+      "path": "/ml",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "🛠️ Debug Panel",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        625
+      ],
+      "path": "/debug",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Help & teaching lab",
+      "height": 844,
+      "main": [
+        312,
+        312,
+        625,
+        625
+      ],
+      "path": "/help",
+      "small": [],
+      "unlabelled": [],
+      "width": 320,
+      "theme": "light",
+      "check": "320-css-pixel-reflow"
+    }
+  ],
+  "spatial": [
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Ground operations",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        3838
+      ],
+      "path": "/ground-ops?mode=map",
+      "small": [],
+      "unlabelled": [],
+      "width": 768
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Ground operations",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        4722
+      ],
+      "path": "/ground-ops?mode=3d",
+      "small": [
+        {
+          "size": [
+            116.4,
+            16
+          ],
+          "tag": "A",
+          "text": "Ground operations ↗",
+          "type": null
+        },
+        {
+          "size": [
+            106.2,
+            16
+          ],
+          "tag": "A",
+          "text": "Air traffic control ↗",
+          "type": null
+        },
+        {
+          "size": [
+            98.3,
+            16
+          ],
+          "tag": "A",
+          "text": "Passenger flow ↗",
+          "type": null
+        },
+        {
+          "size": [
+            104.4,
+            16
+          ],
+          "tag": "A",
+          "text": "Baggage tracker ↗",
+          "type": null
+        },
+        {
+          "size": [
+            114.8,
+            16
+          ],
+          "tag": "A",
+          "text": "Decision evidence ↗",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 768
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Air traffic control",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        1542
+      ],
+      "path": "/atc?mode=map",
+      "small": [],
+      "unlabelled": [],
+      "width": 768
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Air traffic control",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        3060
+      ],
+      "path": "/atc?mode=3d",
+      "small": [
+        {
+          "size": [
+            116.4,
+            16
+          ],
+          "tag": "A",
+          "text": "Ground operations ↗",
+          "type": null
+        },
+        {
+          "size": [
+            106.2,
+            16
+          ],
+          "tag": "A",
+          "text": "Air traffic control ↗",
+          "type": null
+        },
+        {
+          "size": [
+            98.3,
+            16
+          ],
+          "tag": "A",
+          "text": "Passenger flow ↗",
+          "type": null
+        },
+        {
+          "size": [
+            104.4,
+            16
+          ],
+          "tag": "A",
+          "text": "Baggage tracker ↗",
+          "type": null
+        },
+        {
+          "size": [
+            114.8,
+            16
+          ],
+          "tag": "A",
+          "text": "Decision evidence ↗",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 768
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Passenger flow",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        4362
+      ],
+      "path": "/passengers?mode=map",
+      "small": [
+        {
+          "size": [
+            153,
+            20
+          ],
+          "tag": "A",
+          "text": "Explore all decisions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 768
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Passenger flow",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        3881
+      ],
+      "path": "/passengers?mode=3d",
+      "small": [
+        {
+          "size": [
+            153,
+            20
+          ],
+          "tag": "A",
+          "text": "Explore all decisions →",
+          "type": null
+        }
+      ],
+      "unlabelled": [],
+      "width": 768
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Baggage operations",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        2172
+      ],
+      "path": "/baggage?mode=map",
+      "small": [],
+      "unlabelled": [],
+      "width": 768
+    },
+    {
+      "bodyOverflow": false,
+      "contrast": [],
+      "heading": "Baggage operations",
+      "height": 1024,
+      "main": [
+        760,
+        760,
+        903,
+        1691
+      ],
+      "path": "/baggage?mode=3d",
+      "small": [],
+      "unlabelled": [],
+      "width": 768
+    }
+  ]
+}

@@ -1,0 +1,792 @@
+{
+  "gateway": "http://localhost:3002",
+  "scenario_id": "43ae76df-2829-469b-8d95-535043f4681b",
+  "request": {
+    "name": "UI verification \u2014 isolated Terminal B lane",
+    "description": "Synthetic UI verification. Does not change the shared airport.",
+    "horizon": "day",
+    "monte_carlo_runs": 2,
+    "random_seed": 16112026,
+    "demand_source": "simulation",
+    "weather_source": "simulation",
+    "infrastructure": {
+      "gates_per_terminal": {
+        "A": 14,
+        "B": 14,
+        "C": 14
+      },
+      "gate_wide_body_capable": {
+        "A": [
+          "A07",
+          "A08",
+          "A09"
+        ],
+        "B": [
+          "B07",
+          "B08",
+          "B09"
+        ],
+        "C": [
+          "C07",
+          "C08",
+          "C09"
+        ]
+      },
+      "gate_international_capable": {
+        "A": [
+          "A08",
+          "A09",
+          "A10",
+          "A11",
+          "A12",
+          "A13",
+          "A14"
+        ],
+        "B": [
+          "B08",
+          "B09",
+          "B10",
+          "B11",
+          "B12",
+          "B13",
+          "B14"
+        ],
+        "C": [
+          "C08",
+          "C09",
+          "C10",
+          "C11",
+          "C12",
+          "C13",
+          "C14"
+        ]
+      },
+      "runways": [
+        {
+          "id": "09L",
+          "ils": true,
+          "length_m": 3500
+        },
+        {
+          "id": "09R",
+          "ils": false,
+          "length_m": 3500
+        }
+      ],
+      "security_lanes_per_terminal": {
+        "A": 4,
+        "B": 4,
+        "C": 4
+      },
+      "screening_units": 6,
+      "sorting_capacity_per_hour": 1800,
+      "daily_flight_target": 420,
+      "load_factor_mean": 0.8,
+      "demand_growth_rate": 0.034
+    }
+  },
+  "baseline": {
+    "infrastructure": {
+      "gates_per_terminal": {
+        "A": 14,
+        "B": 14,
+        "C": 14
+      },
+      "gate_wide_body_capable": {
+        "A": [
+          "A07",
+          "A08",
+          "A09"
+        ],
+        "B": [
+          "B07",
+          "B08",
+          "B09"
+        ],
+        "C": [
+          "C07",
+          "C08",
+          "C09"
+        ]
+      },
+      "gate_international_capable": {
+        "A": [
+          "A08",
+          "A09",
+          "A10",
+          "A11",
+          "A12",
+          "A13",
+          "A14"
+        ],
+        "B": [
+          "B08",
+          "B09",
+          "B10",
+          "B11",
+          "B12",
+          "B13",
+          "B14"
+        ],
+        "C": [
+          "C08",
+          "C09",
+          "C10",
+          "C11",
+          "C12",
+          "C13",
+          "C14"
+        ]
+      },
+      "runways": [
+        {
+          "id": "09L",
+          "ils": true,
+          "length_m": 3500
+        },
+        {
+          "id": "09R",
+          "ils": false,
+          "length_m": 3500
+        }
+      ],
+      "security_lanes_per_terminal": {
+        "A": 4,
+        "B": 3,
+        "C": 4
+      },
+      "screening_units": 6,
+      "sorting_capacity_per_hour": 1800,
+      "daily_flight_target": 420,
+      "load_factor_mean": 0.8,
+      "demand_growth_rate": 0.034
+    },
+    "annual_pax_estimate": 18396000,
+    "daily_flight_target": 420,
+    "load_factor_mean": 0.8
+  },
+  "statuses": [
+    {
+      "scenario_id": "43ae76df-2829-469b-8d95-535043f4681b",
+      "status": "pending",
+      "progress_pct": 0,
+      "runs_completed": 0,
+      "attempt_count": 0,
+      "runs_total": 4,
+      "elapsed_seconds": 0.0,
+      "estimated_remaining_seconds": null,
+      "error": null
+    },
+    {
+      "scenario_id": "43ae76df-2829-469b-8d95-535043f4681b",
+      "status": "completed",
+      "progress_pct": 100,
+      "runs_completed": 4,
+      "attempt_count": 1,
+      "runs_total": 4,
+      "elapsed_seconds": 0.9,
+      "estimated_remaining_seconds": null,
+      "error": null
+    }
+  ],
+  "detail": {
+    "id": "43ae76df-2829-469b-8d95-535043f4681b",
+    "name": "UI verification \u2014 isolated Terminal B lane",
+    "description": "Synthetic UI verification. Does not change the shared airport.",
+    "status": "completed",
+    "horizon": "day",
+    "monte_carlo_runs": 2,
+    "random_seed": 16112026,
+    "financial_rates": {
+      "planning_assumptions": {
+        "delay_cost_per_minute_eur": 102.0,
+        "rebooking_cost_per_pax_eur": 285.0,
+        "eu261_average_claim_eur": 400.0,
+        "operating_days_per_year": 365
+      },
+      "mtow_kg": {
+        "B738": 79016,
+        "A320": 78000,
+        "A321": 93500,
+        "B77W": 352400,
+        "A333": 230000,
+        "A332": 242000,
+        "E195": 52290,
+        "DH8D": 29257,
+        "AT75": 22800
+      },
+      "airport_fees": {
+        "landing_rate_per_tonne_eur": 12.0,
+        "gate_rate_per_hour_eur": 150.0,
+        "passenger_departure_fee_eur": 12.0,
+        "cargo_rate_per_kg_eur": 0.25
+      },
+      "eu261": [
+        {
+          "min_delay_minutes": 120,
+          "max_distance_km": 99999,
+          "assistance_only": true
+        },
+        {
+          "min_delay_minutes": 180,
+          "max_distance_km": 1500,
+          "compensation_eur": 250
+        },
+        {
+          "min_delay_minutes": 180,
+          "max_distance_km": 3500,
+          "compensation_eur": 400
+        },
+        {
+          "min_delay_minutes": 180,
+          "max_distance_km": 99999,
+          "compensation_eur": 600
+        },
+        {
+          "min_delay_minutes": 240,
+          "max_distance_km": 3500,
+          "compensation_eur": 400
+        },
+        {
+          "min_delay_minutes": 240,
+          "max_distance_km": 99999,
+          "compensation_eur": 600
+        }
+      ],
+      "delay_costs": {
+        "crew_overtime_per_member_per_hour_eur": 200.0,
+        "crew_counts": {
+          "narrow": 6,
+          "wide": 10,
+          "regional": 4
+        },
+        "fuel_price_per_kg_eur": 0.9,
+        "holding_burn_kg_per_hour": {
+          "narrow": 2400,
+          "wide": 6000,
+          "regional": 800
+        }
+      },
+      "ground_handling": {
+        "pushback_eur": 350,
+        "catering_narrow_eur": 1500,
+        "catering_wide_eur": 5000,
+        "stairs_eur": 200,
+        "jetbridge_eur": 300,
+        "cleaning_narrow_eur": 600,
+        "cleaning_wide_eur": 1200,
+        "baggage_loader_per_bag_eur": 3.5
+      },
+      "incident_costs": {
+        "runway_incursion": {
+          "direct_eur": 25000,
+          "response_eur": 15000
+        },
+        "baggage_fire": {
+          "direct_eur": 40000,
+          "response_eur": 20000
+        },
+        "security_breach": {
+          "direct_eur": 80000,
+          "response_eur": 30000
+        },
+        "system_failure": {
+          "direct_eur": 8000,
+          "response_eur": 2000
+        },
+        "severe_weather": {
+          "direct_eur": 0,
+          "response_eur": 5000
+        }
+      },
+      "staffing": {
+        "security_officer_per_hour_eur": 35.0,
+        "checkin_agent_per_hour_eur": 28.0,
+        "gate_agent_per_hour_eur": 28.0,
+        "ground_crew_per_hour_eur": 25.0
+      },
+      "revenue": {
+        "retail_spend_per_pax_per_hour_airside_eur": 12.0,
+        "parking_per_vehicle_per_day_eur": 25.0,
+        "slot_fee_eur": 2000.0
+      },
+      "operations": {
+        "_comment": "Operating estimates used by hourly cost ticks. peak_hours mirrors simulation.peak_hours in config/airport.yaml (single source, guarded by tests/unit/test_operational_constants_single_source.py). Tunable at runtime via PATCH /rates.",
+        "peak_hours": [
+          7,
+          8,
+          9,
+          17,
+          18,
+          19
+        ],
+        "peak": {
+          "security_lanes_open": 8,
+          "checkin_desks_open": 12,
+          "boarding_flights": 10,
+          "airside_pax": 2000
+        },
+        "off_peak": {
+          "security_lanes_open": 3,
+          "checkin_desks_open": 4,
+          "boarding_flights": 2,
+          "airside_pax": 300
+        },
+        "bags_per_pax": 1.2
+      },
+      "airline_overrides": {
+        "_comment": "Per-airline rate overrides \u2014 deep-merged onto the base rate table at compute-time. Add IATA carrier codes (2-3 letters, uppercase) as keys; any leaf field may be overridden. Example presets reflect typical real-world spread (low-cost discount vs wide-body premium).",
+        "EK": {
+          "airport_fees": {
+            "landing_rate_per_tonne_eur": 14.0,
+            "passenger_departure_fee_eur": 15.0
+          },
+          "revenue": {
+            "slot_fee_eur": 2500.0
+          }
+        },
+        "FR": {
+          "airport_fees": {
+            "passenger_departure_fee_eur": 9.5
+          },
+          "revenue": {
+            "slot_fee_eur": 1600.0
+          }
+        }
+      }
+    },
+    "financial_rates_version": "d4a61aa81fa0130c810fbfecfa6899e51edfe9b8a146031169bd4d518fe2a911",
+    "infrastructure": {
+      "gates_per_terminal": {
+        "A": 14,
+        "B": 14,
+        "C": 14
+      },
+      "gate_wide_body_capable": {
+        "A": [
+          "A07",
+          "A08",
+          "A09"
+        ],
+        "B": [
+          "B07",
+          "B08",
+          "B09"
+        ],
+        "C": [
+          "C07",
+          "C08",
+          "C09"
+        ]
+      },
+      "gate_international_capable": {
+        "A": [
+          "A08",
+          "A09",
+          "A10",
+          "A11",
+          "A12",
+          "A13",
+          "A14"
+        ],
+        "B": [
+          "B08",
+          "B09",
+          "B10",
+          "B11",
+          "B12",
+          "B13",
+          "B14"
+        ],
+        "C": [
+          "C08",
+          "C09",
+          "C10",
+          "C11",
+          "C12",
+          "C13",
+          "C14"
+        ]
+      },
+      "runways": [
+        {
+          "id": "09L",
+          "ils": true,
+          "length_m": 3500
+        },
+        {
+          "id": "09R",
+          "ils": false,
+          "length_m": 3500
+        }
+      ],
+      "security_lanes_per_terminal": {
+        "A": 4,
+        "B": 4,
+        "C": 4
+      },
+      "screening_units": 6,
+      "sorting_capacity_per_hour": 1800,
+      "daily_flight_target": 420,
+      "load_factor_mean": 0.8,
+      "demand_growth_rate": 0.034
+    },
+    "demand_source": "simulation",
+    "weather_source": "simulation",
+    "weather_date": null,
+    "capex_eur": 0.0,
+    "opex_delta_eur": 0.0,
+    "years_horizon": 25,
+    "discount_rate": 0.07,
+    "created_at": "2026-11-16T06:37:02.731564+00:00",
+    "started_at": "2026-11-16T06:37:03.185000+00:00",
+    "completed_at": "2026-11-16T06:37:04.113385+00:00",
+    "error": null,
+    "progress_pct": 100,
+    "runs_completed": 4,
+    "attempt_count": 1,
+    "interventions": [],
+    "disruption": null,
+    "parent_scenario_id": null,
+    "new_routes": [],
+    "removed_routes": [],
+    "demand_multiplier": 1.0
+  },
+  "results": {
+    "accounting_policy": "airport-v1",
+    "effect_model_version": "effects-v1",
+    "scenario_id": "43ae76df-2829-469b-8d95-535043f4681b",
+    "scenario_name": "UI verification \u2014 isolated Terminal B lane",
+    "baseline_id": "",
+    "status": "completed",
+    "kpis": {
+      "avg_delay_minutes": {
+        "mean": 0.9025,
+        "std": 0.0,
+        "p5": 0.9025,
+        "p25": 0.9025,
+        "p50": 0.9025,
+        "p75": 0.9025,
+        "p95": 0.9025
+      },
+      "on_time_rate": {
+        "mean": 0.985,
+        "std": 0.0,
+        "p5": 0.985,
+        "p25": 0.985,
+        "p50": 0.985,
+        "p75": 0.985,
+        "p95": 0.985
+      },
+      "missed_connections": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p5": 0.0,
+        "p25": 0.0,
+        "p50": 0.0,
+        "p75": 0.0,
+        "p95": 0.0
+      },
+      "gate_utilisation_pct": {
+        "mean": 40.0529,
+        "std": 0.0,
+        "p5": 40.0529,
+        "p25": 40.0529,
+        "p50": 40.0529,
+        "p75": 40.0529,
+        "p95": 40.0529
+      },
+      "runway_utilisation_pct": {
+        "mean": 50.0,
+        "std": 0.0,
+        "p5": 50.0,
+        "p25": 50.0,
+        "p50": 50.0,
+        "p75": 50.0,
+        "p95": 50.0
+      },
+      "eu261_liability_eur": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p5": 0.0,
+        "p25": 0.0,
+        "p50": 0.0,
+        "p75": 0.0,
+        "p95": 0.0
+      },
+      "airline_cost_eur": {
+        "mean": 1245240.16,
+        "std": 0.0,
+        "p5": 1245240.16,
+        "p25": 1245240.16,
+        "p50": 1245240.16,
+        "p75": 1245240.16,
+        "p95": 1245240.16
+      },
+      "total_cost_eur": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p5": 0.0,
+        "p25": 0.0,
+        "p50": 0.0,
+        "p75": 0.0,
+        "p95": 0.0
+      },
+      "total_revenue_eur": {
+        "mean": 1208418.16,
+        "std": 0.0,
+        "p5": 1208418.16,
+        "p25": 1208418.16,
+        "p50": 1208418.16,
+        "p75": 1208418.16,
+        "p95": 1208418.16
+      },
+      "gate_conflicts": {
+        "mean": 89.0,
+        "std": 0.0,
+        "p5": 89.0,
+        "p25": 89.0,
+        "p50": 89.0,
+        "p75": 89.0,
+        "p95": 89.0
+      },
+      "security_wait_max_minutes": {
+        "mean": 519.4944,
+        "std": 0.0,
+        "p5": 519.4944,
+        "p25": 519.4944,
+        "p50": 519.4944,
+        "p75": 519.4944,
+        "p95": 519.4944
+      },
+      "total_flights": {
+        "mean": 400.0,
+        "std": 0.0,
+        "p5": 400.0,
+        "p25": 400.0,
+        "p50": 400.0,
+        "p75": 400.0,
+        "p95": 400.0
+      }
+    },
+    "baseline_kpis": {
+      "avg_delay_minutes": {
+        "mean": 0.9025,
+        "std": 0.0,
+        "p5": 0.9025,
+        "p25": 0.9025,
+        "p50": 0.9025,
+        "p75": 0.9025,
+        "p95": 0.9025
+      },
+      "on_time_rate": {
+        "mean": 0.985,
+        "std": 0.0,
+        "p5": 0.985,
+        "p25": 0.985,
+        "p50": 0.985,
+        "p75": 0.985,
+        "p95": 0.985
+      },
+      "missed_connections": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p5": 0.0,
+        "p25": 0.0,
+        "p50": 0.0,
+        "p75": 0.0,
+        "p95": 0.0
+      },
+      "gate_utilisation_pct": {
+        "mean": 40.0529,
+        "std": 0.0,
+        "p5": 40.0529,
+        "p25": 40.0529,
+        "p50": 40.0529,
+        "p75": 40.0529,
+        "p95": 40.0529
+      },
+      "runway_utilisation_pct": {
+        "mean": 50.0,
+        "std": 0.0,
+        "p5": 50.0,
+        "p25": 50.0,
+        "p50": 50.0,
+        "p75": 50.0,
+        "p95": 50.0
+      },
+      "eu261_liability_eur": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p5": 0.0,
+        "p25": 0.0,
+        "p50": 0.0,
+        "p75": 0.0,
+        "p95": 0.0
+      },
+      "airline_cost_eur": {
+        "mean": 1245240.16,
+        "std": 0.0,
+        "p5": 1245240.16,
+        "p25": 1245240.16,
+        "p50": 1245240.16,
+        "p75": 1245240.16,
+        "p95": 1245240.16
+      },
+      "total_cost_eur": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p5": 0.0,
+        "p25": 0.0,
+        "p50": 0.0,
+        "p75": 0.0,
+        "p95": 0.0
+      },
+      "total_revenue_eur": {
+        "mean": 1208418.16,
+        "std": 0.0,
+        "p5": 1208418.16,
+        "p25": 1208418.16,
+        "p50": 1208418.16,
+        "p75": 1208418.16,
+        "p95": 1208418.16
+      },
+      "gate_conflicts": {
+        "mean": 89.0,
+        "std": 0.0,
+        "p5": 89.0,
+        "p25": 89.0,
+        "p50": 89.0,
+        "p75": 89.0,
+        "p95": 89.0
+      },
+      "security_wait_max_minutes": {
+        "mean": 844.1111,
+        "std": 0.0,
+        "p5": 844.1111,
+        "p25": 844.1111,
+        "p50": 844.1111,
+        "p75": 844.1111,
+        "p95": 844.1111
+      },
+      "total_flights": {
+        "mean": 400.0,
+        "std": 0.0,
+        "p5": 400.0,
+        "p25": 400.0,
+        "p50": 400.0,
+        "p75": 400.0,
+        "p95": 400.0
+      }
+    },
+    "delta_vs_baseline": {
+      "avg_delay_minutes": {
+        "baseline_mean": 0.9025,
+        "scenario_mean": 0.9025,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "on_time_rate": {
+        "baseline_mean": 0.985,
+        "scenario_mean": 0.985,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "missed_connections": {
+        "baseline_mean": 0.0,
+        "scenario_mean": 0.0,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "gate_utilisation_pct": {
+        "baseline_mean": 40.0529,
+        "scenario_mean": 40.0529,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "runway_utilisation_pct": {
+        "baseline_mean": 50.0,
+        "scenario_mean": 50.0,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "eu261_liability_eur": {
+        "baseline_mean": 0.0,
+        "scenario_mean": 0.0,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "airline_cost_eur": {
+        "baseline_mean": 1245240.16,
+        "scenario_mean": 1245240.16,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "total_cost_eur": {
+        "baseline_mean": 0.0,
+        "scenario_mean": 0.0,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "total_revenue_eur": {
+        "baseline_mean": 1208418.16,
+        "scenario_mean": 1208418.16,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "gate_conflicts": {
+        "baseline_mean": 89.0,
+        "scenario_mean": 89.0,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      },
+      "security_wait_max_minutes": {
+        "baseline_mean": 844.1111,
+        "scenario_mean": 519.4944,
+        "absolute_change": -324.6167,
+        "pct_change": -38.46
+      },
+      "total_flights": {
+        "baseline_mean": 400.0,
+        "scenario_mean": 400.0,
+        "absolute_change": 0.0,
+        "pct_change": 0.0
+      }
+    },
+    "financials": {},
+    "annual_benefit_breakdown": {
+      "eu261_avoided_annual": 0.0,
+      "delay_cost_avoided_annual": 0.0,
+      "missed_connections_avoided_annual": 0.0,
+      "revenue_uplift_annual": -0.0,
+      "airport_cost_avoided_annual": 0.0,
+      "total_annual_benefit": 0.0
+    },
+    "infrastructure_changes": [
+      {
+        "parameter": "Security lanes (Terminal B)",
+        "baseline": 3,
+        "scenario": 4,
+        "change": 1
+      }
+    ],
+    "run_duration_seconds": 0.87,
+    "computed_at": "2026-11-16T06:37:04.113366+00:00",
+    "financial_rates_version": "d4a61aa81fa0130c810fbfecfa6899e51edfe9b8a146031169bd4d518fe2a911"
+  },
+  "investment": {
+    "scenario_id": "43ae76df-2829-469b-8d95-535043f4681b",
+    "financials": {},
+    "accounting_policy": "airport-v1",
+    "annual_benefit_breakdown": {
+      "eu261_avoided_annual": 0.0,
+      "delay_cost_avoided_annual": 0.0,
+      "missed_connections_avoided_annual": 0.0,
+      "revenue_uplift_annual": -0.0,
+      "airport_cost_avoided_annual": 0.0,
+      "total_annual_benefit": 0.0
+    }
+  },
+  "baseline_unchanged": true,
+  "results_reread_identical": true
+}

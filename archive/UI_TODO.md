@@ -1,14 +1,14 @@
 # UI / UX TODO
 
-Updated: 2026-11-15. Status: implementation delivered; unchecked items are outstanding validation or data-contract work. See [validation results](docs/dashboards/UI_VALIDATION.md).
+Archived: 2026-11-16. Implementation, observation timestamps, browser workflow repairs and planning verification are delivered. Unchecked human/assistive-technology/actual-zoom acceptance is carried forward explicitly in [UI acceptance](../docs/dashboards/UI_ACCEPTANCE.md). See [validation results](../docs/dashboards/UI_VALIDATION.md).
 
-Design rationale, source findings, proposed information architecture and workflow sketch: [Detailed UI/UX review](docs/dashboards/UI_UX_REVIEW.md).
+Design rationale, source findings, proposed information architecture and workflow sketch: [Detailed UI/UX review](../docs/dashboards/UI_UX_REVIEW.md).
 
 ## Goal and review limits
 
 Make the airport easy to navigate and investigate: what needs attention, where it is happening, what is affected, which action is available, and whether it worked.
 
-The initial review was source-based. During implementation, the preview became reachable after running Vite outside the socket-restricted sandbox. Current browser checks cover Overview, flight inspection, terminal scope/map switching, workspace navigation, dialogs and selected planning/error states. Formal accessibility, all-route/zoom coverage and human usability measurements remain outstanding. The local planning backend was unavailable during browser checks; its failures are displayed explicitly.
+The initial review was source-based. Final checks cover all 22 primary routes at six viewport sizes, light/dark contrast and label measurements, keyboard flight inspection/focus return, retained terminal/entity scope across Board/Map/3D, and actual isolated planning creation/results/investment/persistence. Equivalent reflow was tested at 720×450 and narrow reflow at 320 CSS pixels. Actual browser zoom shortcuts had no effect in the available browser; that check and human/assistive-technology acceptance remain open in the active acceptance document. The archive is not a claim of full WCAG conformance or successful human sessions.
 
 ## P0 — Navigation and immediate friction
 
@@ -37,7 +37,7 @@ The initial review was source-based. During implementation, the preview became r
 ## P1 — Overview
 
 - [x] Rebuild the first viewport around a Needs attention queue beside a readable airport schematic.
-- [ ] Complete per-record observation timestamps where domain responses do not expose them. Location, available impact, incident start time, source clock, transparent priority rules and next actions are implemented; missing impact/time evidence must not be invented.
+- [x] Complete per-record observation timestamps where domain responses do not expose them. Location, available impact, incident start time, source clock, transparent priority rules and next actions are implemented; missing impact/time evidence must not be invented.
 - [x] Add a compact contextual metric strip with definitions and filtered drill-down links, including delayed flights and terminal security waits.
 - [x] Show near-term schedule/capacity pressure and pending actions below the main attention area. Label observed trends and predictions accurately; do not invent forecasts.
 - [x] Give healthy conditions little visual weight. Keep unavailable/stale observations explicit rather than displaying healthy zeroes.
@@ -91,8 +91,9 @@ The initial review was source-based. During implementation, the preview became r
 - [x] Make flight detail access, sorting and filtering keyboard accessible; expose table sort state with `aria-sort`.
 - [x] Add a skip link and consistent drawer/dialog focus management.
 - [x] Provide text alongside status colors and textual access to map/3D entities. Avoid announcing every streaming update.
-- [ ] Verify WCAG 2.2 AA contrast and target-size requirements; prefer comfortable 36–44px common controls where space permits.
-- [ ] Verify every route at 1440×900, 1280×720, tablet and narrow phone widths, plus 200% browser zoom.
+- [x] Run rendered contrast/target-size checks against WCAG 2.2 AA thresholds; repair the findings and prefer 36–44px common controls. This scoped check does not certify all WCAG criteria; full manual/assistive-technology acceptance remains open.
+- [x] Verify all 22 primary route layouts at 1440×900, 1280×720, 768×1024 tablet and 390×844 phone widths; additionally test 720×450 equivalent reflow and 320×844 narrow reflow.
+- [ ] Verify actual 200% browser zoom. Carried forward to active UI acceptance; equivalent viewport checks are not a substitute for this claim.
 - [x] Keep navigation and essential actions reachable; use horizontal scrolling for dense specialist tables where needed.
 - [x] Define whether mobile supports monitoring/triage or full operational parity, and validate the resulting scope.
 

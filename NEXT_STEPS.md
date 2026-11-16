@@ -1,6 +1,6 @@
 # Next steps — make the living twin visible
 
-**Updated:** 2026-11-14  
+**Updated:** 2026-11-16
 **Purpose:** Portfolio and teaching experience  
 **Status:** Decision loop and 3D airport/passenger/baggage views implemented; ATC and decision-quality campaign remain next
 
@@ -8,6 +8,14 @@ The descriptive → predictive → prescriptive → action → outcome loop is n
 visible through the cockpit and Decision Timeline. The user's next priority is
 to make the simulated airport tangible in 3D. Do the visual/spatial work below
 first; retain decision-quality validation as the following workstream.
+
+## UI delivery and external acceptance
+
+The UI implementation checklist is archived in [archive/UI_TODO.md](archive/UI_TODO.md).
+Current timestamp, responsive, accessibility and planning evidence is in
+[UI validation](docs/dashboards/UI_VALIDATION.md). Human usability sessions,
+assistive-technology/full WCAG review and actual browser zoom remain explicit
+acceptance tasks in [UI_ACCEPTANCE.md](docs/dashboards/UI_ACCEPTANCE.md).
 
 ## Priority 1: an explorable 3D airport
 
