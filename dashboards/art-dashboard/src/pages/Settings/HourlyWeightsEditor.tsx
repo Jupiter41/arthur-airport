@@ -13,19 +13,20 @@ export function HourlyWeightsEditor({
   );
 
   return (
-    <div>
+    <div className="overflow-x-auto">
       <p className="text-[10px] text-gray-500 mb-2">
         Drag bars to adjust departure distribution. Higher = more flights.
       </p>
-      <div className="flex gap-[2px] h-24">
+      <div className="flex gap-[2px] h-24 min-w-[540px]">
         {DEFAULT_HOURS.map((h) => {
           const w = weights[String(h)] ?? 0;
           const pct = maxWeight > 0 ? (w / maxWeight) * 100 : 0;
           const isPeak = w >= maxWeight * 0.7;
           return (
-            <div key={h} className="flex-1 flex flex-col justify-end items-center">
+            <div key={h} className="relative flex-1 flex flex-col justify-end items-center">
               <input
                 type="range"
+                aria-label={`Departure weight at ${String(h).padStart(2, "0")}:00`}
                 min={0}
                 max={20}
                 value={w}
@@ -36,12 +37,12 @@ export function HourlyWeightsEditor({
                   };
                   onChange(newWeights);
                 }}
-                className="sr-only"
+                className="sr-only peer left-0 top-0"
                 id={`hw-${h}`}
               />
               <label
                 htmlFor={`hw-${h}`}
-                className={`w-full cursor-pointer rounded-t transition-all duration-200 ${
+                className={`w-full min-h-6 cursor-pointer rounded-t peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent transition-all duration-200 ${
                   isPeak
                     ? "bg-blue-500 hover:bg-blue-400"
                     : "bg-gray-600 hover:bg-gray-500"

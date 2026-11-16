@@ -35,7 +35,7 @@ export function CypherConsole() {
 
   return (
     <div className="space-y-3">
-      <textarea
+      <textarea aria-label="Read-only graph query"
         ref={textareaRef}
         className="w-full h-32 bg-gray-900 text-green-400 text-sm font-mono rounded p-3
                    border border-gray-600 focus:border-blue-400 focus:outline-none resize-y"

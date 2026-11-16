@@ -131,7 +131,7 @@ export default function DataSourcesPage() {
           <div className="text-lg font-bold text-red-400">
             {stats.unavailable}
           </div>
-          <div className="text-[10px] text-red-400/70 uppercase tracking-wide">
+          <div className="text-[10px] text-red-400 uppercase tracking-wide">
             Unavailable
           </div>
         </div>

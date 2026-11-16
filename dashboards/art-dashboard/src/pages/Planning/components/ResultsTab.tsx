@@ -77,7 +77,7 @@ export default function ResultsTab() {
           <em>baseline</em> (current KART config) and the{" "}
           <em>modified scenario</em>. The delta shows what changes if you
           implement the scenario. With Monte Carlo runs &gt; 1, KPIs show the
-          statistical distribution (P5–P95 = 90% confidence band).
+          simulated outcome distribution (P5–P95 contains the central 90% of runs; it is not a calibrated confidence interval).
         </p>
       </div>
 
@@ -183,7 +183,7 @@ function KpiComparisonTable({
             <th className="text-right py-2 px-3 font-medium">Baseline</th>
             <th className="text-right py-2 px-3 font-medium">Scenario</th>
             <th className="text-right py-2 px-3 font-medium">Change</th>
-            <th className="text-right py-2 px-3 font-medium">90% Conf.</th>
+            <th className="text-right py-2 px-3 font-medium">Simulation P5–P95</th>
             <th className="text-center py-2 px-3 font-medium">Verdict</th>
           </tr>
         </thead>
@@ -309,12 +309,13 @@ function MultiYearProjection({
 
   return (
     <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
         <h4 className="text-sm font-semibold text-white">
           Multi-Year KPI Projection
         </h4>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <select
+            aria-label="Projection metric"
             value={kpiKey}
             onChange={(e) => setKpiKey(e.target.value)}
             className="bg-slate-700 rounded px-2 py-1 text-xs text-white border border-slate-600"
@@ -329,6 +330,7 @@ function MultiYearProjection({
             <span className="text-xs text-slate-400">Growth:</span>
             <input
               type="number"
+              aria-label="Annual demand growth percent"
               min={-5}
               max={10}
               step={0.5}

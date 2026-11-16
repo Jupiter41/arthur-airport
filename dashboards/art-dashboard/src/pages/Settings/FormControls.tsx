@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 export function NumberInput({
   label,
   value,
@@ -15,11 +17,13 @@ export function NumberInput({
   step?: number;
   unit?: string;
 }) {
+  const id = useId();
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-sm text-gray-300">{label}</span>
+      <label htmlFor={id} className="text-sm text-gray-300">{label}{unit ? ` (${unit})` : ""}</label>
       <div className="flex items-center gap-1">
         <input
+          id={id}
           type="number"
           className="w-20 bg-gray-700 text-white text-right rounded px-2 py-1 text-sm
                      border border-gray-600 focus:border-blue-400 focus:outline-none"
@@ -48,11 +52,14 @@ export function Toggle({
     <div className="flex items-center justify-between gap-2">
       <span className="text-sm text-gray-300">{label}</span>
       <button
-        className={`w-10 h-5 rounded-full transition-colors relative ${checked ? "bg-blue-500" : "bg-gray-600"}`}
+        role="switch"
+        aria-label={label}
+        aria-checked={checked}
+        className={`w-12 h-9 rounded-full transition-colors relative ${checked ? "bg-blue-500" : "bg-gray-600"}`}
         onClick={() => onChange(!checked)}
       >
         <span
-          className={`block w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`}
+          className={`block w-4 h-4 rounded-full bg-white absolute top-2.5 transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`}
         />
       </button>
     </div>
@@ -70,10 +77,12 @@ export function SelectInput({
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
+  const id = useId();
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-sm text-gray-300">{label}</span>
+      <label htmlFor={id} className="text-sm text-gray-300">{label}</label>
       <select
+        id={id}
         className="bg-gray-700 text-white text-sm rounded px-2 py-1 border border-gray-600
                    focus:border-blue-400 focus:outline-none"
         value={value}

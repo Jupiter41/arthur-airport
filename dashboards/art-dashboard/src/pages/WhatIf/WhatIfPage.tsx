@@ -140,6 +140,7 @@ export default function WhatIfPage() {
           </p>
         ) : (
           <select
+            aria-label="Parent scenario"
             value={parentId ?? ""}
             onChange={(e) => setSelected(e.target.value)}
             className="w-full bg-slate-800 border border-panel-border rounded px-2 py-1.5 text-xs text-white"

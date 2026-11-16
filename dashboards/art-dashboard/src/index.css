@@ -67,6 +67,14 @@
   button,
   select {
     min-height: 36px;
+    min-width: 24px;
+  }
+  summary {
+    min-height: 36px;
+    padding-block: 8px;
+  }
+  input[type="range"]:not(.sr-only) {
+    min-height: 24px;
   }
   input:not([type="range"]):not([type="checkbox"]),
   select,
@@ -313,4 +321,101 @@
   width: 100%;
   height: auto;
   border: 0;
+}
+
+/* Chart keys retain colored swatches; their labels use readable theme text. */
+.recharts-legend-item-text {
+  color: rgb(var(--neutral-300)) !important;
+}
+:root:not([data-theme="light"]) .text-blue-400 {
+  color: rgb(var(--accent));
+}
+/* Filled action buttons need white text in either theme. */
+:is(button, a).bg-cyan-600,
+:is(button, a).bg-green-600 {
+  background-color: #245f9f;
+  color: #fff !important;
+}
+:is(button, a).bg-cyan-600:hover,
+:is(button, a).bg-green-600:hover {
+  background-color: #1b4f89;
+}
+
+/* Keep focus visible even on legacy controls with outline-none utilities. */
+:focus-visible {
+  outline: 2px solid rgb(var(--accent)) !important;
+  outline-offset: 3px;
+}
+
+:root[data-theme="light"] :is([class*="text-cyan-"], [class*="text-sky-"], [class*="text-blue-"]) {
+  color: #164a7e;
+}
+:root[data-theme="light"] :is([class*="text-orange-"], [class*="text-amber-"], [class*="text-yellow-"]) {
+  color: #744000;
+}
+:root[data-theme="light"] :is([class*="text-green-"], [class*="text-emerald-"]) {
+  color: #105333;
+}
+:root[data-theme="light"] :is([class*="bg-blue-900/"], [class*="bg-cyan-900/"]) {
+  background-color: #e8f1fb;
+}
+:root[data-theme="light"] :is([class*="bg-green-900/"], [class*="bg-emerald-900/"]) {
+  background-color: #e8f7ee;
+}
+:root[data-theme="light"] :is([class*="bg-orange-900/"], [class*="bg-amber-900/"]) {
+  background-color: #fff2df;
+}
+:root[data-theme="light"] [class*="bg-red-900/"] {
+  background-color: #fff0f2;
+}
+:is(button, a).text-white:is(.bg-blue-600, .bg-blue-700, .bg-purple-700, .bg-purple-700\/80, .bg-emerald-700, .bg-emerald-700\/80, .bg-red-600, .bg-red-700) {
+  color: #fff !important;
+}
+:is(button, a).bg-emerald-700\/80 {
+  background-color: #146747;
+}
+:root[data-theme="light"] [class*="bg-indigo-900/"] {
+  background-color: #e8edff;
+}
+:root[data-theme="light"] [class*="text-indigo-"] {
+  color: #373b80;
+}
+.recharts-text {
+  fill: rgb(var(--neutral-400));
+}
+:root[data-theme="light"] [class*="text-teal-"] {
+  color: #0b645d;
+}
+:root[data-theme="light"] :is([class*="text-purple-"], [class*="text-violet-"], [class*="text-pink-"]) {
+  color: #69359b;
+}
+.recharts-default-tooltip {
+  background-color: rgb(var(--card)) !important;
+  border-color: rgb(var(--border)) !important;
+}
+.recharts-default-tooltip :is(p, li, span) {
+  color: rgb(var(--neutral-200)) !important;
+}
+.text-white.bg-green-600 {
+  background-color: #146747;
+  color: #fff !important;
+}
+.text-white.bg-amber-600 {
+  background-color: #8a4b00;
+  color: #fff !important;
+}
+.mapboxgl-ctrl-attrib {
+  background-color: #fff !important;
+  color: #1f2937 !important;
+}
+:is(input, select, textarea, .btn-secondary) {
+  border-color: #8b9db5;
+}
+:root[data-theme="light"] :is(input, select, textarea, .btn-secondary) {
+  border-color: #53647b;
+}
+/* The rendered scene keeps a dark canvas in either application theme. */
+.spatial-overlay,
+.spatial-overlay * {
+  color: #e2e8f0 !important;
 }

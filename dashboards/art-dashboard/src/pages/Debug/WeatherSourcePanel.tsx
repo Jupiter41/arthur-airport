@@ -60,6 +60,7 @@ export function WeatherSourcePanel() {
         </h4>
         <div className="flex items-center gap-2">
           <select
+            aria-label="Weather source"
             className="bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
             value={source}
             onChange={(e) => setSource(e.target.value)}
@@ -73,6 +74,7 @@ export function WeatherSourcePanel() {
         {source === "historical" && (
           <input
             className="w-full bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
+            aria-label="Weather CSV path"
             placeholder="CSV path (e.g. /app/data/weather/EGLL_30days.csv)"
             value={csvPath}
             onChange={(e) => setCsvPath(e.target.value)}
@@ -82,6 +84,7 @@ export function WeatherSourcePanel() {
         {source === "live" && (
           <input
             className="w-full bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
+            aria-label="Weather station"
             placeholder="ICAO station (e.g. EGLL, LFPG)"
             value={liveIcao}
             onChange={(e) => setLiveIcao(e.target.value)}
@@ -117,10 +120,11 @@ export function WeatherSourcePanel() {
           ] as const
         ).map((key) => (
           <div key={key} className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 w-28 font-mono">
+            <label htmlFor={`weather-${key}`} className="text-xs text-gray-400 w-28 font-mono">
               {key}
             </label>
             <input
+              id={`weather-${key}`}
               type="number"
               className="w-28 bg-gray-700 text-white text-sm rounded px-2 py-1 border border-gray-600"
               placeholder="unlocked"

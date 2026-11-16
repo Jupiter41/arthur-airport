@@ -61,7 +61,7 @@ export function KafkaInspector() {
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        <input
+        <input aria-label="Filter events"
           className="flex-1 bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
           placeholder="Filter by event type or topic..."
           value={filter}

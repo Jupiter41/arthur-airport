@@ -74,10 +74,10 @@ export function AutonomousSection() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">
+          <label htmlFor="autonomoussection-field-1" className="block text-xs text-gray-400 mb-1">
             Autonomous Mode
           </label>
-          <select
+          <select id="autonomoussection-field-1"
             className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm text-white"
             value={localAuto.mode ?? (localAuto.enabled ? "threshold" : "off")}
             onChange={(e) => {

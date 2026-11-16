@@ -117,7 +117,8 @@ export function NLInjectPanel() {
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-          placeholder="Inject a severe security breach in Terminal B"
+          aria-label="Incident description"
+            placeholder="Inject a severe security breach in Terminal B"
           className="flex-1 bg-gray-700 text-white text-sm rounded px-3 py-2
             placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
         />

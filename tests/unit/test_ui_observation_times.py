@@ -11,6 +11,21 @@ import pytest
 from tests.conftest import import_service_module
 
 
+@pytest.fixture(autouse=True)
+def isolate_owner_models():
+    # The shared import helper clears services/db/kafka, but not models. These
+    # endpoint tests load incident models; do not leak them into analysis tests.
+    saved = {key: value for key, value in sys.modules.items()
+             if key == "models" or key.startswith("models.")}
+    for key in saved:
+        sys.modules.pop(key)
+    yield
+    for key in list(sys.modules):
+        if key == "models" or key.startswith("models."):
+            sys.modules.pop(key)
+    sys.modules.update(saved)
+
+
 @pytest.mark.parametrize("clock", [None, datetime(2026, 11, 16, tzinfo=timezone.utc)])
 def test_security_rows_keep_owner_time_independent_of_count_cache(monkeypatch, clock):
     security = import_service_module("passenger", "services.security").SecuritySystem()

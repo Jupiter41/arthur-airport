@@ -132,7 +132,7 @@ export default function CockpitPage() {
         id: i.id,
         observedAt: i.observed_at,
         priority: severityOrder[i.severity] ?? 4,
-        title: i.title || i.type.replace(/_/g, " "),
+        title: i.title || i.type?.replace(/_/g, " ") || "Incident details unavailable",
         location: i.location,
         detail: `${i.description || "Affected-entity impact not supplied."} · Started ${formatTime(i.started_at)} UTC`,
         href: `/incidents?incident=${encodeURIComponent(i.id)}`,

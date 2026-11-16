@@ -76,7 +76,7 @@ export function HeaderBar({
         <SimClock />
         <div className="flex gap-3 items-center">
           <ConnectionStatus />
-          <Link className="text-gray-300" to="/settings">
+          <Link className="text-gray-300 inline-flex items-center min-h-9 px-1" to="/settings">
             Simulation controls
           </Link>
         </div>

@@ -70,7 +70,7 @@ export function ResolvedList({
                 🌳 View Cascade
               </button>
               <button
-                className="text-xs text-blue-400 hover:text-blue-300"
+                className="text-xs text-accent hover:underline"
                 onClick={() => handleDownload(i.id)}
                 disabled={downloading === i.id}
               >

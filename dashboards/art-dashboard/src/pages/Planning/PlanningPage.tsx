@@ -56,7 +56,7 @@ export default function PlanningPage() {
             key={t.key}
             aria-pressed={activeTab === t.key}
             onClick={() => setActiveTab(t.key)}
-            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
+            className={`flex-1 min-w-[120px] py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
               activeTab === t.key
                 ? "bg-slate-700 text-white shadow-lg"
                 : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"

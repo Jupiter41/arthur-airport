@@ -38,7 +38,7 @@ export function IncidentCard({
         {incident.title || incident.type.replace(/_/g, " ")}
       </button>
       <Link
-        className="block text-xs text-sky-300 mt-2"
+        className="block text-xs text-sky-300 mt-2 py-1"
         to={`/decisions?incident_id=${encodeURIComponent(incident.id)}`}
         onClick={(e) => e.stopPropagation()}
       >

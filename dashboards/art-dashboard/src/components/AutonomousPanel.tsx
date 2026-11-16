@@ -371,7 +371,7 @@ export function AutonomousPanel() {
                     <div className="text-blue-200 truncate">
                       {rec.description}
                     </div>
-                    <div className="text-[10px] text-blue-400/60 mt-0.5 flex justify-between">
+                    <div className="text-[10px] text-blue-300 mt-0.5 flex justify-between">
                       <span>
                         Confidence: {Math.round(rec.confidence_score * 100)}%
                       </span>

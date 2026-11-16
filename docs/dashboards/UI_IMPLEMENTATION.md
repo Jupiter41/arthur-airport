@@ -29,3 +29,22 @@ or envelope `sim_time`, and must retain that time per record. Overview shows
 the full UTC date/time, explicitly unavailable for legacy/missing/invalid times,
 separately from incident start time. A failed refresh retains the original time.
 These read-only response additions do not mutate domain state or create events.
+
+### Verified interaction refinements (2026-11-16)
+
+Form labels associate with their controls; reusable settings controls use unique
+React IDs. Toggles expose switch state. Infrastructure increment/decrement
+buttons have contextual names and disable at bounds. Common controls retain
+visible focus despite legacy outline utilities. Hourly distribution sliders
+have named keyboard inputs, visible proxy focus and bounded local scrolling.
+Planning tabs and delta controls wrap at 320 CSS pixels.
+
+Auto-estimated CAPEX/OPEX accept euro cents: estimates need not be multiples of
+€1,000. Result P5–P95 columns describe simulated outcome distributions, not
+calibrated confidence intervals. Chart labels/tooltips follow the application
+theme; scene overlays retain readable text against their fixed dark canvas.
+
+Incident creation facts use `incident_id` and the envelope's simulation time.
+Cascade facts describe relationships and invalidate owner reads; they must not
+be inserted as complete Incident rows. Incident ages use only the source
+simulation clock, with explicit missing/future-clock states.

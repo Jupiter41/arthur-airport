@@ -32,7 +32,7 @@ export function EntityInspector() {
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        <select
+        <select aria-label="Entity type"
           className="bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
@@ -51,7 +51,7 @@ export function EntityInspector() {
             </option>
           ))}
         </select>
-        <input
+        <input aria-label="Entity ID"
           className="flex-1 bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
           placeholder="Entity ID or tag..."
           value={entityId}

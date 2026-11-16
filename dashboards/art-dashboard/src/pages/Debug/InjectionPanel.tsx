@@ -72,8 +72,8 @@ export function InjectionPanel() {
       {tab === "passenger" && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-400 w-24">Flight</label>
-            <select
+            <label htmlFor="injectionpanel-field-1" className="text-sm text-gray-400 w-24">Flight</label>
+            <select id="injectionpanel-field-1"
               className="flex-1 bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
               value={flightId}
               onChange={(e) => setFlightId(e.target.value)}
@@ -88,8 +88,8 @@ export function InjectionPanel() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-400 w-24">Count</label>
-            <input
+            <label htmlFor="injectionpanel-field-2" className="text-sm text-gray-400 w-24">Count</label>
+            <input id="injectionpanel-field-2"
               type="number"
               className="w-24 bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
               value={count}
@@ -99,8 +99,8 @@ export function InjectionPanel() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-400 w-24">Status</label>
-            <select
+            <label htmlFor="injectionpanel-field-3" className="text-sm text-gray-400 w-24">Status</label>
+            <select id="injectionpanel-field-3"
               className="bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
@@ -136,8 +136,8 @@ export function InjectionPanel() {
       {tab === "flight" && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-400 w-24">Direction</label>
-            <select
+            <label htmlFor="injectionpanel-field-4" className="text-sm text-gray-400 w-24">Direction</label>
+            <select id="injectionpanel-field-4"
               className="bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
               value={flightDir}
               onChange={(e) => setFlightDir(e.target.value)}
@@ -147,8 +147,8 @@ export function InjectionPanel() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-400 w-24">Destination</label>
-            <input
+            <label htmlFor="injectionpanel-field-5" className="text-sm text-gray-400 w-24">Destination</label>
+            <input id="injectionpanel-field-5"
               className="flex-1 bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
               placeholder="IATA code (e.g. LHR, leave empty for random)"
               value={flightDest}
@@ -156,8 +156,8 @@ export function InjectionPanel() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-400 w-24">Gate</label>
-            <input
+            <label htmlFor="injectionpanel-field-6" className="text-sm text-gray-400 w-24">Gate</label>
+            <input id="injectionpanel-field-6"
               className="flex-1 bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
               placeholder="e.g. A05 (leave empty for auto)"
               value={flightGate}
@@ -165,7 +165,7 @@ export function InjectionPanel() {
             />
           </div>
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm text-gray-400">
+            <label htmlFor="injectionpanel-field-7" className="flex items-center gap-2 text-sm text-gray-400">
               <input
                 type="checkbox"
                 checked={seedPax}
@@ -197,7 +197,7 @@ export function InjectionPanel() {
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-400 w-24">Flight</label>
-            <select
+            <select id="injectionpanel-field-7"
               className="flex-1 bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
               value={flightId}
               onChange={(e) => setFlightId(e.target.value)}
@@ -211,8 +211,8 @@ export function InjectionPanel() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-400 w-24">Count</label>
-            <input
+            <label htmlFor="injectionpanel-field-8" className="text-sm text-gray-400 w-24">Count</label>
+            <input id="injectionpanel-field-8"
               type="number"
               className="w-24 bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
               value={count}
@@ -222,8 +222,8 @@ export function InjectionPanel() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-400 w-24">Zone</label>
-            <select
+            <label htmlFor="injectionpanel-field-9" className="text-sm text-gray-400 w-24">Zone</label>
+            <select id="injectionpanel-field-9"
               className="bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
               value={bagZone}
               onChange={(e) => setBagZone(e.target.value)}

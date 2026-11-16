@@ -473,10 +473,10 @@ export default function ScenarioBuilder() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-1" className="block text-xs text-slate-400 mb-1">
                         Terminal
                       </label>
-                      <select
+                      <select id="scenariobuilder-field-1"
                         value={gateTerminal}
                         onChange={(e) => setGateTerminal(e.target.value)}
                         className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
@@ -489,10 +489,10 @@ export default function ScenarioBuilder() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-2" className="block text-xs text-slate-400 mb-1">
                         Gates to add
                       </label>
-                      <input
+                      <input id="scenariobuilder-field-2"
                         type="number"
                         min={1}
                         max={20}
@@ -528,20 +528,20 @@ export default function ScenarioBuilder() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-3" className="block text-xs text-slate-400 mb-1">
                         Runway ID
                       </label>
-                      <input
+                      <input id="scenariobuilder-field-3"
                         value={runwayId}
                         onChange={(e) => setRunwayId(e.target.value)}
                         className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-4" className="block text-xs text-slate-400 mb-1">
                         ILS capable
                       </label>
-                      <select
+                      <select id="scenariobuilder-field-4"
                         value={runwayIls ? "yes" : "no"}
                         onChange={(e) => setRunwayIls(e.target.value === "yes")}
                         className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
@@ -551,10 +551,10 @@ export default function ScenarioBuilder() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-5" className="block text-xs text-slate-400 mb-1">
                         Length (m)
                       </label>
-                      <input
+                      <input id="scenariobuilder-field-5"
                         type="number"
                         min={1500}
                         max={5000}
@@ -587,10 +587,10 @@ export default function ScenarioBuilder() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-6" className="block text-xs text-slate-400 mb-1">
                         Destination IATA
                       </label>
-                      <input
+                      <input id="scenariobuilder-field-6"
                         value={routeDest}
                         onChange={(e) =>
                           setRouteDest(e.target.value.toUpperCase())
@@ -600,10 +600,10 @@ export default function ScenarioBuilder() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-7" className="block text-xs text-slate-400 mb-1">
                         Daily flights
                       </label>
-                      <input
+                      <input id="scenariobuilder-field-7"
                         type="number"
                         min={1}
                         max={50}
@@ -615,10 +615,10 @@ export default function ScenarioBuilder() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-8" className="block text-xs text-slate-400 mb-1">
                         Aircraft
                       </label>
-                      <select
+                      <select id="scenariobuilder-field-8"
                         value={routeAircraft}
                         onChange={(e) => setRouteAircraft(e.target.value)}
                         className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
@@ -653,7 +653,7 @@ export default function ScenarioBuilder() {
                   <div className="grid grid-cols-3 gap-3">
                     {Object.keys(BASELINE_SECURITY).map((t) => (
                       <div key={t}>
-                        <label className="block text-xs text-slate-400 mb-1">
+                        <label htmlFor="scenariobuilder-field-9" className="block text-xs text-slate-400 mb-1">
                           Terminal {t} ({BASELINE_SECURITY[t]} lanes)
                         </label>
                         <div className="flex items-center gap-2">
@@ -736,7 +736,7 @@ export default function ScenarioBuilder() {
                       <label className="block text-xs text-slate-400 mb-1">
                         Terminal letter
                       </label>
-                      <select
+                      <select id="scenariobuilder-field-9"
                         value={termLetter}
                         onChange={(e) => setTermLetter(e.target.value)}
                         className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
@@ -749,10 +749,10 @@ export default function ScenarioBuilder() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-10" className="block text-xs text-slate-400 mb-1">
                         Gates
                       </label>
-                      <input
+                      <input id="scenariobuilder-field-10"
                         type="number"
                         min={4}
                         max={30}
@@ -762,10 +762,10 @@ export default function ScenarioBuilder() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-11" className="block text-xs text-slate-400 mb-1">
                         Security lanes
                       </label>
-                      <input
+                      <input id="scenariobuilder-field-11"
                         type="number"
                         min={1}
                         max={10}
@@ -777,10 +777,10 @@ export default function ScenarioBuilder() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-12" className="block text-xs text-slate-400 mb-1">
                         Wide-body gates
                       </label>
-                      <input
+                      <input id="scenariobuilder-field-12"
                         type="number"
                         min={0}
                         max={termGates}
@@ -790,10 +790,10 @@ export default function ScenarioBuilder() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label htmlFor="scenariobuilder-field-13" className="block text-xs text-slate-400 mb-1">
                         Int'l gates
                       </label>
-                      <input
+                      <input id="scenariobuilder-field-13"
                         type="number"
                         min={0}
                         max={termGates}
@@ -873,7 +873,7 @@ export default function ScenarioBuilder() {
 
 /* ─── Custom form sub-component ───────────────────────────── */
 
-function CustomForm({
+export function CustomForm({
   form,
   setForm,
   infraDeltas,
@@ -939,10 +939,10 @@ function CustomForm({
       {/* Name & description */}
       <div className="grid grid-cols-1 gap-3">
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label htmlFor="scenariobuilder-field-14" className="block text-xs text-slate-400 mb-1">
             Scenario Name
           </label>
-          <input
+          <input id="scenariobuilder-field-14"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600 focus:border-cyan-400 outline-none"
@@ -950,10 +950,10 @@ function CustomForm({
           />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label htmlFor="scenariobuilder-field-15" className="block text-xs text-slate-400 mb-1">
             Description
           </label>
-          <textarea
+          <textarea id="scenariobuilder-field-15"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             rows={2}
@@ -1076,10 +1076,10 @@ function CustomForm({
       {/* Simulation & financial parameters */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label htmlFor="scenariobuilder-field-16" className="block text-xs text-slate-400 mb-1">
             Simulation horizon
           </label>
-          <select
+          <select id="scenariobuilder-field-16"
             value={form.horizon}
             onChange={(e) => setForm({ ...form, horizon: e.target.value })}
             className="w-full bg-slate-700 rounded px-3 py-2 text-sm text-white border border-slate-600"
@@ -1091,10 +1091,10 @@ function CustomForm({
           </select>
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label htmlFor="scenariobuilder-field-17" className="block text-xs text-slate-400 mb-1">
             Monte Carlo runs
           </label>
-          <input
+          <input id="scenariobuilder-field-17"
             type="number"
             min={1}
             max={500}
@@ -1106,10 +1106,10 @@ function CustomForm({
           />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label htmlFor="scenariobuilder-field-18" className="block text-xs text-slate-400 mb-1">
             Investment horizon (yrs)
           </label>
-          <input
+          <input id="scenariobuilder-field-18"
             type="number"
             min={1}
             max={50}
@@ -1121,16 +1121,16 @@ function CustomForm({
           />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label htmlFor="scenariobuilder-field-19" className="block text-xs text-slate-400 mb-1">
             CAPEX (€){" "}
             {costEstimate && form.capex_eur === 0 && (
               <span className="text-cyan-400">(auto)</span>
             )}
           </label>
-          <input
+          <input id="scenariobuilder-field-19"
             type="number"
             min={0}
-            step={1000}
+            step={0.01}
             value={
               costEstimate && form.capex_eur === 0
                 ? costEstimate.total_capex_eur
@@ -1143,16 +1143,16 @@ function CustomForm({
           />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label htmlFor="scenariobuilder-field-20" className="block text-xs text-slate-400 mb-1">
             Annual OPEX delta (€){" "}
             {costEstimate && form.opex_delta_eur === 0 && (
               <span className="text-cyan-400">(auto)</span>
             )}
           </label>
-          <input
+          <input id="scenariobuilder-field-20"
             type="number"
             min={0}
-            step={1000}
+            step={0.01}
             value={
               costEstimate && form.opex_delta_eur === 0
                 ? costEstimate.total_annual_opex_eur
@@ -1165,10 +1165,10 @@ function CustomForm({
           />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label htmlFor="scenariobuilder-field-21" className="block text-xs text-slate-400 mb-1">
             Discount rate (WACC)
           </label>
-          <input
+          <input id="scenariobuilder-field-21"
             type="number"
             min={0}
             max={0.3}
@@ -1209,13 +1209,15 @@ function DeltaControl({
   onChange: (v: number) => void;
 }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex flex-wrap gap-x-3 gap-y-1 items-center justify-between">
       <span className="text-xs text-slate-400">{label}</span>
       <div className="flex items-center gap-1">
         <button
           type="button"
+          aria-label={`Decrease ${label}`}
+          disabled={value <= min}
           onClick={() => onChange(Math.max(min, value - 1))}
-          className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs flex items-center justify-center"
+          className="w-9 h-9 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs flex items-center justify-center"
         >
           −
         </button>
@@ -1233,8 +1235,10 @@ function DeltaControl({
         </span>
         <button
           type="button"
+          aria-label={`Increase ${label}`}
+          disabled={value >= max}
           onClick={() => onChange(Math.min(max, value + 1))}
-          className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs flex items-center justify-center"
+          className="w-9 h-9 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs flex items-center justify-center"
         >
           +
         </button>

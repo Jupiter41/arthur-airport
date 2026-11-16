@@ -129,7 +129,16 @@ export const eventHandlers: Record<string, EventHandler> = {
   },
 
   IncidentCreated: (payload, sim_time) => {
-    useIncidentStore.getState().upsertIncident({ ...payload, observed_at: sim_time } as never);
+    const id = payload.incident_id ?? payload.id;
+    if (typeof id !== "string" || typeof payload.type !== "string" || typeof payload.severity !== "string") {
+      reconcileLiveQueries("incidents");
+      return;
+    }
+    useIncidentStore.getState().upsertIncident({
+      ...payload, id, status: payload.status ?? "active",
+      started_at: payload.started_at ?? sim_time,
+      location: payload.location ?? "Location unavailable", observed_at: sim_time,
+    } as never);
   },
 
   IncidentStatusChanged: (payload, sim_time) => {
@@ -143,11 +152,10 @@ export const eventHandlers: Record<string, EventHandler> = {
       );
   },
 
-  IncidentCascaded: (payload) => {
-    const { parent_id } = payload;
-    useIncidentStore
-      .getState()
-      .addCascade(parent_id as string, payload as never);
+  IncidentCascaded: () => {
+    // This fact carries relationship IDs, not a complete Incident record.
+    // The separate creation fact/owner read supplies child details.
+    reconcileLiveQueries("incidents");
   },
 
   IncidentAlert: (payload, sim_time, event) => {

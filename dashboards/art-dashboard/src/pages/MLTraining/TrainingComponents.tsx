@@ -20,8 +20,8 @@ export function TrainingControl({
 
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="text-xs text-gray-400 block mb-1">Model Type</label>
-          <select
+          <label htmlFor="trainingcomponents-field-1" className="text-xs text-gray-400 block mb-1">Model Type</label>
+          <select id="trainingcomponents-field-1"
             className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm border border-gray-600 disabled:opacity-50"
             value={modelType}
             onChange={(e) => setModelType(e.target.value)}
@@ -33,8 +33,8 @@ export function TrainingControl({
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-400 block mb-1">Timesteps</label>
-          <input
+          <label htmlFor="trainingcomponents-field-2" className="text-xs text-gray-400 block mb-1">Timesteps</label>
+          <input id="trainingcomponents-field-2"
             type="number"
             min={1000}
             max={1000000}

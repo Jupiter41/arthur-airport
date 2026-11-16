@@ -45,7 +45,7 @@ export function SnapshotsPanel() {
     <div className="space-y-4">
       {/* Create snapshot */}
       <div className="flex gap-2">
-        <input
+        <input aria-label="Snapshot name"
           className="flex-1 bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
           placeholder="Snapshot name (e.g. morning-peak)"
           value={name}

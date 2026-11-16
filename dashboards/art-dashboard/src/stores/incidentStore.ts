@@ -60,7 +60,6 @@ interface IncidentStoreState {
     status: Incident["status"],
     patch?: Partial<Incident>,
   ) => void;
-  addCascade: (parentId: string, child: Incident) => void;
   addAlert: (a: IncidentAlert) => void;
   setAlerts: (a: IncidentAlert[]) => void;
 }
@@ -98,9 +97,6 @@ export const useIncidentStore = create<IncidentStoreState>((set) => ({
         },
       };
     }),
-
-  addCascade: (_parentId, child) =>
-    set((s) => ({ incidents: { ...s.incidents, [child.id]: child } })),
 
   addAlert: (a) =>
     set((s) => ({
