@@ -20,9 +20,11 @@ it("normalizes the owner's incident_id and creation time before status updates",
   expect(useIncidentStore.getState().incidents["synthetic-child"].status).toBe("contained");
 });
 it("reconciles cascade relationship facts without inserting partial incident rows", async () => {
+  vi.useFakeTimers();
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
   send("IncidentCascaded", {parent_incident_id:"parent",child_incident_id:"child",cascade_type:"zone_lockdown"});
-  await Promise.resolve();
+  vi.advanceTimersByTime(1000); // RC9: invalidations are throttled per key
+  vi.useRealTimers();
   expect(useIncidentStore.getState().incidents).toEqual({});
   expect(invalidate).toHaveBeenCalledWith({queryKey:["incidents"]});
 });

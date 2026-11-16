@@ -22,11 +22,16 @@ export const useBaggageStore = create<BaggageStoreState>((set) => ({
   setZones: (z) => set({ zones: z }),
 
   updateZone: (zoneId, patch) =>
-    set((s) => ({
-      zones: s.zones.map((z) =>
-        z.zone_id === zoneId ? { ...z, ...patch } : z,
-      ),
-    })),
+    set((s) => {
+      // RC9: an empty patch (or an unknown zone) must not build a new array
+      // and notify every subscriber.
+      if (Object.keys(patch).length === 0 || !s.zones.some((z) => z.zone_id === zoneId)) return s;
+      return {
+        zones: s.zones.map((z) =>
+          z.zone_id === zoneId ? { ...z, ...patch } : z,
+        ),
+      };
+    }),
 
   setFlagged: (f) => set({ flagged: f }),
   addFlagged: (f) =>

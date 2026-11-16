@@ -251,9 +251,25 @@ Valid topic keys: `flights`, `passengers`, `baggage`, `weather`, `incidents`, `a
 
 Subscribing to `alerts` receives only `IncidentAlert` events — a high-priority feed suitable for the notification panel.
 
-### Event forwarding
+### Event forwarding — UI delivery policy (RC9, 2026-11-16)
 
-The gateway relays Kafka events to subscribed WebSocket clients verbatim (the upstream event envelope is preserved). The `type` field maps to the `event_type` of the Kafka event.
+The WebSocket stream is a UI protocol, not a Kafka mirror. Every event type has
+one delivery class in `services/api-gateway/src/wsDeliveryPolicy.json`; anything not
+listed is **dropped** at the gateway (`gateway_ws_events_dropped_total{reason="not_delivered"}`).
+The dashboard's handler registry must cover exactly the delivered types (a
+dashboard test cross-checks the file).
+
+| Class | Event types | Delivery |
+|---|---|---|
+| `immediate` | flight status / gate / cancel / divert / CTOT, weather, incident created / status / cascaded / alert, `BaggageFlagged`, fuel warnings, ground-vehicle dispatch / return, autonomous actions, `CostRecorded`, `SimControlChanged` | Envelope relayed verbatim, as before |
+| `latest` | `SimClockTick`, `GroundVehicleSnapshot`, `BaggageZoneSnapshot`, `SecurityQueueUpdated` (per terminal) | Coalesced: only the newest envelope per key is sent, at most once per `WS_COALESCE_MS` (default 1000 ms) |
+| `hint` | `PassengerStatusBatchChanged`, `BaggageStatusBatchChanged` | Coalesced like `latest`, and the payload is replaced by `{"hint": true, "coalesced": n}` — the UI only uses them to refetch, and batches carry thousands of rows |
+| (not listed) | per-entity `BaggageStatusChanged`, `PassengerStatusChanged`, `BoardingProgress`, `BaggageMissedFlight`, `BulkStateSnapshot` (no UI consumer), retention facts, … | Dropped (`gateway_ws_events_dropped_total{reason="not_delivered"}`); replaced envelopes count as `reason="coalesced"` |
+
+The bootstrap cache only keeps envelopes the policy delivers. BULK-mode
+throttling still applies to `immediate` events (snapshots and alerts bypass it).
+The raw stream remains available in Kafka UI; the dashboard's Kafka inspector
+shows the UI stream.
 
 ### Heartbeat
 
@@ -344,5 +360,6 @@ If an upstream service is unavailable, the gateway returns a partial response wi
 | `gateway_request_duration_ms` | Histogram | Response time by upstream |
 | `gateway_ws_connections_active` | Gauge | Active WebSocket connections |
 | `gateway_ws_events_forwarded_total` | Counter | Events forwarded by topic |
+| `gateway_ws_events_dropped_total` | Counter | Events not sent to browsers, by `reason` (`not_delivered`, `coalesced`) — RC9 |
 | `gateway_upstream_errors_total` | Counter | Upstream errors by service |
 | `gateway_rate_limit_hits_total` | Counter | Rate limit rejections |

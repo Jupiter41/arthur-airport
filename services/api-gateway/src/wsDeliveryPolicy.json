@@ -1,0 +1,32 @@
+{
+  "_comment": "RC9 UI delivery policy: event_type -> immediate | latest | hint. Unlisted types are dropped. The dashboard handler registry must match (dashboards/art-dashboard/src/test/wsDelivery.test.ts).",
+  "immediate": [
+    "FlightStatusChanged",
+    "FlightGateAssigned",
+    "FlightCancelled",
+    "FlightDiverted",
+    "FlightCTOTAssigned",
+    "WeatherStateChanged",
+    "IncidentCreated",
+    "IncidentStatusChanged",
+    "IncidentCascaded",
+    "IncidentAlert",
+    "BaggageFlagged",
+    "MinimumFuelWarning",
+    "GroundVehicleDispatched",
+    "GroundVehicleReturned",
+    "AutonomousActionApplied",
+    "CostRecorded",
+    "SimControlChanged"
+  ],
+  "latest": [
+    "SimClockTick",
+    "GroundVehicleSnapshot",
+    "BaggageZoneSnapshot",
+    "SecurityQueueUpdated"
+  ],
+  "hint": [
+    "PassengerStatusBatchChanged",
+    "BaggageStatusBatchChanged"
+  ]
+}

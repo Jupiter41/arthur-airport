@@ -73,8 +73,8 @@ export const eventHandlers: Record<string, EventHandler> = {
         facts,
       );
     } else {
-      // New flight — invalidate the flights query so the board re-fetches
-      queryClient.invalidateQueries({ queryKey: ["flights"] });
+      // New flight — the board re-fetches (throttled with the reconcile below).
+      reconcileLiveQueries("flights");
     }
     store.flashRow(flight_id as string);
     reconcileLiveQueries("flights"); reconcileLiveQueries("gates"); reconcileLiveQueries("runways");
@@ -106,27 +106,14 @@ export const eventHandlers: Record<string, EventHandler> = {
     useWeatherStore.getState().updateFromEvent(payload);
   },
 
-  BaggageStatusChanged: (payload) => {
-    // Per-bag event with (baggage_id, scan_zone, new_status).
-    // Zone aggregate data comes from REST polling; use this event to
-    // hint at zone changes by updating the zone matching scan_zone.
-    const scanZone = payload.scan_zone as string | undefined;
-    if (scanZone) {
-      useBaggageStore.getState().updateZone(scanZone, {});
-    }
-  },
-
   BaggageFlagged: (payload) => {
     useBaggageStore.getState().addFlagged(payload as never);
   },
 
-  PassengerStatusChanged: (payload) => {
-    // Per-passenger event with (passenger_id, location_zone, new_status).
-    // Zone aggregate data comes from REST polling; this simply signals
-    // that the zone may have changed so UI can mark stale if needed.
-    const _zone = payload.location_zone as string | undefined;
-    void _zone;
-  },
+  // RC9: per-bag BaggageStatusChanged / per-passenger PassengerStatusChanged
+  // are no longer delivered by the gateway (no UI consumer: zone occupancy
+  // comes from BaggageZoneSnapshot, counts from the batch hints below). The
+  // registry must match services/api-gateway/src/wsDeliveryPolicy.json.
 
   IncidentCreated: (payload, sim_time) => {
     const id = payload.incident_id ?? payload.id;
@@ -204,6 +191,7 @@ export const eventHandlers: Record<string, EventHandler> = {
   GroundVehicleSnapshot: applyVehicleObservation,
   SecurityQueueUpdated: applySecurityObservation,
   BaggageZoneSnapshot: applyBaggageObservation,
+  // Batch facts arrive as coalesced, payload-free refetch hints (RC9).
   PassengerStatusBatchChanged: () => { reconcileLiveQueries("passengers"); },
   BaggageStatusBatchChanged: () => {
     reconcileLiveQueries("baggage", "3d-items"); reconcileLiveQueries("baggage", "detail");
@@ -238,7 +226,7 @@ export const eventHandlers: Record<string, EventHandler> = {
 
   CostRecorded: (payload) => {
     useCostStore.getState().handleCostEvent(payload);
-    queryClient.invalidateQueries({ queryKey: ["costs"] });
+    reconcileLiveQueries("costs");
   },
 };
 

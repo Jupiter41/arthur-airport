@@ -4,7 +4,7 @@ import { useGroundVehicleStore } from "../stores/groundVehicleStore";
 
 const observedAt = new Map<string, number>();
 const pending = new Set<string>();
-export function resetLiveProjectionGuards() { observedAt.clear(); }
+export function resetLiveProjectionGuards() { observedAt.clear(); pending.clear(); }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const numeric = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 function fresh(key: string, at: unknown): boolean {
@@ -13,9 +13,14 @@ function fresh(key: string, at: unknown): boolean {
   if (!Number.isFinite(time) || time < (observedAt.get(key) ?? -Infinity)) return false;
   observedAt.set(key, time); return true;
 }
+// RC9: at most one invalidation per query key per window. A microtask only
+// merged calls within one frame, so each FlightStatusChanged still refetched
+// flights, gates and runways (~290 ms each) on every event.
+export const RECONCILE_WINDOW_MS = 1000;
 export function reconcileLiveQueries(...key: string[]) {
   const id = JSON.stringify(key); if (pending.has(id)) return;
-  pending.add(id); queueMicrotask(() => { pending.delete(id); void queryClient.invalidateQueries({ queryKey: key }); });
+  pending.add(id);
+  setTimeout(() => { pending.delete(id); void queryClient.invalidateQueries({ queryKey: key }); }, RECONCILE_WINDOW_MS);
 }
 export function applySecurityObservation(payload: Record<string, unknown>, at: string) {
   const terminal = payload.terminal;

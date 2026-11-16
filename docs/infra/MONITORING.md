@@ -163,6 +163,7 @@ scrape_configs:
 | `gateway_request_duration_ms`       | Histogram | `upstream`                 | Response latency            |
 | `gateway_ws_connections_active`     | Gauge     | —                          | Connected WebSocket clients |
 | `gateway_ws_events_forwarded_total` | Counter   | `topic`                    | Events forwarded per topic  |
+| `gateway_ws_events_dropped_total` | Counter   | `reason`                   | Events not sent to browsers: `not_delivered` (no UI consumer) or `coalesced` (superseded within the window) — RC9 |
 | `gateway_upstream_errors_total`     | Counter   | `service`, `status`        | Upstream failures           |
 | `gateway_rate_limit_hits_total`     | Counter   | `endpoint`                 | Rate limit rejections       |
 

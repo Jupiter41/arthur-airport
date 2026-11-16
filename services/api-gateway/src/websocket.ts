@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
 import { verifyTokenFromRequest, verifyAccessToken } from "./auth";
 import client from "prom-client";
+import { Coalescer, deliveryClass } from "./wsDelivery";
 
 // Prometheus metrics
 const wsConnectionsGauge = new client.Gauge({
@@ -14,6 +15,21 @@ const wsEventsForwarded = new client.Counter({
   help: "Events forwarded to WebSocket clients",
   labelNames: ["topic"],
 });
+
+const wsEventsDropped = new client.Counter({
+  name: "gateway_ws_events_dropped_total",
+  help: "Events not sent to browsers (RC9): not_delivered (no UI consumer) or coalesced (superseded)",
+  labelNames: ["reason"],
+});
+
+// RC9: snapshots, the clock and batch hints are coalesced to their newest
+// envelope and flushed at most once per window.
+const COALESCE_MS = parseInt(process.env.WS_COALESCE_MS ?? "1000", 10);
+const coalescer = new Coalescer(
+  COALESCE_MS,
+  (topicKey, event) => deliver(topicKey, event),
+  () => wsEventsDropped.inc({ reason: "coalesced" }),
+);
 
 interface WsClient {
   ws: WebSocket;
@@ -67,6 +83,10 @@ export function getSimMode(): string {
 export function cacheLatestEvent(topicKey: string, event: object): void {
   const envelope = event as { event_type?: string; payload?: { terminal?: string } };
   const type = envelope.event_type;
+  // RC9: bootstrap only replays what the UI protocol delivers; batch hints
+  // carry nothing worth replaying to a new client.
+  const cls = deliveryClass(type);
+  if (cls === null || cls === "hint") return;
   const key = type === "SecurityQueueUpdated" && ["A", "B", "C"].includes(envelope.payload?.terminal ?? "")
     ? `${topicKey}:security:${envelope.payload!.terminal}`
     : type === "GroundVehicleSnapshot" || type === "BaggageZoneSnapshot" ? `${topicKey}:${type}` : topicKey;
@@ -78,6 +98,16 @@ export function getBootstrapState(): Record<string, object> {
 }
 
 export function fanOut(topicKey: string, event: object): void {
+  const eventType = (event as { event_type?: string }).event_type;
+  const cls = deliveryClass(eventType);
+  if (cls === null) {
+    wsEventsDropped.inc({ reason: "not_delivered" });
+    return;
+  }
+  if (cls !== "immediate") {
+    coalescer.offer(topicKey, event as Record<string, unknown>, cls);
+    return;
+  }
   const now = Date.now();
 
   // In BULK mode, always relay BulkStateSnapshot and alerts immediately
@@ -99,7 +129,15 @@ export function fanOut(topicKey: string, event: object): void {
     }
     lastBulkFanOutAt = now;
   }
+  deliver(topicKey, event);
+}
 
+/** Flush pending coalesced envelopes now (tests, shutdown). */
+export function flushCoalesced(): void {
+  coalescer.flush();
+}
+
+function deliver(topicKey: string, event: object): void {
   const payload = JSON.stringify(event);
 
   for (const client of clients) {
