@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
@@ -38,8 +39,15 @@ INTERVAL_S = float(os.getenv("RETENTION_INTERVAL_S", "60"))
 # Upper bound on batches per task per pass, so a large backlog is worked off
 # over several passes instead of monopolising Neo4j.
 MAX_BATCHES_PER_PASS = max(1, int(os.getenv("RETENTION_MAX_BATCHES_PER_PASS", "50")))
-# Pause between two batches of the same pass (yields Neo4j to the tick path).
+# Pause between two batches of the same pass (yields Neo4j to the tick path):
+# at least PAUSE_S, and at least PACE x the batch's own duration, so a backlog
+# drain uses at most 1/(1+PACE) of the time the sweep could take.
 PAUSE_S = float(os.getenv("RETENTION_PAUSE_S", "0.05"))
+PACE = float(os.getenv("RETENTION_PACE", "1.0"))
+# Retention facts do not take the owner's outbox revision lock (that would
+# serialise every sweep with the tick). Revision 0 sorts them ahead of pending
+# tick facts; they describe entities finished hours ago, so order is moot.
+FACT_REVISION = 0
 ENABLED = os.getenv("RETENTION_ENABLED", "true").lower() != "false"
 
 
@@ -126,6 +134,7 @@ async def run_pass(tasks: list[Task], *, batch: int | None = None,
         name = getattr(task, "__name__", repr(task))
         done = 0
         for _ in range(max_batches):
+            started = time.monotonic()
             try:
                 count = await task()
             except Exception:
@@ -135,7 +144,7 @@ async def run_pass(tasks: list[Task], *, batch: int | None = None,
             done += count
             if count < batch:
                 break
-            await asyncio.sleep(pause_s)
+            await asyncio.sleep(max(pause_s, PACE * (time.monotonic() - started)))
         totals[name] = done
     return totals
 

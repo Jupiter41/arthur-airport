@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Callable
 
 from _common import outbox, retention
-from db.neo4j import get_driver, next_outbox_revision_tx
+from db.neo4j import get_driver
 
 PRODUCER = "baggage-service"
 
@@ -36,17 +36,18 @@ async def _archive_tx(tx, ids: list[str], archive_before: str, sim_time: datetim
     if not ids:
         return
     await (await tx.run(_ARCHIVE_QUERY, ids=ids, at=sim_time.isoformat())).consume()
-    revision = await next_outbox_revision_tx(tx)
     await outbox.stage_outbox(tx, "BaggageOutbox", [
         retention.archived_fact("Baggage", ids, archive_before, sim_time, PRODUCER),
-    ], revision)
+    ], retention.FACT_REVISION)
 
 
 async def archive_collected(archive_before: str, sim_time: datetime, batch: int) -> int:
     """Archive one batch of bags collected before ``archive_before``."""
     async def apply(tx) -> int:
         rows = await (await tx.run(
-            "MATCH (b:Baggage) WHERE b.status = 'collected' AND b.last_scan_at < $before "
+            # Pinned: the plain status index would filter every live collected bag.
+            "MATCH (b:Baggage) USING INDEX b:Baggage(status, last_scan_at, id) "
+            "WHERE b.status = 'collected' AND b.last_scan_at < $before AND b.id IS NOT NULL "
             "WITH b LIMIT $batch RETURN b.id AS id",
             before=archive_before, batch=batch,
         )).data()
@@ -56,6 +57,12 @@ async def archive_collected(archive_before: str, sim_time: datetime, batch: int)
 
     async with get_driver().session() as session:
         return await session.execute_write(apply)
+
+
+_HOLD_RETURN = (
+    "RETURN b.id AS id, b.last_scan_at AS at, "
+    "EXISTS { (b)-[:LOADED_ON]->(:Flight {direction: 'departure'}) } AS departed"
+)
 
 
 class HoldSweep:
@@ -75,15 +82,25 @@ class HoldSweep:
     async def step(self, archive_before: str, sim_time: datetime, batch: int) -> int:
         """Examine one batch; returns rows examined (< batch ⇒ pass complete)."""
         async def apply(tx) -> list[dict]:
-            rows = await (await tx.run(
-                "MATCH (b:Baggage) "
-                "WHERE b.status = 'in_hold' AND b.last_scan_at >= $ts AND b.last_scan_at < $before "
-                "AND (b.last_scan_at > $ts OR b.id > $id) "
-                "WITH b ORDER BY b.last_scan_at, b.id LIMIT $batch "
-                "RETURN b.id AS id, b.last_scan_at AS at, "
-                "EXISTS { (b)-[:LOADED_ON]->(:Flight {direction: 'departure'}) } AS departed",
-                ts=self.ts, id=self.id, before=archive_before, batch=batch,
-            )).data()
+            # Two index-ordered seeks instead of one OR predicate: the OR was
+            # planned as a union + sort over every in_hold bag (5.7M db hits).
+            # The full-key ORDER BY + hint lets the composite index supply order.
+            rows: list[dict] = []
+            if self.ts:
+                rows = await (await tx.run(
+                    "MATCH (b:Baggage) USING INDEX b:Baggage(status, last_scan_at, id) "
+                    "WHERE b.status = 'in_hold' AND b.last_scan_at = $ts AND b.id > $id "
+                    "WITH b ORDER BY b.status, b.last_scan_at, b.id LIMIT $batch "
+                    + _HOLD_RETURN, ts=self.ts, id=self.id, batch=batch,
+                )).data()
+            if len(rows) < batch:
+                rows += await (await tx.run(
+                    "MATCH (b:Baggage) USING INDEX b:Baggage(status, last_scan_at, id) "
+                    "WHERE b.status = 'in_hold' AND b.last_scan_at > $ts "
+                    "AND b.last_scan_at < $before AND b.id IS NOT NULL "
+                    "WITH b ORDER BY b.status, b.last_scan_at, b.id LIMIT $batch "
+                    + _HOLD_RETURN, ts=self.ts, before=archive_before, batch=batch - len(rows),
+                )).data()
             await _archive_tx(tx, [r["id"] for r in rows if r["departed"]], archive_before, sim_time)
             return rows
 
@@ -110,10 +127,9 @@ async def purge_archived(purge_before: str, sim_time: datetime, batch: int) -> i
         )).single()
         count = int(row["n"]) if row else 0
         if count:
-            revision = await next_outbox_revision_tx(tx)
             await outbox.stage_outbox(tx, "BaggageOutbox", [
                 retention.purged_fact("Baggage", count, purge_before, sim_time, PRODUCER),
-            ], revision)
+            ], retention.FACT_REVISION)
         return count
 
     async with get_driver().session() as session:

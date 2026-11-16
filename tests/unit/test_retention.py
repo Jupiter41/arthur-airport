@@ -176,17 +176,24 @@ def test_collected_bags_are_archived_with_their_scan_trail_and_an_event(monkeypa
 
 
 def test_hold_sweep_archives_only_departure_bags_and_walks_a_keyset_cursor(monkeypatch):
-    pages = [
+    # Range seek pages (last_scan_at > ts) and tie seek pages (= ts, id > cursor).
+    ranges = [
         [{"id": "a1", "at": "2024-06-29T10:00:00", "departed": False},   # stuck arrival (RC8)
          {"id": "d1", "at": "2024-06-29T10:00:00", "departed": True}],
-        [{"id": "d2", "at": "2024-06-30T09:00:00", "departed": True}],
+        [{"id": "d3", "at": "2024-06-30T09:00:00", "departed": True}],
     ]
-    seen_cursors = []
+    ties = [[{"id": "d2", "at": "2024-06-29T10:00:00", "departed": True}]]
+    calls = []
 
     def rows(query, params):
-        if "b.status = 'in_hold'" in query:
-            seen_cursors.append((params["ts"], params["id"]))
-            return pages.pop(0)
+        if "b.last_scan_at = $ts" in query:
+            calls.append(("tie", params["ts"], params["id"], params["batch"]))
+            return ties.pop(0)
+        if "b.last_scan_at > $ts" in query:
+            assert "USING INDEX b:Baggage(status, last_scan_at, id)" in query
+            assert " OR " not in query
+            calls.append(("range", params["ts"], params["batch"]))
+            return ranges.pop(0)
         return []
 
     driver = _Driver(_revision_or(rows))
@@ -194,11 +201,14 @@ def test_hold_sweep_archives_only_departure_bags_and_walks_a_keyset_cursor(monke
     sweep = module.HoldSweep()
     assert asyncio.run(sweep.step("2024-07-07T12:00:00", NOW, 2)) == 2   # full page
     assert (sweep.ts, sweep.id) == ("2024-06-29T10:00:00", "d1")
-    assert asyncio.run(sweep.step("2024-07-07T12:00:00", NOW, 2)) == 1   # short ⇒ pass done
-    assert (sweep.ts, sweep.id) == ("", "")
-    assert seen_cursors == [("", ""), ("2024-06-29T10:00:00", "d1")]
+    assert asyncio.run(sweep.step("2024-07-07T12:00:00", NOW, 2)) == 2   # tie + range
+    assert (sweep.ts, sweep.id) == ("2024-06-30T09:00:00", "d3")
+    assert calls == [("range", "", 2), ("tie", "2024-06-29T10:00:00", "d1", 2),
+                     ("range", "2024-06-29T10:00:00", 1)]
     archived = [p["ids"] for tx in driver.txs for q, p in tx.queries if "SET b:BaggageArchive" in q]
-    assert archived == [["d1"], ["d2"]]                 # a1 stays live
+    assert archived == [["d1"], ["d2", "d3"]]           # a1 stays live
+    # Retention facts never take the owner's revision lock.
+    assert not any("BaggageOutboxSeq" in q for tx in driver.txs for q, _ in tx.queries)
 
 
 def test_purge_deletes_archived_bags_and_reports_the_count(monkeypatch):

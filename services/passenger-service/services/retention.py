@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Callable
 
 from _common import outbox, retention
-from db.neo4j import get_driver, next_outbox_revision
+from db.neo4j import get_driver
 
 PRODUCER = "passenger-service"
 
@@ -31,10 +31,9 @@ async def archive_departed(archive_before: str, sim_time: datetime, batch: int) 
         )).data()
         ids = [row["id"] for row in rows]
         if ids:
-            revision = await next_outbox_revision(tx)
             await outbox.stage_outbox(tx, "PassengerOutbox", [
                 retention.archived_fact("Passenger", ids, archive_before, sim_time, PRODUCER),
-            ], revision)
+            ], retention.FACT_REVISION)
         return len(ids)
 
     async with get_driver().session() as session:
@@ -51,10 +50,9 @@ async def purge_archived(purge_before: str, sim_time: datetime, batch: int) -> i
         )).single()
         count = int(row["n"]) if row else 0
         if count:
-            revision = await next_outbox_revision(tx)
             await outbox.stage_outbox(tx, "PassengerOutbox", [
                 retention.purged_fact("Passenger", count, purge_before, sim_time, PRODUCER),
-            ], revision)
+            ], retention.FACT_REVISION)
         return count
 
     async with get_driver().session() as session:
