@@ -462,6 +462,11 @@ BULK_SNAPSHOT_INTERVAL_SIM_MIN = int(os.getenv("BULK_SNAPSHOT_INTERVAL_MIN", "60
 STATUS_GAUGE_INTERVAL_TICKS = max(1, int(os.getenv("BAGGAGE_STATUS_GAUGE_INTERVAL_TICKS", "60")))
 # Bags are inducted at most this long before departure (SPEC §2 induction window).
 INDUCTION_WINDOW = timedelta(minutes=90)
+# RC3 — one event contract per transition. Tick transitions other domains react
+# to are published per bag (BaggageStatusChanged); pipeline-internal hops
+# (inducted → screening → sorting → loaded) are published only inside the
+# tick's BaggageStatusBatchChanged, which carries every transition.
+PER_BAG_TICK_STATUSES = frozenset({"in_hold", "on_carousel", "collected"})
 
 
 class _TickPlan:
@@ -494,12 +499,15 @@ def _plan_status_change(
     suppress: bool,
     loaded_flight_id: str | None = None,
 ) -> None:
-    """Append one BaggageStatusChanged transition to the tick plan."""
-    plan.status_changes.append({"id": bag.baggage_id, "status": new_status, "zone": zone})
+    """Append one transition to the tick plan (batch row; per-bag fact if public)."""
+    plan.status_changes.append({
+        "id": bag.baggage_id, "status": new_status, "zone": zone,
+        "previous_status": previous_status, "flight_id": bag.flight_id or None,
+    })
     plan.metrics.append(("transition", previous_status, new_status))
     if loaded_flight_id:
         plan.loaded_rows.append({"baggage_id": bag.baggage_id, "flight_id": loaded_flight_id})
-    if not suppress:
+    if not suppress and new_status in PER_BAG_TICK_STATUSES:
         fact = build_status_changed_fact(
             id_base=sim_time.isoformat(),
             baggage_id=bag.baggage_id,
@@ -862,12 +870,15 @@ async def _plan_induction(plan: _TickPlan, sim_time: datetime, delta_minutes: in
             )
             status, zone = "inducted", f"induction-{terminal}"
 
-        plan.status_changes.append({"id": bag_id, "status": status, "zone": zone})
+        plan.status_changes.append({
+            "id": bag_id, "status": status, "zone": zone,
+            "previous_status": "dropped_off", "flight_id": bag.get("flight_id"),
+        })
         plan.inducted_ids.append(bag_id)
         plan.metrics.append(("transition", "dropped_off", status))
         if bag_in_zone is not None:
             _state.conveyor.induct_bag(bag_in_zone, sim_time_str)
-        if not suppress:
+        if not suppress and status in PER_BAG_TICK_STATUSES:
             fact = build_status_changed_fact(
                 id_base=sim_time_str,
                 baggage_id=bag_id,

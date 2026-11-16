@@ -48,6 +48,8 @@ def init_producer(name: str, brokers: str | None = None) -> Producer:
             "acks": "all",
             "enable.idempotence": True,
             "retries": 3,
+            # Let librdkafka coalesce an outbox batch into few produce requests.
+            "linger.ms": int(os.getenv("KAFKA_LINGER_MS", "10")),
         }
     )
     logger.info("Kafka producer initialized", extra={"producer": name})

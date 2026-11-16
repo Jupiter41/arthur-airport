@@ -1,7 +1,7 @@
 """cost-service — Financial layer for the Arthur Airport digital twin.
 
 Port: 8008
-Consumes: sim.clock, flights.events, incidents.events, baggage.events, passengers.events
+Consumes: sim.clock, flights.events, incidents.events
 Produces: cost.events
 """
 

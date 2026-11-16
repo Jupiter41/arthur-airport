@@ -173,7 +173,8 @@ A flagged item transitions to `flagged` status and emits `BaggageFlagged`. If th
 
 | Topic | Event type | Trigger |
 |---|---|---|
-| `baggage.events` | `BaggageStatusChanged` | Any status transition |
+| `baggage.events` | `BaggageStatusChanged` | Event/command-driven transitions; on the tick only `in_hold`, `on_carousel`, `collected` |
+| `baggage.events` | `BaggageStatusBatchChanged` | Every committed tick: all tick transitions (incl. `inducted`/`screening`/`sorting`/`loaded`) |
 | `baggage.events` | `BaggageFlagged` | DG detected or false positive |
 
 ---
@@ -434,9 +435,11 @@ restore the winning checkpoint before planning. Redirect commands commit their
 receipt fact with the redirect. Kafka inputs are acknowledged after successful
 processing; pending facts are deleted only after broker acknowledgement.
 
-`BaggageStatusBatchChanged` is an unsampled tick audit fact. Its payload contains
-`status_changes` (`id`, `status`, `zone`), `flags` and `loaded_rows`, including
-BULK mode; individual display notifications may still be suppressed.
+`BaggageStatusBatchChanged` is an unsampled tick fact and the only publication
+of pipeline-internal hops (RC3; see EVENT_BUS.md "Event granularity contract").
+Its payload contains `status_changes` (`id`, `status`, `zone`,
+`previous_status`, `flight_id`), `flags` and `loaded_rows`, including BULK mode;
+per-bag `BaggageStatusChanged` facts are suppressed in BULK mode.
 
 ### UI observation timestamps (2026-11-16)
 

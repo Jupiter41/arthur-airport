@@ -2,7 +2,6 @@
 
 import json
 import logging
-import random
 import time
 from datetime import datetime
 
@@ -15,12 +14,10 @@ logger = logging.getLogger(__name__)
 
 _producer: Producer | None = None
 
-# During bulk tick processing, only a fraction of individual passenger events
-# are produced to Kafka to avoid overwhelming the bus.  Dashboard uses REST
-# APIs for authoritative counts; these events are observability / real-time hints.
-_tick_batch_mode: bool = False
-_TICK_EMIT_SAMPLE_RATE = 0.02  # emit ~2% of per-passenger events during tick
-_bulk_mode: bool = False  # In BULK mode, suppress ALL per-passenger events
+# In BULK mode, suppress ALL per-passenger events. Tick transitions are never
+# published per passenger (RC3): the tick's PassengerStatusBatchChanged carries
+# every one of them, deterministically.
+_bulk_mode: bool = False
 
 PRODUCER_NAME = "passenger-service"
 TOPIC = "passengers.events"
@@ -35,33 +32,10 @@ def close_kafka_producer() -> None:
     kafka_runtime.close_producer(_producer)
 
 
-def set_tick_batch_mode(enabled: bool) -> None:
-    """Toggle tick batch mode to throttle per-passenger event emission."""
-    global _tick_batch_mode
-    _tick_batch_mode = enabled
-
-
 def set_bulk_mode(enabled: bool) -> None:
     """Toggle BULK mode — suppresses ALL per-entity event emission."""
     global _bulk_mode
     _bulk_mode = enabled
-
-
-def tick_emit_decision() -> bool:
-    """Whether one per-passenger tick fact should be materialised now (G1-a).
-
-    Honours the same BULK / tick-batch sampling as ``emit_passenger_status_changed``
-    so the atomic tick path stages only the fraction of ``PassengerStatusChanged``
-    facts that the direct-emit path used to produce. The authoritative domain
-    write is always applied in full; the per-passenger event stream stays sampled
-    to keep Kafka throughput manageable during fast-forward.
-    """
-    if _bulk_mode:
-        return False
-    if _tick_batch_mode and random.random() > _TICK_EMIT_SAMPLE_RATE:
-        return False
-    return True
-
 
 
 def publish_batch_confirmed(documents: list[dict]) -> None:
@@ -198,11 +172,7 @@ async def emit_passenger_status_changed(
     flight_id: str | None = None,
     flight_number: str | None = None,
 ) -> dict:
-    """Emit PassengerStatusChanged event.
-
-    In tick batch mode, only a fraction of events are actually produced
-    to keep Kafka throughput manageable.
-    """
+    """Emit PassengerStatusChanged event (suppressed in BULK mode)."""
     payload = {
         "passenger_id": passenger_id,
         "name": name,
@@ -215,8 +185,6 @@ async def emit_passenger_status_changed(
     }
     if _bulk_mode:
         return payload  # BULK mode — suppress all per-passenger events
-    if _tick_batch_mode and random.random() > _TICK_EMIT_SAMPLE_RATE:
-        return payload  # skip production
     _produce_event("PassengerStatusChanged", sim_time, payload, key=passenger_id)
     return payload
 

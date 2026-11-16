@@ -231,10 +231,10 @@ decisions to stay within this budget:
 
 ### Kafka event throttling
 
-- Per-passenger `PassengerStatusChanged` events are **sampled at ~5%** during tick-batch
-  processing. Dashboards use REST endpoints for authoritative counts; Kafka events are
-  real-time hints for the gateway WebSocket fan-out.
-- This is toggled via `set_tick_batch_mode(True/False)` in the producer module.
+- Tick transitions are published **only** in `PassengerStatusBatchChanged` (RC3). There
+  is no per-passenger sampling any more: the stream is deterministic across replays.
+  `PassengerStatusChanged` is reserved for event/command-driven transitions.
+  Dashboards use REST endpoints for authoritative counts.
 
 ### Tick frequency tiering
 

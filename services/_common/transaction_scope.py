@@ -123,7 +123,7 @@ async def run_tick(
 ) -> None:
     """Lock, restore, compute and persist a complete owner tick in one transaction."""
     from copy import copy, deepcopy
-    from _common.outbox import stage_outbox, _check_label
+    from _common.outbox import stage_outbox, notify, _check_label
     _check_label(runtime_label)
     _check_label(outbox_label)
 
@@ -179,6 +179,8 @@ async def run_tick(
 
     async with get_driver().session() as session:
         candidate, broadcasts, effects = await session.execute_write(apply)
+    # The tick's facts are committed: deliver them now instead of on the next poll.
+    notify(outbox_label)
     for key in (*codec.fields, *getattr(codec, "publish_fields", ()), "sim_time"):
         setattr(state, key, getattr(candidate, key))
     for effect in effects:

@@ -49,13 +49,15 @@ def test_induction_plans_batch_then_commits_atomically_with_per_bag_facts(monkey
     # Compute phase: statuses + per-bag facts planned; the durable cache is NOT
     # yet mutated, while the in-memory conveyor (rebuildable) is populated.
     assert plan.status_changes == [
-        {"id": "b1", "status": "inducted", "zone": "induction-B"},
-        {"id": "b2", "status": "in_hold", "zone": "aircraft-hold"}]
+        {"id": "b1", "status": "inducted", "zone": "induction-B",
+         "previous_status": "dropped_off", "flight_id": None},
+        {"id": "b2", "status": "in_hold", "zone": "aircraft-hold",
+         "previous_status": "dropped_off", "flight_id": None}]
     assert plan.inducted_ids == ["b1", "b2"]
     assert consumer._state.inducted_bag_ids == set()
     assert consumer._state.conveyor.get_zone("induction-B").items == 1
     assert [(f["document"]["payload"]["baggage_id"], f["document"]["payload"]["new_status"])
-            for f in plan.facts] == [("b1", "inducted"), ("b2", "in_hold")]
+            for f in plan.facts] == [("b2", "in_hold")]  # RC3: induction is batch-only
     for f in plan.facts:
         assert f["document"]["payload"]["previous_status"] == "dropped_off"
 
@@ -63,7 +65,7 @@ def test_induction_plans_batch_then_commits_atomically_with_per_bag_facts(monkey
     assert asyncio.run(consumer._apply_tick(plan, NOW)) is True
     assert driver.db["baggage"]["b1"]["status"] == "inducted"
     assert driver.db["baggage"]["b2"]["status"] == "in_hold"
-    assert len(driver.db["outbox"]) == 3  # two per-bag facts + unsampled batch
+    assert len(driver.db["outbox"]) == 2  # one public per-bag fact + the batch
     batch = next(json.loads(r["document"]) for r in driver.db["outbox"].values()
                  if json.loads(r["document"])["event_type"] == "BaggageStatusBatchChanged")
     assert len(batch["payload"]["status_changes"]) == 2
@@ -194,3 +196,23 @@ def test_recovery_retains_active_failure_ownership_until_its_resolution(monkeypa
         "incident_id": "power", "type": "system_failure", "location": "power-B", "new_status": "resolved",
     }, NOW))
     assert consumer._state.conveyor.get_zone("induction-B").status == "normal"
+
+
+def test_rc3_pipeline_hops_are_batch_only_and_public_transitions_stay_per_bag(monkeypatch):
+    """RC3: one contract per transition — internal hops only travel in the batch."""
+    consumer = context(monkeypatch)
+    consumer._state = consumer.BaggageConsumerState()
+    bag = consumer.BagInZone(baggage_id="b1", tag="fake-1", flight_id="F1",
+                             is_dg=False, dg_class=None, passenger_id="p1",
+                             terminal="A", entered_at=NOW.isoformat())
+    plan = consumer._TickPlan()
+    for previous, new in (("inducted", "screening"), ("screening", "sorting"),
+                          ("sorting", "loaded"), ("arrived", "on_carousel"),
+                          ("on_carousel", "collected")):
+        consumer._plan_status_change(plan, bag, previous, new, "z", NOW, suppress=False)
+    assert [c["status"] for c in plan.status_changes] == [
+        "screening", "sorting", "loaded", "on_carousel", "collected"]
+    assert all(c["flight_id"] == "F1" and c["previous_status"] for c in plan.status_changes)
+    assert [f["document"]["payload"]["new_status"] for f in plan.facts] == [
+        "on_carousel", "collected"]
+    assert [event for event, _ in plan.ws] == ["BaggageStatusChanged"] * 2

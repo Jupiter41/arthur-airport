@@ -31,8 +31,8 @@ entity transitions still advance only on `SimClockTick`.
 | `sim.clock`         | sim-orchestrator             | all services                                                                    | 1h        |
 | `flights.events`    | flight-service               | passenger-service, baggage-service, incident-service, cost-service, api-gateway | 7 days    |
 | `flights.schedule`  | sim-orchestrator             | flight-service                                                                  | 7 days    |
-| `passengers.events` | passenger-service            | incident-service, cost-service, api-gateway                                     | 7 days    |
-| `baggage.events`    | baggage-service              | cost-service, api-gateway                                                       | 7 days    |
+| `passengers.events` | passenger-service            | incident-service, analysis-service, api-gateway                                 | 7 days    |
+| `baggage.events`    | baggage-service              | passenger-service, flight-service, incident-service, analysis-service, api-gateway | 7 days |
 | `weather.events`    | weather-service              | flight-service, incident-service, api-gateway                                   | 7 days    |
 | `incidents.events`  | incident-service             | flight-service, passenger-service, baggage-service, cost-service, api-gateway   | 30 days   |
 | `incidents.alerts`  | incident-service             | api-gateway                                                                     | 30 days   |
@@ -184,6 +184,11 @@ Emitted whenever a flight transitions between states.
 
 #### `PassengerStatusChanged`
 
+Published per passenger only for transitions applied by a domain event or
+command (flight arrival/departure/cancellation, disruption, rebooking). Owner
+tick transitions are published **only** inside `PassengerStatusBatchChanged`
+(see "Event granularity contract" below); they are never randomly sampled.
+
 ```json
 {
   "event_type": "PassengerStatusChanged",
@@ -276,6 +281,12 @@ default; ECAC Doc 30 reference).
 ### 4.4 `baggage.events`
 
 #### `BaggageStatusChanged`
+
+Published per bag for every transition applied by a domain event or command,
+and, on the owner tick, only for the transitions other domains react to:
+`in_hold`, `on_carousel`, `collected` (`flagged` travels as `BaggageFlagged`).
+Pipeline-internal tick hops (`inducted`, `screening`, `sorting`, `loaded`) are
+published only inside `BaggageStatusBatchChanged`.
 
 ```json
 {
@@ -931,16 +942,37 @@ clears observation guards and threshold timers; older clock offsets stay fenced.
 ### G1 unsampled transition batches
 
 `PassengerStatusBatchChanged` (`passengers.events`) contains `status_groups`
-(`ids`, `status`, `zone`), `dwell_items` (`[passenger_id, minutes]`),
-`location_updates` and `risk_updates`. `BaggageStatusBatchChanged`
-(`baggage.events`) contains `status_changes` (`id`, `status`, `zone`), `flags`
-and `loaded_rows`. Both use the standard envelope and tick `sim_time`, are
-staged atomically with all corresponding writes/checkpoint, and remain unsampled
-in BULK mode. Individual per-entity display notifications retain their existing
-sampling policy. Delivery is at-least-once with stable outbox event IDs.
+(`ids`, `status`, `zone`, optional `reconciliation_reason`), `dwell_items`
+(`[passenger_id, minutes]`), `location_updates` and `risk_updates`.
+`BaggageStatusBatchChanged` (`baggage.events`) contains `status_changes` (`id`,
+`status`, `zone`, `previous_status`, `flight_id`), `flags` and `loaded_rows`.
+Both use the standard envelope and tick `sim_time`, are staged atomically with
+all corresponding writes/checkpoint, and remain unsampled in BULK mode.
+Delivery is at-least-once with stable outbox event IDs.
 
-Owner outboxes enqueue bounded batches in `(revision, position)` order and
-retain every row until all broker callbacks for that batch confirm delivery.
+#### Event granularity contract (RC3, 2026-11-16)
+
+Each transition is published **once**, at one granularity:
+
+| Domain    | Owner tick transitions                                    | Event/command-driven transitions |
+| --------- | --------------------------------------------------------- | -------------------------------- |
+| passenger | `PassengerStatusBatchChanged` only                         | `PassengerStatusChanged` per passenger |
+| baggage   | `BaggageStatusBatchChanged` (all) + `BaggageStatusChanged` per bag for `in_hold` / `on_carousel` / `collected` only | `BaggageStatusChanged` per bag |
+
+Consumers needing every baggage hop (analysis-service) read the batch. BULK
+mode additionally suppresses the per-entity events; batches are never
+suppressed. cost-service does not subscribe to `passengers.events` or
+`baggage.events`, and filters on `event_type` before schema validation.
+
+#### Outbox delivery
+
+Owner outboxes enqueue bounded batches (`OUTBOX_BATCH_SIZE`, default 1000) in
+`(revision, position)` order and retain every row until all broker callbacks
+for that batch confirm delivery. One Neo4j query deletes the previously acked
+batch and reads the next one. An idle loop sleeps until the owner's tick commit
+wakes it (or 1 s elapses), so a committed tick is delivered without a polling
+wait. Producers use `linger.ms` (`KAFKA_LINGER_MS`, default 10) to coalesce a
+batch into few produce requests.
 A partial acknowledgement failure retains the whole batch for stable-ID replay.
 Idempotent producer sessions preserve partition ordering through broker retries;
 process restarts still give at-least-once delivery, not exactly once.
@@ -967,6 +999,8 @@ financial semantics. Rate snapshot/version behavior is unchanged.
 
 ### Passenger recovery provenance (2026-11-16)
 
-`PassengerStatusChanged.payload.reconciliation_reason` is optional. Owner tick
-reconciliation sets it to `persisted_flight_state`; `at`/envelope `sim_time` is
-the recovery observation, not a reconstructed historical boarding time.
+Owner tick reconciliation sets `reconciliation_reason: persisted_flight_state`
+on its `PassengerStatusBatchChanged.status_groups[]` entry (RC3: no per-passenger
+event). `PassengerStatusChanged.payload.reconciliation_reason` stays optional for
+compatibility. The envelope `sim_time` is the recovery observation, not a
+reconstructed historical boarding time.

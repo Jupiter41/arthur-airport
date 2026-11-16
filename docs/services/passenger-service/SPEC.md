@@ -329,7 +329,8 @@ A passenger with `connection=true` has a minimum connection time (MCT) of 45 sim
 
 | Topic               | Event type                   | Trigger                                   |
 | ------------------- | ---------------------------- | ----------------------------------------- |
-| `passengers.events` | `PassengerStatusChanged`     | Any status/location transition            |
+| `passengers.events` | `PassengerStatusChanged`     | Event/command-driven transitions (arrival, departure, cancellation, disruption) |
+| `passengers.events` | `PassengerStatusBatchChanged` | Every committed tick: all tick transitions (never sampled) |
 | `passengers.events` | `PassengerAlert`             | Gate change, connection risk, emergency   |
 | `passengers.events` | `SecurityCongestionDetected` | Wait > 20 sim-min for 5 consecutive ticks |
 

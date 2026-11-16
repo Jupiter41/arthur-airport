@@ -4,7 +4,7 @@ Consumes events from all domain topics to build an in-memory operational state:
   - sim.clock          → SimClockTick (time progression + bottleneck evaluation)
   - flights.events     → FlightStatusChanged, FlightGateAssigned, FlightCancelled
   - passengers.events  → PassengerStatusChanged, SecurityCongestionDetected
-  - baggage.events     → BaggageStatusChanged
+  - baggage.events     → BaggageStatusChanged, BaggageStatusBatchChanged
   - weather.events     → WeatherStateChanged
   - incidents.events   → IncidentCreated, IncidentStatusChanged
   - ground.events      → GroundVehicleDispatched, GroundVehicleReturned
@@ -221,6 +221,7 @@ async def _dispatch_event(
         "SecurityCongestionDetected": state.on_security_congestion_detected,
         "SecurityQueueUpdated": state.on_security_queue_updated,
         "BaggageStatusChanged": state.on_baggage_status_changed,
+        "BaggageStatusBatchChanged": state.on_baggage_status_batch_changed,
         "BaggageZoneSnapshot": state.on_baggage_zone_snapshot,
         "WeatherStateChanged": state.on_weather_state_changed,
         "IncidentCreated": state.on_incident_created,

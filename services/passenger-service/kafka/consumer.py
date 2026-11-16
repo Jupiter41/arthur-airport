@@ -49,9 +49,7 @@ from kafka.producer import (
     emit_congestion_detected,
     emit_security_queue_updated,
     emit_bulk_state_snapshot,
-    set_tick_batch_mode,
     set_bulk_mode,
-    tick_emit_decision,
 )
 from ml.congestion import check_congestion
 from ml.features import build_features
@@ -678,12 +676,6 @@ class TickContribution:
     location_updates: list[dict] = field(default_factory=list)  # {id,zone}
     facts: list[dict] = field(default_factory=list)           # {id,document}
 
-    def add_status_fact(self, **kwargs) -> None:
-        """Stage a PassengerStatusChanged fact, honouring BULK/tick-batch sampling."""
-        if tick_emit_decision():
-            fact = build_passenger_status_changed_fact(**kwargs)
-            self.facts.append({"id": fact["event_id"], "document": fact})
-
     def merge(self, other: "TickContribution") -> None:
         self.groups.extend(other.groups)
         self.dwell_items.extend(other.dwell_items)
@@ -840,7 +832,6 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     # In BULK mode, suppress ALL per-passenger Kafka events
     set_bulk_mode(is_bulk)
 
-    set_tick_batch_mode(True)
     try:
         # Warm-start: pre-advance early departure passengers on first tick
         if _state.tick_counter == 1:
@@ -969,8 +960,6 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     except Exception as e:
         logger.error("Error in clock tick processing: %s", e, exc_info=True)
         raise
-    finally:
-        set_tick_batch_mode(False)
 
 
 BULK_SNAPSHOT_INTERVAL_SIM_MIN = int(os.getenv("BULK_SNAPSHOT_INTERVAL_MIN", "60"))
@@ -1040,18 +1029,13 @@ async def _reconcile_flight_passengers(sim_time: datetime) -> TickContribution:
             move_passenger(old_zone, zone)
         elif old_zone:
             remove_passenger(old_zone)
-        fact = build_passenger_status_changed_fact(
-            passenger_id=pid, name=pax.get("name") or "",
-            previous_status=pax["status"], new_status=status, location_zone=zone,
-            sim_time=sim_time, flight_id=pax["flight_id"], flight_number=pax.get("flight_number"),
-        )
-        fact["payload"]["reconciliation_reason"] = "persisted_flight_state"
-        # Recovery always keeps its evidence, including BULK/sampled ticks.
-        plan.facts.append({"id": fact["event_id"], "document": fact})
         if pax.get("special_assistance") and status == "departed_airport":
             await wheelchair.release(pid, sim_time)
     for (status, zone), ids in groups.items():
-        plan.groups.append({"ids": ids, "status": status, "zone": zone})
+        # RC3: the tick's PassengerStatusBatchChanged is the only publication;
+        # the reason travels with the cohort (kept in BULK mode too).
+        plan.groups.append({"ids": ids, "status": status, "zone": zone,
+                            "reconciliation_reason": "persisted_flight_state"})
     if removed:
         # Remove stale queue membership before this candidate's normal drain.
         for cp in state.security.checkpoints.values():
@@ -1131,16 +1115,6 @@ async def _advance_booked_to_checkin(
         plan.groups.append({"ids": ids, "status": "checked_in", "zone": new_zone})
         for pax in batch:
             move_passenger(None, new_zone)
-            plan.add_status_fact(
-                passenger_id=pax["id"],
-                name=pax.get("name", ""),
-                previous_status="booked",
-                new_status="checked_in",
-                location_zone=new_zone,
-                sim_time=sim_time,
-                flight_id=flight_id,
-                flight_number=pax.get("flight_number"),
-            )
             # 1C — register SA passengers with the wheelchair pool on check-in.
             if pax.get("special_assistance"):
                 try:
@@ -1243,16 +1217,6 @@ async def _advance_checkin_to_security(
                 if pax["id"] in ids_to_move:
                     old_zone = pax.get("location_zone") or f"check-in-{terminal}"
                     move_passenger(old_zone, new_zone)
-                    plan.add_status_fact(
-                        passenger_id=pax["id"],
-                        name=pax.get("name", ""),
-                        previous_status="checked_in",
-                        new_status="security_queue",
-                        location_zone=new_zone,
-                        sim_time=sim_time,
-                        flight_id=flight_id,
-                        flight_number=pax.get("flight_number"),
-                    )
 
     return plan
 
@@ -1294,14 +1258,6 @@ async def _drain_security_queues(
 
         for pid in all_drained:
             move_passenger(default_old_zone, new_zone)
-            plan.add_status_fact(
-                passenger_id=pid,
-                name="",
-                previous_status="security_queue",
-                new_status="airside",
-                location_zone=new_zone,
-                sim_time=sim_time,
-            )
 
     return plan
 
@@ -1453,16 +1409,6 @@ async def _advance_airside_to_gate(sim_time: datetime) -> TickContribution:
             ids_by_zone.setdefault(new_zone, []).append(pax["id"])
             move_passenger(old_zone, new_zone)
 
-            plan.add_status_fact(
-                passenger_id=pax["id"],
-                name=pax.get("name", ""),
-                previous_status="airside",
-                new_status="at_gate",
-                location_zone=new_zone,
-                sim_time=sim_time,
-                flight_id=pax.get("flight_id"),
-                flight_number=pax.get("flight_number"),
-            )
             # 1C — record SLA outcome (wheelchair only).
             if pax.get("special_assistance"):
                 try:
@@ -1546,16 +1492,6 @@ async def _advance_boarding(
                             old_zone = pax.get("location_zone") or ""
                             noshow_move_ids.append(pax["id"])
                             remove_passenger(old_zone)
-                            plan.add_status_fact(
-                                passenger_id=pax["id"],
-                                name=pax.get("name", ""),
-                                previous_status="at_gate",
-                                new_status="departed_airport",
-                                location_zone="no-show",
-                                sim_time=sim_time,
-                                flight_id=flight_id,
-                                flight_number=pax.get("flight_number"),
-                            )
                     if noshow_move_ids:
                         plan.groups.append({
                             "ids": noshow_move_ids,
@@ -1591,16 +1527,6 @@ async def _advance_boarding(
             # Boarded passengers leave terminal waiting areas.
             remove_passenger(old_zone)
 
-            plan.add_status_fact(
-                passenger_id=pax["id"],
-                name=pax.get("name", ""),
-                previous_status="at_gate",
-                new_status="boarded",
-                location_zone=new_zone,
-                sim_time=sim_time,
-                flight_id=flight_id,
-                flight_number=pax.get("flight_number"),
-            )
             # 1C — release wheelchair when boarding completes.
             if pax.get("special_assistance"):
                 try:
@@ -1684,16 +1610,6 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
         for pax in to_customs:
             old_zone = pax.get("location_zone") or "arrivals-hall"
             move_passenger(old_zone, new_zone)
-            plan.add_status_fact(
-                passenger_id=pax["id"],
-                name=pax.get("name", ""),
-                previous_status="deplaning",
-                new_status="customs",
-                location_zone=new_zone,
-                sim_time=sim_time,
-                flight_id=pax.get("flight_id"),
-                flight_number=pax.get("flight_number"),
-            )
 
     if to_baggage_claim:
         ids = [p["id"] for p in to_baggage_claim]
@@ -1702,16 +1618,6 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
         for pax in to_baggage_claim:
             old_zone = pax.get("location_zone") or "arrivals-hall"
             move_passenger(old_zone, new_zone)
-            plan.add_status_fact(
-                passenger_id=pax["id"],
-                name=pax.get("name", ""),
-                previous_status="deplaning",
-                new_status="baggage_claim",
-                location_zone=new_zone,
-                sim_time=sim_time,
-                flight_id=pax.get("flight_id"),
-                flight_number=pax.get("flight_number"),
-            )
         # Assign to carousel if bags already on carousel for this flight
         _assign_carousels(to_baggage_claim)
 
@@ -1739,16 +1645,6 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
         for pax in customs_to_bc:
             old_zone = pax.get("location_zone") or "customs"
             move_passenger(old_zone, new_zone)
-            plan.add_status_fact(
-                passenger_id=pax["id"],
-                name=pax.get("name", ""),
-                previous_status="customs",
-                new_status="baggage_claim",
-                location_zone=new_zone,
-                sim_time=sim_time,
-                flight_id=pax.get("flight_id"),
-                flight_number=pax.get("flight_number"),
-            )
         # Assign to carousel if bags already on carousel for this flight
         _assign_carousels(customs_to_bc)
 
@@ -1781,16 +1677,6 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
             remove_passenger(old_zone)
             _state.baggage_collected.discard(pax["id"])
             _state.passengers_at_carousel.discard(pax["id"])
-            plan.add_status_fact(
-                passenger_id=pax["id"],
-                name=pax.get("name", ""),
-                previous_status="baggage_claim",
-                new_status="departed_airport",
-                location_zone=new_zone,
-                sim_time=sim_time,
-                flight_id=pax.get("flight_id"),
-                flight_number=pax.get("flight_number"),
-            )
 
     return plan
 

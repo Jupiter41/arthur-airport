@@ -364,6 +364,24 @@ class OperationalState:
                 z.current_count = max(0, z.current_count - 1)
                 z.utilisation_pct = (z.current_count / z.capacity * 100) if z.capacity else 0
 
+    def on_baggage_status_batch_changed(self, payload: dict) -> None:
+        """Process BaggageStatusBatchChanged — the only carrier of pipeline hops (RC3).
+
+        Since RC3, inducted / screening / sorting / loaded transitions are
+        published only in the tick batch, so the per-bag targets follow it.
+        Zone occupancy still comes from the owner's BaggageZoneSnapshot.
+        """
+        for change in payload.get("status_changes") or []:
+            bag_id = change.get("id")
+            if not bag_id:
+                continue
+            target = self.baggage_targets.get(bag_id) or {}
+            self.baggage_targets[bag_id] = {
+                "flight_id": change.get("flight_id") or target.get("flight_id"),
+                "zone": change.get("zone"),
+                "status": change.get("status", "unknown"),
+            }
+
     def on_baggage_zone_snapshot(self, payload: dict) -> None:
         at = _parse_dt(payload.get("at"))
         if at is None or (self.baggage_snapshot_at and _utc(at) < _utc(self.baggage_snapshot_at)):

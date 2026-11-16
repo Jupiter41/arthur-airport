@@ -215,8 +215,12 @@ Aircraft are classified into three families for cost calculations:
 | `sim.clock`        | `SimClockTick`                               | Holding fuel, staffing, retail revenue            |
 | `flights.events`   | `FlightStatusChanged`, `FlightCancelled`     | Landing/gate/pax fees, EU261, ground handling     |
 | `incidents.events` | `IncidentCreated`, `IncidentStatusChanged`   | Incident direct + response costs                 |
-| `baggage.events`   | `BaggageStatusChanged`                       | (reserved for future per-bag cost tracking)       |
-| `passengers.events`| `PassengerStatusChanged`                     | (reserved for future dwell-time revenue tracking) |
+
+cost-service does **not** subscribe to `baggage.events` or `passengers.events`
+(RC3, 2026-11-16): no cost rule used them, and they were ~17.5k msgs/min of
+validated-then-ignored traffic. Messages whose `event_type` is not handled are
+skipped before schema validation. Re-add a topic here together with the rule
+that consumes it.
 
 **Consumer group:** `cost-service`
 

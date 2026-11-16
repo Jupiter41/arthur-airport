@@ -14,12 +14,12 @@ from services import ledger
 
 logger = structlog.get_logger(__name__)
 
+# RC3: baggage.events / passengers.events carried ~17.5k msgs/min that no cost
+# rule uses; cost-service no longer subscribes to them.
 TOPICS = [
     "sim.clock",
     "flights.events",
     "incidents.events",
-    "baggage.events",
-    "passengers.events",
 ]
 
 _consumer: Consumer | None = None
@@ -128,6 +128,11 @@ async def run_consumer() -> None:
                     continue
                 try:
                     envelope = json.loads(msg.value().decode("utf-8"))
+                    if isinstance(envelope, dict) and envelope.get("event_type") not in HANDLED_EVENTS:
+                        # Filter before schema validation: unhandled facts are
+                        # acknowledged with the batch and never validated.
+                        _consumer_health.mark_message()
+                        continue
                     if isinstance(envelope, dict) and not envelope.get("event_id"):
                         envelope["event_id"] = f"kafka:{msg.topic()}:{msg.partition()}:{msg.offset()}"
                     ledger.FinancialEnvelope.model_validate(envelope)

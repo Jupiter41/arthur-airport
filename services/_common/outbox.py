@@ -39,7 +39,41 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import time
 from typing import Any, Callable, Protocol
+
+# RC3: one drain loop moves up to this many facts per broker round trip. A
+# baggage tick stages 600-700 facts, so the old 100-row batch needed 7+ loops
+# (three Neo4j round trips + an acks=all wait each) to deliver a single tick.
+DEFAULT_BATCH = max(1, int(os.getenv("OUTBOX_BATCH_SIZE", "1000")))
+# After a wake-up, keep re-reading briefly: a writer may notify just before
+# its transaction commits, and the rows only become visible after that.
+_SETTLE_S = 0.25
+_SETTLE_STEP_S = 0.02
+
+_wakeups: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Event]] = {}
+
+
+def _wakeup(label: str) -> asyncio.Event:
+    """The wake-up event for ``label`` on the running loop (one per loop)."""
+    loop = asyncio.get_running_loop()
+    entry = _wakeups.get(label)
+    if entry is None or entry[0] is not loop:
+        entry = _wakeups[label] = (loop, asyncio.Event())
+    return entry[1]
+
+
+def notify(outbox_label: str) -> None:
+    """Wake the delivery loop of ``outbox_label`` (facts were, or are being, staged).
+
+    Safe to call before the staging transaction commits: the loop keeps polling
+    for a short settle window after each wake-up. A no-op outside an event loop.
+    """
+    try:
+        _wakeup(outbox_label).set()
+    except RuntimeError:
+        pass
 
 
 class _Tx(Protocol):  # minimal structural type for an async managed transaction
@@ -116,6 +150,7 @@ async def stage_outbox(
         revision=revision,
     )
     await result.consume()
+    notify(label)
 
 
 async def publish_pending(
@@ -123,7 +158,7 @@ async def publish_pending(
     get_driver: Callable[[], Any],
     publish_confirmed: Callable[[dict], None],
     *,
-    batch: int = 100,
+    batch: int = DEFAULT_BATCH,
     publish_batch_confirmed: Callable[[list[dict]], None] | None = None,
 ) -> int:
     """Deliver up to ``batch`` pending facts in order; delete each only on ack.
@@ -162,6 +197,24 @@ async def publish_pending(
     return count
 
 
+async def _delete_and_read(
+    label: str, get_driver: Callable[[], Any], acked: list[str], batch: int,
+) -> list[dict]:
+    """Delete the previously acked rows and read the next batch in ONE query.
+
+    The unit subquery keeps one row even when ``acked`` is empty, and rows
+    deleted earlier in the same transaction are no longer matched.
+    """
+    async with get_driver().session() as session:
+        result = await session.run(
+            f"CALL {{ UNWIND $acked AS id MATCH (d:{label} {{id: id}}) DELETE d }} "
+            f"MATCH (e:{label}) RETURN e.id AS id, e.document AS document "
+            f"ORDER BY e.revision, e.position LIMIT $batch",
+            acked=acked, batch=batch,
+        )
+        return await result.data()
+
+
 async def run(
     outbox_label: str,
     get_driver: Callable[[], Any],
@@ -171,23 +224,60 @@ async def run(
     logger: Any | None = None,
     poll_interval_s: float = 1.0,
     publish_batch_confirmed: Callable[[list[dict]], None] | None = None,
+    batch: int = DEFAULT_BATCH,
 ) -> None:
-    """Background loop: drain the outbox, retaining anything not yet confirmed."""
+    """Background loop: drain the outbox, retaining anything not yet confirmed.
+
+    Each iteration is one Neo4j query (delete the last acked batch + read the
+    next) and one broker round trip. When the outbox is empty the loop sleeps
+    until :func:`notify` wakes it (every tick commit does) or ``poll_interval_s``
+    elapses, whichever is first. Acked-but-undeleted rows are at worst
+    redelivered with the same ``event_id`` after a crash (at-least-once).
+    """
+    label = _check_label(outbox_label)
+    wake = _wakeup(label)
+    acked: list[str] = []
+    settle_until = 0.0
     while not stop.is_set():
+        # Clear before reading: a notify() landing after this read is then
+        # still seen by the wait below instead of being lost.
+        wake.clear()
         try:
-            count = await publish_pending(
-                outbox_label, get_driver, publish_confirmed,
-                publish_batch_confirmed=publish_batch_confirmed,
-            )
-            if count:
+            pending = await _delete_and_read(label, get_driver, acked, batch)
+            acked = []
+            if pending:
+                documents = [json.loads(row["document"]) for row in pending]
+                if publish_batch_confirmed is not None:
+                    await asyncio.to_thread(publish_batch_confirmed, documents)
+                else:
+                    for document in documents:
+                        await asyncio.to_thread(publish_confirmed, document)
+                acked = [row["id"] for row in pending]
                 continue
         except Exception:
             if logger is not None:
                 logger.exception(f"outbox delivery unavailable; retaining {outbox_label} events")
+            settle_until = 0.0
+        if time.monotonic() < settle_until:
+            await asyncio.sleep(_SETTLE_STEP_S)
+            continue
+        stop_wait = asyncio.ensure_future(stop.wait())
+        wake_wait = asyncio.ensure_future(wake.wait())
+        done, _ = await asyncio.wait(
+            {stop_wait, wake_wait}, timeout=poll_interval_s,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for waiter in (stop_wait, wake_wait):
+            if not waiter.done():
+                waiter.cancel()
+        if wake_wait in done:
+            settle_until = time.monotonic() + _SETTLE_S
+    if acked:
         try:
-            await asyncio.wait_for(stop.wait(), timeout=poll_interval_s)
-        except asyncio.TimeoutError:
-            pass
+            await _delete_and_read(label, get_driver, acked, 0)
+        except Exception:
+            if logger is not None:
+                logger.exception(f"could not delete acked {outbox_label} rows; they will be redelivered")
 
 
 def transition_batch_facts(
