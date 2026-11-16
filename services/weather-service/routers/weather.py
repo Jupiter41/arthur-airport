@@ -163,9 +163,11 @@ async def weather_impact():
 async def weather_source():
     """Current weather data source configuration."""
     from kafka.consumer import get_current_state, get_weather_source
+    from kafka.consumer import _state
     source = get_weather_source()
     current = get_current_state()
-    info: dict = {"source": source, "current_category": current.get("category")}
+    info: dict = {"source": source, "current_category": current.get("category"),
+                  "health": _state.health.as_dict()}  # RC10
 
     if source == "historical":
         info["file"] = os.getenv("WEATHER_HISTORY_FILE", "/app/data/weather/EGLL_30days.csv")

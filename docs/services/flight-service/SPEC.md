@@ -470,3 +470,7 @@ older overdue flights. A rolling lower date bound must not strand an active
 movement forever after downtime or clock migration. Terminal history remains
 excluded by status; remote future timetables remain excluded by the upper bound.
 Normal owning-service FSM transitions and facts handle these overdue movements.
+
+### Source health (RC10, 2026-11-16)
+
+`GET /flights/adsb/source` (RC10) reports the ADS-B adapter's `health` block (api-gateway SPEC §5a): `enabled` = `ADSB_ENABLED`, `items` = aircraft in the cache, `source` = `adsb.lol` / `opensky` / `synthetic`, poll failures as `last_error`.

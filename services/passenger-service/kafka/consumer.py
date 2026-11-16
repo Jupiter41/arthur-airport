@@ -202,10 +202,16 @@ def _ensure_bts_adapter():
 def get_passenger_source_info() -> dict:
     """Return current source status and available options."""
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    # RC10: freshness is the owner's last committed tick (sim clock).
+    from _common.data_sources import SourceHealth
+    health = SourceHealth(enabled=True)
+    if _state.last_tick_sim_time is not None:
+        health.last_observation_at = _state.last_tick_sim_time.replace(tzinfo=None).isoformat()
     info = {
         "source": _state.passenger_source,
         "available": ["simulation", "bts_historical"],
         "registry": _state.source_registry.info(),
+        "health": health.as_dict(),
     }
     if _state.passenger_source == "bts_historical" and _state._bts_adapter:
         info["bts_summary"] = _state._bts_adapter.get_summary()

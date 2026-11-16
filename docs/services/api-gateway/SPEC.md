@@ -286,6 +286,44 @@ Clients should implement exponential backoff reconnection. On reconnect, they wi
 
 ---
 
+## 5a. Data-source status — `GET /api/v1/data-sources` (RC10, 2026-11-16)
+
+The gateway **derives** each source's status from what its owner reports; it never
+asserts health itself (no hardcoded `active`, no request-time `last_updated`).
+
+**Owner contract.** Each owner's source endpoint returns a `health` block built by
+`_common.data_sources.SourceHealth`:
+
+```json
+{"enabled": true, "items": 412,
+ "last_ingest_at": "2026-11-16T18:02:11Z",      "last_ingest_clock": "wall",
+ "last_observation_at": "2024-06-15T09:00:00", "last_observation_clock": "sim",
+ "last_error": null, "last_error_at": null,     "last_error_clock": "wall"}
+```
+
+`last_ingest_at` / `last_error_at` are wall-clock observability stamps (when the
+owner last received data / failed); `last_observation_at` is the simulation time
+the data describes. Owner endpoints: weather `GET /weather/source`, passengers
+`GET /passengers/source`, ADS-B `GET /flights/adsb/source` (new; `enabled` mirrors
+`ADSB_ENABLED`, `items` is the aircraft count, errors are poll failures).
+
+**Derived status**, first match wins:
+
+| Status | When |
+|---|---|
+| `unavailable` | the owner endpoint did not answer |
+| `disabled` | `health.enabled` is false (e.g. `ADSB_ENABLED=false`) |
+| `error` | `last_error_at` is newer than `last_ingest_at` (or there was never an ingest) |
+| `stale` | no data yet, or the observation is older than the source's limit: weather 90 sim-min behind the gateway's sim clock, baggage/passenger owner clocks 10 sim-min behind, ADS-B ingest 5 wall-min old |
+| `active` | otherwise |
+
+Each source carries `status_reason`, `last_updated` and `last_updated_clock`
+(`"sim"`, `"wall"` or `null`) so the UI never mixes clocks. Passenger details report
+`total_in_airport` and `status_counts` (status counts, not zones); baggage details
+report `total_in_system`, `by_status` and the owner's `sim_time`. Static reference
+sources (OurAirports infrastructure, incident calibration profiles) report
+`active` with `last_updated: null`.
+
 ## 6. Rate limiting
 
 | Tier | Limit | Window |

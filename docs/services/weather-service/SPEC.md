@@ -289,3 +289,7 @@ WeatherState alongside the weather parameters. Analysis reads these exact rates
 on restart; they include the weather owner's wind reductions. Legacy nodes
 without rates use category defaults until the next weather fact. Kafka uses
 `new_category` as specified, rather than a `category` field in transition facts.
+
+### Source health (RC10, 2026-11-16)
+
+`GET /weather/source` includes the RC10 `health` block (see api-gateway SPEC §5a): `last_observation_at` is the sim time of the latest hourly evaluation; a historical/live lookup that returns nothing (and falls back to the FSM) records `last_error`.

@@ -99,6 +99,13 @@ async def get_adsb_states():
     return cache.to_geojson()
 
 
+@router.get("/flights/adsb/source")
+async def get_adsb_source():
+    """RC10: ADS-B adapter health (enabled, items, last poll, last error)."""
+    from services.adsb import adsb_source_info
+    return adsb_source_info()
+
+
 @router.get("/flights/{flight_id}")
 async def get_flight(flight_id: str):
     """Full flight detail including gate, runway, and turnaround info."""

@@ -49,6 +49,7 @@ export function SourceCard({
           />
           <span
             className={`text-[10px] font-semibold uppercase ${statusStyle.text}`}
+            title={source.status_reason}
           >
             {source.status}
           </span>
@@ -123,7 +124,10 @@ export function SourceCard({
           </pre>
           {source.last_updated && (
             <p className="text-[10px] text-slate-500 mt-1">
-              Last updated: {new Date(source.last_updated).toLocaleTimeString()}
+              {/* RC10: sim and wall clocks are never mixed in one label. */}
+              {source.last_updated_clock === "sim"
+                ? `Last observation (sim time): ${source.last_updated.replace("T", " ").slice(0, 16)} UTC`
+                : `Last update (wall clock): ${new Date(source.last_updated).toLocaleTimeString()}`}
             </p>
           )}
         </div>

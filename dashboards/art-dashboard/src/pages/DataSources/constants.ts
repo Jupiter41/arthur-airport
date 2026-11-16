@@ -78,10 +78,20 @@ export const STATUS_STYLES: Record<
     text: "text-emerald-400",
     dot: "bg-emerald-400",
   },
-  degraded: {
+  stale: {
     bg: "bg-amber-900/40",
     text: "text-amber-400",
     dot: "bg-amber-400",
+  },
+  error: {
+    bg: "bg-red-900/40",
+    text: "text-red-400",
+    dot: "bg-red-400",
+  },
+  disabled: {
+    bg: "bg-slate-800/60",
+    text: "text-slate-400",
+    dot: "bg-slate-500",
   },
   unavailable: {
     bg: "bg-red-900/40",

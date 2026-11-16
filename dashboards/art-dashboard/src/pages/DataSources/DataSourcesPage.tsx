@@ -60,7 +60,8 @@ export default function DataSourcesPage() {
 
   const stats = useMemo(() => {
     const active = sources.filter((s) => s.status === "active").length;
-    const degraded = sources.filter((s) => s.status === "degraded").length;
+    // RC10: stale/error are owner-reported problems; disabled is configuration.
+    const degraded = sources.filter((s) => s.status === "stale" || s.status === "error").length;
     const unavailable = sources.filter(
       (s) => s.status === "unavailable",
     ).length;
@@ -68,7 +69,8 @@ export default function DataSourcesPage() {
       (s) =>
         s.current_source !== "simulation" &&
         s.current_source !== "simulated" &&
-        s.current_source !== "disabled",
+        s.current_source !== "disabled" &&
+        s.status !== "disabled",
     ).length;
     return {
       active,
@@ -124,7 +126,7 @@ export default function DataSourcesPage() {
             {stats.degraded}
           </div>
           <div className="text-[10px] text-amber-400/70 uppercase tracking-wide">
-            Degraded
+            Stale / error
           </div>
         </div>
         <div className="rounded-xl bg-red-900/30 border border-red-700/30 p-3 text-center">

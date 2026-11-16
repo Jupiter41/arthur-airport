@@ -18,6 +18,8 @@ from typing import Any
 
 import httpx
 
+from _common.data_sources import SourceHealth
+
 logger = logging.getLogger(__name__)
 
 # KART coordinates — positioned at Luxembourg Findel (ELLX) for ADS-B coverage
@@ -70,6 +72,8 @@ class ADSBCache:
         self._running = False
         self._client: httpx.AsyncClient | None = None
         self._consecutive_errors: int = 0
+        # RC10: owner-reported freshness; the gateway derives status from it.
+        self.health = SourceHealth(enabled=os.getenv("ADSB_ENABLED", "false").lower() == "true")
         self._use_synthetic: bool = False
         self._source: str = "adsb.lol"
         self._auth: tuple[str, str] | None = None
@@ -130,6 +134,7 @@ class ADSBCache:
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
             self._consecutive_errors += 1
+            self.health.record_error(f"OpenSky HTTP {status} (adsb.lol also failed)")
             if self._consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 logger.warning(
                     "ADS-B APIs failed %d times consecutively — switching to synthetic fallback",
@@ -154,6 +159,7 @@ class ADSBCache:
             return len(self._states)
         except Exception as e:
             self._consecutive_errors += 1
+            self.health.record_error(f"OpenSky poll failed (adsb.lol also failed): {e}")
             if self._consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 logger.warning(
                     "ADS-B APIs failed %d times — switching to synthetic fallback",
@@ -198,6 +204,7 @@ class ADSBCache:
             })
         self._states = filtered
         self._last_update = time.time()
+        self.health.record_ingest(items=len(self._states))
         self._source = "adsb.lol"
         logger.info("ADS-B poll (adsb.lol): %d aircraft within %d km of KART", len(filtered), RADIUS_KM)
         return len(filtered)
@@ -231,6 +238,7 @@ class ADSBCache:
             })
         self._states = filtered
         self._last_update = time.time()
+        self.health.record_ingest(items=len(self._states))
         self._source = "opensky"
         logger.info("ADS-B poll (OpenSky): %d aircraft within %d km of KART", len(filtered), RADIUS_KM)
         return len(filtered)
@@ -268,6 +276,7 @@ class ADSBCache:
         """
         self._states = states
         self._last_update = time.time()
+        self.health.record_ingest(items=len(self._states))
         logger.debug("Synthetic ADS-B: %d aircraft injected", len(states))
 
     def to_geojson(self) -> dict:
@@ -311,3 +320,11 @@ _cache = ADSBCache()
 
 def get_adsb_cache() -> ADSBCache:
     return _cache
+
+
+def adsb_source_info() -> dict:
+    """RC10: what the ADS-B adapter itself reports (``GET /flights/adsb/source``)."""
+    cache = get_adsb_cache()
+    source = "synthetic" if cache._use_synthetic else cache._source
+    return {"source": source if cache.health.enabled else "disabled",
+            "aircraft_count": cache.count, "health": cache.health.as_dict()}

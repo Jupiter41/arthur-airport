@@ -612,8 +612,12 @@ export interface DataSourceStatus {
     | "infrastructure";
   current_source: string;
   available_sources: string[];
-  status: "active" | "degraded" | "unavailable";
+  // RC10: derived by the gateway from the owner's health block.
+  status: "active" | "stale" | "disabled" | "error" | "unavailable";
+  status_reason?: string;
   last_updated: string | null;
+  last_updated_clock?: "sim" | "wall" | null;
+  health?: Record<string, unknown> | null;
   details: Record<string, unknown>;
 }
 

@@ -819,3 +819,7 @@ queues and zone density, and assisted passengers release their wheelchair.
 `missed_flight` is terminal and archived by retention 24 sim-h after
 `missed_flight_at`, like `departed_airport`. Metric:
 `passengers_missed_flight_total`.
+
+### Source health (RC10, 2026-11-16)
+
+`GET /passengers/source` includes the RC10 `health` block (api-gateway SPEC §5a): `last_observation_at` is the owner's last committed tick (sim).

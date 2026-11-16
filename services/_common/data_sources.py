@@ -23,7 +23,63 @@ Usage in a service:
 from __future__ import annotations
 
 import os
-from typing import Protocol, runtime_checkable
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Protocol, runtime_checkable
+
+
+def _wall_now() -> str:
+    # Observability only (when the owner last received data / failed), never
+    # business logic: rule #2's sim clock stays the source of simulated time.
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None).isoformat() if value.tzinfo is None else \
+            value.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
+    return str(value)
+
+
+@dataclass
+class SourceHealth:
+    """What an owner knows about one data source's freshness (RC10).
+
+    The gateway derives ``active | stale | disabled | error`` from this block
+    instead of asserting health itself. ``last_ingest_at`` / ``last_error_at``
+    are wall-clock; ``last_observation_at`` is the simulation time the data
+    describes. See api-gateway SPEC §5a.
+    """
+
+    enabled: bool = True
+    items: int | None = None
+    last_ingest_at: str | None = None
+    last_observation_at: str | None = None
+    last_error: str | None = None
+    last_error_at: str | None = None
+
+    def record_ingest(self, *, observation_at: Any = None, items: int | None = None) -> None:
+        self.last_ingest_at = _wall_now()
+        if observation_at is not None:
+            self.last_observation_at = _iso(observation_at)
+        if items is not None:
+            self.items = items
+
+    def record_error(self, message: str) -> None:
+        self.last_error = message[:300]
+        self.last_error_at = _wall_now()
+
+    def as_dict(self) -> dict:
+        return {
+            "enabled": self.enabled,
+            "items": self.items,
+            "last_ingest_at": self.last_ingest_at, "last_ingest_clock": "wall",
+            "last_observation_at": self.last_observation_at, "last_observation_clock": "sim",
+            "last_error": self.last_error,
+            "last_error_at": self.last_error_at, "last_error_clock": "wall",
+        }
 
 
 @runtime_checkable

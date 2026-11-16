@@ -18,7 +18,7 @@ from confluent_kafka import Consumer
 
 from _common import kafka_runtime
 from _common.consumer_health import ConsumerHealthTracker
-from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
+from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter, SourceHealth
 from _common.airport_config import load_airport_runtime_config
 from db.neo4j import persist_weather_state, get_current_weather, get_airport_identity
 from kafka.producer import emit_weather_state_changed, emit_metar_issued
@@ -103,6 +103,7 @@ class WeatherConsumerState:
         self._last_historical_hour: int = -1
 
         # Data source registry for unified listing and metadata
+        self.health = SourceHealth()  # RC10 owner-reported freshness
         self.source_registry = DataSourceRegistry(
             "weather", env_var="WEATHER_SOURCE", default="simulated",
         )
@@ -222,6 +223,7 @@ class WeatherConsumerState:
         # --- Initialize if first tick ---
         if self.current_params is None:
             await self._initialize_first_tick(sim_time, sim_time.hour, sim_time.minute)
+            self.health.record_ingest(observation_at=sim_time, items=1)
             return
 
         metar_interval = int(os.getenv("METAR_INTERVAL_SIM_MINUTES", "30"))
@@ -237,15 +239,22 @@ class WeatherConsumerState:
                 self.last_fsm_hour = c_hour
                 previous_category = self.current_category
 
+                observed = True
                 if self.weather_source == "historical":
-                    await self._apply_historical_weather(candidate, previous_category)
+                    observed = await self._apply_historical_weather(candidate, previous_category)
                 elif self.weather_source == "live":
-                    await self._apply_live_weather(candidate, previous_category)
+                    observed = await self._apply_live_weather(candidate, previous_category)
                 else:
                     # Simulated FSM
                     new_category = evaluate_transition(self.current_category, self.rng)
                     if new_category != previous_category:
                         await self._apply_transition(previous_category, new_category, candidate)
+                # RC10: the owner reports its own freshness to the gateway.
+                if observed:
+                    self.health.record_ingest(observation_at=candidate, items=1)
+                else:
+                    self.health.record_error(
+                        f"{self.weather_source}: no observation for {candidate.isoformat()}; FSM fallback")
 
             # --- METAR at configured interval ---
             total_min = c_hour * 60 + c_minute
@@ -265,14 +274,14 @@ class WeatherConsumerState:
 
     async def _apply_historical_weather(
         self, sim_time: datetime, previous_category: str
-    ) -> None:
+    ) -> bool:
         """Apply weather from historical METAR data."""
         if not self._historical or not self._historical.is_loaded:
             # Fall back to FSM
             new_category = evaluate_transition(self.current_category, self.rng)
             if new_category != previous_category:
                 await self._apply_transition(previous_category, new_category, sim_time)
-            return
+            return False  # fell back to the FSM: no external observation
 
         result = self._historical.get_params_at(sim_time)
         if result is None:
@@ -280,7 +289,7 @@ class WeatherConsumerState:
             new_category = evaluate_transition(self.current_category, self.rng)
             if new_category != previous_category:
                 await self._apply_transition(previous_category, new_category, sim_time)
-            return
+            return False  # fell back to the FSM: no external observation
 
         params, raw_metar = result
         new_category = params.category
@@ -297,16 +306,17 @@ class WeatherConsumerState:
             self.current_taf = build_taf(params, sim_time, station_icao=self.airport_icao)
             capacity = compute_runway_capacity(params)
             self._update_gauges(new_category, params, capacity)
+        return True
 
     async def _apply_live_weather(
         self, sim_time: datetime, previous_category: str
-    ) -> None:
+    ) -> bool:
         """Apply weather from live METAR fetch."""
         if not self._live:
             new_category = evaluate_transition(self.current_category, self.rng)
             if new_category != previous_category:
                 await self._apply_transition(previous_category, new_category, sim_time)
-            return
+            return False  # fell back to the FSM: no external observation
 
         # Fetch is synchronous (cached, quick) — run in executor to avoid blocking
         loop = asyncio.get_event_loop()
@@ -316,7 +326,7 @@ class WeatherConsumerState:
             new_category = evaluate_transition(self.current_category, self.rng)
             if new_category != previous_category:
                 await self._apply_transition(previous_category, new_category, sim_time)
-            return
+            return False  # fell back to the FSM: no external observation
 
         params, raw_metar = result
         new_category = params.category
@@ -331,6 +341,7 @@ class WeatherConsumerState:
             self.current_taf = build_taf(params, sim_time, station_icao=self.airport_icao)
             capacity = compute_runway_capacity(params)
             self._update_gauges(new_category, params, capacity)
+        return True
 
     async def _apply_transition_with_params(
         self,
