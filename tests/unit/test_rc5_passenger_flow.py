@@ -378,3 +378,18 @@ def test_first_tick_commits_the_warm_start_and_skips_placed_passengers(consumer,
 def test_warm_start_no_longer_writes_outside_the_tick_transaction(consumer):
     assert not hasattr(consumer, "bulk_update_status")
     assert not hasattr(consumer, "bulk_set_dwell")
+
+
+def test_warm_start_waits_for_the_schedule_then_runs_once(consumer, monkeypatch):
+    """Live regression: on a fresh stack the first tick beat FlightsScheduled."""
+    fv = importlib.import_module("_common.flight_view")
+    monkeypatch.setattr(consumer, "_warm_start_state", {"done": False})
+    fv.VIEW.load([], [], None)
+    assert not consumer._warm_start_due(1)          # empty view: nothing to place yet
+    fv.VIEW.load([{"id": "D1", "direction": "departure", "status": "scheduled"}], [], None)
+    assert consumer._warm_start_due(3)              # schedule arrived on tick 3
+    consumer._mark_warm_start_done()
+    assert not consumer._warm_start_due(4)          # never twice in one process
+    monkeypatch.setattr(consumer, "_warm_start_state", {"done": False})
+    assert not consumer._warm_start_due(consumer.WARM_START_WINDOW_TICKS + 1)  # mid-sim restart
+    fv.VIEW.load([], [], None)

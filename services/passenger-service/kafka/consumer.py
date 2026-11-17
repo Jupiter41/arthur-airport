@@ -695,6 +695,26 @@ class TickContribution:
         self.facts.extend(other.facts)
 
 
+# The warm start must see the day's schedule. On a fresh stack the clock can
+# start before this consumer has received FlightsScheduled, so the first tick
+# found an empty FlightView, placed nobody, and the normal check-in rule then
+# released every overdue passenger at once (the RC5 cold-start flood). It now
+# runs on the first early tick at which the FlightView knows any departure.
+WARM_START_WINDOW_TICKS = int(os.getenv("WARM_START_WINDOW_TICKS", "60"))
+_warm_start_state: dict = {"done": False}
+
+
+def _warm_start_due(tick_counter: int) -> bool:
+    from _common.flight_view import VIEW
+    if _warm_start_state["done"] or tick_counter > WARM_START_WINDOW_TICKS:
+        return False
+    return any(f.get("direction") == "departure" for f in VIEW.flights.values())
+
+
+def _mark_warm_start_done() -> None:
+    _warm_start_state["done"] = True
+
+
 async def _warm_start_departures(sim_time: datetime) -> "TickContribution":
     """Place every already-due departure passenger on their own timeline (RC5).
 
@@ -843,9 +863,14 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
         # on their own timelines; committed with this tick below.
         warm = TickContribution()
         _state.warm_started_ids = set()
-        if _state.tick_counter == 1:
+        if _warm_start_due(_state.tick_counter):
             with phase_timer("warm_start"):
                 warm = await _warm_start_departures(sim_time)
+            scope = current_tick.get()
+            if scope is not None:
+                scope.effects.append(_mark_warm_start_done)  # only once committed
+            else:
+                _mark_warm_start_done()
 
         # === Critical path (every tick) ===
 
