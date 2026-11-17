@@ -261,8 +261,8 @@ dashboard test cross-checks the file).
 
 | Class | Event types | Delivery |
 |---|---|---|
-| `immediate` | flight status / gate / cancel / divert / CTOT, weather, incident created / status / cascaded / alert, `BaggageFlagged`, fuel warnings, ground-vehicle dispatch / return, autonomous actions, `CostRecorded`, `SimControlChanged` | Envelope relayed verbatim, as before |
-| `latest` | `SimClockTick`, `GroundVehicleSnapshot`, `BaggageZoneSnapshot`, `SecurityQueueUpdated` (per terminal) | Coalesced: only the newest envelope per key is sent, at most once per `WS_COALESCE_MS` (default 1000 ms) |
+| `immediate` | flight status / gate / cancel / divert / CTOT, weather, incident created / status / cascaded / alert, `BaggageFlagged`, fuel warnings, ground-vehicle dispatch / return, autonomous actions, `SimControlChanged` | Envelope relayed verbatim, as before |
+| `latest` | `SimClockTick`, `GroundVehicleSnapshot`, `BaggageZoneSnapshot`, `SecurityQueueUpdated` (per terminal), `CostRecorded` (the UI only refetches the cost summary; ~3.5 ledger facts/s became ≤ 1 msg/s) | Coalesced: only the newest envelope per key is sent, at most once per `WS_COALESCE_MS` (default 1000 ms) |
 | `hint` | `PassengerStatusBatchChanged`, `BaggageStatusBatchChanged` | Coalesced like `latest`, and the payload is replaced by `{"hint": true, "coalesced": n}` — the UI only uses them to refetch, and batches carry thousands of rows |
 | (not listed) | per-entity `BaggageStatusChanged`, `PassengerStatusChanged`, `BoardingProgress`, `BaggageMissedFlight`, `BulkStateSnapshot` (no UI consumer), retention facts, … | Dropped (`gateway_ws_events_dropped_total{reason="not_delivered"}`); replaced envelopes count as `reason="coalesced"` |
 

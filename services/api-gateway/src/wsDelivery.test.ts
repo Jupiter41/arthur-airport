@@ -12,6 +12,7 @@ const ws = require("./websocket") as typeof import("./websocket");
 it("classifies UI events and drops per-entity firehose facts (RC9)", () => {
   assert.equal(deliveryClass("FlightStatusChanged"), "immediate");
   assert.equal(deliveryClass("SimClockTick"), "latest");
+  assert.equal(deliveryClass("CostRecorded"), "latest");   // UI only refetches the cost summary
   assert.equal(deliveryClass("BaggageStatusBatchChanged"), "hint");
   for (const type of ["BaggageStatusChanged", "PassengerStatusChanged", "BoardingProgress", "EntitiesArchived", undefined]) {
     assert.equal(deliveryClass(type), null, String(type));

@@ -16,14 +16,14 @@
     "GroundVehicleDispatched",
     "GroundVehicleReturned",
     "AutonomousActionApplied",
-    "CostRecorded",
     "SimControlChanged"
   ],
   "latest": [
     "SimClockTick",
     "GroundVehicleSnapshot",
     "BaggageZoneSnapshot",
-    "SecurityQueueUpdated"
+    "SecurityQueueUpdated",
+    "CostRecorded"
   ],
   "hint": [
     "PassengerStatusBatchChanged",
