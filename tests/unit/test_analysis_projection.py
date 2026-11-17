@@ -111,7 +111,7 @@ def test_graph_loader_reads_all_sections_from_one_driver_transaction(monkeypatch
     queries = []
 
     class Tx:
-        async def run(self, query):
+        async def run(self, query, **params):
             queries.append(query)
             class Result:
                 async def data(self):
@@ -285,3 +285,39 @@ def test_deleted_connection_and_financial_inputs_retire_durable_bottlenecks():
             root_cause="synthetic", estimated_duration_minutes=10, affected_entity_count=1,
             detected_at=NOW, metrics={"inbound_flight": "deleted", "outbound_flight": "gone"})
         assert detectors.check_resolved(state, bn)
+
+
+def test_projection_reads_only_targetable_bags_and_recent_flights():
+    """Live regression: 91k bags / 13 MB per evaluation made each one ~9 s."""
+    import asyncio
+    db = import_service_module("analysis", "db.neo4j")
+    calls = []
+
+    class Tx:
+        async def run(self, query, **params):
+            calls.append((query, params))
+
+            class Result:
+                async def data(self):
+                    return []
+            return Result()
+
+    asyncio.run(db.load_operational_projection(tx=Tx(), since="2024-06-16T00:00:00"))
+    by_key = {q.split()[1]: (q, p) for q, p in calls}
+    bags_query, bags_params = next((q, p) for q, p in calls if "target_statuses" in q)
+    assert "NOT b.status IN" not in bags_query
+    assert set(bags_params["target_statuses"]) == set(db.TARGET_BAG_STATUSES)
+    assert not {"dropped_off", "in_hold", "collected"} & set(db.TARGET_BAG_STATUSES)
+    flights_query, flights_params = next((q, p) for q, p in calls if "properties(f) AS flight" in q)
+    assert "f.scheduled_time >= $since" in flights_query and flights_params == {"since": "2024-06-16T00:00:00"}
+    assert by_key
+
+
+def test_event_fed_targets_drop_bags_that_leave_the_bhs():
+    state_mod = import_service_module("analysis", "services.state")
+    state = state_mod.OperationalState()
+    state.on_baggage_status_batch_changed({"status_changes": [
+        {"id": "b1", "status": "inducted", "zone": "induction-A", "flight_id": "F1"},
+        {"id": "b2", "status": "sorting", "zone": "sorting-matrix", "flight_id": "F1"}]})
+    state.on_baggage_status_changed({"baggage_id": "b2", "new_status": "in_hold", "scan_zone": "aircraft-hold"})
+    assert set(state.baggage_targets) == {"b1"}

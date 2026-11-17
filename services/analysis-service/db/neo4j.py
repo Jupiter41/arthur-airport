@@ -153,12 +153,33 @@ async def query_active_flights_summary() -> dict:
     return {r["status"]: r["cnt"] for r in records}
 
 
-async def load_operational_projection(*, tx=None) -> dict:
-    """Read owner data through Neo4j, never through service-to-service HTTP."""
+# Bags an analysis action can target: inside the BHS or on a belt. Bags not yet
+# dropped off (the next day's ~60k seeded bags) and bags in an aircraft hold were
+# 99.8% of the old projection: 91k rows / 13 MB per evaluation, 2.8 s of query
+# plus serialisation, which made every evaluation ~9 s and stalled Neo4j.
+TARGET_BAG_STATUSES = ("inducted", "screening", "sorting", "loaded", "arrived", "on_carousel", "flagged")
+# Event-fed targets drop bags entering these (not yet in, or out of, the BHS).
+NON_TARGET_BAG_STATUSES = frozenset({
+    "dropped_off", "in_hold", "collected", "delivered", "short_shipped", "lost",
+})
+# Flights older than this are history: finished departures end "arrived" and were
+# re-read on every evaluation for the rest of the simulation.
+FLIGHT_LOOKBACK_HOURS = 12
+
+
+async def load_operational_projection(*, tx=None, since: str | None = None) -> dict:
+    """Read owner data through Neo4j, never through service-to-service HTTP.
+
+    ``since`` (naive ISO sim time) bounds flights to those scheduled at or after
+    it; the evaluation passes its clock minus FLIGHT_LOOKBACK_HOURS.
+    """
+    since_clause = "AND f.scheduled_time >= $since " if since else ""
+
     async def read(tx):
         queries = {
             "flights": (
                 "MATCH (f:Flight) WHERE NOT f.status IN ['completed', 'cancelled', 'diverted'] "
+                + since_clause +
                 "OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate) "
                 "RETURN properties(f) AS flight, g.id AS gate_id, g.terminal_id AS terminal_id"
             ),
@@ -170,10 +191,9 @@ async def load_operational_projection(*, tx=None) -> dict:
             ),
             "baggage": "MATCH (p:BaggageProjection {id: 'latest'}) RETURN p.document AS document",
             "baggage_targets": (
-                "MATCH (b:Baggage) WHERE NOT b.status IN ['delivered', 'collected'] "
+                "MATCH (b:Baggage) USING INDEX b:Baggage(status) WHERE b.status IN $target_statuses "
                 "OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight) "
-                "RETURN b.id AS id, b.status AS status, "
-                "coalesce(b.last_scan_zone, b.current_zone) AS zone, f.id AS flight_id"
+                "RETURN b.id AS id, b.status AS status, b.last_scan_zone AS zone, f.id AS flight_id"
             ),
             "security": (
                 "UNWIND ['A', 'B', 'C'] AS terminal "
@@ -185,8 +205,9 @@ async def load_operational_projection(*, tx=None) -> dict:
 
         }
         snapshot = {}
+        params = {"target_statuses": list(TARGET_BAG_STATUSES), "since": since}
         for key, query in queries.items():
-            result = await tx.run(query)
+            result = await tx.run(query, **{k: v for k, v in params.items() if f"${k}" in query})
             snapshot[key] = await result.data()
         return snapshot
 

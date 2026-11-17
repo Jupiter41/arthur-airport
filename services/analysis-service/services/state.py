@@ -336,10 +336,8 @@ class OperationalState:
         """Process BaggageStatusChanged — track zone occupancy."""
         bag_id = payload.get("baggage_id")
         if bag_id:
-            self.baggage_targets[bag_id] = {
-                "flight_id": payload.get("flight_id"), "zone": payload.get("scan_zone"),
-                "status": payload.get("new_status", "unknown"),
-            }
+            self._set_target(bag_id, payload.get("new_status", "unknown"),
+                             payload.get("scan_zone"), payload.get("flight_id"))
         new_zone = payload.get("new_zone", "")
         old_zone = payload.get("old_zone", "")
 
@@ -364,6 +362,17 @@ class OperationalState:
                 z.current_count = max(0, z.current_count - 1)
                 z.utilisation_pct = (z.current_count / z.capacity * 100) if z.capacity else 0
 
+    def _set_target(self, bag_id: str, status: str, zone, flight_id) -> None:
+        """Same rule as the graph rebuild: only bags an action can target are kept."""
+        from db.neo4j import NON_TARGET_BAG_STATUSES
+        if status in NON_TARGET_BAG_STATUSES:
+            self.baggage_targets.pop(bag_id, None)
+            return
+        target = self.baggage_targets.get(bag_id) or {}
+        self.baggage_targets[bag_id] = {
+            "flight_id": flight_id or target.get("flight_id"), "zone": zone, "status": status,
+        }
+
     def on_baggage_status_batch_changed(self, payload: dict) -> None:
         """Process BaggageStatusBatchChanged — the only carrier of pipeline hops (RC3).
 
@@ -375,16 +384,8 @@ class OperationalState:
             bag_id = change.get("id")
             if not bag_id:
                 continue
-            if change.get("status") in {"delivered", "collected"}:
-                # Same rule as the graph rebuild: finished bags are not targets.
-                self.baggage_targets.pop(bag_id, None)
-                continue
-            target = self.baggage_targets.get(bag_id) or {}
-            self.baggage_targets[bag_id] = {
-                "flight_id": change.get("flight_id") or target.get("flight_id"),
-                "zone": change.get("zone"),
-                "status": change.get("status", "unknown"),
-            }
+            self._set_target(bag_id, change.get("status", "unknown"), change.get("zone"),
+                             change.get("flight_id"))
 
     def on_entities_archived(self, payload: dict) -> None:
         """Drop archived bags from the per-bag targets (RC1; bounds memory, see L4)."""

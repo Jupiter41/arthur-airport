@@ -68,7 +68,13 @@ async def evaluate() -> tuple[dict | None, list[Bottleneck], list[Bottleneck]]:
             "MATCH (s:AnalysisRuntime {id: 'discovery'}) RETURN s.document AS document",
         )).single()
         previous = json.loads(row["document"]) if row and row["document"] else None
-        graph = await load_operational_projection(tx=tx)
+        from datetime import datetime as _dt, timedelta as _td
+        from db.neo4j import FLIGHT_LOOKBACK_HOURS
+        since = None
+        if clock.get("sim_time"):
+            since = (_dt.fromisoformat(str(clock["sim_time"]).replace("Z", "+00:00")).replace(tzinfo=None)
+                     - _td(hours=FLIGHT_LOOKBACK_HOURS)).isoformat()
+        graph = await load_operational_projection(tx=tx, since=since)
         graph["connections"] = await query_connection_clusters(tx=tx)
         proposals_result = await tx.run("MATCH (p:ActionProposal) RETURN p.document AS document")
         graph["proposals"] = [json.loads(item["document"]) for item in await proposals_result.data()]
