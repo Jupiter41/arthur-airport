@@ -1699,7 +1699,7 @@ async def _check_connections(sim_time: datetime) -> None:
     """
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     try:
-        conn_pax = await get_connecting_passengers()
+        conn_pax = await get_connecting_passengers(sim_time)
     except Exception as e:
         if current_tick.get() is not None:
             raise

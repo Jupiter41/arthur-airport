@@ -346,6 +346,13 @@ Response `200`:
 
 A passenger with `connection=true` has a minimum connection time (MCT) of 45 simulated minutes. The service monitors all connecting passengers and triggers alerts when risk is detected.
 
+Connections live on the inbound leg: the passenger is `ON_FLIGHT` an arrival and
+`connection_flight_id` names the onward departure (assigned at seed time, see SIMULATION.md).
+The check runs every 10 ticks over the connecting passengers of arrival flights whose
+estimated time is within `CONNECTION_LOOKBACK_MIN` (default 180) before to
+`CONNECTION_LOOKAHEAD_MIN` (default 240) after the sim time, taken from the FlightView and
+read by `Flight.id`, not over every live-status passenger.
+
 ### Connection risk levels
 
 | Condition                                                     | Risk level | Alert                                                              |

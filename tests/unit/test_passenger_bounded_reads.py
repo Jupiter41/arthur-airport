@@ -61,12 +61,30 @@ def test_due_filter_rejects_unknown_fields(monkeypatch):
                                                 due_at="x"))
 
 
-def test_connection_check_seeks_live_statuses_instead_of_scanning_label(monkeypatch):
+def test_connection_check_reads_only_inbound_flights_near_now(monkeypatch):
+    import sys
+    from datetime import datetime
     db, calls = _db(monkeypatch)
-    asyncio.run(db.get_connecting_passengers())
-    query, params = calls[0]
-    assert "USING INDEX p:Passenger(status)" in query
-    assert "{connection: true}" not in query
-    excluded = {"departed_airport", "boarded", "missed_connection"}
-    assert set(params["statuses"]).isdisjoint(excluded)
-    assert {"booked", "airborne", "baggage_claim", "disrupted"} <= set(params["statuses"])
+    view = sys.modules["_common.flight_view"].VIEW
+    view.load([
+        {"id": "A-soon", "direction": "arrival", "status": "airborne", "estimated_time": "2024-07-10T11:00:00"},
+        {"id": "A-landed", "direction": "arrival", "status": "arrived", "estimated_time": "2024-07-10T08:00:00"},
+        {"id": "A-old", "direction": "arrival", "status": "arrived", "estimated_time": "2024-07-10T05:00:00"},
+        {"id": "A-tonight", "direction": "arrival", "status": "scheduled", "estimated_time": "2024-07-10T20:00:00"},
+        {"id": "D-soon", "direction": "departure", "status": "scheduled", "estimated_time": "2024-07-10T11:00:00"},
+    ], [], None)
+    try:
+        asyncio.run(db.get_connecting_passengers(datetime(2024, 7, 10, 9, 0)))
+        query, params = calls[0]
+        assert params["fids"] == ["A-landed", "A-soon"]
+        assert "f.id IN $fids" in query and "USING INDEX p:Passenger(status)" not in query
+        excluded = {"departed_airport", "boarded", "missed_connection"}
+        assert set(params["statuses"]).isdisjoint(excluded)
+        assert {"airborne", "baggage_claim", "disrupted"} <= set(params["statuses"])
+
+        view.load([], [], None)          # cold FlightView: no read at all
+        calls.clear()
+        assert asyncio.run(db.get_connecting_passengers(datetime(2024, 7, 10, 9, 0))) == []
+        assert calls == []
+    finally:
+        view.load([], [], None)

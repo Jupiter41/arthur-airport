@@ -1,6 +1,7 @@
 """Neo4j async driver and Passenger persistence for passenger-service."""
 
 import logging
+import os
 from datetime import datetime
 
 from _common import neo4j_client
@@ -878,22 +879,48 @@ async def get_passengers_by_flight(flight_id: str) -> list[dict]:
 
 
 # Every passenger status except the ones a connection check ignores
-# (departed_airport, boarded, missed_connection). Seeking these through the
-# status index avoids a label scan: there is no index on ``connection`` and the
-# label holds every passenger ever seeded.
+# (departed_airport, boarded, missed_connection).
 CONNECTION_CHECK_STATUSES = (
     "booked", "checked_in", "security_queue", "airside", "at_gate", "airborne",
     "deplaning", "customs", "baggage_claim", "disrupted",
 )
 
 
-async def get_connecting_passengers() -> list[dict]:
-    """Connecting passengers; flight/gate details from the event-fed FlightView (RC4)."""
+# Inbound flights whose connecting passengers are evaluated: arriving within the
+# look-ahead (a delayed inbound is flagged hours before landing) or landed within
+# the look-back (passengers still deplaning / in customs / at the belts).
+CONNECTION_LOOKAHEAD_MIN = int(os.getenv("CONNECTION_LOOKAHEAD_MIN", "240"))
+CONNECTION_LOOKBACK_MIN = int(os.getenv("CONNECTION_LOOKBACK_MIN", "180"))
+
+
+def connection_inbound_flight_ids(sim_time: datetime) -> list[str]:
+    """Arrival flights near ``sim_time`` (FlightView): the connection-check scope."""
+    from datetime import timedelta
     from _common.flight_view import VIEW
+    now = sim_time.replace(tzinfo=None)
+    start = (now - timedelta(minutes=CONNECTION_LOOKBACK_MIN)).isoformat()
+    end = (now + timedelta(minutes=CONNECTION_LOOKAHEAD_MIN)).isoformat()
+    return sorted(f["id"] for f in VIEW.select(direction="arrival", estimated_from=start,
+                                               estimated_to=end))
+
+
+async def get_connecting_passengers(sim_time: datetime) -> list[dict]:
+    """Connecting passengers of inbound flights near ``sim_time``.
+
+    Connections live on the inbound leg, so the read starts from the arrival
+    flights around now (FlightView, seek by ``Flight.id``) instead of every
+    live-status passenger: that set held each not-yet-landed arrival of the day
+    and every booked passenger of the next one (~13k rows, 0.2–0.6 s per check).
+    Flight/gate details come from the event-fed FlightView (RC4).
+    """
+    from _common.flight_view import VIEW
+    fids = connection_inbound_flight_ids(sim_time)
+    if not fids:
+        return []
     query = """
-    MATCH (p:Passenger) USING INDEX p:Passenger(status)
-    WHERE p.status IN $statuses AND p.connection = true
-    MATCH (p)-[:ON_FLIGHT]->(f:Flight)
+    MATCH (f:Flight) WHERE f.id IN $fids
+    MATCH (p:Passenger)-[:ON_FLIGHT]->(f)
+    WHERE p.connection = true AND p.status IN $statuses
     OPTIONAL MATCH (p)-[:CARRIES]->(b:Baggage)
     RETURN p.id AS id, p.name AS name, p.pnr AS pnr,
            p.status AS status, p.connection_risk AS connection_risk,
@@ -902,7 +929,7 @@ async def get_connecting_passengers() -> list[dict]:
            count(b) AS baggage_count
     """
     async with get_driver().session() as session:
-        result = await session.run(query, statuses=list(CONNECTION_CHECK_STATUSES))
+        result = await session.run(query, fids=fids, statuses=list(CONNECTION_CHECK_STATUSES))
         rows = [dict(r) async for r in result]
     for row in rows:
         inbound = VIEW.get(row.pop("inbound_id")) or {}
