@@ -60,15 +60,20 @@ Measured after the fixes:
 | RC10 | `/api/v1/data-sources` | ADS-B `disabled · disabled by configuration`; weather, flights-sim, passengers, baggage `active · fresh` |
 | RC11 | clock | 0 skipped sim-minutes over the day; 23:30 seeding 1.0–1.2 s ticks; 0 `MemoryPoolOutOfMemory`, 0 auto-pause, 0 tracebacks in any service |
 
-Observations, not fixed here:
+Observations from that run, fixed afterwards (2026-11-17, verified on the running stack):
 
-- Before the analysis fix, each 3–8 s stall was every owner pausing together. After it, the worst tick
-  was 3.4 s (day-2 06:23, during the analysis redeploy) and other hours stayed ≤ 1.3 s. Neo4j also
-  re-plans cached queries when node cardinality jumps (154k → 408k on day 1).
-- At an owner crash the clock is held until the owner turns stale (`WATERMARK_STALE_S` = 30 s).
-- `equipment_failure_drawn` is keyed by aircraft, not by turnaround: each aircraft gets one
-  equipment-failure draw for the whole simulation (a noise-model bug, unrelated to the RCs).
-- The `CostRecorded` stream is the largest UI stream left (≈3.5 msg/s, `immediate` policy).
+| Observation | Fix | Commit |
+| ----------- | --- | ------ |
+| Neo4j discarded and recompiled cached plans in bursts while the graph grew (~1,500 discards/h, `NodesAllCardinality` divergence ≈ 0.5 over the decayed 0.75 threshold) | `dbms.cypher.statistics_divergence_threshold` 0.9, `min_replan_interval` 60 s; empty→populated changes still replan. After the restart: 8 discards in 3 min (all cold-start selectivity), was ~25/min | `e59e79a` |
+| Slowest passenger phase: the connection check read every live-status `connection=true` passenger (each not-yet-landed arrival of the day + next-day booked, ~13k rows, 0.2–0.65 s; >0.5 s in 118 of 348 runs/h) | Reads only connecting passengers of arrival flights within −3 h/+4 h (FlightView ids): 16 ms for 30 flights; phase avg 398 → 112 ms live | `bf5b95a` |
+| **Connection monitoring was dead**: the seeder always wrote `connection_flight_id = None`, so no passenger ever got a risk level or a connection alert, and analysis connection clusters never matched | Connections live on the inbound leg: a connecting arrival passenger gets one of the 6 earliest same-day departures 80–240 min later; departure passengers are not flagged | `56140ae` |
+| At an owner crash the clock was held until the owner turned stale (`WATERMARK_STALE_S` = 30 s) | Owners send `OwnerHeartbeat` every 2 s from a thread and `OwnerStopped` on shutdown; missing beats for 7 s ⇒ down. Live `docker kill` of passenger-service: clock held 1 s at the lag limit, owner stale after 7.5 s, backlog replayed on restart | `6903e68` |
+| `equipment_failure_drawn` was keyed by aircraft: one equipment-failure draw per aircraft for the whole simulation | Keyed by turnaround (arrival flight id), markers kept only for planned turnarounds | `c45fca6` |
+| `CostRecorded` was the largest UI stream left (≈3.5 msg/s, `immediate`) | `latest` class: newest envelope at most once per `WS_COALESCE_MS` (≤ 1 msg/s); the UI only refetches the cost summary | `e71c24b` |
+
+Not addressed: connecting arrival passengers still follow the arrival flow
+(deplaning → customs → baggage claim → exit) and never board their onward flight; the risk
+model only raises alerts.
 
 ### Fixes applied (2026-11-16)
 
