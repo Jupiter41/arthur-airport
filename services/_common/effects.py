@@ -156,7 +156,14 @@ def step(state: EffectState, actions: Sequence[Action] = (), *,
          params: EffectParameters | None = None) -> tuple[EffectState, list[str]]:
     """Advance one minute. Actions are applied once, at the start of this tick."""
     params = params or parameters()
-    result = state.model_copy(deep=True)
+    if actions:
+        result = state.model_copy(deep=True)
+    else:
+        # Without actions a tick only mutates the security queues (and the
+        # minute). Deep-copying every flight/gate/bag each minute made one
+        # 60-minute ranking projection ~0.24 s and an analysis evaluation ~2.4 s.
+        result = state.model_copy(update={
+            "security": {name: sec.model_copy() for name, sec in state.security.items()}})
     statuses = [_execute(result, a) for a in actions]
     for sec in result.security.values():
         sec.queue, sec.wait = security_tick(sec.queue, sec.arrivals_per_minute, sec.lanes, params)

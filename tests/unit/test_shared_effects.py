@@ -180,3 +180,18 @@ def test_legacy_and_incompatible_policies_are_refused(tmp_path, version):
         archive.writestr("data", json.dumps({"effect_model_version": version} if version else {}))
     with pytest.raises(ValueError, match="retrain"):
         require_compatible(path)
+
+
+def test_action_free_step_copies_security_and_never_mutates_its_input():
+    """The no-action fast path (no deep copy) must keep every step independent."""
+    state = _state()
+    saved = state.model_dump()
+    first, _ = step(state)
+    second, _ = step(first)
+    assert state.model_dump() == saved
+    assert first.security["A"] is not state.security["A"]
+    assert second.security["A"] is not first.security["A"]
+    assert first.security["A"].queue != state.security["A"].queue or state.security["A"].queue == 0
+    # A later action-bearing step deep-copies, so shared untouched parts stay safe.
+    third, _ = step(second, [Action(action_type="reassign_gate", parameters={"flight_id": "F2", "gate_id": "A1"})])
+    assert third.flights["F2"].gate == "A1" and state.flights["F2"].gate != "A1"
