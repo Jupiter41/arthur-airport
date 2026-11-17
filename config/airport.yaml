@@ -61,7 +61,8 @@ operations:
   # RC6 — checked-bag volume and baggage-handling throughput, sized together.
   # bags_per_pax = Poisson λ of checked bags per passenger by flight type (no
   # one-bag floor). Throughputs in items/hour; each terminal's screening
-  # capacity is split over its screening units. Seeding warns when peak hourly
+  # capacity is split over its screening units (A/C 2100, B 3400 since transfer bags
+  # also cross the BHS). Seeding warns when peak hourly
   # bags exceed capacity_headroom × the slowest stage (SIMULATION.md §3).
   baggage:
     bags_per_pax:
@@ -72,8 +73,8 @@ operations:
       cargo: 0.0
     default_bags_per_pax: 0.8
     max_bags_per_pax: 5
-    induction_per_terminal_hr: { A: 1800, B: 3000, C: 1800 }
-    screening_per_terminal_hr: { A: 1800, B: 3000, C: 1800 }
+    induction_per_terminal_hr: { A: 2100, B: 3400, C: 2100 }
+    screening_per_terminal_hr: { A: 2100, B: 3400, C: 2100 }
     screening_units_per_terminal: 2
     sorting_matrix_hr: 5400
     makeup_carousel_hr: 150

@@ -100,7 +100,10 @@ Each passenger record includes:
   transfers are added to that departure's `pax_count`. Without such a departure the
   passenger is not a connection; departure passengers are never flagged. At the end of
   deplaning a connecting passenger transfers airside onto the onward flight and follows
-  the departure flow from there (passenger-service SPEC §2, transfer flow)
+  the departure flow from there (passenger-service SPEC §2, transfer flow). Their checked
+  bags (`Poisson(λ)` by the inbound flight type) are seeded `in_hold` on the inbound with
+  `CARRIES` and `transfer_flight_id`, and are routed through the BHS onto the onward flight
+  (baggage-service SPEC §2). Anonymous arrival bags are drawn for the remaining passengers only
 - Special assistance flag (5% probability)
 - Departures: `show_up_at = T-180 + 135 min × Beta(3, 2)` (mean ≈ T-99), the
   passenger's own arrival time that drives check-in and security (RC5)

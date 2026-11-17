@@ -90,6 +90,28 @@ collected
 loaded / in_hold ──► offloaded ──► on_carousel (return)
 ```
 
+### Transfer bags (connecting passengers)
+
+A connecting passenger's checked bags are seeded `in_hold` on the inbound arrival
+(`LOADED_ON`), linked to the passenger (`CARRIES`) and tagged with
+`transfer_flight_id` (the passenger's onward departure). When the inbound reaches
+`at_gate`, in the same transaction as the other bags going to `arrived`:
+
+```
+in_hold (inbound) ──► dropped_off (zone transfer-{T}, LOADED_ON → onward flight)
+    │                  onward flight still scheduled / boarding / delayed
+    ▼
+inducted → screening → sorting → loaded → in_hold (onward)   (departure chain above)
+    └─► short_shipped if the onward flight leaves first (RC6 rule, unchanged)
+```
+
+`inbound_flight_id` keeps the bag's inbound flight. When the onward flight is no
+longer open (departed, airborne, cancelled …; the passenger is then
+`missed_connection`) or unknown to the FlightView, the bag stays on the inbound and
+goes to the arrival belt like any arrival bag. Each transfer emits a
+`BaggageStatusChanged` (`in_hold` → `dropped_off`, `scan_zone` `transfer-{T}`,
+`flight_id` = onward flight, `inbound_flight_id`).
+
 ---
 
 ## 3. Handling system model

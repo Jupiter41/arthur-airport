@@ -105,14 +105,27 @@ async def generate_baggage(
 async def generate_arrival_baggage(
     arrival_flights: list[dict],
     seed: int | None = None,
+    arrival_passengers: list[dict] | None = None,
 ) -> tuple[int, list[dict]]:
     """Generate inbound baggage for arrival flights.
 
     Arrival baggage starts as already loaded in aircraft hold and will move
     to carousel when the arrival reaches at_gate.
+
+    With ``arrival_passengers`` the flight's load is its seeded passengers, and
+    connecting passengers (``connection_flight_id`` set) get their own transfer
+    bags: ``CARRIES`` from the passenger, ``transfer_flight_id`` = the onward
+    departure (baggage-service routes them through the BHS onto it). Anonymous
+    bags are drawn for the other passengers only.
     """
     rng = random.Random(seed)
     np_rng = np.random.default_rng(seed)
+    # Separate stream: transfer bags leave the anonymous draws unchanged.
+    transfer_rng = np.random.default_rng(None if seed is None else seed + 17)
+    pax_by_flight: dict[str, list[dict]] = {}
+    for pax in arrival_passengers or []:
+        pax_by_flight.setdefault(pax["flight_id"], []).append(pax)
+    transfer_bags: list[dict] = []
     fixtures = get_fixtures()
     dg_classes = fixtures["dg_classes"]
     dg_class_ids = [d["class"] for d in dg_classes]
@@ -131,7 +144,30 @@ async def generate_arrival_baggage(
         load_factor = max(0.5, min(1.0, float(np_rng.normal(0.8, 0.12))))
         pax_count = max(1, round(seat_capacity * load_factor))
         lam = cfg.bags_lambda(flight.get("flight_type"))
-        bag_count = int(np_rng.poisson(pax_count * lam)) if lam > 0 else 0
+        flight_pax = pax_by_flight.get(flight["id"])
+        if flight_pax is not None:
+            connecting = [p for p in flight_pax if p.get("connection_flight_id")]
+            pax_count = len(flight_pax) - len(connecting)
+            for pax in connecting:
+                n = int(transfer_rng.poisson(lam)) if lam > 0 else 0
+                for _ in range(min(n, cfg.max_bags_per_pax)):
+                    weight = float(transfer_rng.normal(WEIGHT_MEAN_KG, WEIGHT_STD_KG))
+                    transfer_bags.append({
+                        "id": str(uuid4()),
+                        "tag": _generate_tag(tag_counter),
+                        "weight_kg": max(WEIGHT_MIN_KG, min(WEIGHT_MAX_KG, round(weight, 1))),
+                        "status": "in_hold",
+                        "is_dangerous_goods": False,
+                        "dg_class": None,
+                        "last_scan_zone": "aircraft-hold",
+                        "last_scan_at": None,
+                        "carousel": None,
+                        "flight_id": flight["id"],
+                        "passenger_id": pax["id"],
+                        "transfer_flight_id": pax["connection_flight_id"],
+                    })
+                    tag_counter += 1
+        bag_count = int(np_rng.poisson(max(0, pax_count) * lam)) if lam > 0 else 0
         bag_count = min(bag_count, seat_capacity * cfg.max_bags_per_pax)
         if bag_count == 0:
             continue
@@ -165,6 +201,8 @@ async def generate_arrival_baggage(
             all_baggage.append(bag)
 
     await _persist_arrival_baggage(all_baggage)
+    await _persist_transfer_baggage(transfer_bags)
+    all_baggage.extend(transfer_bags)
 
     # Update pax_count on arrival Flight nodes only if no Passenger nodes were created.
     # When generate_passengers has already seeded arrival Passenger nodes, the
@@ -239,6 +277,40 @@ async def _persist_arrival_baggage(baggage: list[dict]) -> None:
                     bag.carousel = b.carousel
                 FOREACH (_ IN CASE WHEN bag.last_scan_at IS NULL THEN [1] ELSE [] END |
                     SET bag:UnscannedBaggage)
+                MERGE (bag)-[:LOADED_ON]->(f)
+                """,
+                baggage=batch,
+            )
+
+
+async def _persist_transfer_baggage(baggage: list[dict]) -> None:
+    """Transfer bags: in the inbound hold, carried by the connecting passenger."""
+    if not baggage:
+        return
+    driver = get_driver()
+    batch_size = 2000
+    for i in range(0, len(baggage), batch_size):
+        batch = baggage[i : i + batch_size]
+        async with driver.session() as session:
+            await session.run(
+                """
+                UNWIND $baggage AS b
+                MATCH (pax:Passenger {id: b.passenger_id})
+                MATCH (f:Flight {id: b.flight_id})
+                MERGE (bag:Baggage {tag: b.tag})
+                ON CREATE SET
+                    bag.id = b.id,
+                    bag.weight_kg = b.weight_kg,
+                    bag.status = b.status,
+                    bag.is_dangerous_goods = b.is_dangerous_goods,
+                    bag.dg_class = b.dg_class,
+                    bag.last_scan_zone = b.last_scan_zone,
+                    bag.last_scan_at = b.last_scan_at,
+                    bag.carousel = b.carousel,
+                    bag.transfer_flight_id = b.transfer_flight_id
+                FOREACH (_ IN CASE WHEN bag.last_scan_at IS NULL THEN [1] ELSE [] END |
+                    SET bag:UnscannedBaggage)
+                MERGE (pax)-[:CARRIES]->(bag)
                 MERGE (bag)-[:LOADED_ON]->(f)
                 """,
                 baggage=batch,

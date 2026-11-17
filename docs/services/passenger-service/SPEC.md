@@ -128,9 +128,8 @@ A connecting passenger whose onward flight is no longer open when deplaning ends
 `PassengerAlert` (`connection_missed`). One whose onward flight is unknown to the
 FlightView (evicted, another day) follows the normal arrival flow. A transfer that
 reaches the gate after its flight left becomes `missed_flight` like any other
-departure passenger. Checked bags of connecting passengers are still generated per
-arrival flight (no `CARRIES`) and are claimed at the inbound carousel: bag transfer
-is not modelled.
+departure passenger. Their checked bags are transfer bags: baggage-service moves them
+from the inbound hold through the BHS onto the onward flight (baggage-service SPEC §2).
 
 ### State transition rules
 

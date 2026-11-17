@@ -224,10 +224,10 @@ class BaggageSystemConfig(BaseModel):
     default_bags_per_pax: float = Field(default=0.8, ge=0.0)
     max_bags_per_pax: int = Field(default=5, ge=1)
     induction_per_terminal_hr: dict[str, int] = Field(
-        default_factory=lambda: {"A": 1800, "B": 3000, "C": 1800}
+        default_factory=lambda: {"A": 2100, "B": 3400, "C": 2100}
     )
     screening_per_terminal_hr: dict[str, int] = Field(
-        default_factory=lambda: {"A": 1800, "B": 3000, "C": 1800}
+        default_factory=lambda: {"A": 2100, "B": 3400, "C": 2100}
     )
     screening_units_per_terminal: int = Field(default=2, ge=1)
     sorting_matrix_hr: int = Field(default=5400, gt=0)

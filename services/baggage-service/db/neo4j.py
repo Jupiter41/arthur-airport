@@ -358,6 +358,23 @@ async def write_baggage_statuses_tx(tx, changes: list[dict], sim_time: datetime)
     await result.consume()
 
 
+async def relink_transfer_baggage_tx(tx, transfers: list[dict]) -> None:
+    """Move transfer bags' ``LOADED_ON`` from their inbound to their onward flight."""
+    if not transfers:
+        return
+    result = await tx.run(
+        """
+        UNWIND $rows AS t
+        MATCH (b:Baggage {id: t.id})-[r:LOADED_ON]->(:Flight {id: t.inbound_flight_id})
+        MATCH (o:Flight {id: t.onward_flight_id})
+        DELETE r CREATE (b)-[:LOADED_ON]->(o)
+        SET b.inbound_flight_id = t.inbound_flight_id
+        """,
+        rows=transfers,
+    )
+    await result.consume()
+
+
 async def flag_baggage_tx(
     tx,
     baggage_id: str,
@@ -677,6 +694,7 @@ async def get_flight_baggage(flight_id: str, statuses: list[str] | None = None) 
         OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
     RETURN b.id AS id, b.tag AS tag, b.status AS status,
             b.last_scan_zone AS last_scan_zone,
+            b.transfer_flight_id AS transfer_flight_id,
             p.id AS passenger_id
     """
     async with driver.session() as session:

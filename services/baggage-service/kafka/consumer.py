@@ -1243,6 +1243,32 @@ async def _apply_departure_in_hold(
             })
 
 
+TRANSFER_ONWARD_OPEN = ("scheduled", "boarding", "delayed")
+
+
+def split_transfer_bags(bags: list[dict]) -> tuple[list[tuple[dict, dict]], list[dict]]:
+    """``(transfers, to_belt)``: transfer bags whose onward flight is still open.
+
+    A transfer bag whose onward flight is gone (the passenger missed the
+    connection) or unknown to the FlightView stays an arrival bag.
+    """
+    from _common.flight_view import VIEW
+    transfers: list[tuple[dict, dict]] = []
+    to_belt: list[dict] = []
+    for bag in bags:
+        onward = VIEW.get(bag.get("transfer_flight_id")) if bag.get("transfer_flight_id") else None
+        if onward is not None and onward.get("status") in TRANSFER_ONWARD_OPEN:
+            transfers.append((bag, onward))
+        else:
+            to_belt.append(bag)
+    return transfers, to_belt
+
+
+def transfer_zone(onward: dict) -> str:
+    """Transfer induction zone of the onward flight's terminal."""
+    return f"transfer-{_terminal_letter(onward)}"
+
+
 async def _apply_arrival_at_gate(
     flight_id: str, gate_id: str, sim_time: datetime, event_id: str
 ) -> None:
@@ -1259,9 +1285,15 @@ async def _apply_arrival_at_gate(
     from db.neo4j import get_flight_baggage
     from services.spatial import arrival_carousel_for_terminal
 
+    from db.neo4j import relink_transfer_baggage_tx
+
     bags = await get_flight_baggage(flight_id, statuses=["in_hold"])
     if not bags:
         return
+
+    # Transfer bags whose onward flight is still open go back into the BHS on
+    # that flight; every other bag goes to the arrival belt.
+    transfer_bags, bags = split_transfer_bags(bags)
 
     # Determine terminal from gate_id (first char) per ROADMAP: A→1-2, B→3-4, C→5-6
     terminal = gate_id[0].upper() if gate_id else "A"
@@ -1273,6 +1305,21 @@ async def _apply_arrival_at_gate(
         {"id": bag["id"], "status": "arrived", "zone": zone, "carousel": carousel}
         for bag in bags
     ]
+    relinks = [{"id": b["id"], "inbound_flight_id": flight_id, "onward_flight_id": onward["id"]}
+               for b, onward in transfer_bags]
+    changes += [{"id": b["id"], "status": "dropped_off", "zone": transfer_zone(onward)}
+                for b, onward in transfer_bags]
+    # Transfers are discrete, low-volume facts: never suppressed in BULK mode.
+    transfer_facts = []
+    for b, onward in transfer_bags:
+        fact = _status_changed_fact(
+            event_id=event_id, baggage_id=b["id"], tag=b["tag"],
+            previous_status="in_hold", new_status="dropped_off",
+            scan_zone=transfer_zone(onward), sim_time=sim_time,
+            passenger_id=b.get("passenger_id"), flight_id=onward["id"],
+        )
+        fact["document"]["payload"]["inbound_flight_id"] = flight_id
+        transfer_facts.append(fact)
     suppress = is_bulk_mode()
     facts = [] if suppress else [
         _status_changed_fact(
@@ -1293,9 +1340,10 @@ async def _apply_arrival_at_gate(
         if await outbox.inbox_seen(tx, "BaggageInbox", event_id):
             return False
         revision = await next_outbox_revision_tx(tx)
+        await relink_transfer_baggage_tx(tx, relinks)
         await write_baggage_statuses_tx(tx, changes, sim_time)
         await outbox.mark_inbox(tx, "BaggageInbox", event_id, sim_time.isoformat())
-        await outbox.stage_outbox(tx, "BaggageOutbox", facts, revision)
+        await outbox.stage_outbox(tx, "BaggageOutbox", [*facts, *transfer_facts], revision)
         return True
 
     async with get_driver().session() as session:
@@ -1303,6 +1351,8 @@ async def _apply_arrival_at_gate(
 
     if not applied:
         return
+    for _ in transfer_bags:
+        _track_transition("in_hold", "dropped_off")
 
     # Post-commit only: derived arrival-belt cache + fan-out + metrics.
     for bag in bags:

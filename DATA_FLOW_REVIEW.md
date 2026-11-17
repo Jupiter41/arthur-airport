@@ -80,8 +80,21 @@ seats and adds transfers to their `pax_count`. Live check (251 connecting passen
 inbounds): 248 transferred and boarded their onward flight (e.g. transfer 16:27 → gate 16:45 →
 boarded 17:00 for a 17:35 departure), every passenger kept exactly one `ON_FLIGHT`; 3
 special-assistance passengers were declared missed by the risk rule (≈ 64 min left < MCT +
-2.5× walking). Bag transfer is not modelled: connecting passengers' bags are still claimed at
-the inbound carousel.
+2.5× walking).
+
+Bags follow (same day): a connecting passenger's checked bags are seeded as **transfer bags**
+(`in_hold` on the inbound, `CARRIES` from the passenger, `transfer_flight_id`); anonymous arrival
+bags are drawn for the other passengers only. When the inbound reaches the gate, baggage-service
+re-links each transfer bag whose onward flight is open to that flight and puts it back in the BHS
+(`dropped_off` at `transfer-{T}`), in the same transaction as the belt bags; induction, screening,
+sorting, make-up, the hold and short-shipping then apply unchanged. Transfer bags raised the
+seeded BHS peak by ~13%: terminal A went over the 85% headroom on one of three generated days and
+the live day-6 seeding warned for terminal B (08:00 peak 2,366 local + 453 transfer bags = 2,819 >
+2,550), so induction and screening went from 1,800 to 2,100 items/h for A/C and from 3,000 to
+3,400 for B (no violation over seven generated days, nor for live day 6). Live check (263
+transfer bags on 7 inbounds): 262 flew in their onward flight's hold with their passenger, 1
+was flagged at screening, none short-shipped or on a carousel; e.g. transfer-C 17:42 → make-up
+17:45 → onward hold 19:05.
 
 ### Fixes applied (2026-11-16)
 

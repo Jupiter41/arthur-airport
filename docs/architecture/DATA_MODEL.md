@@ -148,6 +148,8 @@ completed legacy backfill, whose label writes commit in batches of at most 1,000
 | `is_dangerous_goods` | Boolean  | DG flag                                                                                                                                    |
 | `dg_class`           | String   | IATA DG class if flagged                                                                                                                   |
 | `carousel`           | Integer  | arrival carousel number (1–6)                                                                                                              |
+| `transfer_flight_id` | String   | transfer bags of connecting passengers: the onward departure the bag is re-linked to (`LOADED_ON`) when its inbound reaches the gate      |
+| `inbound_flight_id`  | String   | transfer bags after re-linking: the arrival they came in on                                                                                |
 | `last_scan_zone`     | String   | last RFID/barcode scan location                                                                                                            |
 | `last_scan_at`       | DateTime |                                                                                                                                            |
 

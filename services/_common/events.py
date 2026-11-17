@@ -185,6 +185,7 @@ class BaggageStatusChangedPayload(BaseModel):
     new_status: str
     scan_zone: Optional[str] = None
     at: Optional[datetime] = None
+    inbound_flight_id: Optional[str] = None   # transfer bags re-linked to their onward flight
 
 
 class BaggageFlaggedPayload(BaseModel):

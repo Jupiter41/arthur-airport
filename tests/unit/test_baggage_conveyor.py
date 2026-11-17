@@ -50,9 +50,9 @@ class TestZoneThroughput:
         assert "sorting-matrix" in ZONE_THROUGHPUT
         # RC6: from config/airport.yaml operations.baggage, sized to demand
         assert ZONE_THROUGHPUT["sorting-matrix"] == 5400
-        assert ZONE_THROUGHPUT["induction-B"] == 3000
-        assert ZONE_THROUGHPUT["screening-unit-3"] == 1500  # B's 3000/h over 2 units
-        assert ZONE_THROUGHPUT["screening-unit-1"] == 900
+        assert ZONE_THROUGHPUT["induction-B"] == 3400
+        assert ZONE_THROUGHPUT["screening-unit-3"] == 1700  # B's 3400/h over 2 units
+        assert ZONE_THROUGHPUT["screening-unit-1"] == 1050  # A's 2100/h over 2 units
 
     def test_makeup_zones(self):
         for t in "ABC":
@@ -149,7 +149,7 @@ class TestConveyorSystem:
         system.set_zone_status("induction-A", "degraded")
         zone = system.get_zone("induction-A")
         drained = system.drain_zone(zone)
-        # Degraded = 50% throughput: induction-A 1800/hr → 900/hr = 15/min
+        # Degraded = 50% throughput: induction-A 2100/hr → 1050/hr = 17/min
         normal_per_min = ZONE_THROUGHPUT["induction-A"] // 60
         assert len(drained) == normal_per_min // 2
 
