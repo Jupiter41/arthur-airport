@@ -104,6 +104,36 @@ def test_seeder_stores_show_up_for_departures_only():
     assert [p["name"] for p in booked] == [p["name"] for p in arriving]
 
 
+def test_connecting_arrival_passengers_get_an_onward_departure():
+    """Connections live on the inbound leg and name a departure in the window."""
+    import_service_module("sim", "services.passengers")
+    passengers = importlib.import_module("services.passengers")
+    importlib.import_module("services.fixtures").load_fixtures()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    passengers._persist_passengers = noop
+    passengers._update_flight_pax_counts = noop
+    arrival = {"id": "a1", "seat_capacity": 200, "scheduled_time": DEP.isoformat(),
+               "origin_iata": "ZZZ", "destination_iata": "ART"}
+    departures = [{"id": f"d{m}", "scheduled_time": (DEP + timedelta(minutes=m)).isoformat()}
+                  for m in (30, 79, 90, 120, 180, 240, 241, 300)]
+    assert passengers._onward_candidates(arrival, departures) == ["d90", "d120", "d180", "d240"]
+
+    _, pax = asyncio.run(passengers.generate_passengers(
+        [arrival], seed=3, initial_status="airborne", onward_departures=departures))
+    connecting = [p for p in pax if p["connection"]]
+    assert 0.1 < len(connecting) / len(pax) < 0.3
+    assert {p["connection_flight_id"] for p in connecting} <= {"d90", "d120", "d180", "d240"}
+    assert all(p["connection_flight_id"] is None for p in pax if not p["connection"])
+
+    # Without onward departures (departure legs) nobody is flagged as connecting.
+    _, booked = asyncio.run(passengers.generate_passengers([arrival], seed=3))
+    assert not any(p["connection"] for p in booked)
+    assert [p["name"] for p in booked] == [p["name"] for p in pax]
+
+
 # ── owner FSM ──────────────────────────────────────────────────────────────
 
 

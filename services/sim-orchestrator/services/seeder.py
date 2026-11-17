@@ -87,6 +87,7 @@ async def seed_day(sim_day: int) -> None:
     ]
     arr_pax, _ = await generate_passengers(
         arrival_flights_for_pax, seed=rng_seed + 1500, initial_status="airborne",
+        onward_departures=departure_flights,
     )
     total_pax = dep_pax + arr_pax
 

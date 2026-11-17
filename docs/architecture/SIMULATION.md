@@ -93,7 +93,11 @@ Each passenger record includes:
 - Generated name (from a pool of 2,000 first names × 2,000 surnames)
 - PNR (6-character alphanumeric, unique)
 - Nationality (weighted by destination)
-- Connection flag (20% probability)
+- Connection flag (20% of arrival passengers): connections live on the inbound leg. A
+  connecting passenger is `ON_FLIGHT` an arrival and carries `connection_flight_id`, one of
+  the 6 earliest same-day departures scheduled 80–240 min after it (MCT 45 + the 15 min
+  at-risk margin + walking). Without a departure in that window the passenger is not a
+  connection; departure passengers are never flagged
 - Special assistance flag (5% probability)
 - Departures: `show_up_at = T-180 + 135 min × Beta(3, 2)` (mean ≈ T-99), the
   passenger's own arrival time that drives check-in and security (RC5)

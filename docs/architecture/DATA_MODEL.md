@@ -115,8 +115,8 @@ A single flight movement (arrival or departure). Each physical flight has two no
 | `location_zone`        | String   | current zone: `"check-in"`, `"security"`, `"gate-B07"`, etc.                                                             |
 | `seat`                 | String   | e.g. `"23A"`                                                                                                             |
 | `special_assistance`   | Boolean  | requires assistance                                                                                                      |
-| `connection`           | Boolean  | has a connecting flight                                                                                                  |
-| `connection_flight_id` | String   | if `connection=true`                                                                                                     |
+| `connection`           | Boolean  | arrival passenger with an onward departure (connections are modelled on the inbound leg)                                 |
+| `connection_flight_id` | String   | onward departure `Flight.id`, set at seed time iff `connection=true`                                                     |
 | `show_up_at`           | DateTime | departures: airport arrival time `T-180 + 135·Beta(3,2)` min, drawn at seed time (RC5)                                     |
 | `checked_in_at`        | DateTime |                                                                                                                          |
 | `boarded_at`           | DateTime |                                                                                                                          |

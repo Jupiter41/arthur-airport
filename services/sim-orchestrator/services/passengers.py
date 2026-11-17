@@ -20,6 +20,34 @@ LOAD_FACTOR_BETA = 2.0  # default mean ~0.80
 CONNECTION_PROBABILITY = 0.20
 SPECIAL_ASSISTANCE_PROBABILITY = 0.05
 
+# Onward-flight window for a connecting arrival passenger (scheduled times):
+# at least MCT (45) + the at-risk margin (15) + walking, at most a 4-hour bank.
+CONNECTION_WINDOW_MIN = (80, 240)
+# Onward flights considered per inbound flight: hub banks feed a few departures,
+# which is what lets connection clusters (analysis) form.
+CONNECTION_FANOUT = 6
+
+
+def _onward_candidates(arrival: dict, departures: list[dict]) -> list[str]:
+    """Earliest departures in the connection window of ``arrival`` (scheduled times)."""
+    from datetime import datetime, timedelta
+    try:
+        arrives = datetime.fromisoformat(str(arrival.get("scheduled_time")))
+    except (TypeError, ValueError):
+        return []
+    lo = arrives + timedelta(minutes=CONNECTION_WINDOW_MIN[0])
+    hi = arrives + timedelta(minutes=CONNECTION_WINDOW_MIN[1])
+    timed = []
+    for dep in departures:
+        try:
+            at = datetime.fromisoformat(str(dep.get("scheduled_time")))
+        except (TypeError, ValueError):
+            continue
+        if lo <= at <= hi and dep.get("id") != arrival.get("id"):
+            timed.append((at, dep["id"]))
+    timed.sort()
+    return [fid for _, fid in timed[:CONNECTION_FANOUT]]
+
 
 def _terminal_from_gate(gate_id: str | None) -> str:
     if gate_id:
@@ -45,12 +73,21 @@ async def generate_passengers(
     flights: list[dict],
     seed: int | None = None,
     initial_status: str = "booked",
+    onward_departures: list[dict] | None = None,
 ) -> tuple[int, list[dict]]:
     """Generate passengers for all flights and write to Neo4j.
+
+    Connections are modelled on the inbound leg: a connecting passenger is ON
+    an arrival flight and carries ``connection_flight_id``, the departure it
+    connects to. Pass ``onward_departures`` when generating arrival passengers;
+    a passenger drawn as connecting with no departure in the connection window
+    (or generated without ``onward_departures``) is not a connection.
 
     Returns (total_pax_count, list of passenger dicts).
     """
     rng = random.Random(seed)
+    # Separate stream so onward-flight picks leave the other draws unchanged.
+    connection_rng = random.Random(None if seed is None else seed + 11)
     # Separate stream so adding show-up draws leaves names/PNRs/seats unchanged.
     show_up_rng = random.Random(None if seed is None else seed + 7)
     fixtures = get_fixtures()
@@ -110,6 +147,8 @@ async def generate_passengers(
         scheduled_time = flight.get("scheduled_time")
         draws_show_up = initial_status == "booked" and bool(scheduled_time)
 
+        onward = _onward_candidates(flight, onward_departures) if onward_departures else []
+
         passengers = []
         for i in range(pax_count):
             pid = str(uuid4())
@@ -126,6 +165,7 @@ async def generate_passengers(
             seat = _generate_seat(i // 6 + 1, rng)
             is_connection = rng.random() < CONNECTION_PROBABILITY
             is_special = rng.random() < SPECIAL_ASSISTANCE_PROBABILITY
+            connection_flight_id = connection_rng.choice(onward) if is_connection and onward else None
 
             pax = {
                 "id": pid,
@@ -136,8 +176,8 @@ async def generate_passengers(
                 "location_zone": None,
                 "seat": seat,
                 "special_assistance": is_special,
-                "connection": is_connection,
-                "connection_flight_id": None,
+                "connection": connection_flight_id is not None,
+                "connection_flight_id": connection_flight_id,
                 "flight_id": flight["id"],
                 # RC5: each departing passenger's own airport arrival time.
                 "show_up_at": (
