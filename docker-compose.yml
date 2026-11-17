@@ -45,6 +45,13 @@ services:
       NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE:-2G}
       NEO4J_db_tx__log_rotation_retention__policy: "256M size"
       NEO4J_db_tx__log_rotation_size: 16M
+      # The live graph grows several-fold over day 1 (154k -> 1.2M nodes); at the
+      # default 0.75 threshold / 10 s interval every cached plan was discarded
+      # and recompiled in bursts (~1,500/h), stalling owner ticks. The queries
+      # are parameterised index seeks whose plans do not depend on size; an
+      # empty-to-populated change (divergence 1.0) still replans.
+      NEO4J_dbms_cypher_statistics__divergence__threshold: "0.9"
+      NEO4J_dbms_cypher_min__replan__interval: 60s
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs

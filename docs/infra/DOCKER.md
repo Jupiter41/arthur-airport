@@ -92,6 +92,9 @@ services:
       NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_INITIAL:-1G}
       NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_MAX:-2G}
       NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE:-2G}
+      # Fewer plan-cache discards while the graph grows (see §2 table)
+      NEO4J_dbms_cypher_statistics__divergence__threshold: "0.9"
+      NEO4J_dbms_cypher_min__replan__interval: 60s
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
@@ -662,6 +665,7 @@ Set these in the shell or `.env` before `docker compose up`:
 | -------- | ------- | ---------- | ----- |
 | `NEO4J_HEAP_MAX` / `NEO4J_HEAP_INITIAL` | `2G` / `1G` | neo4j | Transaction memory is capped at 70% of the heap and shared by all owners; below 2G a lagging owner tick can exhaust it |
 | `NEO4J_PAGECACHE` | `2G` | neo4j | Raise toward the store size on large hosts; lower on small ones |
+| `NEO4J_dbms_cypher_statistics__divergence__threshold` / `NEO4J_dbms_cypher_min__replan__interval` | `0.9` / `60s` | neo4j | Plan-cache staleness (Neo4j defaults 0.75 / 10s): the day-1 graph growth discarded and recompiled cached plans in bursts (~1,500/h); empty→populated changes (divergence 1.0) still replan |
 | `CATCH_UP_MAX_STEP_MIN` | `5` | baggage, passenger | Largest sim-minute step used when replaying a coalesced clock backlog |
 | `BAGGAGE_STATUS_GAUGE_INTERVAL_TICKS` | `60` | baggage | Cadence of the full by-status count gauge |
 | `BAGGAGE_PIPELINE_RECONCILE_TICKS` | `60` | baggage | Cadence of the safety-net pipeline reconcile while memory is in sync |
