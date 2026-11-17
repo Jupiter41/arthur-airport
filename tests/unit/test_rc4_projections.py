@@ -287,3 +287,26 @@ def test_flight_draw_markers_are_bounded_to_active_flights(monkeypatch):
     assert state.crew_delay_drawn == {"live"}
     assert state.ctot_assigned == set()
     assert state.diversion_drawn == {"live"}
+
+
+def test_equipment_failure_is_drawn_once_per_turnaround_not_per_aircraft(monkeypatch):
+    """Each turnaround of an aircraft gets its own equipment-failure draw."""
+    from types import SimpleNamespace
+    consumer = _flight_consumer(monkeypatch)
+    state = consumer.FlightConsumerState()
+    monkeypatch.setattr(consumer, "_state", state)
+    draws = []
+    monkeypatch.setattr(consumer.random, "random", lambda: draws.append(1) or 1.0)
+
+    def plan(arrival):
+        return SimpleNamespace(arrival_flight_id=arrival, started_at=NOW, tasks={})
+
+    state.turnaround_plans = {"N100AR": plan("A1")}
+    consumer._check_equipment_failures(NOW)
+    consumer._check_equipment_failures(NOW)          # same turnaround: no second draw
+    assert len(draws) == 1 and state.equipment_failure_drawn == {"A1"}
+
+    state.turnaround_plans = {"N100AR": plan("A2")}  # next rotation of the same aircraft
+    consumer._check_equipment_failures(NOW)
+    assert len(draws) == 2
+    assert state.equipment_failure_drawn == {"A2"}   # marker of the finished turnaround dropped

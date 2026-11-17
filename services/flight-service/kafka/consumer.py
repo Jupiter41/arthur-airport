@@ -123,7 +123,7 @@ class FlightConsumerState:
         # Tracks flights already evaluated for stochastic draws (one draw per flight)
         self.crew_delay_drawn: set[str] = set()        # flight_ids that had crew delay draw
         self.ctot_assigned: set[str] = set()            # flight_ids with CTOT slot
-        self.equipment_failure_drawn: set[str] = set()  # flight_ids with equipment failure draw
+        self.equipment_failure_drawn: set[str] = set()  # turnaround arrival flight_ids already drawn
         self.diversion_drawn: set[str] = set()          # flight_ids with diversion draw
         # Holding stack tracking: flight_id -> minutes in holding
         self.holding_minutes: dict[str, int] = {}
@@ -905,17 +905,24 @@ def _check_equipment_failures(sim_time: datetime) -> None:
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """P1-2-4: Stochastic equipment failure on active turnaround tasks.
 
-    1% chance per flight — checked once when the turnaround plan starts.
+    1% chance per turnaround — checked once when the turnaround plan starts.
     Adds 8–20 min to a random in-progress task.
     """
     ns = _state.noise_settings
+    # Draw markers are keyed by turnaround (its arrival flight), not by
+    # aircraft: an aircraft rotates many times a day and each turnaround gets
+    # its own draw. Markers of turnarounds no longer planned are dropped (RC2).
+    live = {plan.arrival_flight_id for plan in _state.turnaround_plans.values()}
+    if _state.equipment_failure_drawn - live:
+        _state.equipment_failure_drawn = _state.equipment_failure_drawn & live
     for reg, plan in _state.turnaround_plans.items():
-        if reg in _state.equipment_failure_drawn:
+        key = plan.arrival_flight_id
+        if key in _state.equipment_failure_drawn:
             continue
         if not plan.started_at:
             continue
         # Only draw once per turnaround
-        _state.equipment_failure_drawn.add(reg)
+        _state.equipment_failure_drawn.add(key)
         if random.random() >= ns["equipment_failure_rate"]:
             continue
         # Find an in-progress task to fail
