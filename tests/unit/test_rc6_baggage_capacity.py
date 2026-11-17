@@ -228,3 +228,40 @@ def test_departure_leaves_flagged_and_finished_bags_alone(monkeypatch):
     consumer = context(monkeypatch, driver, bags)
     asyncio.run(departed(consumer, "evt-dep"))
     assert {k: v["status"] for k, v in driver.db["baggage"].items()} == {"s": "short_shipped"}
+
+
+# ── cold-start warm start (live regression: 05-08 h departures short-shipped) ──
+
+def _bag_warm():
+    import importlib
+    from tests.conftest import import_service_module
+    import_service_module("baggage", "services.conveyor")
+    return importlib.import_module("services.warm_start")
+
+
+def test_bag_warm_start_places_cleared_bags_as_loaded_with_a_full_scan_trail():
+    from datetime import datetime
+    warm = _bag_warm()
+    start = datetime(2024, 6, 15, 6, 0)
+    rows = [
+        {"id": "early", "flight_id": "F1", "passenger_id": "p-early", "scheduled_time": "2024-06-15T07:00:00",
+         "show_up_at": "2024-06-15T05:00:00", "terminal": "B"},
+        {"id": "recent", "flight_id": "F1", "passenger_id": "p-recent", "scheduled_time": "2024-06-15T07:00:00",
+         "show_up_at": "2024-06-15T05:45:00", "terminal": "B"},     # dropped 05:55: still in the BHS
+        {"id": "future", "flight_id": "F2", "passenger_id": "p-future", "scheduled_time": "2024-06-15T09:00:00",
+         "show_up_at": "2024-06-15T07:30:00", "terminal": "A"},
+    ]
+    placed = warm.place_bags(rows, start, noshow_rate=0.0)
+    assert [p.baggage_id for p in placed] == ["early"]
+    trail = placed[0].trail
+    assert [s for s, _ in trail] == ["inducted", "screening", "sorting", "loaded"]
+    assert trail[0][1] == "induction-B" and trail[1][1] in ("screening-unit-3", "screening-unit-4")
+    assert trail[-1][1].startswith("make-up-B-")
+
+
+def test_bag_warm_start_skips_no_show_passengers():
+    from datetime import datetime
+    warm = _bag_warm()
+    rows = [{"id": "b", "flight_id": "F1", "passenger_id": "p", "scheduled_time": "2024-06-15T07:00:00",
+             "show_up_at": "2024-06-15T05:00:00", "terminal": "A"}]
+    assert warm.place_bags(rows, datetime(2024, 6, 15, 6, 0), noshow_rate=1.0) == []

@@ -19,6 +19,7 @@ SHOW_UP_WINDOW_END_MIN = 45      # check-in close
 SHOW_UP_ALPHA = 3.0
 SHOW_UP_BETA = 2.0
 CHECKIN_PROCESS_MINUTES = 10     # check-in desk / bag drop before security
+DEFAULT_NOSHOW_RATE = 0.03       # 2-4% no-show rate (default 3%)
 
 _SPAN_MIN = SHOW_UP_WINDOW_START_MIN - SHOW_UP_WINDOW_END_MIN
 

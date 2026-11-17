@@ -60,7 +60,7 @@ from services.reconciliation import (
     PRE_DEPARTURE_FLIGHT_STATUSES, reconciliation_transition,
 )
 from _common.show_up import (
-    SHOW_UP_WINDOW_START_MIN, is_no_show, security_due, show_up_time,
+    DEFAULT_NOSHOW_RATE, SHOW_UP_WINDOW_START_MIN, is_no_show, security_due, show_up_time,
 )
 from services.spatial import walking_time_to_gate
 from services import wheelchair
@@ -154,7 +154,7 @@ class PassengerConsumerState:
         self.last_mode: str = "REALTIME"
         self.last_sync_sim_time: datetime | None = None
         # No-show tracking (Phase 1.2)
-        self.noshow_rate: float = 0.03  # 2-4% no-show rate (default 3%)
+        self.noshow_rate: float = DEFAULT_NOSHOW_RATE  # 2-4% no-show rate (default 3%)
         # Passengers placed by this tick's warm start (per tick, not checkpointed).
         self.warm_started_ids: set[str] = set()
         # BTS source management

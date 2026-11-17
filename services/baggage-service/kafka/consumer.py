@@ -707,6 +707,15 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     # discarded on failure, so a second multi-MB copy is pure overhead.
     conveyor_snapshot = None if current_tick.get() is not None else deepcopy(_state.conveyor)
     plan = _TickPlan()
+    # 0. Cold start only: bags whose passenger's timeline already cleared the
+    #    BHS are placed as loaded instead of flooding induction (RC6 warm start).
+    if _bag_warm_start_due(_state.tick_counter):
+        await _plan_warm_start(plan, sim_time)
+        scope = current_tick.get()
+        if scope is not None:
+            scope.effects.append(_mark_bag_warm_start_done)
+        else:
+            _mark_bag_warm_start_done()
     # 1. Induct new bags (dropped_off → inducted / fast-tracked in_hold)
     await _plan_induction(plan, sim_time, delta_minutes)
     # 2. Advance conveyor pipeline
@@ -813,6 +822,59 @@ async def _maybe_emit_baggage_bulk_snapshot(sim_time: datetime) -> None:
 
     emit_bulk_state_snapshot(sim_time, summary)
     logger.info("BulkStateSnapshot emitted (baggage): %s", counts)
+
+
+WARM_START_WINDOW_TICKS = int(os.getenv("WARM_START_WINDOW_TICKS", "60"))
+_bag_warm_start_state: dict = {"done": False}
+_WARM_FLIGHT_STATUSES = ("scheduled", "boarding", "delayed")
+
+
+def _bag_warm_start_due(tick_counter: int) -> bool:
+    """First early tick at which the FlightView knows a departure (cold start)."""
+    from _common.flight_view import VIEW
+    if _bag_warm_start_state["done"] or tick_counter > WARM_START_WINDOW_TICKS:
+        return False
+    return any(f.get("direction") == "departure" for f in VIEW.flights.values())
+
+
+def _mark_bag_warm_start_done() -> None:
+    _bag_warm_start_state["done"] = True
+
+
+def _terminal_letter(flight: dict) -> str:
+    tid = str(flight.get("terminal_id") or "")
+    if tid[-1:] in ("A", "B", "C"):
+        return tid[-1]
+    gate = str(flight.get("gate_id") or "")
+    return gate[0].upper() if gate[:1].upper() in ("A", "B", "C") else "A"
+
+
+async def _plan_warm_start(plan: _TickPlan, sim_time: datetime) -> None:
+    """Place already-processed bags on their passenger's timeline (RC6 cold start)."""
+    from _common.flight_view import VIEW
+    from _common.show_up import SHOW_UP_WINDOW_START_MIN
+    from db.neo4j import get_warm_start_baggage
+    from services.warm_start import place_bags
+    horizon = (sim_time + timedelta(minutes=SHOW_UP_WINDOW_START_MIN)).isoformat()
+    flights = {f["id"]: f for f in VIEW.select(statuses=_WARM_FLIGHT_STATUSES, direction="departure",
+                                               scheduled_before=horizon)}
+    rows = await get_warm_start_baggage(list(flights))
+    for row in rows:
+        flight = flights.get(row["flight_id"], {})
+        row["scheduled_time"] = flight.get("scheduled_time") or flight.get("estimated_time")
+        row["terminal"] = _terminal_letter(flight)
+    placements = place_bags(rows, sim_time)
+    for placed in placements:
+        previous = "dropped_off"
+        for status, zone in placed.trail:
+            plan.status_changes.append({"id": placed.baggage_id, "status": status, "zone": zone,
+                                        "previous_status": previous, "flight_id": placed.flight_id})
+            plan.metrics.append(("transition", previous, status))
+            previous = status
+        plan.loaded_rows.append({"baggage_id": placed.baggage_id, "flight_id": placed.flight_id})
+        plan.inducted_ids.append(placed.baggage_id)
+    logger.info("Baggage warm start: %d of %d dropped-off bags placed as loaded (%d flights)",
+                len(placements), len(rows), len(flights))
 
 
 async def _plan_induction(plan: _TickPlan, sim_time: datetime, delta_minutes: int = 1) -> None:

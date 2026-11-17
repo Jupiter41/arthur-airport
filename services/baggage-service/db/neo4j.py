@@ -732,6 +732,30 @@ async def get_dropped_off_baggage_for_departures(horizon: datetime) -> list[dict
     return rows
 
 
+async def get_warm_start_baggage(flight_ids: list[str]) -> list[dict]:
+    """``dropped_off`` bags of the given departures, with their passenger's seeded show-up.
+
+    Cold-start only (RC6 warm start). ``show_up_at`` is an immutable seed
+    attribute reached through the ``CARRIES`` identity link, not live state.
+    """
+    if not flight_ids:
+        return []
+    query = """
+    UNWIND $fids AS fid
+    MATCH (f:Flight {id: fid})
+    CALL {
+      WITH f
+      MATCH (b:Baggage {status: 'dropped_off'})-[:LOADED_ON]->(f)
+      RETURN b
+    }
+    OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)
+    RETURN b.id AS id, b.tag AS tag, f.id AS flight_id,
+           p.id AS passenger_id, p.show_up_at AS show_up_at
+    """
+    async with get_driver().session() as session:
+        return [dict(r) async for r in await session.run(query, fids=flight_ids)]
+
+
 async def set_baggage_carousel(baggage_id: str, carousel: int, sim_time: datetime) -> None:
     """Set the carousel number for a baggage item."""
     get_driver()

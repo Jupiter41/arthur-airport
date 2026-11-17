@@ -221,3 +221,28 @@ def test_rc3_pipeline_hops_are_batch_only_and_public_transitions_stay_per_bag(mo
     assert [f["document"]["payload"]["new_status"] for f in plan.facts] == [
         "on_carousel", "collected"]
     assert [event for event, _ in plan.ws] == ["BaggageStatusChanged"] * 2
+
+
+def test_cold_start_warm_start_loads_cleared_bags_and_induction_skips_them(monkeypatch):
+    consumer = context(monkeypatch)
+    consumer._state = consumer.BaggageConsumerState()
+    fv = importlib.import_module("_common.flight_view")
+    fv.VIEW.load([{"id": "F1", "direction": "departure", "status": "scheduled",
+                   "scheduled_time": "2026-01-01T11:00:00", "estimated_time": "2026-01-01T11:00:00",
+                   "gate_id": "B07"}], [], None)
+    db = sys.modules["db.neo4j"]
+    monkeypatch.setattr(db, "get_warm_start_baggage", AsyncMock(return_value=[
+        {"id": "b1", "tag": "fake-1", "flight_id": "F1", "passenger_id": "p1",
+         "show_up_at": "2026-01-01T08:30:00"}]))
+    monkeypatch.setattr(consumer, "get_dropped_off_baggage_for_departures", AsyncMock(return_value=[
+        {"id": "b1", "tag": "fake-1", "flight_id": "F1", "estimated_time": "2026-01-01T11:00:00"}]))
+    monkeypatch.setattr(consumer, "_bag_warm_start_state", {"done": False})
+    assert consumer._bag_warm_start_due(1)
+    plan = consumer._TickPlan()
+    asyncio.run(consumer._plan_warm_start(plan, NOW))
+    assert [c["status"] for c in plan.status_changes] == ["inducted", "screening", "sorting", "loaded"]
+    assert plan.loaded_rows == [{"baggage_id": "b1", "flight_id": "F1"}]
+    assert plan.facts == []                      # internal hops: batch-only (RC3)
+    asyncio.run(consumer._plan_induction(plan, NOW))
+    assert len(plan.status_changes) == 4         # not inducted a second time
+    fv.VIEW.load([], [], None)
