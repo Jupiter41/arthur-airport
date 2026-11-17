@@ -687,6 +687,7 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
     # 3. Process each flight through the FSM
     for flight in flights:
         await _process_flight(flight, sim_time)
+    _prune_draw_sets(_state, {f["id"] for f in flights})
 
     # 3a. Holding fuel burn tracking (P1-2-6)
     _track_holding_fuel_burn(flights, sim_time, step_minutes, is_bulk)
@@ -767,6 +768,19 @@ def _is_peak_hour(sim_time: datetime) -> bool:
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     """Check if current sim hour is a peak hour."""
     return sim_time.hour in _state.peak_hours
+
+
+def _prune_draw_sets(state, active_ids: set[str]) -> None:
+    """Keep once-per-flight draw markers only for flights still active (RC2).
+
+    The draws happen while a flight is active and the active-flight query
+    never returns a finished flight again, so markers of finished flights are
+    dead weight: they grew the tick checkpoint by ~210 ids per set per day.
+    """
+    for name in ("crew_delay_drawn", "ctot_assigned", "diversion_drawn"):
+        marks = getattr(state, name)
+        if marks - active_ids:
+            setattr(state, name, marks & active_ids)
 
 
 def _draw_crew_delay(flight_id: str) -> int:

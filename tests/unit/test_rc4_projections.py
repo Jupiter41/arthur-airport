@@ -274,3 +274,16 @@ def test_terminal_falls_back_to_the_gate_prefix_on_a_cold_start():
     assert view.get("F1")["terminal_id"] == "T-C"
     view.apply("FlightGateAssigned", {"flight_id": "F1", "new_gate_id": "B03"}, NOW)
     assert view.get("F1")["terminal_id"] == "T-B"
+
+
+def test_flight_draw_markers_are_bounded_to_active_flights(monkeypatch):
+    """RC2: once-per-flight draw sets no longer grow with every flight ever seen."""
+    consumer = _flight_consumer(monkeypatch)
+    state = consumer.FlightConsumerState()
+    state.crew_delay_drawn = {"old", "live"}
+    state.ctot_assigned = {"old"}
+    state.diversion_drawn = {"live"}
+    consumer._prune_draw_sets(state, {"live", "other"})
+    assert state.crew_delay_drawn == {"live"}
+    assert state.ctot_assigned == set()
+    assert state.diversion_drawn == {"live"}
