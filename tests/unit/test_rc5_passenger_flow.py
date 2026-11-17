@@ -423,3 +423,77 @@ def test_warm_start_waits_for_the_schedule_then_runs_once(consumer, monkeypatch)
     monkeypatch.setattr(consumer, "_warm_start_state", {"done": False})
     assert not consumer._warm_start_due(consumer.WARM_START_WINDOW_TICKS + 1)  # mid-sim restart
     fv.VIEW.load([], [], None)
+
+
+# ── transfer flow (connecting passengers) ─────────────────────────────────
+
+
+def test_transfer_decision():
+    sm = import_service_module("passenger", "services.state_machine")
+    conn = {"connection": True, "connection_flight_id": "D1"}
+    assert sm.transfer_decision({"connection": False}, {"status": "scheduled"}) is None
+    assert sm.transfer_decision(conn, None) is None                    # unknown onward
+    assert sm.transfer_decision(conn, {"status": "boarding", "direction": "departure"}) == "transfer"
+    assert sm.transfer_decision(conn, {"status": "departed", "direction": "departure"}) == "missed"
+    assert sm.transfer_decision(conn, {"status": "cancelled"}) == "missed"
+
+
+def test_connecting_passengers_transfer_airside_onto_their_onward_flight(consumer, monkeypatch):
+    fv = importlib.import_module("_common.flight_view")
+    fv.VIEW.load([
+        {"id": "D-open", "flight_number": "AR100", "direction": "departure", "status": "scheduled",
+         "estimated_time": "2024-07-06T12:30:00", "gate_id": "C12"},
+        {"id": "D-gone", "flight_number": "AR200", "direction": "departure", "status": "departed",
+         "estimated_time": "2024-07-06T10:20:00", "gate_id": "B02"},
+    ], [], None)
+    deplaned = "2024-07-06T10:10:00"
+
+    def arriving(pid, **extra):
+        return {"id": pid, "flight_id": "A1", "flight_number": "AR9", "flight_type": "international_long",
+                "deplaning_at": deplaned, "location_zone": "gate-A03", "connection": False,
+                "connection_flight_id": None, **extra}
+
+    rows = [arriving("t1", connection=True, connection_flight_id="D-open"),
+            arriving("m1", connection=True, connection_flight_id="D-gone"),
+            arriving("u1", connection=True, connection_flight_id="D-unknown"),
+            arriving("l1")]
+
+    async def reader(status, *args, **kwargs):
+        return rows if status == "deplaning" else []
+
+    monkeypatch.setattr(consumer, "get_passengers_by_status", reader)
+    try:
+        plan = asyncio.run(consumer._advance_arrivals(NOW))
+    finally:
+        fv.VIEW.load([], [], None)
+    groups = {g["status"]: g for g in plan.groups}
+    assert groups["airside"] == {"ids": ["t1"], "status": "airside", "zone": "airside-C"}
+    assert groups["missed_connection"]["ids"] == ["m1"]
+    assert groups["customs"]["ids"] == ["u1", "l1"]          # normal arrival flow, no customs for t1
+    assert plan.transfers == [{"passenger_id": "t1", "inbound_flight_id": "A1", "onward_flight_id": "D-open"}]
+    assert plan.dwell_items == [("t1", consumer.TRANSFER_DWELL_MINUTES)]
+    alerts = [f["document"] for f in plan.facts]
+    assert [a["payload"]["type"] for a in alerts] == ["connection_missed"]
+    assert alerts[0]["payload"]["passenger_id"] == "m1"
+
+
+def test_seeder_counts_transfers_against_onward_free_seats():
+    import_service_module("sim", "services.passengers")
+    passengers = importlib.import_module("services.passengers")
+    importlib.import_module("services.fixtures").load_fixtures()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    passengers._persist_passengers = noop
+    passengers._update_flight_pax_counts = noop
+    arrival = {"id": "a1", "seat_capacity": 300, "scheduled_time": DEP.isoformat(),
+               "origin_iata": "ZZZ", "destination_iata": "ART"}
+    departures = [{"id": "d1", "scheduled_time": (DEP + timedelta(minutes=90)).isoformat()},
+                  {"id": "d2", "scheduled_time": (DEP + timedelta(minutes=120)).isoformat()}]
+    free = {"d1": 3, "d2": 0}
+    _, pax = asyncio.run(passengers.generate_passengers(
+        [arrival], seed=5, initial_status="airborne", onward_departures=departures,
+        onward_free_seats=free))
+    assert [p["connection_flight_id"] for p in pax if p["connection"]] == ["d1"] * 3
+    assert free == {"d1": 0, "d2": 0}

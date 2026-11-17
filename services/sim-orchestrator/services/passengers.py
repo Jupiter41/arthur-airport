@@ -74,6 +74,7 @@ async def generate_passengers(
     seed: int | None = None,
     initial_status: str = "booked",
     onward_departures: list[dict] | None = None,
+    onward_free_seats: dict[str, int] | None = None,
 ) -> tuple[int, list[dict]]:
     """Generate passengers for all flights and write to Neo4j.
 
@@ -81,7 +82,9 @@ async def generate_passengers(
     an arrival flight and carries ``connection_flight_id``, the departure it
     connects to. Pass ``onward_departures`` when generating arrival passengers;
     a passenger drawn as connecting with no departure in the connection window
-    (or generated without ``onward_departures``) is not a connection.
+    (or generated without ``onward_departures``) is not a connection. With
+    ``onward_free_seats`` (departure id -> seats left after its own passengers)
+    only departures with a free seat are picked, and the map is decremented.
 
     Returns (total_pax_count, list of passenger dicts).
     """
@@ -165,7 +168,14 @@ async def generate_passengers(
             seat = _generate_seat(i // 6 + 1, rng)
             is_connection = rng.random() < CONNECTION_PROBABILITY
             is_special = rng.random() < SPECIAL_ASSISTANCE_PROBABILITY
-            connection_flight_id = connection_rng.choice(onward) if is_connection and onward else None
+            connection_flight_id = None
+            if is_connection and onward:
+                open_onward = (onward if onward_free_seats is None
+                               else [fid for fid in onward if onward_free_seats.get(fid, 0) > 0])
+                if open_onward:
+                    connection_flight_id = connection_rng.choice(open_onward)
+                    if onward_free_seats is not None:
+                        onward_free_seats[connection_flight_id] -= 1
 
             pax = {
                 "id": pid,
@@ -188,6 +198,7 @@ async def generate_passengers(
 
         all_passengers.extend(passengers)
         flight_pax_counts[flight["id"]] = pax_count
+        flight["pax_count"] = pax_count   # keep the schedule dict in step with Neo4j
 
     # Write to Neo4j in batches
     await _persist_passengers(all_passengers)

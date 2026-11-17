@@ -117,6 +117,8 @@ A single flight movement (arrival or departure). Each physical flight has two no
 | `special_assistance`   | Boolean  | requires assistance                                                                                                      |
 | `connection`           | Boolean  | arrival passenger with an onward departure (connections are modelled on the inbound leg)                                 |
 | `connection_flight_id` | String   | onward departure `Flight.id`, set at seed time iff `connection=true`                                                     |
+| `inbound_flight_id`    | String   | connecting passengers after transfer: the arrival they came from (`ON_FLIGHT` then points to the onward flight)          |
+| `transfer_at`          | DateTime | when the passenger transferred airside to the onward flight                                                               |
 | `show_up_at`           | DateTime | departures: airport arrival time `T-180 + 135·Beta(3,2)` min, drawn at seed time (RC5)                                     |
 | `checked_in_at`        | DateTime |                                                                                                                          |
 | `boarded_at`           | DateTime |                                                                                                                          |

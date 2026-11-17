@@ -71,9 +71,17 @@ Observations from that run, fixed afterwards (2026-11-17, verified on the runnin
 | `equipment_failure_drawn` was keyed by aircraft: one equipment-failure draw per aircraft for the whole simulation | Keyed by turnaround (arrival flight id), markers kept only for planned turnarounds | `c45fca6` |
 | `CostRecorded` was the largest UI stream left (≈3.5 msg/s, `immediate`) | `latest` class: newest envelope at most once per `WS_COALESCE_MS` (≤ 1 msg/s); the UI only refetches the cost summary | `e71c24b` |
 
-Not addressed: connecting arrival passengers still follow the arrival flow
-(deplaning → customs → baggage claim → exit) and never board their onward flight; the risk
-model only raises alerts.
+Follow-up (same day): connecting passengers now **transfer**. At the end of deplaning a
+connecting passenger whose onward flight is still open is re-linked `ON_FLIGHT` to it
+(`inbound_flight_id` / `transfer_at` kept), goes `airside` with a 10-min transfer dwell and
+follows the departure flow (gate, boarding, `missed_flight`); one whose onward flight has gone
+becomes `missed_connection` with an alert. The seeder only assigns onward flights with free
+seats and adds transfers to their `pax_count`. Live check (251 connecting passengers on 8
+inbounds): 248 transferred and boarded their onward flight (e.g. transfer 16:27 → gate 16:45 →
+boarded 17:00 for a 17:35 departure), every passenger kept exactly one `ON_FLIGHT`; 3
+special-assistance passengers were declared missed by the risk rule (≈ 64 min left < MCT +
+2.5× walking). Bag transfer is not modelled: connecting passengers' bags are still claimed at
+the inbound carousel.
 
 ### Fixes applied (2026-11-16)
 

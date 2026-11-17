@@ -969,7 +969,9 @@ clears observation guards and threshold timers; older clock offsets stay fenced.
 
 `PassengerStatusBatchChanged` (`passengers.events`) contains `status_groups`
 (`ids`, `status`, `zone`, optional `reconciliation_reason`), `dwell_items`
-(`[passenger_id, minutes]`), `location_updates` and `risk_updates`.
+(`[passenger_id, minutes]`), `location_updates`, `risk_updates` and `transfers`
+(`passenger_id`, `inbound_flight_id`, `onward_flight_id`: the passenger's `ON_FLIGHT`
+moved to the onward flight; the same tick's `status_groups` move them `airside`).
 `BaggageStatusBatchChanged` (`baggage.events`) contains `status_changes` (`id`,
 `status`, `zone`, `previous_status`, `flight_id`), `flags` and `loaded_rows`.
 Both use the standard envelope and tick `sim_time`, are staged atomically with

@@ -14,6 +14,9 @@ from datetime import datetime, timedelta
 # --- Arrival flow ---
 # airborne → deplaning → customs (international only) → baggage_claim → departed_airport
 
+# --- Transfer flow (connecting passengers) ---
+# airborne → deplaning → airside (ON_FLIGHT the onward departure) → departure flow
+
 
 DEPARTURE_STATES = ["checked_in", "security_queue", "airside", "at_gate", "boarded"]
 ARRIVAL_STATES = ["airborne", "deplaning", "customs", "baggage_claim", "departed_airport"]
@@ -27,6 +30,25 @@ BOARDING_RATE_PAX_PER_MIN = 10
 DEPLANING_DELAY_MINUTES = 15
 CUSTOMS_DELAY_MINUTES = 10
 BAGGAGE_CLAIM_TIMEOUT_MINUTES = 45
+# Sterile transfer corridor + transfer screening before the airside dwell ends.
+TRANSFER_DWELL_MINUTES = 10
+ONWARD_OPEN_STATUSES = ("scheduled", "boarding", "delayed")
+
+
+def transfer_decision(pax: dict, onward: dict | None) -> str | None:
+    """What a deplaned passenger does next: ``transfer``, ``missed`` or None.
+
+    None means the normal arrival flow (not connecting, or the onward flight
+    is unknown to the FlightView). ``missed`` when the onward flight is no
+    longer open for boarding.
+    """
+    if not pax.get("connection") or not pax.get("connection_flight_id"):
+        return None
+    if onward is None:
+        return None
+    if onward.get("direction") not in (None, "departure"):
+        return None
+    return "transfer" if onward.get("status") in ONWARD_OPEN_STATUSES else "missed"
 
 
 def _to_naive_dt(value: str | datetime | None) -> datetime | None:

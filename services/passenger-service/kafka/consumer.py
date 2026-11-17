@@ -73,7 +73,9 @@ from services.state_machine import (
     should_clear_customs,
     should_depart_airport,
     is_international_flight,
+    transfer_decision,
     zone_for_status,
+    TRANSFER_DWELL_MINUTES,
     BAGGAGE_CLAIM_TIMEOUT_MINUTES,
     BOARDING_RATE_PAX_PER_MIN,
     CUSTOMS_DELAY_MINUTES,
@@ -687,12 +689,14 @@ class TickContribution:
     dwell_items: list[tuple] = field(default_factory=list)    # (pid, dwell)
     location_updates: list[dict] = field(default_factory=list)  # {id,zone}
     facts: list[dict] = field(default_factory=list)           # {id,document}
+    transfers: list[dict] = field(default_factory=list)       # {passenger_id,inbound_flight_id,onward_flight_id}
 
     def merge(self, other: "TickContribution") -> None:
         self.groups.extend(other.groups)
         self.dwell_items.extend(other.dwell_items)
         self.location_updates.extend(other.location_updates)
         self.facts.extend(other.facts)
+        self.transfers.extend(other.transfers)
 
 
 # The warm start must see the day's schedule. On a fresh stack the clock can
@@ -918,6 +922,7 @@ async def _advance_tick(payload: dict, sim_time: datetime) -> None:
                 dwell_items=plan.dwell_items,
                 location_updates=plan.location_updates,
                 facts=plan.facts,
+                transfers=plan.transfers,
             )
         if not applied:
             # Single serial consumer: reaching here means the durable checkpoint
@@ -1598,15 +1603,54 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
             raise
         deplaning = []
 
+    from _common.flight_view import VIEW
     to_customs: list[dict] = []
     to_baggage_claim: list[dict] = []
+    transfer_ids_by_zone: dict[str, list[str]] = {}
+    missed_connection: list[tuple[dict, dict]] = []
     for pax in deplaning:
         deplaning_at = pax.get("deplaning_at")
         if should_move_to_baggage_claim(sim_time, deplaning_at):
+            onward = VIEW.get(pax.get("connection_flight_id")) if pax.get("connection_flight_id") else None
+            decision = transfer_decision(pax, onward)
+            if decision == "transfer":
+                # Sterile transfer: straight airside, then the departure flow
+                # of the onward flight (gate open, dwell, walk, boarding).
+                gate_id = onward.get("gate_id")
+                terminal = get_terminal_for_flight(gate_id, onward.get("terminal_id"), onward["id"])
+                zone = zone_for_status("airside", terminal, gate_id)
+                transfer_ids_by_zone.setdefault(zone, []).append(pax["id"])
+                plan.dwell_items.append((pax["id"], TRANSFER_DWELL_MINUTES))
+                plan.transfers.append({
+                    "passenger_id": pax["id"], "inbound_flight_id": pax["flight_id"],
+                    "onward_flight_id": onward["id"],
+                })
+                move_passenger(pax.get("location_zone") or "arrivals-hall", zone)
+                continue
+            if decision == "missed":
+                missed_connection.append((pax, onward))
+                continue
             if is_international_flight(pax.get("flight_type")):
                 to_customs.append(pax)
             else:
                 to_baggage_claim.append(pax)
+
+    for zone, ids in transfer_ids_by_zone.items():
+        plan.groups.append({"ids": ids, "status": "airside", "zone": zone})
+
+    if missed_connection:
+        plan.groups.append({"ids": [p["id"] for p, _ in missed_connection],
+                            "status": "missed_connection", "zone": "arrivals-hall"})
+        for pax, onward in missed_connection:
+            remove_passenger(pax.get("location_zone") or "arrivals-hall")   # terminal status
+            fact = build_passenger_alert_fact(
+                alert_type="connection_missed",
+                message=(f"Connection missed: {pax.get('flight_number') or pax['flight_id']} → "
+                         f"{onward.get('flight_number') or onward['id']} ({onward.get('status')})"),
+                sim_time=sim_time, passenger_id=pax["id"], flight_id=pax["flight_id"],
+                urgency="critical",
+            )
+            plan.facts.append({"id": fact["event_id"], "document": fact})
 
     if to_customs:
         ids = [p["id"] for p in to_customs]

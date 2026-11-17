@@ -85,10 +85,26 @@ async def seed_day(sim_day: int) -> None:
         f for f in flights
         if f["direction"] == "arrival" and f.get("flight_type") != "cargo"
     ]
-    arr_pax, _ = await generate_passengers(
+    local_pax: dict[str, int] = {}
+    for p in passengers:
+        local_pax[p["flight_id"]] = local_pax.get(p["flight_id"], 0) + 1
+    free_seats = {f["id"]: max(0, int(f.get("seat_capacity") or 0) - local_pax.get(f["id"], 0))
+                  for f in departure_flights}
+    arr_pax, arrivals = await generate_passengers(
         arrival_flights_for_pax, seed=rng_seed + 1500, initial_status="airborne",
-        onward_departures=departure_flights,
+        onward_departures=departure_flights, onward_free_seats=free_seats,
     )
+    # Transfers fly on their onward departure too: count them in its load.
+    transfers: dict[str, int] = {}
+    for p in arrivals:
+        if p["connection_flight_id"]:
+            transfers[p["connection_flight_id"]] = transfers.get(p["connection_flight_id"], 0) + 1
+    for f in departure_flights:
+        f["pax_count"] = local_pax.get(f["id"], 0) + transfers.get(f["id"], 0)
+    if transfers:
+        from services.passengers import _update_flight_pax_counts
+        await _update_flight_pax_counts(
+            {fid: local_pax.get(fid, 0) + n for fid, n in transfers.items()})
     total_pax = dep_pax + arr_pax
 
     # 3. Generate baggage

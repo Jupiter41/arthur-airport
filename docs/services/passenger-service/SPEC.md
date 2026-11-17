@@ -110,6 +110,28 @@ baggage_claim
 departed_airport
 ```
 
+### Transfer flow (connecting passengers)
+
+```
+airborne → deplaning (on the inbound arrival)
+    │
+    ▼ (sim: T+15 min after at_gate; onward flight still scheduled/boarding/delayed)
+airside  (re-linked ON_FLIGHT to the onward departure, inbound_flight_id kept)
+    │       transfer dwell = TRANSFER_DWELL_MIN (10): sterile transfer corridor,
+    │       no customs, no landside security, no baggage claim
+    ▼
+at_gate → boarded → departed_airport   (the departure flow of §2, unchanged)
+```
+
+A connecting passenger whose onward flight is no longer open when deplaning ends
+(departed, airborne, cancelled, diverted …) becomes `missed_connection` with a
+`PassengerAlert` (`connection_missed`). One whose onward flight is unknown to the
+FlightView (evicted, another day) follows the normal arrival flow. A transfer that
+reaches the gate after its flight left becomes `missed_flight` like any other
+departure passenger. Checked bags of connecting passengers are still generated per
+arrival flight (no `CARRIES`) and are claimed at the inbound carousel: bag transfer
+is not modelled.
+
 ### State transition rules
 
 | Transition                           | Trigger                                     | Notes                                          |
@@ -122,7 +144,9 @@ departed_airport
 | `at_gate` → `boarded`                | SimClockTick: boarding call                 | Progressive: 10 pax/min; flight still `scheduled`/`boarding`/`delayed` — never after departure |
 | `boarded` → `departed_airport`       | FlightStatusChanged: `departed`             | All boarded passengers of the flight           |
 | any pre-boarding status → `missed_flight` | FlightStatusChanged: `departed`        | Terminal; one `PassengerStatusChanged` each; removed from queues and zones (RC5) |
-| `deplaning` → `baggage_claim`        | SimClockTick: T+15 after at_gate            | All arrival pax                                |
+| `deplaning` → `baggage_claim`        | SimClockTick: T+15 after at_gate            | Arrival pax that are not transferring          |
+| `deplaning` → `airside` (transfer)   | SimClockTick: T+15 after at_gate            | `connection=true`, onward flight open: `ON_FLIGHT` moves to the onward flight, `inbound_flight_id` / `transfer_at` set, dwell 10 min |
+| `deplaning` → `missed_connection`    | SimClockTick: T+15 after at_gate            | `connection=true`, onward flight no longer open; `PassengerAlert` (`connection_missed`) |
 | `baggage_claim` → `departed_airport` | BaggageStatusChanged (collected) OR timeout | Timeout = T+45 min                             |
 
 ---

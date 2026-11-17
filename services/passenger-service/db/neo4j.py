@@ -470,6 +470,22 @@ async def apply_changes_atomic(
         return await session.execute_write(apply)
 
 
+async def _write_transfers(tx, transfers: list[dict], sim_str: str) -> None:
+    """Move transferring passengers' ``ON_FLIGHT`` from the inbound to the onward flight."""
+    rows = [t for t in transfers if t.get("passenger_id")]
+    if not rows:
+        return
+    result = await tx.run(
+        "UNWIND $rows AS t "
+        "MATCH (p:Passenger {id: t.passenger_id})-[r:ON_FLIGHT]->(:Flight {id: t.inbound_flight_id}) "
+        "MATCH (o:Flight {id: t.onward_flight_id}) "
+        "DELETE r CREATE (p)-[:ON_FLIGHT]->(o) "
+        "SET p.inbound_flight_id = t.inbound_flight_id, p.transfer_at = $ts",
+        rows=rows, ts=sim_str,
+    )
+    await result.consume()
+
+
 async def apply_tick_atomic(
     tick_sim_time: datetime,
     *,
@@ -478,6 +494,7 @@ async def apply_tick_atomic(
     location_updates: list[dict] | None = None,
     risk_updates: list[dict] | None = None,
     facts: list[dict] | None = None,
+    transfers: list[dict] | None = None,
 ) -> bool:
     """Per-tick, per-owner atomic advancement of the passenger FSM (G1-a).
 
@@ -504,6 +521,7 @@ async def apply_tick_atomic(
     location_updates = location_updates or []
     risk_updates = risk_updates or []
     facts = facts or []
+    transfers = transfers or []
     for group in status_groups:
         if group["status"] not in _VALID_STATUSES:
             raise ValueError(f"Invalid passenger status: {group['status']!r}")
@@ -536,10 +554,12 @@ async def apply_tick_atomic(
             await dwell_result.consume()
         await _write_location_updates(tx, location_updates)
         await _write_risk_updates(tx, risk_updates)
+        await _write_transfers(tx, transfers, sim_str)
         staged_facts = [*facts, *_outbox.transition_batch_facts(
             "PassengerStatusBatchChanged", tick_sim_time, "passenger-service", {
                 "status_groups": status_groups, "dwell_items": dwell_items,
                 "location_updates": location_updates, "risk_updates": risk_updates,
+                "transfers": transfers,
             }, grouped_ids={"status_groups": "ids"},
         )]
         await _outbox.stage_outbox(tx, "PassengerOutbox", staged_facts, revision)

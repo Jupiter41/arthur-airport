@@ -96,8 +96,11 @@ Each passenger record includes:
 - Connection flag (20% of arrival passengers): connections live on the inbound leg. A
   connecting passenger is `ON_FLIGHT` an arrival and carries `connection_flight_id`, one of
   the 6 earliest same-day departures scheduled 80–240 min after it (MCT 45 + the 15 min
-  at-risk margin + walking). Without a departure in that window the passenger is not a
-  connection; departure passengers are never flagged
+  at-risk margin + walking) that still has free seats after its local passengers;
+  transfers are added to that departure's `pax_count`. Without such a departure the
+  passenger is not a connection; departure passengers are never flagged. At the end of
+  deplaning a connecting passenger transfers airside onto the onward flight and follows
+  the departure flow from there (passenger-service SPEC §2, transfer flow)
 - Special assistance flag (5% probability)
 - Departures: `show_up_at = T-180 + 135 min × Beta(3, 2)` (mean ≈ T-99), the
   passenger's own arrival time that drives check-in and security (RC5)
