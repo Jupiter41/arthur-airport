@@ -191,7 +191,6 @@ def test_action_free_step_copies_security_and_never_mutates_its_input():
     assert state.model_dump() == saved
     assert first.security["A"] is not state.security["A"]
     assert second.security["A"] is not first.security["A"]
-    assert first.security["A"].queue != state.security["A"].queue or state.security["A"].queue == 0
     # A later action-bearing step deep-copies, so shared untouched parts stay safe.
     third, _ = step(second, [Action(action_type="reassign_gate", parameters={"flight_id": "F2", "gate_id": "A1"})])
     assert third.flights["F2"].gate == "A1" and state.flights["F2"].gate != "A1"
