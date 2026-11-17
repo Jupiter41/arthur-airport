@@ -18,6 +18,9 @@ MISSED_FLIGHT_STATUSES = ("booked", "checked_in", "security_queue", "airside", "
 
 def reconciliation_transition(pax: dict, sim_time: datetime) -> tuple[str, str] | None:
     """Return current airport disposition, without inventing historical boarding."""
+    if (pax.get("direction") == "arrival" and pax.get("status") == "airborne"
+            and pax.get("flight_status") == "scheduled"):
+        return "booked", "remote-origin"
     if (pax.get("direction") == "arrival" and pax.get("status") == "booked"
             and pax.get("flight_status") in ("airborne", "approach", "landed", "taxiing")):
         return "airborne", "in-flight"

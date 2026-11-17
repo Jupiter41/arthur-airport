@@ -24,8 +24,8 @@ data **wrong**; RC9–RC10 make the **UI and data-source pages** look slow and w
 | RC4  | The clock is open-loop with no back-pressure. Services read **other domains' live state from the shared Neo4j** instead of the event stream | passengers deplane/depart from a polling sweep, up to 64 sim-min late; causality broken | 🔴 High | ✅ Done | Event-fed FlightView + BoardingProgress replace live cross-domain decision reads; tick watermark (`sim.watermark`) holds the clock on owner lag; reconciliation boot/hourly only; analysis evaluates on a sim-time cadence (`e08a5f9`, `f4981d9`, `97239a5`, `dc79fb3`). Daytime reconciliation-share re-measurement still to do |
 | RC5  | Passenger flow is a step function (whole flight checked in at T-120 and sent to security at T-45). Boarding isn't gated by flight state | 80% of departures delayed ≥30 min ("boarding_incomplete"); 11.5% of pax board **after** their flight left; no-show rate 0.08% instead of 3% | 🔴 High | ✅ Done | Spec contradiction resolved in favour of §3: per-passenger `show_up_at` (Beta(3,2) over [T-180, T-45]) drives check-in and security; deterministic per-passenger no-show draw at show-up over the whole cohort; check-in/gate/boarding only for flights still `scheduled`/`boarding`/`delayed`; non-boarded passengers → `missed_flight` on departure; default lanes A 8 / B 12 / C 8 (`6c5cd00`). Verified live on a reset stack (see RC5 status) |
 | RC6  | Baggage-system capacity (1,800 bags/h) is less than generated demand (peak 4,900/h), and the departure handler hides the deficit by teleporting bags | 27–37% of departing bags are "in_hold" **without ever being screened** | 🔴 High | ✅ Done | Checked bags/pax 1.56 → ~0.9 (per-type λ, no one-bag floor); BHS A 1,800 / B 3,000 / C 1,800 per h, sorting 5,400, all from `airport.yaml`; seed-time check peak ≤ 85% of slowest stage; departure short-ships unloaded bags with `BaggageMissedFlight` instead of teleporting them to `in_hold` (`5220472`); three bugs found live fixed in `b35db23`. Verified live on a reset stack |
-| RC7  | The seeder writes other domains' entities directly and leaves out cross-domain links | 0 of 39,975 arrival bags linked to a passenger, so every arrival pax leaves claim on the 45-min timeout; 33,651 pax "airborne" on flights that haven't left origin | 🟠 Medium | ❌ Open | Not started; also see the missing `connection_flight_id` finding |
-| RC8  | One-shot event triggers with no reconciliation, and consumers start at `latest` | 39,969 arrival bags from 2024-06-29 stuck `in_hold` permanently | 🟠 Medium | ❌ Open | Not started |
+| RC7  | The seeder writes other domains' entities directly and leaves out cross-domain links | 0 of 39,975 arrival bags linked to a passenger, so every arrival pax leaves claim on the 45-min timeout; 33,651 pax "airborne" on flights that haven't left origin | 🟠 Medium | ✅ Done in code | Owner-applied durable manifests, named arrival bags, lifecycle-driven inbound passengers; regression-tested, live counts pending |
+| RC8  | One-shot event triggers with no reconciliation, and consumers start at `latest` | 39,969 arrival bags from 2024-06-29 stuck `in_hold` permanently | 🟠 Medium | ✅ Done in code | Flow owners use earliest; startup/hourly consumed-state recovery includes old holds and late seed batches; live counts pending |
 | RC9  | The gateway forwards the raw firehose to browsers, and the dashboard does no-op store writes per event | about 450 WS msgs/s per tab; ~280 useless React store updates/s | 🟠 Medium | ✅ Done | Gateway UI delivery policy (`wsDeliveryPolicy.json`): flight/incident/alert facts immediate, clock + snapshots coalesced to the latest per key every 1 s, batch facts as payload-free refetch hints, per-entity facts dropped; dashboard no-op handlers removed, `updateZone` no-op on empty patch, query invalidation throttled to 1/s per key (`3f9d4e5`). Unit-tested; live msg-rate re-measurement still to do |
 | RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft | 🟡 Low–Med | ✅ Done | Owners report a `SourceHealth` block (enabled, items, wall ingest/error, sim observation); gateway derives `unavailable/disabled/error/stale/active` with a reason and clock-labelled timestamps; new `GET /flights/adsb/source` (`83feb91`). Unit-tested |
 | RC11 | History-wide query plans exhaust Neo4j's *shared* transaction memory; coalesced catch-up ticks grow with each failed retry; the clock pauses on any checkpoint error | passenger-service stuck 6 sim-h behind, then the whole sim auto-paused (found during deployment) | 🔴 High | ✅ Done | Query plans pinned, catch-up split into ≤5-min ticks, clock checkpoint retries transient errors, seeding moved off the tick path, transaction pool 0.7 → 1.4 GiB (`78a9975`, `dfe4e77`) |
@@ -210,7 +210,8 @@ record decoding, which is now the main per-row cost (~0.1 ms/row). It is not ins
 **New finding while measuring:** connecting passengers have no `connection_flight_id` property
 (Neo4j reports the property key as unknown), so `get_connecting_passengers` never resolves the
 onward flight. Connection-risk evaluation runs without connection times or gates. This is the same
-family as RC7 (the seeder omits cross-domain links).
+family as RC7 (the seeder omits cross-domain links). New owner-applied manifests
+now persist this field and preserve transfer bag routing; legacy manifests are not regenerated.
 
 ---
 
@@ -630,6 +631,26 @@ cascade fires only sometimes, and the KPIs look fine.
 
 ### RC7 — Seeder writes other domains' data, without links or events 🟠
 
+> **Status: ✅ done in code (2026-11-17), live remeasurement pending.**
+> `5b30ba8` removes all domain persistence from schedule/passenger/baggage
+> generators. The orchestrator atomically records complete `SeedDay` / `SeedBatch`
+> commands and notifies `flights.schedule`; each owner creates its entities,
+> `ON_FLIGHT` / `CARRIES` / `LOADED_ON` links and creation facts in one transaction.
+> Missing identities leave a request pending; startup/tick retries survive a lost
+> notification. All arrival bags now belong to named manifest passengers, with
+> the configured per-passenger cap. Connections preserve `connection_flight_id`
+> and `transfer_flight_id`. Inbound passengers start booked, become airborne on
+> consumed inbound lifecycle facts, and deplane at gate. The flight owner models
+> origin departure at ETA minus flight duration. Existing phantom airborne
+> passengers converge back to booked while their inbound flight is still scheduled.
+> Existing anonymous historical bags are preserved; their owners cannot be
+> reconstructed reliably and are not fabricated. The old measurements below
+> remain evidence of the original defect, not post-fix results.
+>
+> Validation: `test_rc7_seed_ownership.py`, updated transfer/FSM tests, and
+> `test_owner_seed_requests.py` on isolated Neo4j (concurrent seeders, dependency
+> ordering, outbox rollback, replay, creation facts and identity links).
+
 **Evidence**
 
 - Arrival bags on 2024-07-07: **39,975, of which 0** have `(:Passenger)-[:CARRIES]->(b)`.
@@ -662,6 +683,23 @@ events (rule 4).
 ---
 
 ### RC8 — One-shot triggers with no reconciliation; consumers start at `latest` 🟠
+
+> **Status: ✅ done in code (2026-11-17), live remeasurement pending.**
+> Flight/passenger/baggage owner groups default to `earliest` for missing or
+> expired offsets, retaining manual commits. Baggage recovery runs on the first
+> ticks and hourly (or when new seed batches are accepted), using only consumed
+> `FlightView` state plus bag/flight identities. It invokes the normal atomic
+> arrival, departure and cancellation paths, including late-created bags, and
+> keeps recovery facts in BULK. Catch-up sweeps use each simulation step's time.
+> Bootstrap includes old arrival flights with live in-hold bags beyond its normal
+> time window and pins them for recovery. Snapshot stamps only suppress facts
+> for identities actually in the snapshot, so late seed events are not discarded.
+> Passenger recovery remains consumed-state based; pending seed requests are
+> retried independently of Kafka notification delivery. No airport reset is needed.
+>
+> Validation: `test_rc8_baggage_recovery.py`, existing atomic outbox/consumer
+> tests, `test_rc4_projections.py`, and isolated Neo4j historical bootstrap.
+> The original 39,969 bags have not been remeasured against the deployed stack.
 
 **Evidence**
 
@@ -846,8 +884,8 @@ RC10 fabricated source health ─► "active" sources that are disabled/stale
    Beta show-up curve; add `missed_flight` / `short_shipped` outcomes and remove the teleports.~~ Done.
 4. **RC4**: replace cross-domain graph reads with event-fed projections; add a tick watermark
    metric, then back-pressure.
-5. **RC7/RC8**: link arrival bags to passengers; add owner-side catch-up sweeps; switch owner
-   groups to `earliest`.
+5. ~~**RC7/RC8**: link arrival bags to passengers; add owner-side catch-up sweeps; switch owner
+   groups to `earliest`.~~ Done in code; historical live remeasurement pending.
 6. ~~**RC9/RC10**: WS allow-list and coalescing, adapter-reported source health.~~ Done.
 
 ## 6. Reproducing the measurements

@@ -701,7 +701,7 @@ async def _reconcile_flight_baggage(sim_time: datetime, *, force: bool = False) 
         elif flight.get("direction") == "departure" and status in ("departed", "airborne", "arrived", "completed"):
             await _apply_departure_in_hold(fid, sim_time, recovery_id)
         elif status == "cancelled":
-            await _on_flight_cancelled({"flight_id": fid}, sim_time)
+            await _on_flight_cancelled({"flight_id": fid}, sim_time, recovery_id=recovery_id)
     cadence["boot_ticks"] += 1
     cadence["last"] = sim_time
 
@@ -1227,9 +1227,8 @@ async def _apply_departure_in_hold(
     ] + [
         {"id": bag["id"], "status": "short_shipped", "zone": SHORT_SHIP_ZONE} for bag in missed
     ]
-    # BULK speed mode suppresses per-bag facts (aggregated via BulkStateSnapshot),
-    # matching emit_baggage_status_changed; the domain write + inbox stay atomic.
-    suppress = is_bulk_mode()
+    # Recovery outcomes are never sampled away.
+    suppress = is_bulk_mode() and not event_id.startswith("reconcile:")
     per_bag = [] if suppress else [
         _status_changed_fact(
             event_id=event_id,
@@ -1431,7 +1430,9 @@ async def _apply_arrival_at_gate(
             })
 
 
-async def _on_flight_cancelled(payload: dict, sim_time: datetime) -> None:
+async def _on_flight_cancelled(
+    payload: dict, sim_time: datetime, recovery_id: str | None = None,
+) -> None:
     """Handle FlightCancelled — offload all loaded baggage (G1-c atomic path)."""
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     flight_id = payload.get("flight_id")
@@ -1442,6 +1443,7 @@ async def _on_flight_cancelled(payload: dict, sim_time: datetime) -> None:
         flight_id=flight_id,
         sim_time=sim_time,
         conveyor_system=_state.conveyor,
+        recovery_id=recovery_id,
     )
     # Post-commit only: per-transition metrics for the committed offloads.
     for bag in offloaded:

@@ -1,5 +1,13 @@
 # SKILL — baggage-service
 
+> **RC7 / RC8 update (2026-11-17):** the owner-applied seeding/recovery section
+> of this service's SPEC supersedes legacy seeding examples below. Generate
+> manifests without domain writes; only owners apply `_common.seed_requests`
+> batches with identity links and outbox facts. Flow-owner consumer groups use
+> `earliest` for absent offsets. Recovery reads consumed FlightView state and
+> includes old arrival holds; it never reads live cross-domain state per tick.
+
+
 ## Conveyor pipeline · DG detection · System failures · Offload logic
 
 > Full specification: `docs/services/baggage-service/SPEC.md`

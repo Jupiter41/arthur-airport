@@ -38,6 +38,7 @@ async def offload_flight_baggage(
     flight_id: str,
     sim_time: datetime,
     conveyor_system,
+    recovery_id: str | None = None,
 ) -> list[dict]:
     """Atomically offload all baggage for a cancelled flight.
 
@@ -59,12 +60,12 @@ async def offload_flight_baggage(
         for bag in bags
     ]
 
-    # BULK speed mode suppresses per-bag facts (aggregated via BulkStateSnapshot);
-    # the domain write + inbox marker stay atomic regardless.
+    inbox_id = recovery_id or _offload_inbox_id(flight_id)
+    # Recovery facts are durable in every mode; normal delivery keeps its contract.
     suppress = is_bulk_mode()
-    facts = [] if suppress else [
+    facts = [] if suppress and recovery_id is None else [
         build_status_changed_fact(
-            id_base=_offload_inbox_id(flight_id),
+            id_base=inbox_id,
             baggage_id=bag["id"],
             tag=bag["tag"],
             previous_status=bag["status"],
@@ -76,7 +77,6 @@ async def offload_flight_baggage(
         )
         for bag in bags
     ]
-    inbox_id = _offload_inbox_id(flight_id)
 
     async def apply(tx) -> bool:
         if await outbox.inbox_seen(tx, "BaggageInbox", inbox_id):

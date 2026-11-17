@@ -61,6 +61,7 @@ class FlightView:
         self.stamp: str | None = None  # bootstrap snapshot time (reader's clock)
         self.ready = False
         self.recovery_ids: set[str] = set()
+        self.snapshot_ids: set[str] = set()
 
     # ── feeding ──────────────────────────────────────────────────
 
@@ -94,7 +95,7 @@ class FlightView:
         """True when this fact is already reflected (bootstrap stamp or newer change)."""
         if at is None:
             return False
-        if self.stamp is not None and at <= self.stamp:
+        if flight_id in self.snapshot_ids and self.stamp is not None and at <= self.stamp:
             return True
         current = self.flights.get(flight_id, {}).get("updated_at")
         return current is not None and at < current
@@ -141,6 +142,7 @@ class FlightView:
         for row in rows:
             if row.get("id"):
                 self._merge(row["id"], row, None)
+        self.snapshot_ids = set(self.flights)
         self.ready = True
 
     def evict(self, now: datetime) -> int:

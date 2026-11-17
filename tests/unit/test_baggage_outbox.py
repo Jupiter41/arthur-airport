@@ -48,6 +48,9 @@ class Tx:
             self.driver.fail_on = None
             raise RuntimeError("Injected storage failure")
         db = self.db
+        if "MATCH (b:SeedBatch" in query or "RETURN DISTINCT f.id AS id" in query:
+            # No pending seed commands/recovery cohorts in these tick fixtures.
+            return Result()
         if query == "MERGE (s:BaggageOutboxSeq {id: 'latest'})":
             return Result()
         if "BaggageProjection" in query:

@@ -35,6 +35,8 @@ class Message:
 
 def context(service, monkeypatch):
     import_service_module(service, "application.commands" if service != "analysis" else "services.state")
+    from _common import seed_requests
+    monkeypatch.setattr(seed_requests, "apply_pending", AsyncMock(return_value=0))
     metrics = ModuleType("metrics")
     metrics.__getattr__ = lambda name: MagicMock()
     monkeypatch.setitem(sys.modules, "metrics", metrics)

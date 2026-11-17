@@ -227,8 +227,16 @@ up to 64 sim-min late).
 - Reconciliation sweeps are a recovery path only: the first ticks after a restart and then
   hourly (`RECONCILE_BOOT_TICKS`, `RECONCILE_INTERVAL_MIN`).
 
-**Not covered here:** sim-orchestrator's seeder still writes `Flight`/`Passenger`/`Baggage`
-directly (RC7).
+**Owner seeding (RC7):** sim-orchestrator stores immutable `SeedDay` / `SeedBatch`
+commands and notifies `flights.schedule`. Each owner alone creates its entities,
+identity links and creation facts atomically with its outbox. Pending requests
+are retried on startup/ticks, including after a lost notification. See the owner
+specifications and `_common/seed_requests.py`.
+
+**Missed-trigger recovery (RC8):** primary flow owners use `earliest` for missing
+offsets. Baggage startup/hourly sweeps use consumed `FlightView` state and call
+the normal atomic arrival/departure/cancellation paths. Startup includes old
+arrival flights with live `in_hold` bags, beyond the normal projection window.
 
 ---
 

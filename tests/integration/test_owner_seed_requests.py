@@ -111,6 +111,33 @@ def test_owner_seeds_are_atomic_order_independent_and_replay_safe(monkeypatch):
                 assert (await (await session.run(
                     "MATCH (b:SeedBatch) WHERE b.pending = true OR b.document IS NOT NULL RETURN count(b) AS n"
                 )).single())["n"] == 0
+                # This old hold is outside the regular bootstrap window. The
+                # startup projection must still include its flight for recovery.
+                await (await session.run(
+                    "MATCH (f:Flight {id:'arrival'}) SET f.status = 'arrived', "
+                    "f.scheduled_time = '2024-06-01T10:00:00', f.actual_time = '2024-06-01T10:08:00'"
+                )).consume()
+            from _common.flight_view import FlightView, bootstrap
+            view = FlightView()
+            assert await bootstrap(view, lambda: scoped, now) == 1
+            assert view.get("arrival")["status"] == "arrived"
+            assert view.evict(now) == 0  # pinned until the next bootstrap
+            # A baggage owner down across passenger archival still resolves
+            # the existing identity, without creating a replacement passenger.
+            async with scoped.session() as session:
+                await (await session.run(
+                    "MATCH (p:Passenger) REMOVE p:Passenger SET p:PassengerArchive"
+                )).consume()
+            await seed_requests.store_day(lambda: scoped, "late-day", now, {
+                "baggage": [{**manifests["baggage"][0], "id": "late-bag", "tag": "124"}],
+            })
+            assert await seed_requests.apply_pending("baggage", lambda: scoped) == 1
+            async with scoped.session() as session:
+                linked = await (await session.run(
+                    "MATCH (:PassengerArchive)-[:CARRIES]->(b:Baggage {id:'late-bag'}) "
+                    "RETURN count(b) AS n"
+                )).single()
+                assert linked["n"] == 1
         finally:
             async with driver.session() as session:
                 await (await session.run(

@@ -16,9 +16,9 @@ NOW = datetime(2026, 1, 1, 10)
 
 
 def context(monkeypatch):
+    import_service_module("baggage", "application.commands")
     from _common import transaction_scope
     monkeypatch.setattr(transaction_scope, "restore_owner_checkpoint", AsyncMock(return_value=False))
-    import_service_module("baggage", "application.commands")
     metrics = ModuleType("metrics")
     metrics.__getattr__ = lambda name: MagicMock()
     monkeypatch.setitem(sys.modules, "metrics", metrics)

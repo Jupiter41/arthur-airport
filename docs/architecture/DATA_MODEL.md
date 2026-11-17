@@ -531,3 +531,22 @@ CREATE INDEX passengerinbox_seen_at IF NOT EXISTS FOR (i:PassengerInbox) ON (i.s
 CREATE INDEX baggageinbox_seen_at IF NOT EXISTS FOR (i:BaggageInbox) ON (i.seen_at);
 CREATE INDEX costinbox_seen_at IF NOT EXISTS FOR (c:CostInbox) ON (c.seen_at);
 ```
+
+
+### Seed command storage (RC7, 2026-11-17)
+
+`SeedDay {id: UTC simulation date, ready, lock}` uniquely fences one immutable
+day manifest. `SeedBatch {id: date:owner:part, owner, sim_time, pending, document}`
+stores up to 500 JSON entity rows. The orchestrator writes these command nodes,
+never the domain entities. `(owner, pending)` is indexed; day and batch IDs are
+unique. Each owner locks its runtime before the batch, checks referenced
+identities, then commits creation, identity links, outbox fact and acceptance in
+one transaction. Missing references leave the batch pending. Accepted batches
+retain their dedup marker and drop their JSON payload. `SeedDay` and every batch
+are stored in one transaction, so a failed generation cannot fence a partial day.
+
+Every new inbound Baggage has `passenger_id` and `flight_id`, a `CARRIES` link,
+and optional `transfer_flight_id` matching its Passenger's `connection_flight_id`.
+Inbound Passenger starts `booked`, with no departure airport `show_up_at`.
+Legacy anonymous bags are not arbitrarily assigned to people. Legacy airborne
+passengers on still-scheduled arrivals converge to booked through owner recovery.

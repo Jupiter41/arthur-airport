@@ -9,7 +9,7 @@ import pytest
 import requests
 
 WORKER = r"""
-import asyncio, ast, json, sys
+import asyncio, json, sys
 from datetime import datetime
 from uuid import uuid4
 sources=json.load(sys.stdin)
@@ -69,18 +69,17 @@ async def main():
             await db['update_baggage_statuses']([{'id':ids[0],'status':'sorting','zone':'sorting-matrix'}],now)
             await db['update_baggage_status'](ids[1],'sorting','sorting-matrix',now)
 
-            # Compile only the two production seed functions, using the same
-            # isolated label adapter. No application service is restarted.
-            tree=ast.parse(sources['seed'])
-            funcs=[n for n in tree.body if isinstance(n,ast.AsyncFunctionDef)
-                   and n.name in ('_persist_baggage','_persist_arrival_baggage')]
-            seed={'get_driver':lambda:ScopedDriver()}
-            exec(compile(ast.Module(body=funcs,type_ignores=[]),'candidate_seed.py','exec'),seed)
+            # Owner seed acceptance is covered by test_owner_seed_requests.
+            # Prepare unscanned fixtures here solely for pagination/mutation checks.
+            async def seed_bags(rows):
+                await (await scoped.run(
+                    'UNWIND $rows AS row CREATE (b:Baggage:UnscannedBaggage) SET b += row', rows=rows
+                )).consume()
             await (await session.run(f'CREATE (:{label}Passenger {{id:$id}}), (:{label}Flight {{id:$id}})',id=label)).consume()
             template=dict(passenger_id=label,flight_id=label,weight_kg=12.0,status='dropped_off',
                           is_dangerous_goods=False,dg_class=None,last_scan_zone=None,last_scan_at=None,carousel=None)
-            await seed['_persist_baggage']([dict(template,id=label+'-4',tag=label+'-4')])
-            await seed['_persist_arrival_baggage']([dict(template,id=label+'-5',tag=label+'-5')])
+            await seed_bags([dict(template,id=label+'-4',tag=label+'-4')])
+            await seed_bags([dict(template,id=label+'-5',tag=label+'-5')])
             count=await (await scoped.run('MATCH (b:UnscannedBaggage) RETURN count(b) AS n')).single()
             assert count['n']==2,count
             await db['flag_baggage'](label+'-4','synthetic-test','screening-unit-1',now)
@@ -89,7 +88,7 @@ async def main():
             assert count['n']==0,count
             # The merged transactional owner paths must preserve the same index
             # invariant on both commit and rollback, using real Neo4j transactions.
-            await seed['_persist_baggage']([dict(template,id=label+'-'+str(n),tag=label+'-'+str(n)) for n in range(6,10)])
+            await seed_bags([dict(template,id=label+'-'+str(n),tag=label+'-'+str(n)) for n in range(6,10)])
             async with await session.begin_transaction() as tx:
                 target=ScopedSession(tx)
                 await db['write_baggage_statuses_tx'](target,[{'id':label+'-6','status':'sorting','zone':'sorting-matrix'}],now)
@@ -129,7 +128,6 @@ def test_unfiltered_baggage_retains_nulls_and_crosses_to_scanned_index():
     root = Path(__file__).resolve().parents[2]
     sources = {
         "db": (root / "services/baggage-service/db/neo4j.py").read_text(encoding="utf-8"),
-        "seed": (root / "services/sim-orchestrator/services/baggage.py").read_text(encoding="utf-8"),
     }
     result = subprocess.run(
         ["docker", "compose", "exec", "-T", "baggage-service", "python", "-c", WORKER],

@@ -90,7 +90,7 @@ def make_consumer(group_id: str, topics: list[str]) -> Consumer:
     c = Consumer({
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
         "group.id": group_id,
-        "auto.offset.reset": "latest",
+        "auto.offset.reset": "earliest",
         "enable.auto.commit": True,
         "session.timeout.ms": 10000,
     })
@@ -194,7 +194,7 @@ async def kafka_is_ready() -> bool:
 
 - **`consumer.poll()` is blocking** — always wrap in `run_in_executor` inside async code or use a dedicated thread.
 - **Never share a `Consumer` instance across coroutines** — it is not thread-safe.
-- **`auto.offset.reset: latest` on first run** means you miss events produced before the consumer first joined. This is intentional — services catch up from Neo4j state, not from replaying all Kafka history.
+- **Primary flow owners use `auto.offset.reset: earliest` (RC8).** Missing/expired offsets replay retained inputs through durable owner guards; committed offsets remain authoritative. Bootstrap plus periodic consumed-state reconciliation recover triggers beyond Kafka retention. Never depend on one notification alone.
 - **`producer.poll(0)` after produce** — this is required to trigger delivery callbacks and flush internal buffers. Without it, messages may be silently dropped on high-throughput bursts.
 - **`acks: all` is important** — for a single-broker dev cluster this adds minor latency but ensures no message loss during container restarts.
 - **DLQ messages are not auto-retried.** Log them and alert — implement retry logic explicitly if needed.

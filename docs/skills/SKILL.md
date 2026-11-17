@@ -55,7 +55,7 @@ Each service owns exactly one set of Neo4j nodes and is the **only writer** to t
 | baggage-service | `Baggage` | Flight, Passenger |
 | weather-service | `WeatherState` | everything else |
 | incident-service | `Incident` | everything else |
-| sim-orchestrator | seeds all nodes on startup | nothing after day 1 except new days |
+| sim-orchestrator | topology, clock, immutable seed commands | Flight, Passenger, Baggage |
 
 If you need data from another domain, read it from Neo4j (read-only) or wait for its Kafka event.
 

@@ -736,6 +736,9 @@ def reconciliation_groups(sim_time: datetime) -> list[dict]:
     for flight in VIEW.flights.values():
         scheduled = flight.get("scheduled_time") or ""
         status, direction = flight.get("status"), flight.get("direction")
+        if direction == "arrival" and status == "scheduled":
+            groups.append({"fid": flight["id"], "statuses": ["airborne"]})
+            continue
         if direction == "arrival" and status in ("airborne", "approach", "landed", "taxiing"):
             groups.append({"fid": flight["id"], "statuses": ["booked"]})
             continue

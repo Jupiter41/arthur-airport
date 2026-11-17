@@ -2,7 +2,7 @@
 import asyncio
 import importlib
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import ModuleType
 from unittest.mock import MagicMock
 
@@ -72,6 +72,19 @@ def test_view_select_and_evict():
     assert [f["id"] for f in view.select(statuses=["boarding"], direction="departure")] == ["D1"]
     assert [f["id"] for f in view.select(direction="departure", scheduled_before="2024-07-08T13:00:00")] == ["D1"]
     assert view.evict(NOW) == 1 and view.get("A1") is None
+
+
+def test_late_seed_not_in_snapshot_is_not_discarded_by_global_stamp():
+    fv = _view_module()
+    view = _fresh_view(fv, rows=[{"id": "existing", "status": "arrived"}], stamp=NOW)
+    assert view.apply("FlightsScheduled", {"flights": [
+        {"id": "late", "direction": "arrival", "status": "scheduled"},
+    ]}, NOW - timedelta(hours=12))
+    assert view.apply("FlightStatusChanged", {"flight_id": "late", "new_status": "at_gate"},
+                      NOW - timedelta(hours=1))
+    assert view.get("late")["status"] == "at_gate"
+    assert not view.apply("FlightStatusChanged", {"flight_id": "existing", "new_status": "scheduled"},
+                          NOW - timedelta(hours=1))
 
 
 def test_unknown_events_are_not_flight_facts():

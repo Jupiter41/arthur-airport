@@ -57,7 +57,11 @@ def dependencies(owner: str, rows: list[dict]) -> tuple[str, dict]:
         )
     query = "UNWIND $rows AS row MATCH (:Flight {id: row.flight_id}) "
     if owner == "baggage":
-        query += "MATCH (:Passenger {id: row.passenger_id}) "
+        query += (
+            "OPTIONAL MATCH (live:Passenger {id: row.passenger_id}) "
+            "OPTIONAL MATCH (archived:PassengerArchive {id: row.passenger_id}) "
+            "WITH row, coalesce(live, archived) AS p WHERE p IS NOT NULL "
+        )
     return query + "RETURN count(*) AS count", {"rows": rows}
 
 
@@ -113,7 +117,10 @@ async def apply_pending(owner: str, get_driver: Callable[[], Any]) -> int:
             else:
                 links = """
                 UNWIND $rows AS row MATCH (n:Baggage {id: row.id})
-                MATCH (f:Flight {id: row.flight_id}) MATCH (p:Passenger {id: row.passenger_id})
+                MATCH (f:Flight {id: row.flight_id})
+                OPTIONAL MATCH (live:Passenger {id: row.passenger_id})
+                OPTIONAL MATCH (archived:PassengerArchive {id: row.passenger_id})
+                WITH row, n, f, coalesce(live, archived) AS p
                 MERGE (n)-[:LOADED_ON]->(f) MERGE (p)-[:CARRIES]->(n)
                 FOREACH (_ IN CASE WHEN n.last_scan_at IS NULL THEN [1] ELSE [] END |
                     SET n:UnscannedBaggage)

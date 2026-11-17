@@ -57,9 +57,9 @@ def _check_bhs_capacity(departure_flights: list[dict], bags: list[dict]) -> list
 async def seed_day(sim_day: int) -> None:
     """Seed a full simulated day: flights, passengers, and baggage.
 
-    Idempotent — skips if flights for the target date already exist in Neo4j.
-    Uses a deterministic RNG seed derived from the day number so repeated runs
-    produce identical data.
+    Idempotent — a complete SeedDay fences retries; existing legacy days remain.
+    A day-derived RNG controls distributions; generated identities are retained
+    in the durable manifest rather than regenerated after publication failure.
     """
     sim_date = (SIM_START_TIME + timedelta(days=sim_day - 1)).date()
 

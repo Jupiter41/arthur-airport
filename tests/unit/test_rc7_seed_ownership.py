@@ -1,9 +1,11 @@
 """Seed manifests preserve ownership, arrival identity and inbound causality."""
 import asyncio
 import importlib
+import sys
 from collections import Counter
 from datetime import date, datetime, timedelta
-from unittest.mock import AsyncMock
+from types import ModuleType
+from unittest.mock import AsyncMock, MagicMock
 
 from tests.conftest import import_service_module
 
@@ -40,7 +42,11 @@ def test_generated_arrivals_have_named_bags_connections_and_no_airport_show_up()
 
 
 def test_seed_day_stores_complete_manifest_before_notification(monkeypatch):
-    seeder = import_service_module("sim", "services.seeder")
+    import_service_module("sim", "services.passengers")
+    metrics = ModuleType("metrics")
+    metrics.__getattr__ = lambda name: MagicMock()
+    monkeypatch.setitem(sys.modules, "metrics", metrics)
+    seeder = importlib.import_module("services.seeder")
     importlib.import_module("services.fixtures").load_fixtures()
     requests = importlib.import_module("_common.seed_requests")
     stored = []
@@ -81,4 +87,7 @@ def test_arrival_reconciliation_requires_a_consumed_flight_lifecycle():
     now = datetime(2024, 6, 15, 10)
     pax = {"status": "booked", "direction": "arrival", "scheduled_time": "2024-06-15T12:00:00"}
     assert rules.reconciliation_transition({**pax, "flight_status": "scheduled"}, now) is None
+    assert rules.reconciliation_transition(
+        {**pax, "status": "airborne", "flight_status": "scheduled"}, now
+    ) == ("booked", "remote-origin")
     assert rules.reconciliation_transition({**pax, "flight_status": "airborne"}, now) == ("airborne", "in-flight")

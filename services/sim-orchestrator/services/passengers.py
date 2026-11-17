@@ -75,7 +75,7 @@ async def generate_passengers(
     onward_departures: list[dict] | None = None,
     onward_free_seats: dict[str, int] | None = None,
 ) -> tuple[int, list[dict]]:
-    """Generate passengers for all flights and write to Neo4j.
+    """Generate passenger manifests without writing domain entities.
 
     Connections are modelled on the inbound leg: a connecting passenger is ON
     an arrival flight and carries ``connection_flight_id``, the departure it
@@ -198,7 +198,7 @@ async def generate_passengers(
 
         all_passengers.extend(passengers)
         flight_pax_counts[flight["id"]] = pax_count
-        flight["pax_count"] = pax_count   # keep the schedule dict in step with Neo4j
+        flight["pax_count"] = pax_count   # the flight owner receives the final manifest load
 
     logger.info("Generated %d passengers for %d flights", len(all_passengers), len(flights))
     return len(all_passengers), all_passengers
