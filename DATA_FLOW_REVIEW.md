@@ -30,6 +30,46 @@ data **wrong**; RC9–RC10 make the **UI and data-source pages** look slow and w
 | RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft | 🟡 Low–Med | ✅ Done | Owners report a `SourceHealth` block (enabled, items, wall ingest/error, sim observation); gateway derives `unavailable/disabled/error/stale/active` with a reason and clock-labelled timestamps; new `GET /flights/adsb/source` (`83feb91`). Unit-tested |
 | RC11 | History-wide query plans exhaust Neo4j's *shared* transaction memory; coalesced catch-up ticks grow with each failed retry; the clock pauses on any checkpoint error | passenger-service stuck 6 sim-h behind, then the whole sim auto-paused (found during deployment) | 🔴 High | ✅ Done | Query plans pinned, catch-up split into ≤5-min ticks, clock checkpoint retries transient errors, seeding moved off the tick path, transaction pool 0.7 → 1.4 GiB (`78a9975`, `dfe4e77`) |
 
+### Validation on fresh stacks (2026-11-17)
+
+RC1–RC6 and RC9–RC11 were re-validated end to end on `down -v` stacks (default settings,
+60×), across the day-1 cold start, the 23:30 seeding, the day-2 archival window, a forced
+purge batch and a 90 s passenger-service outage. The run found five problems, all fixed:
+
+| Finding (live) | Fix | Commit |
+| -------------- | --- | ------ |
+| **RC5 cold start still flooded security**: the first passenger tick ran before `FlightsScheduled` reached the FlightView, so the warm start placed 0 passengers and check-in then released ~4,000 overdue ones at once. 23 of 31 early departures `boarding_incomplete`, 13% `missed_flight`, terminal A security 51 min | Warm start runs on the first early tick whose FlightView knows a departure (once per process, marked done post-commit) | `2a0f4ee` |
+| **RC6 cold start short-shipped bags**: every departing bag started `dropped_off`; ~6,600 were inducted in the first hour and the 05:00–08:59 departures short-shipped 2,513 bags (36–74%) | Baggage warm start: bags whose passenger's show-up + check-in + free-flow BHS time has passed are placed `loaded` with a full induction→screening→sorting→make-up scan trail | `0e839c8` |
+| **RC4/RC1 analysis re-projection stalled everyone**: each evaluation read 91k bags (13 MB: next-day `dropped_off` + in-hold) and every finished flight, ~9 s back-to-back, with 3–8 s global tick stalls at 21:43 / 22:13 | Projection reads only targetable bags (in the BHS / on a belt: 145 rows, 39 ms) and flights of the last 12 sim-h | `2900d46` |
+| **Analysis ranking deep-copied the world**: 10 recommendations × 60 simulated minutes deep-copied ~470 flights each minute, 2.4 s per evaluation even with 0 bottlenecks | Action-free effect ticks copy only the security queues (same results) | `c772032` |
+| **RC2 flight checkpoint grew**: `FlightRuntime` reached 1.06 MB; `crew_delay_drawn` / `ctot_assigned` / `diversion_drawn` kept every flight id ever drawn | Markers kept only for active flights (60 / 18 / 13 entries after the fix) | `4003137` |
+
+Measured after the fixes:
+
+| RC | Check | Result |
+| -- | ----- | ------ |
+| RC1 | archival on day 2 / purge | 37.7k pax, 35.7k bags, 149k scan events archived; archivable backlog ≈ one pass of inflow. One forced purge batch: 1,000 bags + 3,000 scan events and 1,000 pax deleted, `EntitiesPurged` delivered |
+| RC1 | resources at the day-1 peak | Neo4j 35% CPU; passenger tick avg 215 ms (p95 538), baggage 93 ms |
+| RC2 | checkpoints | baggage 0.08–0.38 MB, passenger 0.05–0.37 MB, flight ≈1.07 MB, bounded by the fleet (turnaround plans 223 aircraft, vehicle pool) |
+| RC3 | tick→broker | p50 0.13–0.40 s, p95 ≤ 0.62 s for every fact type; outboxes 0–5 rows; per-bag facts only `in_hold`/`on_carousel`/`collected` + event-driven `arrived` |
+| RC4 | causality | 0 reconciliation transitions in 150 s of daytime traffic (was 48%); 64,921 boarded passengers left with their flight (lag 0 min, none before it); all owners within 1 tick of the clock |
+| RC4 | back-pressure | passenger-service stopped 90 s: clock held 534 iterations while it lagged, resumed once it went stale (30 s), backlog of 70 sim-min replayed in < 10 s after restart, 0 errors |
+| RC5 | two days, 420 departures | avg delay 2.2 min, 9 ≥ 30 min (2%), 15 `boarding_incomplete` (3.6%), 0 boarded after departure, 0.65% `missed_flight`, 3.1% no-show; security queues 0 at 09:30 |
+| RC6 | holds | 29,734 bags in holds, 0 without a screening scan; 0 short-shipped from 05:00 on day 1 after the warm-start fix; induction across all three terminals |
+| RC9 | one dashboard tab | 12–13 msg/s, ~18 KB/s (was ~450 msg/s) |
+| RC10 | `/api/v1/data-sources` | ADS-B `disabled · disabled by configuration`; weather, flights-sim, passengers, baggage `active · fresh` |
+| RC11 | clock | 0 skipped sim-minutes over the day; 23:30 seeding 1.0–1.2 s ticks; 0 `MemoryPoolOutOfMemory`, 0 auto-pause, 0 tracebacks in any service |
+
+Observations, not fixed here:
+
+- Before the analysis fix, each 3–8 s stall was every owner pausing together. After it, the worst tick
+  was 3.4 s (day-2 06:23, during the analysis redeploy) and other hours stayed ≤ 1.3 s. Neo4j also
+  re-plans cached queries when node cardinality jumps (154k → 408k on day 1).
+- At an owner crash the clock is held until the owner turns stale (`WATERMARK_STALE_S` = 30 s).
+- `equipment_failure_drawn` is keyed by aircraft, not by turnaround: each aircraft gets one
+  equipment-failure draw for the whole simulation (a noise-model bug, unrelated to the RCs).
+- The `CostRecorded` stream is the largest UI stream left (≈3.5 msg/s, `immediate` policy).
+
 ### Fixes applied (2026-11-16)
 
 **Round 1** (commit `78a9975`):
