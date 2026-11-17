@@ -1,0 +1,1 @@
+{"status_changes": [{"id": "review-bulk-bag", "status": "on_carousel", "zone": "arrival-belt-1", "previous_status": "arrived", "flight_id": "review-bulk-flight"}, {"id": "review-bulk-bag", "status": "collected", "zone": "arrival-belt-1", "previous_status": "on_carousel", "flight_id": "review-bulk-flight"}], "individual_facts": []}

@@ -3,6 +3,22 @@
 Review date: 2026-11-16 · Reviewed commit: `1e7b16d` (main, clean)
 Reviewed stack: `art-ldt-g6-*` compose project. It had been running continuously for about 23 simulated days at 60× (sim day 23–24, 2024-07-07 → 07-08).
 
+> **Closure revalidation — 2026-11-17, commit `0ae109a`: DO NOT CLOSE.**
+> [Full report and reproducible evidence](docs/validation/data-review-2026-11-17/README.md).
+> The current orchestrator fails cold start on its seed-existence Cypher query;
+> after a disposable-only correction, inbound `airborne` passenger transitions
+> poison the consumer because the repository rejects that status. Reopen RC7/RC8.
+> Collection observations remain volatile across acknowledgement/crash and are
+> suppressed in BULK; known-bag carousel events can move deplaning passengers.
+> RC1 also misses terminal missed connections and diverted-flight bag holds.
+> The running airport still has pre-RC7/RC8 owner images with current shared mounts.
+> Settings disagree with owner capacities. New RC12–RC20 track the remaining
+> findings, including promoted L2/L3/L6/L7/L8.
+> Unit/gateway/dashboard checks pass, but the unchanged full-stack startup fails;
+> the conditional integration repeat passed 139/142 and the independent-process
+> transaction gate passed 34/36, with stale fixtures still requiring correction.
+> Earlier “done” notes below are historical implementation claims, not closure.
+
 The question was why data sources and events feel **slow** and are **sometimes wrong**.
 Every finding below was checked against the running system (Kafka offsets/latency, Neo4j
 PROFILE / `SHOW TRANSACTIONS`, graph queries, checkpoint benchmarks) and traced to the code
@@ -13,22 +29,33 @@ problems share one cause.
 
 ## 0. TL;DR
 
-Ten root causes explain nearly everything. The first four make things **slow**; RC4–RC8 make
-data **wrong**; RC9–RC10 make the **UI and data-source pages** look slow and wrong.
+The original review identified RC1–RC11. Closure revalidation adds RC12–RC20, including
+promotion of five unresolved lower-level findings. RC1, RC7 and RC8 are **reopened**;
+completed implementation work is retained, but the review remains open until the new
+closure criteria are met. See the [revalidation report](docs/validation/data-review-2026-11-17/README.md).
 
-| #    | Root cause | Main visible symptom | Severity | Done? | Note |
-| ---- | ---------- | -------------------- | -------- | ----- | ---- |
-| RC1  | The live operational graph keeps all history, and per-tick queries scan it by status | baggage/passenger ticks take 1–2 s; Neo4j 81% CPU; 11 GB tx logs | 🔴 High | ✅ Done | Hot-path queries bounded and Neo4j memory raised (`78a9975`, `dfe4e77`). Lifecycle retention added: finished passengers/bags/scan events archived 24 sim-h after their terminal transition, archives purged after 168 sim-h, inbox markers pruned after the 168 h Kafka retention (`873dab8`, `8e1c160`) |
-| RC2  | Each owner rewrites its **whole in-memory state** as one JSON property **every tick**; the baggage one grows without bound (8.6 MB) | baggage-service at 100% CPU, processing about 0.45 ticks/s | 🔴 High | ✅ Done | `inducted_bag_ids` no longer persisted, decode skipped when in sync, double deepcopy removed; checkpoint 8.6 MB → 0.17–2.2 MB, baggage CPU 100% → ~30% (`78a9975`) |
-| RC3  | The outbox drains in 100-row round trips, and every bag/passenger transition is published twice (per-entity + batch) | +0.5–1.3 s before an event reaches Kafka; 340 baggage msgs/s | 🟠 Medium | ✅ Done | Outbox drains 1,000 rows per round trip with delete+read in one query, woken by tick commits; each transition published once (tick hops batch-only, random 2% passenger sampling removed); cost-service unsubscribed from baggage/passenger streams (`dfe4e77`, `9d9e794`) |
-| RC4  | The clock is open-loop with no back-pressure. Services read **other domains' live state from the shared Neo4j** instead of the event stream | passengers deplane/depart from a polling sweep, up to 64 sim-min late; causality broken | 🔴 High | ✅ Done | Event-fed FlightView + BoardingProgress replace live cross-domain decision reads; tick watermark (`sim.watermark`) holds the clock on owner lag; reconciliation boot/hourly only; analysis evaluates on a sim-time cadence (`e08a5f9`, `f4981d9`, `97239a5`, `dc79fb3`). Daytime reconciliation-share re-measurement still to do |
-| RC5  | Passenger flow is a step function (whole flight checked in at T-120 and sent to security at T-45). Boarding isn't gated by flight state | 80% of departures delayed ≥30 min ("boarding_incomplete"); 11.5% of pax board **after** their flight left; no-show rate 0.08% instead of 3% | 🔴 High | ✅ Done | Spec contradiction resolved in favour of §3: per-passenger `show_up_at` (Beta(3,2) over [T-180, T-45]) drives check-in and security; deterministic per-passenger no-show draw at show-up over the whole cohort; check-in/gate/boarding only for flights still `scheduled`/`boarding`/`delayed`; non-boarded passengers → `missed_flight` on departure; default lanes A 8 / B 12 / C 8 (`6c5cd00`). Verified live on a reset stack (see RC5 status) |
-| RC6  | Baggage-system capacity (1,800 bags/h) is less than generated demand (peak 4,900/h), and the departure handler hides the deficit by teleporting bags | 27–37% of departing bags are "in_hold" **without ever being screened** | 🔴 High | ✅ Done | Checked bags/pax 1.56 → ~0.9 (per-type λ, no one-bag floor); BHS A 1,800 / B 3,000 / C 1,800 per h, sorting 5,400, all from `airport.yaml`; seed-time check peak ≤ 85% of slowest stage; departure short-ships unloaded bags with `BaggageMissedFlight` instead of teleporting them to `in_hold` (`5220472`); three bugs found live fixed in `b35db23`. Verified live on a reset stack |
-| RC7  | The seeder writes other domains' entities directly and leaves out cross-domain links | 0 of 39,975 arrival bags linked to a passenger, so every arrival pax leaves claim on the 45-min timeout; 33,651 pax "airborne" on flights that haven't left origin | 🟠 Medium | ✅ Done in code | Owner-applied durable manifests, named arrival bags, lifecycle-driven inbound passengers; regression-tested, live counts pending |
-| RC8  | One-shot event triggers with no reconciliation, and consumers start at `latest` | 39,969 arrival bags from 2024-06-29 stuck `in_hold` permanently | 🟠 Medium | ✅ Done in code | Flow owners use earliest; startup/hourly consumed-state recovery includes old holds and late seed batches; live counts pending |
-| RC9  | The gateway forwards the raw firehose to browsers, and the dashboard does no-op store writes per event | about 450 WS msgs/s per tab; ~280 useless React store updates/s | 🟠 Medium | ✅ Done | Gateway UI delivery policy (`wsDeliveryPolicy.json`): flight/incident/alert facts immediate, clock + snapshots coalesced to the latest per key every 1 s, batch facts as payload-free refetch hints, per-entity facts dropped; dashboard no-op handlers removed, `updateZone` no-op on empty patch, query invalidation throttled to 1/s per key (`3f9d4e5`). Unit-tested; live msg-rate re-measurement still to do |
-| RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft | 🟡 Low–Med | ✅ Done | Owners report a `SourceHealth` block (enabled, items, wall ingest/error, sim observation); gateway derives `unavailable/disabled/error/stale/active` with a reason and clock-labelled timestamps; new `GET /flights/adsb/source` (`83feb91`). Unit-tested |
-| RC11 | History-wide query plans exhaust Neo4j's *shared* transaction memory; coalesced catch-up ticks grow with each failed retry; the clock pauses on any checkpoint error | passenger-service stuck 6 sim-h behind, then the whole sim auto-paused (found during deployment) | 🔴 High | ✅ Done | Query plans pinned, catch-up split into ≤5-min ticks, clock checkpoint retries transient errors, seeding moved off the tick path, transaction pool 0.7 → 1.4 GiB (`78a9975`, `dfe4e77`) |
+| #    | Root cause                                                                                                                                                           | Main visible symptom                                                                                                                                               | Severity   | Done?       | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| RC1  | The live operational graph keeps all history, and per-tick queries scan it by status                                                                                 | baggage/passenger ticks take 1–2 s; Neo4j 81% CPU; 11 GB tx logs                                                                                                   | 🔴 High    | ❌ Reopened | Hot-path queries bounded and Neo4j memory raised (`78a9975`, `dfe4e77`). Lifecycle retention added: finished passengers/bags/scan events archived 24 sim-h after their terminal transition, archives purged after 168 sim-h, inbox markers pruned after the 168 h Kafka retention (`873dab8`, `8e1c160`). Revalidation found terminal missed-connection and diverted-arrival baggage retention gaps; [report B5](docs/validation/data-review-2026-11-17/README.md); archive terminal missed connections and dispose of diverted-arrival holds before closure |
+| RC2  | Each owner rewrites its **whole in-memory state** as one JSON property **every tick**; the baggage one grows without bound (8.6 MB)                                  | baggage-service at 100% CPU, processing about 0.45 ticks/s                                                                                                         | 🔴 High    | ✅ Done     | `inducted_bag_ids` no longer persisted, decode skipped when in sync, double deepcopy removed; checkpoint 8.6 MB → 0.17–2.2 MB, baggage CPU 100% → ~30% (`78a9975`)                                                                                                                                                                                                                                                                                                                                                                                           |
+| RC3  | The outbox drains in 100-row round trips, and every bag/passenger transition is published twice (per-entity + batch)                                                 | +0.5–1.3 s before an event reaches Kafka; 340 baggage msgs/s                                                                                                       | 🟠 Medium  | ✅ Done     | Outbox drains 1,000 rows per round trip with delete+read in one query, woken by tick commits; each transition published once (tick hops batch-only, random 2% passenger sampling removed); cost-service unsubscribed from baggage/passenger streams (`dfe4e77`, `9d9e794`)                                                                                                                                                                                                                                                                                   |
+| RC4  | The clock is open-loop with no back-pressure. Services read **other domains' live state from the shared Neo4j** instead of the event stream                          | passengers deplane/depart from a polling sweep, up to 64 sim-min late; causality broken                                                                            | 🔴 High    | ✅ Done     | Event-fed FlightView + BoardingProgress replace live cross-domain decision reads; tick watermark (`sim.watermark`) holds the clock on owner lag; reconciliation boot/hourly only; analysis evaluates on a sim-time cadence (`e08a5f9`, `f4981d9`, `97239a5`, `dc79fb3`). Revalidation sampled 9,146 batch transitions with no reconciliation reason; restart certification still depends on RC15/RC16                                                                                                                                                        |
+| RC5  | Passenger flow is a step function (whole flight checked in at T-120 and sent to security at T-45). Boarding isn't gated by flight state                              | 80% of departures delayed ≥30 min ("boarding_incomplete"); 11.5% of pax board **after** their flight left; no-show rate 0.08% instead of 3%                        | 🔴 High    | ✅ Done     | Spec contradiction resolved in favour of §3: per-passenger `show_up_at` (Beta(3,2) over [T-180, T-45]) drives check-in and security; deterministic per-passenger no-show draw at show-up over the whole cohort; check-in/gate/boarding only for flights still `scheduled`/`boarding`/`delayed`; non-boarded passengers → `missed_flight` on departure; default lanes A 8 / B 12 / C 8 (`6c5cd00`). Verified live on a reset stack (see RC5 status)                                                                                                           |
+| RC6  | Baggage-system capacity (1,800 bags/h) is less than generated demand (peak 4,900/h), and the departure handler hides the deficit by teleporting bags                 | 27–37% of departing bags are "in_hold" **without ever being screened**                                                                                             | 🔴 High    | ✅ Done     | Checked bags/pax 1.56 → ~0.9 (per-type λ, no one-bag floor); BHS A 1,800 / B 3,000 / C 1,800 per h, sorting 5,400, all from `airport.yaml`; seed-time check peak ≤ 85% of slowest stage; departure short-ships unloaded bags with `BaggageMissedFlight` instead of teleporting them to `in_hold` (`5220472`); three bugs found live fixed in `b35db23`. Verified live on a reset stack                                                                                                                                                                       |
+| RC7  | The seeder writes other domains' entities directly and leaves out cross-domain links                                                                                 | 0 of 39,975 arrival bags linked to a passenger, so every arrival pax leaves claim on the 45-min timeout; 33,651 pax "airborne" on flights that haven't left origin | 🔴 High    | ❌ Reopened | Cold-start seed query invalid; inbound airborne status rejected by owner repository; [report B1/B2](docs/validation/data-review-2026-11-17/README.md). Fix both real startup/owner paths; require cold-start and day-boundary validation without workarounds. Deployment tracked in RC14                                                                                                                                                                                                                                                                     |
+| RC8  | One-shot event triggers with no reconciliation, and consumers start at `latest`                                                                                      | 39,969 arrival bags from 2024-06-29 stuck `in_hold` permanently                                                                                                    | 🔴 High    | ❌ Reopened | Collection progress not durable across ACK/crash; BULK collection facts suppressed; diverted arrival holds stay live; [report B3/B5/B8](docs/validation/data-review-2026-11-17/README.md). Closure depends on RC12 and RC1 recovery/retention checks                                                                                                                                                                                                                                                                                                         |
+| RC9  | The gateway forwards the raw firehose to browsers, and the dashboard does no-op store writes per event                                                               | about 450 WS msgs/s per tab; ~280 useless React store updates/s                                                                                                    | 🟠 Medium  | ✅ Done     | Gateway UI delivery policy (`wsDeliveryPolicy.json`): flight/incident/alert facts immediate, clock + snapshots coalesced to the latest per key every 1 s, batch facts as payload-free refetch hints, per-entity facts dropped; dashboard no-op handlers removed, `updateZone` no-op on empty patch, query invalidation throttled to 1/s per key (`3f9d4e5`). Revalidated at ~10.9 domain messages/s and 18.6 KB/s; stale replay is separately open as RC18                                                                                                   |
+| RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it                                                                        | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft                                                                                       | 🟡 Low–Med | ✅ Done     | Owners report a `SourceHealth` block (enabled, items, wall ingest/error, sim observation); gateway derives `unavailable/disabled/error/stale/active` with a reason and clock-labelled timestamps; new `GET /flights/adsb/source` (`83feb91`). Unit-tested                                                                                                                                                                                                                                                                                                    |
+| RC11 | History-wide query plans exhaust Neo4j's _shared_ transaction memory; coalesced catch-up ticks grow with each failed retry; the clock pauses on any checkpoint error | passenger-service stuck 6 sim-h behind, then the whole sim auto-paused (found during deployment)                                                                   | 🔴 High    | ✅ Done     | Query plans pinned, catch-up split into ≤5-min ticks, clock checkpoint retries transient errors, seeding moved off the tick path, transaction pool 0.7 → 1.4 GiB (`78a9975`, `dfe4e77`)                                                                                                                                                                                                                                                                                                                                                                      |
+| RC12 | Arrival bag observations bypass durable passenger progress and lifecycle guards                                                                                      | Collection can be lost after ACK/crash or omitted in BULK; deplaning passengers move to carousels                                                                  | 🔴 High    | ❌ Open     | Report B3/B4/B8; complements RC8's recovery gap; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| RC13 | Settings API defaults diverge from owner configuration                                                                                                               | Settings show lanes 4/3/4 and sorting 1,800/h; actual owners use 8/12/8 and 5,400/h                                                                                | 🟠 Medium  | ❌ Open     | Report B6; settings must report effective values and distinguish requested changes; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                               |
+| RC14 | Owner images and shared libraries are deployed at different revisions                                                                                                | 13 source files differ across four images; no live seed manifests despite current shared mounts                                                                    | 🔴 High    | ❌ Open     | Report B7; coherent rollout and legacy-data disposition required; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| RC15 | Validation coverage and fixtures lag the architecture                                                                                                                | Unit checks miss real startup failures; 3 integration and 2 transaction fixtures fail                                                                              | 🟠 Medium  | ❌ Open     | Report validation gates; no closure from temporary application workarounds; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| RC16 | Consumer failures retry indefinitely without quarantine or recovery policy                                                                                           | One valid inbound event stalls passenger-service by 124 sim-minutes                                                                                                | 🔴 High    | ❌ Open     | Promoted L2; reproduced by B2, not merely a hypothetical poison payload; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| RC17 | Financial events are not checked against the simulation clock                                                                                                        | A 2030 event is accepted into CostInbox while the simulation is in 2024                                                                                            | 🟠 Medium  | ❌ Open     | Promoted L3; isolated reproduction in the report; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| RC18 | Gateway relay treats committed-offset backlog as live observations                                                                                                   | Restart can replay historical facts to browsers despite RC9 coalescing                                                                                             | 🟠 Medium  | ❌ Open     | Promoted L6; source-confirmed, live gateway was not disrupted; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| RC19 | Weather and incident writes are not atomic with their published facts                                                                                                | Crash between DB commit and publication loses a fact; TTR update/resolve also split                                                                                | 🔴 High    | ❌ Open     | Promoted L7; source-confirmed failure window remains; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| RC20 | Timestamp parsing discards offsets instead of converting to UTC                                                                                                      | 12:00+02:00 becomes naive 12:00, two hours later than the actual UTC instant                                                                                       | 🟠 Medium  | ❌ Open     | Promoted L8; deterministic FlightView reproduction; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ### Validation on fresh stacks (2026-11-17)
 
@@ -36,40 +63,40 @@ RC1–RC6 and RC9–RC11 were re-validated end to end on `down -v` stacks (defau
 60×), across the day-1 cold start, the 23:30 seeding, the day-2 archival window, a forced
 purge batch and a 90 s passenger-service outage. The run found five problems, all fixed:
 
-| Finding (live) | Fix | Commit |
-| -------------- | --- | ------ |
-| **RC5 cold start still flooded security**: the first passenger tick ran before `FlightsScheduled` reached the FlightView, so the warm start placed 0 passengers and check-in then released ~4,000 overdue ones at once. 23 of 31 early departures `boarding_incomplete`, 13% `missed_flight`, terminal A security 51 min | Warm start runs on the first early tick whose FlightView knows a departure (once per process, marked done post-commit) | `2a0f4ee` |
-| **RC6 cold start short-shipped bags**: every departing bag started `dropped_off`; ~6,600 were inducted in the first hour and the 05:00–08:59 departures short-shipped 2,513 bags (36–74%) | Baggage warm start: bags whose passenger's show-up + check-in + free-flow BHS time has passed are placed `loaded` with a full induction→screening→sorting→make-up scan trail | `0e839c8` |
-| **RC4/RC1 analysis re-projection stalled everyone**: each evaluation read 91k bags (13 MB: next-day `dropped_off` + in-hold) and every finished flight, ~9 s back-to-back, with 3–8 s global tick stalls at 21:43 / 22:13 | Projection reads only targetable bags (in the BHS / on a belt: 145 rows, 39 ms) and flights of the last 12 sim-h | `2900d46` |
-| **Analysis ranking deep-copied the world**: 10 recommendations × 60 simulated minutes deep-copied ~470 flights each minute, 2.4 s per evaluation even with 0 bottlenecks | Action-free effect ticks copy only the security queues (same results) | `c772032` |
-| **RC2 flight checkpoint grew**: `FlightRuntime` reached 1.06 MB; `crew_delay_drawn` / `ctot_assigned` / `diversion_drawn` kept every flight id ever drawn | Markers kept only for active flights (60 / 18 / 13 entries after the fix) | `4003137` |
+| Finding (live)                                                                                                                                                                                                                                                                                                           | Fix                                                                                                                                                                          | Commit    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| **RC5 cold start still flooded security**: the first passenger tick ran before `FlightsScheduled` reached the FlightView, so the warm start placed 0 passengers and check-in then released ~4,000 overdue ones at once. 23 of 31 early departures `boarding_incomplete`, 13% `missed_flight`, terminal A security 51 min | Warm start runs on the first early tick whose FlightView knows a departure (once per process, marked done post-commit)                                                       | `2a0f4ee` |
+| **RC6 cold start short-shipped bags**: every departing bag started `dropped_off`; ~6,600 were inducted in the first hour and the 05:00–08:59 departures short-shipped 2,513 bags (36–74%)                                                                                                                                | Baggage warm start: bags whose passenger's show-up + check-in + free-flow BHS time has passed are placed `loaded` with a full induction→screening→sorting→make-up scan trail | `0e839c8` |
+| **RC4/RC1 analysis re-projection stalled everyone**: each evaluation read 91k bags (13 MB: next-day `dropped_off` + in-hold) and every finished flight, ~9 s back-to-back, with 3–8 s global tick stalls at 21:43 / 22:13                                                                                                | Projection reads only targetable bags (in the BHS / on a belt: 145 rows, 39 ms) and flights of the last 12 sim-h                                                             | `2900d46` |
+| **Analysis ranking deep-copied the world**: 10 recommendations × 60 simulated minutes deep-copied ~470 flights each minute, 2.4 s per evaluation even with 0 bottlenecks                                                                                                                                                 | Action-free effect ticks copy only the security queues (same results)                                                                                                        | `c772032` |
+| **RC2 flight checkpoint grew**: `FlightRuntime` reached 1.06 MB; `crew_delay_drawn` / `ctot_assigned` / `diversion_drawn` kept every flight id ever drawn                                                                                                                                                                | Markers kept only for active flights (60 / 18 / 13 entries after the fix)                                                                                                    | `4003137` |
 
 Measured after the fixes:
 
-| RC | Check | Result |
-| -- | ----- | ------ |
-| RC1 | archival on day 2 / purge | 37.7k pax, 35.7k bags, 149k scan events archived; archivable backlog ≈ one pass of inflow. One forced purge batch: 1,000 bags + 3,000 scan events and 1,000 pax deleted, `EntitiesPurged` delivered |
-| RC1 | resources at the day-1 peak | Neo4j 35% CPU; passenger tick avg 215 ms (p95 538), baggage 93 ms |
-| RC2 | checkpoints | baggage 0.08–0.38 MB, passenger 0.05–0.37 MB, flight ≈1.07 MB, bounded by the fleet (turnaround plans 223 aircraft, vehicle pool) |
-| RC3 | tick→broker | p50 0.13–0.40 s, p95 ≤ 0.62 s for every fact type; outboxes 0–5 rows; per-bag facts only `in_hold`/`on_carousel`/`collected` + event-driven `arrived` |
-| RC4 | causality | 0 reconciliation transitions in 150 s of daytime traffic (was 48%); 64,921 boarded passengers left with their flight (lag 0 min, none before it); all owners within 1 tick of the clock |
-| RC4 | back-pressure | passenger-service stopped 90 s: clock held 534 iterations while it lagged, resumed once it went stale (30 s), backlog of 70 sim-min replayed in < 10 s after restart, 0 errors |
-| RC5 | two days, 420 departures | avg delay 2.2 min, 9 ≥ 30 min (2%), 15 `boarding_incomplete` (3.6%), 0 boarded after departure, 0.65% `missed_flight`, 3.1% no-show; security queues 0 at 09:30 |
-| RC6 | holds | 29,734 bags in holds, 0 without a screening scan; 0 short-shipped from 05:00 on day 1 after the warm-start fix; induction across all three terminals |
-| RC9 | one dashboard tab | 12–13 msg/s, ~18 KB/s (was ~450 msg/s) |
-| RC10 | `/api/v1/data-sources` | ADS-B `disabled · disabled by configuration`; weather, flights-sim, passengers, baggage `active · fresh` |
-| RC11 | clock | 0 skipped sim-minutes over the day; 23:30 seeding 1.0–1.2 s ticks; 0 `MemoryPoolOutOfMemory`, 0 auto-pause, 0 tracebacks in any service |
+| RC   | Check                       | Result                                                                                                                                                                                              |
+| ---- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RC1  | archival on day 2 / purge   | 37.7k pax, 35.7k bags, 149k scan events archived; archivable backlog ≈ one pass of inflow. One forced purge batch: 1,000 bags + 3,000 scan events and 1,000 pax deleted, `EntitiesPurged` delivered |
+| RC1  | resources at the day-1 peak | Neo4j 35% CPU; passenger tick avg 215 ms (p95 538), baggage 93 ms                                                                                                                                   |
+| RC2  | checkpoints                 | baggage 0.08–0.38 MB, passenger 0.05–0.37 MB, flight ≈1.07 MB, bounded by the fleet (turnaround plans 223 aircraft, vehicle pool)                                                                   |
+| RC3  | tick→broker                 | p50 0.13–0.40 s, p95 ≤ 0.62 s for every fact type; outboxes 0–5 rows; per-bag facts only `in_hold`/`on_carousel`/`collected` + event-driven `arrived`                                               |
+| RC4  | causality                   | 0 reconciliation transitions in 150 s of daytime traffic (was 48%); 64,921 boarded passengers left with their flight (lag 0 min, none before it); all owners within 1 tick of the clock             |
+| RC4  | back-pressure               | passenger-service stopped 90 s: clock held 534 iterations while it lagged, resumed once it went stale (30 s), backlog of 70 sim-min replayed in < 10 s after restart, 0 errors                      |
+| RC5  | two days, 420 departures    | avg delay 2.2 min, 9 ≥ 30 min (2%), 15 `boarding_incomplete` (3.6%), 0 boarded after departure, 0.65% `missed_flight`, 3.1% no-show; security queues 0 at 09:30                                     |
+| RC6  | holds                       | 29,734 bags in holds, 0 without a screening scan; 0 short-shipped from 05:00 on day 1 after the warm-start fix; induction across all three terminals                                                |
+| RC9  | one dashboard tab           | 12–13 msg/s, ~18 KB/s (was ~450 msg/s)                                                                                                                                                              |
+| RC10 | `/api/v1/data-sources`      | ADS-B `disabled · disabled by configuration`; weather, flights-sim, passengers, baggage `active · fresh`                                                                                            |
+| RC11 | clock                       | 0 skipped sim-minutes over the day; 23:30 seeding 1.0–1.2 s ticks; 0 `MemoryPoolOutOfMemory`, 0 auto-pause, 0 tracebacks in any service                                                             |
 
 Observations from that run, fixed afterwards (2026-11-17, verified on the running stack):
 
-| Observation | Fix | Commit |
-| ----------- | --- | ------ |
-| Neo4j discarded and recompiled cached plans in bursts while the graph grew (~1,500 discards/h, `NodesAllCardinality` divergence ≈ 0.5 over the decayed 0.75 threshold) | `dbms.cypher.statistics_divergence_threshold` 0.9, `min_replan_interval` 60 s; empty→populated changes still replan. After the restart: 8 discards in 3 min (all cold-start selectivity), was ~25/min | `e59e79a` |
-| Slowest passenger phase: the connection check read every live-status `connection=true` passenger (each not-yet-landed arrival of the day + next-day booked, ~13k rows, 0.2–0.65 s; >0.5 s in 118 of 348 runs/h) | Reads only connecting passengers of arrival flights within −3 h/+4 h (FlightView ids): 16 ms for 30 flights; phase avg 398 → 112 ms live | `bf5b95a` |
-| **Connection monitoring was dead**: the seeder always wrote `connection_flight_id = None`, so no passenger ever got a risk level or a connection alert, and analysis connection clusters never matched | Connections live on the inbound leg: a connecting arrival passenger gets one of the 6 earliest same-day departures 80–240 min later; departure passengers are not flagged | `56140ae` |
-| At an owner crash the clock was held until the owner turned stale (`WATERMARK_STALE_S` = 30 s) | Owners send `OwnerHeartbeat` every 2 s from a thread and `OwnerStopped` on shutdown; missing beats for 7 s ⇒ down. Live `docker kill` of passenger-service: clock held 1 s at the lag limit, owner stale after 7.5 s, backlog replayed on restart | `6903e68` |
-| `equipment_failure_drawn` was keyed by aircraft: one equipment-failure draw per aircraft for the whole simulation | Keyed by turnaround (arrival flight id), markers kept only for planned turnarounds | `c45fca6` |
-| `CostRecorded` was the largest UI stream left (≈3.5 msg/s, `immediate`) | `latest` class: newest envelope at most once per `WS_COALESCE_MS` (≤ 1 msg/s); the UI only refetches the cost summary | `e71c24b` |
+| Observation                                                                                                                                                                                                     | Fix                                                                                                                                                                                                                                               | Commit    |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Neo4j discarded and recompiled cached plans in bursts while the graph grew (~1,500 discards/h, `NodesAllCardinality` divergence ≈ 0.5 over the decayed 0.75 threshold)                                          | `dbms.cypher.statistics_divergence_threshold` 0.9, `min_replan_interval` 60 s; empty→populated changes still replan. After the restart: 8 discards in 3 min (all cold-start selectivity), was ~25/min                                             | `e59e79a` |
+| Slowest passenger phase: the connection check read every live-status `connection=true` passenger (each not-yet-landed arrival of the day + next-day booked, ~13k rows, 0.2–0.65 s; >0.5 s in 118 of 348 runs/h) | Reads only connecting passengers of arrival flights within −3 h/+4 h (FlightView ids): 16 ms for 30 flights; phase avg 398 → 112 ms live                                                                                                          | `bf5b95a` |
+| **Connection monitoring was dead**: the seeder always wrote `connection_flight_id = None`, so no passenger ever got a risk level or a connection alert, and analysis connection clusters never matched          | Connections live on the inbound leg: a connecting arrival passenger gets one of the 6 earliest same-day departures 80–240 min later; departure passengers are not flagged                                                                         | `56140ae` |
+| At an owner crash the clock was held until the owner turned stale (`WATERMARK_STALE_S` = 30 s)                                                                                                                  | Owners send `OwnerHeartbeat` every 2 s from a thread and `OwnerStopped` on shutdown; missing beats for 7 s ⇒ down. Live `docker kill` of passenger-service: clock held 1 s at the lag limit, owner stale after 7.5 s, backlog replayed on restart | `6903e68` |
+| `equipment_failure_drawn` was keyed by aircraft: one equipment-failure draw per aircraft for the whole simulation                                                                                               | Keyed by turnaround (arrival flight id), markers kept only for planned turnarounds                                                                                                                                                                | `c45fca6` |
+| `CostRecorded` was the largest UI stream left (≈3.5 msg/s, `immediate`)                                                                                                                                         | `latest` class: newest envelope at most once per `WS_COALESCE_MS` (≤ 1 msg/s); the UI only refetches the cost summary                                                                                                                             | `e71c24b` |
 
 Follow-up (same day): connecting passengers now **transfer**. At the end of deplaning a
 connecting passenger whose onward flight is still open is re-linked `ON_FLIGHT` to it
@@ -100,47 +127,47 @@ was flagged at screening, none short-shipped or on a carousel; e.g. transfer-C 1
 
 **Round 1** (commit `78a9975`):
 
-| Change | Where | Addresses |
-| ------ | ----- | --------- |
-| `inducted_bag_ids` removed from the persisted checkpoint (kept as a per-tick copy, rebuilt from `Baggage.status`, so it's bounded to bags still on the belt). Legacy checkpoints still restore via a new `SnapshotCodec(retired_fields=…)` | `baggage-service/kafka/consumer.py`, `_common/checkpoint.py` | RC2 |
-| `run_tick` decodes the stored checkpoint only when the in-memory `last_tick_sim_time` differs from the committed one | `_common/transaction_scope.py` | RC2 |
-| Second `deepcopy(conveyor)` skipped inside `run_tick` (the candidate is already a disposable copy) | `baggage-service/kafka/consumer.py` | RC2 |
-| Baggage by-status gauge every 60 ticks (`BAGGAGE_STATUS_GAUGE_INTERVAL_TICKS`). The passenger gauge reads the existing 15 s flow projection instead of querying inside the tick | baggage / passenger consumers, `passenger-service/services/flow_projection.py` | RC1 |
-| Induction query starts from in-window departures in live states, with per-flight expansion (`CALL {}`): **2.6M → 46k db hits** | `baggage-service/db/neo4j.py` | RC1 |
-| Reconciliation query pinned to per-passenger expansion (`CALL {}`): the old plan held about 1.5M rows in a hash join, **713 MiB → negligible** | `passenger-service/db/neo4j.py` | RC1 / RC11 |
-| Coalesced clock gaps replayed as ≤5-min owner ticks (`catch_up_times`, `CATCH_UP_MAX_STEP_MIN`) | `_common/transaction_scope.py`, baggage / passenger consumers | RC11 |
+| Change                                                                                                                                                                                                                                     | Where                                                                          | Addresses  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ---------- |
+| `inducted_bag_ids` removed from the persisted checkpoint (kept as a per-tick copy, rebuilt from `Baggage.status`, so it's bounded to bags still on the belt). Legacy checkpoints still restore via a new `SnapshotCodec(retired_fields=…)` | `baggage-service/kafka/consumer.py`, `_common/checkpoint.py`                   | RC2        |
+| `run_tick` decodes the stored checkpoint only when the in-memory `last_tick_sim_time` differs from the committed one                                                                                                                       | `_common/transaction_scope.py`                                                 | RC2        |
+| Second `deepcopy(conveyor)` skipped inside `run_tick` (the candidate is already a disposable copy)                                                                                                                                         | `baggage-service/kafka/consumer.py`                                            | RC2        |
+| Baggage by-status gauge every 60 ticks (`BAGGAGE_STATUS_GAUGE_INTERVAL_TICKS`). The passenger gauge reads the existing 15 s flow projection instead of querying inside the tick                                                            | baggage / passenger consumers, `passenger-service/services/flow_projection.py` | RC1        |
+| Induction query starts from in-window departures in live states, with per-flight expansion (`CALL {}`): **2.6M → 46k db hits**                                                                                                             | `baggage-service/db/neo4j.py`                                                  | RC1        |
+| Reconciliation query pinned to per-passenger expansion (`CALL {}`): the old plan held about 1.5M rows in a hash join, **713 MiB → negligible**                                                                                             | `passenger-service/db/neo4j.py`                                                | RC1 / RC11 |
+| Coalesced clock gaps replayed as ≤5-min owner ticks (`catch_up_times`, `CATCH_UP_MAX_STEP_MIN`)                                                                                                                                            | `_common/transaction_scope.py`, baggage / passenger consumers                  | RC11       |
 
 **Round 2** (closing the three items left open by round 1):
 
-| Change | Where | Addresses |
-| ------ | ----- | --------- |
-| Clock checkpoint retries `TransientError` / `ServiceUnavailable` / `SessionExpired` with 0.2 → 2 s backoff, and pauses only after the retries fail | `sim-orchestrator/services/runtime_state.py` | RC11 |
-| Next-day seeding runs as a background task at 23:30. A new `on_day_start` clock callback waits for it at midnight only if it hasn't finished (it only can be late at very high speeds), and reseeds inline if it failed | `sim-orchestrator/services/clock.py`, `main.py` | RC11 |
-| Neo4j heap 1G → 2G (transaction pool 0.7 → 1.4 GiB) and page cache 512M → 2G, both env-overridable (`NEO4J_HEAP_MAX`, `NEO4J_PAGECACHE`) | `docker-compose.yml`, `docs/infra/DOCKER.md` | RC1 / RC11 |
-| Baggage `_prepare_tick` re-reads the full pipeline only after a checkpoint restore, plus every 60 ticks as a safety net. Event handlers already keep the conveyor in sync | `baggage-service/kafka/consumer.py`, `TickScope.restored` | RC1 |
-| Passenger FSM reads bounded to rows the rule can act on: booked ≤ T-120, checked_in ≤ T-45, airside ≤ gate-open, and deplaning/customs/claim by their own due timestamps (`get_passengers_by_status(due_field=…)`, whitelisted fields) | `passenger-service/db/neo4j.py`, `kafka/consumer.py` | RC1 |
-| Lean security-queue reconcile (3 columns, no Flight/Gate expansion) | `passenger-service` | RC1 |
-| Connection check seeks the status index instead of label-scanning every passenger for `connection: true` (no index exists): **4.0M → 665 db hits, 1.5 s → 2 ms** (same result set, checked atomically) | `passenger-service/db/neo4j.py` | RC1 |
-| Arrival bags on a carousel already mapped for their flight skip the per-bag flight read and write. The tick places later passengers | `passenger-service/kafka/consumer.py` | RC3 |
-| Tick observability: `service_tick_processing_seconds` (the existing P6-3 profiler, now wired in) and a new `service_tick_phase_seconds{phase}` covering passenger FSM phases and event handlers | `_common/_profiler.py`, baggage / passenger consumers | – |
+| Change                                                                                                                                                                                                                                 | Where                                                     | Addresses  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------- |
+| Clock checkpoint retries `TransientError` / `ServiceUnavailable` / `SessionExpired` with 0.2 → 2 s backoff, and pauses only after the retries fail                                                                                     | `sim-orchestrator/services/runtime_state.py`              | RC11       |
+| Next-day seeding runs as a background task at 23:30. A new `on_day_start` clock callback waits for it at midnight only if it hasn't finished (it only can be late at very high speeds), and reseeds inline if it failed                | `sim-orchestrator/services/clock.py`, `main.py`           | RC11       |
+| Neo4j heap 1G → 2G (transaction pool 0.7 → 1.4 GiB) and page cache 512M → 2G, both env-overridable (`NEO4J_HEAP_MAX`, `NEO4J_PAGECACHE`)                                                                                               | `docker-compose.yml`, `docs/infra/DOCKER.md`              | RC1 / RC11 |
+| Baggage `_prepare_tick` re-reads the full pipeline only after a checkpoint restore, plus every 60 ticks as a safety net. Event handlers already keep the conveyor in sync                                                              | `baggage-service/kafka/consumer.py`, `TickScope.restored` | RC1        |
+| Passenger FSM reads bounded to rows the rule can act on: booked ≤ T-120, checked_in ≤ T-45, airside ≤ gate-open, and deplaning/customs/claim by their own due timestamps (`get_passengers_by_status(due_field=…)`, whitelisted fields) | `passenger-service/db/neo4j.py`, `kafka/consumer.py`      | RC1        |
+| Lean security-queue reconcile (3 columns, no Flight/Gate expansion)                                                                                                                                                                    | `passenger-service`                                       | RC1        |
+| Connection check seeks the status index instead of label-scanning every passenger for `connection: true` (no index exists): **4.0M → 665 db hits, 1.5 s → 2 ms** (same result set, checked atomically)                                 | `passenger-service/db/neo4j.py`                           | RC1        |
+| Arrival bags on a carousel already mapped for their flight skip the per-bag flight read and write. The tick places later passengers                                                                                                    | `passenger-service/kafka/consumer.py`                     | RC3        |
+| Tick observability: `service_tick_processing_seconds` (the existing P6-3 profiler, now wired in) and a new `service_tick_phase_seconds{phase}` covering passenger FSM phases and event handlers                                        | `_common/_profiler.py`, baggage / passenger consumers     | –          |
 
 Unit suite: 1340 → **1352 passing**, with a test for each behaviour above.
 
 **Measured live** on the `art-ldt-g6` stack at daytime load (≈44k baggage events per 2 min, the
 same as the 08:00 peak), using the default 2G/2G Neo4j settings:
 
-| Metric | Before | After |
-| ------ | -----: | ----: |
-| Baggage checkpoint size | 8.6 MB (growing) | 2.2 MB at peak / 0.17 MB at night, no longer grows with history |
-| Baggage CPU | 99.96% | ≈30% |
-| Passenger CPU | 85% | ≈22% |
-| Neo4j CPU | 81–144% | **≈46%** |
-| Passenger tick (avg) | 1,025 ms (budget 1,000 ms) | **319 ms** |
-| Clock ticks processed by passenger / emitted (2 min) | 97 / 117 (coalescing, lag 3–7) | **120 / 116**, consumer lag 1 (the tick in flight) |
-| BaggageStatusChanged tick→produce p50 / p95 | 2.92 / 4.03 s | **0.17 / 1.08 s** |
-| PassengerStatusChanged tick→produce p50 / p95 | 2.83 / 4.84 s | **0.67 / 1.01 s** |
-| Clock across 23:30 seeding | ~20 s stall (41 of 60 ticks that minute) | worst tick gap **1.19 s** |
-| Passenger 6 sim-h backlog after the RC11 stall | never recovered (OOM loop) | replayed in bounded steps, 0 OOMs |
+| Metric                                               |                                   Before |                                                           After |
+| ---------------------------------------------------- | ---------------------------------------: | --------------------------------------------------------------: |
+| Baggage checkpoint size                              |                         8.6 MB (growing) | 2.2 MB at peak / 0.17 MB at night, no longer grows with history |
+| Baggage CPU                                          |                                   99.96% |                                                            ≈30% |
+| Passenger CPU                                        |                                      85% |                                                            ≈22% |
+| Neo4j CPU                                            |                                  81–144% |                                                        **≈46%** |
+| Passenger tick (avg)                                 |               1,025 ms (budget 1,000 ms) |                                                      **319 ms** |
+| Clock ticks processed by passenger / emitted (2 min) |           97 / 117 (coalescing, lag 3–7) |              **120 / 116**, consumer lag 1 (the tick in flight) |
+| BaggageStatusChanged tick→produce p50 / p95          |                            2.92 / 4.03 s |                                               **0.17 / 1.08 s** |
+| PassengerStatusChanged tick→produce p50 / p95        |                            2.83 / 4.84 s |                                               **0.67 / 1.01 s** |
+| Clock across 23:30 seeding                           | ~20 s stall (41 of 60 ticks that minute) |                                       worst tick gap **1.19 s** |
+| Passenger 6 sim-h backlog after the RC11 stall       |               never recovered (OOM loop) |                               replayed in bounded steps, 0 OOMs |
 
 What's left after outbox delivery is the fixed 0.5–0.7 s produce→broker wait (RC3 outbox polling).
 Round 3 below closes it, together with RC1 retention. RC4–RC10 are model and contract changes,
@@ -148,16 +175,16 @@ still open as described below.
 
 **Round 3** (closing RC1 and RC3):
 
-| Change | Where | Addresses |
-| ------ | ----- | --------- |
-| Outbox drain: 1,000-row batches (`OUTBOX_BATCH_SIZE`), acked rows deleted in the same query as the next read, loop woken by `outbox.notify()` after each tick commit (250 ms settle window) instead of a 1 s idle sleep; `linger.ms=10` | `_common/outbox.py`, `transaction_scope.py`, `kafka_runtime.py` | RC3 |
-| One granularity per transition: baggage tick hops (`inducted/screening/sorting/loaded`) travel only in `BaggageStatusBatchChanged` (now with `previous_status`, `flight_id`); per-bag facts kept for `in_hold/on_carousel/collected`. Passenger tick transitions batch-only; random 2% sampling and duplicate reconciliation facts removed (reason moved onto the batch group) — also fixes L1 | baggage / passenger consumers, `EVENT_BUS.md` granularity contract | RC3, L1 |
-| analysis-service follows `BaggageStatusBatchChanged` for per-bag targets | `analysis-service` | RC3 |
-| cost-service no longer subscribes to `baggage.events` / `passengers.events`, and filters `event_type` before validation | `cost-service/kafka/consumer.py` | RC3 |
-| Lifecycle retention, off the tick path: `Passenger`/`Baggage`/`ScanEvent` → `*Archive` labels 24 sim-h after `departed_airport` / `collected` / departed `in_hold`; `DETACH DELETE` 168 sim-h later; each batch stages `EntitiesArchived`/`EntitiesPurged`. Stale arrival `in_hold` bags (RC8) stay live, skipped by a keyset cursor | `_common/retention.py`, `*/services/retention.py`, `DATA_MODEL.md` | RC1 |
-| Inbox markers stamped with `seen_at` (Neo4j wall ms), legacy markers backfilled once, pruned after `INBOX_RETENTION_H=168` | `_common/outbox.py`, cost ledger, flight/passenger/baggage/cost | RC1, L5 |
-| analysis drops archived and collected bags from `baggage_targets` | `analysis-service/services/state.py` | L4 ✅ (round 3: archived/collected bags leave targets and the rebuild) |
-| flight-service per-flight pax/bag counts traverse `ON_FLIGHT`/`LOADED_ON` without labels, so archived history still counts | `flight-service/db/neo4j.py` | RC1 |
+| Change                                                                                                                                                                                                                                                                                                                                                                                         | Where                                                              | Addresses                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Outbox drain: 1,000-row batches (`OUTBOX_BATCH_SIZE`), acked rows deleted in the same query as the next read, loop woken by `outbox.notify()` after each tick commit (250 ms settle window) instead of a 1 s idle sleep; `linger.ms=10`                                                                                                                                                        | `_common/outbox.py`, `transaction_scope.py`, `kafka_runtime.py`    | RC3                                                                    |
+| One granularity per transition: baggage tick hops (`inducted/screening/sorting/loaded`) travel only in `BaggageStatusBatchChanged` (now with `previous_status`, `flight_id`); per-bag facts kept for `in_hold/on_carousel/collected`. Passenger tick transitions batch-only; random 2% sampling and duplicate reconciliation facts removed (reason moved onto the batch group) — also fixes L1 | baggage / passenger consumers, `EVENT_BUS.md` granularity contract | RC3, L1                                                                |
+| analysis-service follows `BaggageStatusBatchChanged` for per-bag targets                                                                                                                                                                                                                                                                                                                       | `analysis-service`                                                 | RC3                                                                    |
+| cost-service no longer subscribes to `baggage.events` / `passengers.events`, and filters `event_type` before validation                                                                                                                                                                                                                                                                        | `cost-service/kafka/consumer.py`                                   | RC3                                                                    |
+| Lifecycle retention, off the tick path: `Passenger`/`Baggage`/`ScanEvent` → `*Archive` labels 24 sim-h after `departed_airport` / `collected` / departed `in_hold`; `DETACH DELETE` 168 sim-h later; each batch stages `EntitiesArchived`/`EntitiesPurged`. Stale arrival `in_hold` bags (RC8) stay live, skipped by a keyset cursor                                                           | `_common/retention.py`, `*/services/retention.py`, `DATA_MODEL.md` | RC1                                                                    |
+| Inbox markers stamped with `seen_at` (Neo4j wall ms), legacy markers backfilled once, pruned after `INBOX_RETENTION_H=168`                                                                                                                                                                                                                                                                     | `_common/outbox.py`, cost ledger, flight/passenger/baggage/cost    | RC1, L5                                                                |
+| analysis drops archived and collected bags from `baggage_targets`                                                                                                                                                                                                                                                                                                                              | `analysis-service/services/state.py`                               | L4 ✅ (round 3: archived/collected bags leave targets and the rebuild) |
+| flight-service per-flight pax/bag counts traverse `ON_FLIGHT`/`LOADED_ON` without labels, so archived history still counts                                                                                                                                                                                                                                                                     | `flight-service/db/neo4j.py`                                       | RC1                                                                    |
 
 Found while deploying round 3: the first `in_hold` sweep used an `OR` keyset predicate that
 Neo4j planned as a union + sort over 1.39M bags (5.7M db hits, ~6 s/batch), and every archive
@@ -167,18 +194,18 @@ retention facts at a fixed revision 0 (no lock), pacing with pause ≥ batch dur
 
 Unit suite: 1352 → **1374 passing**.
 
-**Measured live** on `art-ldt-g6` (default 2G/2G Neo4j), *while* the one-time retention backlog
+**Measured live** on `art-ldt-g6` (default 2G/2G Neo4j), _while_ the one-time retention backlog
 (≈2.6M bags, 1.9M passengers, 9.7M scan events) was being archived:
 
-| Metric | Before round 3 | After round 3 |
-| ------ | -------------: | ------------: |
-| Outbox backlog (baggage / passenger rows) | 1,047–1,735 / ≈350 | **0–211 / 0–13** |
-| `baggage.events` rate | ≈342 msg/s (05:30 sim, early ramp) | **≈199 msg/s at the 12:30 peak**, 11 msg/s at night |
-| `BaggageStatusBatchChanged` tick→broker p50 / p95 | (n/a, behind the per-bag stream) | **0.29–0.46 / 0.89–0.98 s** |
-| `PassengerStatusBatchChanged` tick→broker p50 / p95 | (n/a) | **0.56–0.77 / 1.06–1.14 s** |
-| Per-passenger facts per tick | random 2% sample + reconciliation duplicates | none (batch only, deterministic) |
-| Live `Passenger` / `Baggage` / `ScanEvent` nodes | 2.00M / 2.72M / 9.70M, growing ≈80k pax/sim-day | draining toward ≈1 sim-day of history (0.79M / 0.6M collected / 0.9M in_hold still to go at the last check) |
-| Tick avg (passenger / baggage), mid-drain at night | – | **513 / 251 ms** (budget 1,000 ms) |
+| Metric                                              |                                  Before round 3 |                                                                                               After round 3 |
+| --------------------------------------------------- | ----------------------------------------------: | ----------------------------------------------------------------------------------------------------------: |
+| Outbox backlog (baggage / passenger rows)           |                              1,047–1,735 / ≈350 |                                                                                            **0–211 / 0–13** |
+| `baggage.events` rate                               |              ≈342 msg/s (05:30 sim, early ramp) |                                                         **≈199 msg/s at the 12:30 peak**, 11 msg/s at night |
+| `BaggageStatusBatchChanged` tick→broker p50 / p95   |                (n/a, behind the per-bag stream) |                                                                                 **0.29–0.46 / 0.89–0.98 s** |
+| `PassengerStatusBatchChanged` tick→broker p50 / p95 |                                           (n/a) |                                                                                 **0.56–0.77 / 1.06–1.14 s** |
+| Per-passenger facts per tick                        |    random 2% sample + reconciliation duplicates |                                                                            none (batch only, deterministic) |
+| Live `Passenger` / `Baggage` / `ScanEvent` nodes    | 2.00M / 2.72M / 9.70M, growing ≈80k pax/sim-day | draining toward ≈1 sim-day of history (0.79M / 0.6M collected / 0.9M in_hold still to go at the last check) |
+| Tick avg (passenger / baggage), mid-drain at night  |                                               – |                                                                          **513 / 251 ms** (budget 1,000 ms) |
 
 Per-entity `BaggageStatusChanged` / `PassengerStatusChanged` now come only from event-driven paths
 (whole-flight departure/arrival cohorts) and the three public baggage tick transitions. Their
@@ -193,7 +220,7 @@ done: its rebuild loaded the 1.5M finished `in_hold` bags into memory (L4) befor
 archived, which leaves its loop CPU-bound and unhealthy until that restart.
 
 **New finding after the round-3 restart (open, RC4 family):** analysis-service still cannot keep
-up with its input. Its consumer lag *grew* from 749k to 770k messages in 90 s after the post-drain
+up with its input. Its consumer lag _grew_ from 749k to 770k messages in 90 s after the post-drain
 restart. The cause is `projection_store.evaluate()`. For **every consumer batch** (≤5,000
 messages) it re-reads the whole operational projection from Neo4j, including every non-collected
 `Baggage` row (128k after retention, ≈1.6M before), JSON-round-trips and sorts all rows, and
@@ -223,14 +250,14 @@ containers, using their own `confluent_kafka` / `neo4j` drivers and throw-away c
 
 ### 1.1 Topic throughput (30 s window)
 
-| Topic | msgs/s | Share |
-| ----- | -----: | ----- |
-| `baggage.events` | **337.6** | 75% of all domain traffic (7.9 M messages retained) |
-| `passengers.events` | 93.4 | 21% |
-| `cost.events` | 8.5 | |
-| `flights.events` | 5.5 | |
-| `sim.clock` | 1.1 | 1 tick/s = 1 sim-min/s at 60× |
-| `__consumer_offsets` | 102.3 | commit traffic from manual per-batch commits |
+| Topic                |    msgs/s | Share                                               |
+| -------------------- | --------: | --------------------------------------------------- |
+| `baggage.events`     | **337.6** | 75% of all domain traffic (7.9 M messages retained) |
+| `passengers.events`  |      93.4 | 21%                                                 |
+| `cost.events`        |       8.5 |                                                     |
+| `flights.events`     |       5.5 |                                                     |
+| `sim.clock`          |       1.1 | 1 tick/s = 1 sim-min/s at 60×                       |
+| `__consumer_offsets` |     102.3 | commit traffic from manual per-batch commits        |
 
 ### 1.2 Clock-tick → event latency (60 s window, every topic)
 
@@ -238,14 +265,14 @@ containers, using their own `confluent_kafka` / `neo4j` drivers and throw-away c
 `sim_time`. `produce→broker` = Kafka log timestamp minus envelope `produced_at`, i.e. time spent
 waiting in the outbox.
 
-| Event | n/min | tick→produce p50 / p95 / max | produce→broker p50 / max |
-| ----- | ----: | ---------------------------- | ------------------------ |
-| BaggageStatusChanged | 17,475 | **2.92 / 4.03 / 4.28 s** | **1.32 / 2.17 s** |
-| PassengerStatusChanged | 4,133 | **2.83 / 4.84 / 5.71 s** | 0.78 / 3.53 s |
-| SecurityQueueUpdated | 99 | 1.41 / 4.98 / 5.30 s | 0.73 / 1.08 s |
-| CostRecorded | 251 | 0.72 / 1.40 / 1.54 s | 0.57 / 1.06 s |
-| FlightStatusChanged | 114 | 0.22 / 0.32 / 0.34 s | 0.49 / 1.15 s |
-| IncidentAlert | 3 | 0.09 s | 0.00 s (direct produce) |
+| Event                  |  n/min | tick→produce p50 / p95 / max | produce→broker p50 / max |
+| ---------------------- | -----: | ---------------------------- | ------------------------ |
+| BaggageStatusChanged   | 17,475 | **2.92 / 4.03 / 4.28 s**     | **1.32 / 2.17 s**        |
+| PassengerStatusChanged |  4,133 | **2.83 / 4.84 / 5.71 s**     | 0.78 / 3.53 s            |
+| SecurityQueueUpdated   |     99 | 1.41 / 4.98 / 5.30 s         | 0.73 / 1.08 s            |
+| CostRecorded           |    251 | 0.72 / 1.40 / 1.54 s         | 0.57 / 1.06 s            |
+| FlightStatusChanged    |    114 | 0.22 / 0.32 / 0.34 s         | 0.49 / 1.15 s            |
+| IncidentAlert          |      3 | 0.09 s                       | 0.00 s (direct produce)  |
 
 **Reading:** flight-service keeps pace with the clock (≈0.25 s). Baggage and passenger
 services run **3–5 ticks behind**. At 60× that is 3–5 simulated minutes, plus another
@@ -253,23 +280,23 @@ services run **3–5 ticks behind**. At 60× that is 3–5 simulated minutes, pl
 
 ### 1.3 Resource saturation
 
-| Container | CPU | Note |
-| --------- | --: | ---- |
-| baggage-service | **99.96%** | One Python event loop pinned to one core |
-| passenger-service | 85% | |
-| neo4j | 81% | page cache 512 MB vs 5.7 GB store; **11 GB** of transaction logs, a 270 MB segment rotated about every 30 s (≈9 MB/s) |
+| Container         |        CPU | Note                                                                                                                  |
+| ----------------- | ---------: | --------------------------------------------------------------------------------------------------------------------- |
+| baggage-service   | **99.96%** | One Python event loop pinned to one core                                                                              |
+| passenger-service |        85% |                                                                                                                       |
+| neo4j             |        81% | page cache 512 MB vs 5.7 GB store; **11 GB** of transaction logs, a 270 MB segment rotated about every 30 s (≈9 MB/s) |
 
 ### 1.4 Where Neo4j time goes (40 s `SHOW TRANSACTIONS` sampling, 1,765 samples)
 
-| Total time | Calls | Client | Query |
-| ---------: | ----: | ------ | ----- |
-| **25.1 s** | 18 | baggage | `MATCH (b:Baggage) USING INDEX … RETURN b.status, count(b)` (Prometheus gauge, every tick) |
-| 15.7 s | 18 | baggage | `MATCH (b:Baggage {status:'dropped_off'})-[:LOADED_ON]->(f) …` (induction candidates, every tick) |
-| 14.1 s | 25 | passenger | `MATCH (p:Passenger {status:$status})-[:ON_FLIGHT]->(f) …` |
-| 11.6 s | 7 | baggage | `SET s.document = $document` on `BaggageOutboxSeq` (8.6 MB checkpoint write) |
-| 11.5 s | 25 | passenger | `get_passengers_by_status(... flight_statuses ...)` |
-| 9.8 s | 17 | baggage | `get_baggage_in_pipeline` (`_prepare_tick`, every tick) |
-| 8.4 s | 8 | passenger | `MATCH (p:Passenger) … RETURN p.status, count(p)` (status-count gauge) |
+| Total time | Calls | Client    | Query                                                                                             |
+| ---------: | ----: | --------- | ------------------------------------------------------------------------------------------------- |
+| **25.1 s** |    18 | baggage   | `MATCH (b:Baggage) USING INDEX … RETURN b.status, count(b)` (Prometheus gauge, every tick)        |
+|     15.7 s |    18 | baggage   | `MATCH (b:Baggage {status:'dropped_off'})-[:LOADED_ON]->(f) …` (induction candidates, every tick) |
+|     14.1 s |    25 | passenger | `MATCH (p:Passenger {status:$status})-[:ON_FLIGHT]->(f) …`                                        |
+|     11.6 s |     7 | baggage   | `SET s.document = $document` on `BaggageOutboxSeq` (8.6 MB checkpoint write)                      |
+|     11.5 s |    25 | passenger | `get_passengers_by_status(... flight_statuses ...)`                                               |
+|      9.8 s |    17 | baggage   | `get_baggage_in_pipeline` (`_prepare_tick`, every tick)                                           |
+|      8.4 s |     8 | passenger | `MATCH (p:Passenger) … RETURN p.status, count(p)` (status-count gauge)                            |
 
 In 40 s the baggage service completed only **18 ticks**, about 0.45 ticks/s against a 1 tick/s
 clock. The remaining ticks are coalesced by `run_consumer_loop` ("keep only the latest tick").
@@ -278,11 +305,21 @@ clock. The remaining ticks are coalesced by `run_consumer_loop` ("keep only the 
 
 ## 2. Findings by root cause
 
+<a id="rc1"></a>
+
 ### RC1 — Live graph = full history, and per-tick queries scan it 🔴
 
-> **Status: ✅ done** (`78a9975`, `dfe4e77`, `873dab8`, `8e1c160`). All four fix directions are
-> implemented: retention/archival (1, 4), throttled gauges (2), windowed induction (3). See
-> "Round 3" above and DATA_MODEL.md "Lifecycle retention".
+> **Status: ❌ reopened — terminal retention remains incomplete (2026-11-17).**
+> The bounded queries, gauge throttling and existing archival fixes remain in place.
+> Revalidation found 17 terminal `missed_connection` passengers older than the archive
+> cutoff and 887 live in-hold bags on diverted arrivals. Neither terminal disposition
+> is covered by the current retention path. See [report B5](docs/validation/data-review-2026-11-17/README.md),
+> [passenger evidence](docs/validation/data-review-2026-11-17/retention-and-sizing.json) and
+> [baggage evidence](docs/validation/data-review-2026-11-17/terminal-arrival-holds.json).
+> **Close when:** both dispositions have owner-defined terminal/recovery rules,
+> age-based archival/purge facts, and restart/retention regression evidence. RC8
+> shares the diverted-hold recovery requirement. Prior fixes: `78a9975`, `dfe4e77`,
+> `873dab8`, `8e1c160`; see DATA_MODEL.md “Lifecycle retention”.
 
 **Evidence**
 
@@ -321,22 +358,24 @@ store. Per-tick cost therefore grows **linearly with simulated days**, and that 
 
 ---
 
+<a id="rc2"></a>
+
 ### RC2 — Whole-state checkpoint serialized, copied and rewritten every tick 🔴
 
 **Evidence** (benchmark inside the baggage container against the live checkpoint)
 
-| Checkpoint | Size | read | decode | deepcopy | encode |
-| ---------- | ---: | ---: | -----: | -------: | -----: |
-| `BaggageOutboxSeq` | **8.64 MB** (6.9 MB 20 min earlier) | 125 ms | 125 ms | 120 ms | 236 ms |
-| `FlightRuntime` | 1.0 MB (`turnaround_plans` 1.0 MB) | – | – | – | – |
-| `PassengerRuntime` | 0.51 MB (0.18 MB 25 min earlier) | 73 ms | 3 ms | 3 ms | 9 ms |
+| Checkpoint         |                                Size |   read | decode | deepcopy | encode |
+| ------------------ | ----------------------------------: | -----: | -----: | -------: | -----: |
+| `BaggageOutboxSeq` | **8.64 MB** (6.9 MB 20 min earlier) | 125 ms | 125 ms |   120 ms | 236 ms |
+| `FlightRuntime`    |  1.0 MB (`turnaround_plans` 1.0 MB) |      – |      – |        – |      – |
+| `PassengerRuntime` |    0.51 MB (0.18 MB 25 min earlier) |  73 ms |   3 ms |     3 ms |   9 ms |
 
 - 5.8 MB of the baggage checkpoint is `inducted_bag_ids`: **144,588 IDs**, never pruned. Entries
   are only added ([consumer.py:584](services/baggage-service/kafka/consumer.py:584),
   [:672](services/baggage-service/kafka/consumer.py:672)). The set is only cleared on a cold
   rebuild, which never runs once a checkpoint exists
   ([consumer.py:105-109](services/baggage-service/kafka/consumer.py:105)).
-- Per tick, `run_tick()` ([_common/transaction_scope.py:84](services/_common/transaction_scope.py:84)):
+- Per tick, `run_tick()` ([\_common/transaction_scope.py:84](services/_common/transaction_scope.py:84)):
   1. reads the checkpoint inside the tx,
   2. deep-copies every codec field,
   3. **decodes the stored document again over the copy**, even though the in-memory state is
@@ -347,6 +386,7 @@ store. Per-tick cost therefore grows **linearly with simulated days**, and that 
   6. writes ~8.6 MB as one property.
 
   That is about 600 ms of pure CPU per tick, plus ≈9 MB/s of Neo4j transaction log.
+
 - `_prepare_tick` also re-queries the whole pipeline (`get_baggage_in_pipeline`) every tick.
 
 **Root cause.** The A41 "per-tick atomicity" design snapshots **everything** the consumer
@@ -367,6 +407,8 @@ the single event loop. Cost scales with state size, not with the size of the tic
 
 ---
 
+<a id="rc3"></a>
+
 ### RC3 — Outbox delivery and duplicated publication 🟠
 
 > **Status: ✅ done** (`dfe4e77`, `9d9e794`). Batching, single-query delete+read, wake-up,
@@ -375,7 +417,7 @@ the single event loop. Cost scales with state size, not with the size of the tic
 
 **Evidence**
 
-- `publish_pending()` ([_common/outbox.py:146](services/_common/outbox.py:146)) runs this loop:
+- `publish_pending()` ([\_common/outbox.py:146](services/_common/outbox.py:146)) runs this loop:
   read up to 100 rows ordered by `(revision, position)`, produce them, **block until the broker
   acks** (`publish_confirmed_batch` polls until all callbacks fire), then delete them in a separate
   session. Each loop is three Neo4j round trips plus an `acks=all` round trip. When the outbox is
@@ -393,7 +435,7 @@ the single event loop. Cost scales with state size, not with the size of the tic
   - The dashboard turns each one into a no-op store write (RC9).
 
 **Root cause.** The outbox treats delivery as a polling, ack-per-batch job, with a fixed small
-batch and an idle sleep. Event design never decided *which* granularity is the contract, so both
+batch and an idle sleep. Event design never decided _which_ granularity is the contract, so both
 granularities are published to everyone.
 
 **Fix direction**
@@ -408,6 +450,8 @@ granularities are published to everyone.
   `event_type` before JSON-schema validation.
 
 ---
+
+<a id="rc4"></a>
 
 ### RC4 — Open-loop clock + cross-domain reads of the shared graph ⇒ causality violations 🔴
 
@@ -428,12 +472,12 @@ granularities are published to everyone.
   were also reconciliation-driven.
 - Several services read Neo4j labels owned by another service:
 
-  | Reader | Reads |
-  | ------ | ----- |
-  | flight-service | `Passenger` ×5 (`get_boarded_percentage` decides departure), `Baggage` ×3 |
-  | passenger-service | `Flight` ×4 (every FSM query joins `f.status`) |
-  | baggage-service | `Flight` ×4, `Passenger` ×8 |
-  | sim-orchestrator | writes `Flight`, `Passenger`, `Baggage` directly |
+  | Reader            | Reads                                                                     |
+  | ----------------- | ------------------------------------------------------------------------- |
+  | flight-service    | `Passenger` ×5 (`get_boarded_percentage` decides departure), `Baggage` ×3 |
+  | passenger-service | `Flight` ×4 (every FSM query joins `f.status`)                            |
+  | baggage-service   | `Flight` ×4, `Passenger` ×8                                               |
+  | sim-orchestrator  | writes `Flight`, `Passenger`, `Baggage` directly                          |
 
 **Root cause.** Two mechanisms combine.
 
@@ -441,12 +485,12 @@ granularities are published to everyone.
    emits on a fixed wall-clock cadence. A consumer that can't keep up (RC1/RC2) silently processes
    coalesced ticks (`delta_minutes` 2–3) and lags 3–5 sim-min. Nothing measures or bounds that lag:
    no watermark, no back-pressure, no "slowest owner" gate.
-2. **Each service reads other domains' *current* graph state instead of the events it has
+2. **Each service reads other domains' _current_ graph state instead of the events it has
    consumed so far.** A lagging passenger tick at sim T−3 queries `Flight.status` as written by
    flight-service at T, which is ahead of the passenger consumer's position in `flights.events`.
    Results:
    - reconciliation "steals" transitions before their event arrives, and stamps them with the
-     lagging tick's sim time, which can be *before* the flight event that caused them;
+     lagging tick's sim time, which can be _before_ the flight event that caused them;
    - the event handler then finds no eligible passengers;
    - flight-service decides departure from Passenger nodes that are 3–5 sim-min stale.
 
@@ -466,6 +510,8 @@ granularities are published to everyone.
   hourly). Never let it race the primary event path.
 
 ---
+
+<a id="rc5"></a>
 
 ### RC5 — Passenger flow model produces impossible timelines 🔴
 
@@ -512,11 +558,12 @@ granularities are published to everyone.
 
   | Flight | delay | security entry p50 / p95 | airside p95 | at_gate p95 | boarded p95 |
   | ------ | ----: | ------------------------ | ----------: | ----------: | ----------: |
-  | KL187 | 88 | −45 / −45 | +66 | +130 | +131 |
-  | AF328 | 90 | −44 / −42 | +131 | +136 | +137 |
-  | BA815 | 30 | −44 / −43 | +42 | +47 | +49 |
+  | KL187  |    88 | −45 / −45                |         +66 |        +130 |        +131 |
+  | AF328  |    90 | −44 / −42                |        +131 |        +136 |        +137 |
+  | BA815  |    30 | −44 / −43                |         +42 |         +47 |         +49 |
 
   The whole flight enters security in the same minute.
+
 - Of 33,904 passengers on 195 departed flights:
   - **3,903 (11.5%) boarded after their flight's `actual_time`**;
   - 1,615 cleared security after departure;
@@ -527,7 +574,7 @@ granularities are published to everyone.
 
 1. **Step-function release.** `_advance_booked_to_checkin`
    ([consumer.py:1082](services/passenger-service/kafka/consumer.py:1082)) checks in a flight's
-   *entire* cohort in the first tick after T-120. `_advance_checkin_to_security`
+   _entire_ cohort in the first tick after T-120. `_advance_checkin_to_security`
    ([consumer.py:1178](services/passenger-service/kafka/consumer.py:1178)) sends the entire cohort
    to security at T-45, capped only by a global 80 pax/min. Security drains at
    `lanes × 180 pax/h` (≈12 pax/min per terminal), so every flight dumps 150–260 pax into a queue
@@ -561,6 +608,8 @@ granularities are published to everyone.
 
 ---
 
+<a id="rc6"></a>
+
 ### RC6 — Baggage system under-dimensioned; deficit masked by teleport-to-hold 🔴
 
 > **Status: ✅ done** (`5220472`, `b35db23`), verified live 2026-11-16 on a `down -v` reset
@@ -590,11 +639,11 @@ granularities are published to everyone.
 
 - Departing bags whose trail contains a `loaded` scan / never had a `screening` scan:
 
-  | Day | bags | % loaded | % **never screened** |
-  | --- | ---: | -------: | -------------------: |
-  | 2024-07-05 | 54,628 | 64.5% | 29.0% |
-  | 2024-07-06 | 52,394 | 64.3% | 27.4% |
-  | 2024-07-07 | 51,374 | 51.0% | 36.9% |
+  | Day        |   bags | % loaded | % **never screened** |
+  | ---------- | -----: | -------: | -------------------: |
+  | 2024-07-05 | 54,628 |    64.5% |                29.0% |
+  | 2024-07-06 | 52,394 |    64.3% |                27.4% |
+  | 2024-07-07 | 51,374 |    51.0% |                36.9% |
 
 - Live stream (90 s, partly during an induction-A outage): `in_hold` transitions came from
   `loaded` 2,797, `inducted` 2,005, `screening` 430, `sorting` 210.
@@ -629,9 +678,22 @@ cascade fires only sometimes, and the KPIs look fine.
 
 ---
 
-### RC7 — Seeder writes other domains' data, without links or events 🟠
+<a id="rc7"></a>
 
-> **Status: ✅ done in code (2026-11-17), live remeasurement pending.**
+### RC7 — Seeder writes other domains' data, without links or events 🔴
+
+> **Status: ❌ reopened; severity raised to High (2026-11-17).**
+> The real `_day_already_seeded()` query fails Neo4j aggregation validation, so the
+> orchestrator cannot start. After correcting only that query in the disposable
+> stack, `booked → airborne` fails because the passenger repository excludes
+> `airborne`; normal generated traffic then stalls the consumer. See
+> [report B1/B2](docs/validation/data-review-2026-11-17/README.md), [startup log](docs/validation/data-review-2026-11-17/startup-failure.log)
+> and [consumer stall](docs/validation/data-review-2026-11-17/passenger-stall.log).
+> **Close when:** both repository/startup paths are fixed and a cold full-stack
+> run, inbound lifecycle, links/transfers and 23:30 seeding pass without application
+> workarounds. RC12 covers downstream bag observations; RC14 covers coherent
+> deployment and the treatment of legacy anonymous bags; RC15 covers the test gap.
+> The following implementation notes describe retained work, not completed closure.
 > `5b30ba8` removes all domain persistence from schedule/passenger/baggage
 > generators. The orchestrator atomically records complete `SeedDay` / `SeedBatch`
 > commands and notifies `flights.schedule`; each owner creates its entities,
@@ -682,9 +744,22 @@ events (rule 4).
 
 ---
 
-### RC8 — One-shot triggers with no reconciliation; consumers start at `latest` 🟠
+<a id="rc8"></a>
 
-> **Status: ✅ done in code (2026-11-17), live remeasurement pending.**
+### RC8 — One-shot triggers with no reconciliation; consumers start at `latest` 🔴
+
+> **Status: ❌ reopened; severity raised to High (2026-11-17).**
+> Bag offload sweeps and earliest offsets do not recover acknowledged collection
+> observations lost before a passenger checkpoint. BULK suppresses the individual
+> collection facts, while passenger-service ignores the batch. Diverted arrival
+> holds also lack a recovery/terminal disposition. See [report B3/B5/B8](docs/validation/data-review-2026-11-17/README.md),
+> [collection durability evidence](docs/validation/data-review-2026-11-17/carousel-reproduction.json),
+> [BULK evidence](docs/validation/data-review-2026-11-17/bulk-collection-reproduction.json) and
+> [terminal holds](docs/validation/data-review-2026-11-17/terminal-arrival-holds.json).
+> **Close when:** RC12 makes the consumed observation durable and available in
+> every mode; RC1 covers terminal retention; crash-after-ACK, missing/expired
+> offsets, late bags and diverted-flight recovery pass without workarounds.
+> The following implementation notes describe retained work, not completed closure.
 > Flight/passenger/baggage owner groups default to `earliest` for missing or
 > expired offsets, retaining manual commits. Baggage recovery runs on the first
 > ticks and hourly (or when new seed batches are accepted), using only consumed
@@ -718,12 +793,14 @@ when that event is missed: service down while it was produced, a new or expired 
 grew a reconciliation sweep (which then caused RC4). Baggage-service has none. One bad day
 therefore stays wrong forever, and it inflates RC1's history (these bags count as "in system").
 
-**Fix direction.** Give each cross-domain trigger an idempotent catch-up driven by *consumed*
+**Fix direction.** Give each cross-domain trigger an idempotent catch-up driven by _consumed_
 state, e.g. "arrival flights in my `flight_status` projection that are ≥ at_gate and still have
 bags `in_hold`". Run it at startup and hourly. Use `auto.offset.reset=earliest` for owner groups.
 The durable inboxes already make replays safe.
 
 ---
+
+<a id="rc9"></a>
 
 ### RC9 — UI receives the firehose and re-renders for nothing 🟠
 
@@ -769,6 +846,8 @@ no consumer.
 
 ---
 
+<a id="rc10"></a>
+
 ### RC10 — Data-source status is fabricated at the gateway 🟡
 
 > **Status: ✅ done** (`83feb91`). `_common.data_sources.SourceHealth` is the owner contract
@@ -794,8 +873,8 @@ no consumer.
 **Root cause.** [`handleDataSources`](services/api-gateway/src/dataSources.ts:39) hardcodes
 `status: "active"` and `last_updated: new Date()` whenever the upstream HTTP call succeeds, and
 equates "the `/adsb-states` response has a `metadata` key" with "ADS-B active". The
-`DataSourceAdapter` protocol ([_common/data_sources.py](services/_common/data_sources.py)) has
-no `enabled`, `last_ingest_at`, `last_error` or `record_count` fields, so no service *can* report
+`DataSourceAdapter` protocol ([\_common/data_sources.py](services/_common/data_sources.py)) has
+no `enabled`, `last_ingest_at`, `last_error` or `record_count` fields, so no service _can_ report
 real freshness.
 
 **Fix direction.** Extend the adapter protocol with
@@ -805,28 +884,35 @@ from it. Label every timestamp's clock (sim vs wall).
 
 ---
 
+<a id="rc11"></a>
+
 ### RC11 — Lag turns into a permanent stall: planner traps + coalesced catch-up + clock auto-pause 🔴 (found while deploying the fixes)
+
+> **Revalidation note (2026-11-17):** the original planner/OOM/catch-up fixes remain
+> implemented. The newly reproduced permanent retry stall is tracked in RC7/RC16,
+> not evidence that the old OOM cause recurred. Review-wide restart certification
+> still depends on RC15; see the [report](docs/validation/data-review-2026-11-17/README.md).
 
 **Evidence.** At 08:27 (real time) the sim **paused itself**: `Clock checkpoint failed;
 simulation paused`, caused by `Neo.TransientError.General.MemoryPoolOutOfMemoryError`. By then
 passenger-service was **6 sim-hours behind** (checkpoint at 16:54 against a clock at 22:44), and
-every one of its tick attempts failed with the same error: *"allocation of an extra 2.0 MiB would
-use more than the limit 716.8 MiB"*. `SHOW TRANSACTIONS` showed one passenger transaction at
+every one of its tick attempts failed with the same error: _"allocation of an extra 2.0 MiB would
+use more than the limit 716.8 MiB"_. `SHOW TRANSACTIONS` showed one passenger transaction at
 **713 MiB**, running `get_reconciliation_candidates`.
 
 **Root cause (a chain).**
 
-1. *Planner trap (RC1 again).* The reconciliation query was written to "bound reads by indexed
+1. _Planner trap (RC1 again)._ The reconciliation query was written to "bound reads by indexed
    passenger states", but the cost planner chose a `NodeHashJoin` from the **Flight** side. Every
    historical departure is in status `arrived`, so the join expanded about 1.5M passengers into
    memory. The baggage induction query had the same trap (2.6M db hits for 0 rows). As history
    grows, this kind of plan eventually exceeds `dbms.memory.transaction.total.max` (70% of a 1 GB
    heap), and that limit is **shared by every transaction in the database**.
-2. *Coalesced catch-up.* A lagging consumer sees only the latest SimClockTick and applies the whole
+2. _Coalesced catch-up._ A lagging consumer sees only the latest SimClockTick and applies the whole
    gap (here ~350 min) as one owner tick in one transaction. Each failed retry adds more lag, so
    the transaction keeps growing and never fits again: L2's infinite retry turns into a permanent
    stall.
-3. *Shared pool → clock pause.* While passenger's transaction holds the pool, the orchestrator's
+3. _Shared pool → clock pause._ While passenger's transaction holds the pool, the orchestrator's
    tiny clock checkpoint gets `MemoryPoolOutOfMemoryError`. `run_clock_loop`
    ([clock.py](services/sim-orchestrator/services/clock.py)) responds to **any** checkpoint error
    with `pause()`, with no retry for transient errors. The whole airport stops until someone
@@ -840,19 +926,171 @@ transaction pool was doubled (2G heap), and `seed_day` moved off the tick path (
 
 ---
 
+<a id="rc12"></a>
+
+### RC12 — Arrival baggage facts bypass durable passenger progress and lifecycle guards 🔴
+
+> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
+> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+**Evidence.** Report B3/B4/B8. A production-handler/database reproduction left collection only in memory (checkpoint unchanged), and moved a `deplaning` passenger to `carousel-3`. The production BULK planner writes the collection transition but emits no individual collection fact; passenger-service does not consume the batch.
+
+[Durability and lifecycle reproduction](docs/validation/data-review-2026-11-17/carousel-reproduction.json); [BULK planner reproduction](docs/validation/data-review-2026-11-17/bulk-collection-reproduction.json).
+
+**Root cause.** The bag observation is treated as a volatile flag and an unconditional location command, rather than an owner-applied, durable passenger observation with lifecycle prerequisites. Earliest offsets and baggage sweeps alone cannot repair an already acknowledged passenger observation.
+
+**Closure criteria.** Persist/rebuild collection observations before acknowledging them, gate carousel placement on the passenger lifecycle, and provide a consumed contract in every speed mode. Prove crash-after-ACK recovery, duplicate delivery, bag-before-passenger arrivals and BULK claim exits. RC8 remains open until this observation path and its recovery are verified.
+
+---
+
+<a id="rc13"></a>
+
+### RC13 — Settings describe a different model from the owning services 🟠
+
+> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
+> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+**Evidence.** Report B6. The settings API and browser show lanes A/B/C = 4/3/4 and sorting = 1,800/h. Owner responses in the same run show 8/12/8 and 5,400/h.
+
+[Settings versus owner observations](docs/validation/data-review-2026-11-17/settings-consistency.json).
+
+**Root cause.** SimSettings retains independent hardcoded defaults after the model was resized in airport.yaml. The exposed settings are not a reliable statement of effective owner configuration.
+
+**Closure criteria.** Derive initial settings from the authoritative configuration and distinguish requested/pending settings from applied owner state. Verify fresh startup, durable restart and settings application against owner observations. The RC5/RC6 operational fixes stay recorded as implemented; this finding tracks the remaining configuration contract.
+
+---
+
+<a id="rc14"></a>
+
+### RC14 — Mixed owner images and shared-library revisions invalidate deployment verification 🔴
+
+> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
+> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+**Evidence.** Report B7. Thirteen Python files differ between the checkout and four running service images, while shared-library mounts match. The live graph has no SeedDay/SeedBatch; the initial sample still has 20,949 airborne passengers on scheduled arrivals.
+
+[Deployed source fingerprints](docs/validation/data-review-2026-11-17/deployed-source.json); [Existing airport graph](docs/validation/data-review-2026-11-17/live-probe-2.json).
+
+**Root cause.** A shared-library update can become live without the matching service image. Readiness tests connectivity, not a coherent build identity, so a healthy older airport can be mistaken for validation of the new implementation.
+
+**Closure criteria.** After RC7/RC12 are fixed, roll out a coherent revision and expose/verify build identity per service and shared contract. Repeat arrival, transfer, recovery and day-boundary checks on that deployment. Record an explicit disposition for legacy anonymous bags; do not fabricate missing passenger identities.
+
+---
+
+<a id="rc15"></a>
+
+### RC15 — Validation coverage and fixtures lag the owner/event contracts 🟠
+
+> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
+> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+**Evidence.** The unit/gateway/dashboard suites pass, yet the unchanged full stack fails startup and the inbound repository transition (RC7). The conditional integration repeat is 139/142; independent-process transactions are 34/36. Three integration failures and two baggage fixtures use stale result/projection assumptions.
+
+[Gate counts and application workarounds](docs/validation/data-review-2026-11-17/gate-summary.json); [Full integration repeat](docs/validation/data-review-2026-11-17/isolated-integration-repeat.xml); [Independent-process gate](docs/validation/data-review-2026-11-17/live-transactions.xml); [Temporary fixture-only diagnostics](docs/validation/data-review-2026-11-17/fixture-diagnostics.json).
+
+**Root cause.** Some seed tests mock the failing startup helper, while transaction/read fixtures bypass the event-fed view or expect an immediate refresh outside the current cadence. Planning expectations omit the default effect_model_version. Green local subsets cannot certify the full lifecycle.
+
+**Closure criteria.** Exercise the real startup helper and airborne repository mutation, update fixtures to the documented owner/event contract and result schema, and obtain green mandatory gates without application or test workarounds. Add acknowledgement/crash and BULK pickup coverage. Fixing fixtures alone does not fix RC7/RC12.
+
+---
+
+<a id="rc16"></a>
+
+### RC16 — Unbounded retries let one poison message freeze a domain 🔴
+
+> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
+> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+**Evidence.** Promoted from L2; report L2/B2. Valid generated inbound traffic repeatedly raises the same status validation error, leaving passenger-service 124 sim-minutes behind. The shared loop retries every 100 ms; financial processing also retries indefinitely.
+
+[Repeated deterministic failure](docs/validation/data-review-2026-11-17/passenger-stall.log); [Observed lag and missing passenger progress](docs/validation/data-review-2026-11-17/isolated-kafka.json).
+
+**Root cause.** All dispatch failures are treated as indefinitely retryable, with no distinction between transient storage failure and deterministic contract failure, no durable quarantine, and no explicit recovery policy.
+
+**Closure criteria.** Define a durable failure/quarantine and alerting policy that preserves input identity and ordering requirements, retries transient failures, and prevents a deterministic payload from silently freezing later valid work. Verify malformed inputs and valid-but-rejected facts, recovery/replay and observable degraded health. Do not silently drop financial or domain facts.
+
+---
+
+<a id="rc17"></a>
+
+### RC17 — Financial inputs have no simulation-clock sanity boundary 🟠
+
+> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
+> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+**Evidence.** Promoted from L3; report L3. Financial processing accepted a FlightStatusChanged for an existing synthetic flight stamped 2030-01-01 while the simulation was in 2024, and recorded it in CostInbox.
+
+[Accepted future event](docs/validation/data-review-2026-11-17/future-event-reproduction.json).
+
+**Root cause.** Envelope validation checks datetime syntax, but ledger processing does not validate the event instant against the consumed clock or a defined replay/epoch policy before applying and acknowledging it.
+
+**Closure criteria.** Define clock-relative acceptance, late/replay and simulation-epoch rules; reject or quarantine out-of-policy inputs before financial effects/inbox acceptance. Verify the future case, legitimate delayed facts, clock recovery and reset/restore without using wall time for business decisions.
+
+---
+
+<a id="rc18"></a>
+
+### RC18 — Gateway replay has no distinction from live delivery 🟠
+
+> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
+> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+**Evidence.** Promoted from L6; report L6. The gateway retains the fixed api-gateway consumer group and committed offsets, then relays eligible facts without an age/replay fence. RC9 coalescing reduces volume but cannot establish freshness.
+
+**Root cause.** A live browser relay reuses durable consumer backlog semantics without bootstrapping/fencing the backlog as historical. Source inspection confirms the failure window; this revalidation did not disrupt the existing gateway to reproduce it.
+
+**Closure criteria.** Specify live relay versus historical replay behavior. Use a fresh live subscription or explicit replay fencing plus authoritative bootstrap as appropriate. Disconnect/restart the isolated gateway behind a backlog and prove historical facts cannot regress the live UI, while current updates still arrive.
+
+---
+
+<a id="rc19"></a>
+
+### RC19 — Weather and incident mutations are not atomic with their facts 🔴
+
+> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
+> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+**Evidence.** Promoted from L7; report L7. Weather persists the state before direct publication. Incident lifecycle mutates the graph before invoking its publication callback. TTR decrement and resolution are separate writes. The paths remain source-confirmed; no crash was injected into the existing airport.
+
+**Root cause.** The database commit and Kafka publication have no shared durable owner transaction/outbox boundary, so a failure between them can leave committed state with no deliverable fact.
+
+**Closure criteria.** Commit domain changes, input dedup/checkpoint and outbox facts together in the owning service, including incident resolution/TTR consequences. Prove rollback and process exits before commit, after commit and before broker acknowledgement, then replay through the real broker with stable fact identities.
+
+---
+
+<a id="rc20"></a>
+
+### RC20 — Timestamp parsing drops offsets instead of normalizing UTC 🟠
+
+> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
+> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+**Evidence.** Promoted from L8; report L8. FlightView.\_iso maps 2024-06-15T12:00:00+02:00 to naive 12:00 instead of 10:00 UTC. Aware datetime inputs are also made naive without UTC conversion. Ordinary UTC/Z traffic hides the defect.
+
+[Offset normalization reproduction](docs/validation/data-review-2026-11-17/time-normalization.json).
+
+**Root cause.** Removing tzinfo or splitting an offset changes the represented instant. Lexical/time comparisons can then order facts and schedule transitions at the wrong simulation time.
+
+**Closure criteria.** Normalize accepted aware timestamps to UTC before choosing the internal naive/aware representation, and state the convention for naive inputs. Verify equivalent Z, positive/negative offset and aware-datetime values across envelope parsing, FlightView, replay ordering and UI clock labels.
+
+---
+
 ## 3. Lower-severity findings
 
-| # | Finding | Evidence / location | Why it matters |
-| - | ------- | ------------------- | -------------- |
-| L1 ✅ (round 3: tick transitions batch-only, no sampling) | `PassengerStatusChanged` is **randomly** sampled at 2% during *every* tick, REALTIME included (`set_tick_batch_mode(True)` each tick). Reconciliation events are never sampled | [passenger-service/kafka/producer.py:22,50](services/passenger-service/kafka/producer.py:50) | The per-passenger stream is non-deterministic across replays and dominated by reconciliation artefacts (766 of 1,336 sampled events). Any consumer counting it is biased |
-| L2 | Poison messages block a consumer forever: `run_consumer_loop(manual_commit=True)` retries a failing dispatch every 100 ms without limit. Cost-service does the same every 1 s | [_common/kafka_runtime.py:219](services/_common/kafka_runtime.py:219), [cost-service/kafka/consumer.py:136](services/cost-service/kafka/consumer.py:136) | One bad payload freezes a whole domain. There's no DLQ or skip-after-N |
-| L3 | No sim-time sanity check on inputs: cost-service accepted and inboxed two events with `sim_time = 2026-01-01T12:00:00Z` (18 months ahead of the clock) | `CostInbox` ids `266c7026…`, `83591c45…` | Test or foreign traffic on the live bus is accepted silently |
-| L4 | analysis-service rebuild loads every bag not `delivered/collected` (≈1.22 M `in_hold`) into `baggage_targets`. The dict grows per event and is deep-copied for every what-if | [analysis-service/db/neo4j.py:172](services/analysis-service/db/neo4j.py:172), [whatif.py:129](services/analysis-service/services/whatif.py:129) | Memory and what-if latency grow with history (RC1) |
-| L5 ✅ (round 3: inbox markers pruned after 168 h) | Inbox markers (`CostInbox` 345k, one per SimClockTick, plus a `FinancialEventProcessed` fact per tick) are never pruned | `cost-service` ledger | Unbounded growth, Kafka noise |
-| L6 | Gateway uses a fixed consumer group `api-gateway` with committed offsets: after a restart it replays the backlog to clients as if live. Stale group `api-gateway-ui-verification` sits about 450k messages behind | [api-gateway/src/kafka.ts:70](services/api-gateway/src/kafka.ts:70) | Bursts of stale events into the UI after a restart. A live relay should use a per-instance group at `latest`, or no group |
-| L7 | Weather and incident events are produced directly, not through the outbox, so a DB write and its event aren't atomic. In `tick_ttr` the TTR update and the resolve are separate writes | [weather-service/kafka/producer.py](services/weather-service/kafka/producer.py), [incident-service/services/lifecycle.py:291](services/incident-service/services/lifecycle.py:291) | Self-healing in practice (observed a transient `active, ttr_remaining=0`), but breaks the "every state change ⇒ event" guarantee under crash |
-| L8 | Mixed timestamp conventions: weather uses `…Z` (aware), most owners use naive ISO. The gateway mixes wall and sim clocks in one field | weather `/current`, data-sources payload | A recurring source of UI-side "wrong time" bugs (cf. commit `d77f0eb`) |
-| L9 | Neo4j sizing: 512 MB page cache vs 5.7 GB store, 1 GB heap; tx-log retention `"2 days 2G"` while 11 GB is retained | neo4j container config | Amplifies RC1/RC2. Worth fixing only after them |
+L2/L3/L6/L7/L8 are now tracked as RC16–RC20 above. Their rows retain the
+original evidence for history; they are not separate duplicate tickets.
+
+| #                                                         | Finding                                                                                                                                                                                                           | Evidence / location                                                                                                                                                                | Why it matters                                                                                                                                                           |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| L1 ✅ (round 3: tick transitions batch-only, no sampling) | `PassengerStatusChanged` is **randomly** sampled at 2% during _every_ tick, REALTIME included (`set_tick_batch_mode(True)` each tick). Reconciliation events are never sampled                                    | [passenger-service/kafka/producer.py:22,50](services/passenger-service/kafka/producer.py:50)                                                                                       | The per-passenger stream is non-deterministic across replays and dominated by reconciliation artefacts (766 of 1,336 sampled events). Any consumer counting it is biased |
+| L2 → [RC16](#rc16) (open)                                 | Poison messages block a consumer forever: `run_consumer_loop(manual_commit=True)` retries a failing dispatch every 100 ms without limit. Cost-service does the same every 1 s                                     | [\_common/kafka_runtime.py:219](services/_common/kafka_runtime.py:219), [cost-service/kafka/consumer.py:136](services/cost-service/kafka/consumer.py:136)                          | One bad payload freezes a whole domain. There's no DLQ or skip-after-N                                                                                                   |
+| L3 → [RC17](#rc17) (open)                                 | No sim-time sanity check on inputs: cost-service accepted and inboxed two events with `sim_time = 2026-01-01T12:00:00Z` (18 months ahead of the clock)                                                            | `CostInbox` ids `266c7026…`, `83591c45…`                                                                                                                                           | Test or foreign traffic on the live bus is accepted silently                                                                                                             |
+| L4 ✅ (bounded projection/cache; revalidated 2026-11-17) | analysis-service rebuild loads every bag not `delivered/collected` (≈1.22 M `in_hold`) into `baggage_targets`. The dict grows per event and is deep-copied for every what-if                                      | [analysis-service/db/neo4j.py:172](services/analysis-service/db/neo4j.py:172), [whatif.py:129](services/analysis-service/services/whatif.py:129)                                   | Memory and what-if latency grow with history (RC1)                                                                                                                       |
+| L5 ✅ (round 3: inbox markers pruned after 168 h)         | Inbox markers (`CostInbox` 345k, one per SimClockTick, plus a `FinancialEventProcessed` fact per tick) are never pruned                                                                                           | `cost-service` ledger                                                                                                                                                              | Unbounded growth, Kafka noise                                                                                                                                            |
+| L6 → [RC18](#rc18) (open)                                 | Gateway uses a fixed consumer group `api-gateway` with committed offsets: after a restart it replays the backlog to clients as if live. Stale group `api-gateway-ui-verification` sits about 450k messages behind | [api-gateway/src/kafka.ts:70](services/api-gateway/src/kafka.ts:70)                                                                                                                | Bursts of stale events into the UI after a restart. A live relay should use a per-instance group at `latest`, or no group                                                |
+| L7 → [RC19](#rc19) (open)                                 | Weather and incident events are produced directly, not through the outbox, so a DB write and its event aren't atomic. In `tick_ttr` the TTR update and the resolve are separate writes                            | [weather-service/kafka/producer.py](services/weather-service/kafka/producer.py), [incident-service/services/lifecycle.py:291](services/incident-service/services/lifecycle.py:291) | Self-healing in practice (observed a transient `active, ttr_remaining=0`), but breaks the "every state change ⇒ event" guarantee under crash                             |
+| L8 → [RC20](#rc20) (open)                                 | Mixed timestamp conventions: weather uses `…Z` (aware), most owners use naive ISO. The gateway mixes wall and sim clocks in one field                                                                             | weather `/current`, data-sources payload                                                                                                                                           | A recurring source of UI-side "wrong time" bugs (cf. commit `d77f0eb`)                                                                                                   |
+| L9 ⚠️ (sizing raised; checkpoint/log capacity caveat remains) | Neo4j sizing: 512 MB page cache vs 5.7 GB store, 1 GB heap; tx-log retention `"2 days 2G"` while 11 GB is retained                                                                                                | neo4j container config                                                                                                                                                             | Amplifies RC1/RC2. Worth fixing only after them                                                                                                                          |
 
 ---
 
@@ -873,20 +1111,29 @@ RC8 no catch-up path ─► one missed event = permanently wrong entities (feeds
 RC10 fabricated source health ─► "active" sources that are disabled/stale
 ```
 
-## 5. Suggested order of work
+## 5. Current order of work and closure dependencies
 
-1. **RC2 quick wins** (~1 day): drop `inducted_bag_ids` from the checkpoint, skip the redundant
-   restore/decode, remove the double deepcopy. Expected: baggage tick drops from ~1.5 s to a few
-   hundred ms, and lag drops to under 1 tick.
-2. ~~**RC1**: stop per-tick `count()` gauges, add a time window to the dropped-off
-   query. Then add archival/retention of finished entities and inbox pruning.~~ Done.
-3. ~~**RC6 + RC5 model fixes** (spec first): size bag volume against BHS capacity; implement the
-   Beta show-up curve; add `missed_flight` / `short_shipped` outcomes and remove the teleports.~~ Done.
-4. **RC4**: replace cross-domain graph reads with event-fed projections; add a tick watermark
-   metric, then back-pressure.
-5. ~~**RC7/RC8**: link arrival bags to passengers; add owner-side catch-up sweeps; switch owner
-   groups to `earliest`.~~ Done in code; historical live remeasurement pending.
-6. ~~**RC9/RC10**: WS allow-list and coalescing, adapter-reported source health.~~ Done.
+The original performance fixes are retained. The closure revalidation changes the
+remaining order of work; see the [report](docs/validation/data-review-2026-11-17/README.md).
+
+1. **RC7 + RC16:** fix the real startup query and airborne mutation contract;
+   prevent deterministic consumer failures from freezing the domain. Add the
+   missing end-to-end regressions under RC15.
+2. **RC12 + RC8:** make collection observations durable and available in every
+   mode; enforce passenger lifecycle prerequisites; verify acknowledgement/crash,
+   late-input and replay recovery.
+3. **RC1:** finish terminal retention for missed connections and diverted-flight
+   baggage, with owner facts and restart/age-based tests.
+4. **RC13 + RC17–RC20:** reconcile effective settings, financial clock sanity,
+   UI replay semantics, weather/incident atomicity and UTC normalization.
+5. **RC15:** repair stale fixtures and pass all mandatory gates without the
+   disposable application/test workarounds. Test fixes do not resolve application
+   defects by themselves.
+6. **RC14:** deploy a coherent fixed revision, record the legacy-data disposition,
+   and remeasure daytime flows, transfers, pickup, outages/replay, day-boundary
+   seeding and retention. Close RC1/RC7/RC8 and RC12–RC20 only against their
+   individual evidence and closure criteria, or explicitly record accepted
+   exclusions as remaining risks rather than “fixed”.
 
 ## 6. Reproducing the measurements
 

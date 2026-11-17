@@ -1,0 +1,801 @@
+{
+  "observed_at": "2026-11-17T09:34:13.330405+00:00",
+  "queries": {
+    "seed_days": {
+      "elapsed_ms": 19.4,
+      "rows": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        }
+      ]
+    },
+    "seed_batches": {
+      "elapsed_ms": 24.6,
+      "rows": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 128,
+          "oldest": "2024-06-15T06:00:00+00:00",
+          "newest": "2024-06-15T06:00:00+00:00"
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 1,
+          "oldest": "2024-06-15T06:00:00+00:00",
+          "newest": "2024-06-15T06:00:00+00:00"
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 142,
+          "oldest": "2024-06-15T06:00:00+00:00",
+          "newest": "2024-06-15T06:00:00+00:00"
+        }
+      ]
+    },
+    "checkpoints": {
+      "elapsed_ms": 27.0,
+      "rows": [
+        {
+          "labels": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T22:24:00",
+          "bytes": 959968
+        },
+        {
+          "labels": [
+            "CostRuntime"
+          ],
+          "tick": null,
+          "bytes": 5285
+        },
+        {
+          "labels": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T22:24:00",
+          "bytes": 7556
+        },
+        {
+          "labels": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T22:24:00",
+          "bytes": 327512
+        }
+      ]
+    },
+    "Flight_outbox": {
+      "elapsed_ms": 7.1,
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "Passenger_outbox": {
+      "elapsed_ms": 6.4,
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "Baggage_outbox": {
+      "elapsed_ms": 6.0,
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "Cost_outbox": {
+      "elapsed_ms": 6.0,
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "Passenger_counts": {
+      "elapsed_ms": 48.3,
+      "rows": [
+        {
+          "status": "departed_airport",
+          "n": 58183
+        },
+        {
+          "status": "missed_flight",
+          "n": 9043
+        },
+        {
+          "status": "boarded",
+          "n": 721
+        },
+        {
+          "status": "baggage_claim",
+          "n": 49
+        },
+        {
+          "status": "missed_connection",
+          "n": 2497
+        },
+        {
+          "status": "airside",
+          "n": 17
+        },
+        {
+          "status": "at_gate",
+          "n": 1
+        }
+      ]
+    },
+    "PassengerArchive_counts": {
+      "elapsed_ms": 9.6,
+      "rows": []
+    },
+    "Baggage_counts": {
+      "elapsed_ms": 31.6,
+      "rows": [
+        {
+          "status": "collected",
+          "n": 25775
+        },
+        {
+          "status": "in_hold",
+          "n": 32017
+        },
+        {
+          "status": "flagged",
+          "n": 175
+        },
+        {
+          "status": "short_shipped",
+          "n": 5093
+        },
+        {
+          "status": "loaded",
+          "n": 748
+        }
+      ]
+    },
+    "BaggageArchive_counts": {
+      "elapsed_ms": 8.2,
+      "rows": []
+    },
+    "ScanEvent_counts": {
+      "elapsed_ms": 234.4,
+      "rows": [
+        {
+          "status": "inducted",
+          "n": 35533
+        },
+        {
+          "status": "screening",
+          "n": 35533
+        },
+        {
+          "status": "sorting",
+          "n": 35358
+        },
+        {
+          "status": "loaded",
+          "n": 46983
+        },
+        {
+          "status": "arrived",
+          "n": 25775
+        },
+        {
+          "status": "dropped_off",
+          "n": 6364
+        },
+        {
+          "status": "on_carousel",
+          "n": 25775
+        },
+        {
+          "status": "collected",
+          "n": 25775
+        },
+        {
+          "status": "flagged",
+          "n": 175
+        },
+        {
+          "status": "in_hold",
+          "n": 32017
+        },
+        {
+          "status": "short_shipped",
+          "n": 5093
+        }
+      ]
+    },
+    "ScanEventArchive_counts": {
+      "elapsed_ms": 14.3,
+      "rows": []
+    },
+    "Flight_counts": {
+      "elapsed_ms": 11.6,
+      "rows": [
+        {
+          "status": "arrived",
+          "n": 364
+        },
+        {
+          "status": "airborne",
+          "n": 51
+        },
+        {
+          "status": "diverted",
+          "n": 1
+        },
+        {
+          "status": "boarding",
+          "n": 4
+        },
+        {
+          "status": "departed",
+          "n": 14
+        }
+      ]
+    },
+    "CostInbox_counts": {
+      "elapsed_ms": 10.2,
+      "rows": [
+        {
+          "status": null,
+          "n": 3271
+        }
+      ]
+    },
+    "arrival_bag_links_by_day": {
+      "elapsed_ms": 213.7,
+      "rows": [
+        {
+          "day": "2024-06-15",
+          "status": "collected",
+          "linked": true,
+          "n": 25775
+        }
+      ]
+    },
+    "stranded_arrival_holds": {
+      "elapsed_ms": 93.1,
+      "rows": []
+    },
+    "phantom_airborne": {
+      "elapsed_ms": 27.9,
+      "rows": []
+    },
+    "departure_holds_without_screening": {
+      "elapsed_ms": 199.9,
+      "rows": []
+    },
+    "passenger_flight_cardinality": {
+      "elapsed_ms": 65.5,
+      "rows": []
+    },
+    "connection_integrity": {
+      "elapsed_ms": 100.0,
+      "rows": [
+        {
+          "status": "departed_airport",
+          "missing_id": false,
+          "missing_flight": false,
+          "n": 4350
+        },
+        {
+          "status": "boarded",
+          "missing_id": false,
+          "missing_flight": false,
+          "n": 203
+        },
+        {
+          "status": "missed_connection",
+          "missing_id": false,
+          "missing_flight": false,
+          "n": 2497
+        }
+      ]
+    },
+    "passenger_terminal_retention_backlog": {
+      "elapsed_ms": 43.7,
+      "rows": []
+    },
+    "arrival_claim_duration": {
+      "elapsed_ms": 500.9,
+      "rows": [
+        {
+          "day": "2024-06-15",
+          "n": 28530,
+          "min": 1.0,
+          "p50": 45.0,
+          "p90": 46.0,
+          "timeout_sized": 15713
+        }
+      ]
+    },
+    "bag_claim_missing_passenger": {
+      "elapsed_ms": 79.9,
+      "rows": [
+        {
+          "status": "collected",
+          "missing_passenger": false,
+          "n": 25775
+        }
+      ]
+    },
+    "overdue_flights": {
+      "elapsed_ms": 20.7,
+      "rows": []
+    },
+    "stuck_incidents": {
+      "elapsed_ms": 17.6,
+      "rows": []
+    },
+    "cost_future_records": {
+      "elapsed_ms": 17.0,
+      "rows": [
+        {
+          "n": 2,
+          "latest": "2026-01-01T12:00:00Z"
+        }
+      ]
+    },
+    "flight_delay_distribution": {
+      "elapsed_ms": 35.4,
+      "rows": [
+        {
+          "day": "2024-06-15",
+          "n": 206,
+          "mean_delay": 29.257281553398048,
+          "delayed_30": 80,
+          "boarding_incomplete": 118
+        }
+      ]
+    }
+  },
+  "http": {
+    "sim": {
+      "status": 200,
+      "elapsed_ms": 21.6,
+      "body": {
+        "airport": {
+          "name": "Arthur International Airport",
+          "iata": "ART",
+          "icao": "KART",
+          "timezone": "America/Arthur"
+        },
+        "running": true,
+        "paused": false,
+        "sim_time": "2024-06-15T22:24:00+00:00",
+        "real_time": "2026-11-17T09:34:13.337408+00:00",
+        "speed_multiplier": 60,
+        "mode": "REALTIME",
+        "watermarks": {
+          "baggage-service": {
+            "sim_time": "2024-06-15T22:24:00",
+            "lag_minutes": 0.0,
+            "stale": false
+          },
+          "flight-service": {
+            "sim_time": "2024-06-15T22:24:00",
+            "lag_minutes": 0.0,
+            "stale": false
+          },
+          "passenger-service": {
+            "sim_time": "2024-06-15T22:24:00",
+            "lag_minutes": 0.0,
+            "stale": false
+          }
+        },
+        "day_number": 1,
+        "tick_number": 984,
+        "real_elapsed_seconds": 984,
+        "sim_elapsed_minutes": 984,
+        "active_incidents": 0,
+        "weather_category": "CAVOK",
+        "flights_today": 420,
+        "passengers_today": 70511
+      }
+    },
+    "passengers": {
+      "status": 200,
+      "elapsed_ms": 2.2,
+      "body": {
+        "sim_time": "2024-06-15T22:26:00",
+        "total_in_airport": 66,
+        "by_status": {
+          "airside": 17,
+          "baggage_claim": 49,
+          "boarded": 722,
+          "departed_airport": 58183,
+          "missed_connection": 2497,
+          "missed_flight": 9043
+        },
+        "counts_observed_sim_time": "2024-06-15T22:25:00",
+        "counts_age_seconds": 1.1,
+        "counts_stale": false,
+        "security": {
+          "A": {
+            "queue_length": 0,
+            "wait_minutes": 0.0,
+            "lanes_open": 8,
+            "frozen": false,
+            "observed_at": "2024-06-15T22:26:00"
+          },
+          "B": {
+            "queue_length": 0,
+            "wait_minutes": 0.0,
+            "lanes_open": 12,
+            "frozen": false,
+            "observed_at": "2024-06-15T22:26:00"
+          },
+          "C": {
+            "queue_length": 0,
+            "wait_minutes": 0.0,
+            "lanes_open": 8,
+            "frozen": false,
+            "observed_at": "2024-06-15T22:26:00"
+          }
+        },
+        "connections_at_risk": 0,
+        "connections_missed": 0,
+        "data_source": "simulation"
+      }
+    },
+    "baggage": {
+      "status": 200,
+      "elapsed_ms": 13.9,
+      "body": {
+        "sim_time": "2024-06-15T22:26:00",
+        "total_in_system": 32940,
+        "by_status": {
+          "collected": 25775,
+          "flagged": 175,
+          "in_hold": 32017,
+          "loaded": 748,
+          "short_shipped": 5093
+        },
+        "flagged_active": 175,
+        "short_shipped": 5093,
+        "system_failures_active": 0,
+        "zones": [
+          {
+            "zone_id": "arrival-belt-1",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 2400,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "arrival-belt-2",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 2400,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "arrival-belt-3",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 2400,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "arrival-belt-4",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 2400,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "arrival-belt-5",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 2400,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "arrival-belt-6",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 2400,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "induction-A",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 2100,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "induction-B",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 3400,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "induction-C",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 2100,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-A-1",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-A-2",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-A-3",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-A-4",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-A-5",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-B-1",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-B-2",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-B-3",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-B-4",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-B-5",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-C-1",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-C-2",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-C-3",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-C-4",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "make-up-C-5",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 150,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "screening-unit-1",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 1050,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "screening-unit-2",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 1050,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "screening-unit-3",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 1700,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "screening-unit-4",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 1700,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "screening-unit-5",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 1050,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "screening-unit-6",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 1050,
+            "utilisation_pct": 0
+          },
+          {
+            "zone_id": "sorting-matrix",
+            "items": 0,
+            "status": "normal",
+            "throughput_per_hour": 5400,
+            "utilisation_pct": 0
+          }
+        ]
+      }
+    },
+    "weather_source": {
+      "status": 200,
+      "elapsed_ms": 2.7,
+      "body": {
+        "source": "simulated",
+        "current_category": "CAVOK",
+        "health": {
+          "enabled": true,
+          "items": 1,
+          "last_ingest_at": "2026-11-17T09:33:48.701467Z",
+          "last_ingest_clock": "wall",
+          "last_observation_at": "2024-06-15T22:00:00",
+          "last_observation_clock": "sim",
+          "last_error": null,
+          "last_error_at": null,
+          "last_error_clock": "wall"
+        }
+      }
+    },
+    "adsb_source": {
+      "status": 200,
+      "elapsed_ms": 32.3,
+      "body": {
+        "source": "disabled",
+        "aircraft_count": 0,
+        "health": {
+          "enabled": false,
+          "items": null,
+          "last_ingest_at": null,
+          "last_ingest_clock": "wall",
+          "last_observation_at": null,
+          "last_observation_clock": "sim",
+          "last_error": null,
+          "last_error_at": null,
+          "last_error_clock": "wall"
+        }
+      }
+    },
+    "flights": {
+      "status": 200,
+      "elapsed_ms": 245.2,
+      "body": {
+        "total": 420,
+        "limit": 1,
+        "offset": 0,
+        "flights": [
+          {
+            "flight_duration_minutes": 231,
+            "destination_iata": "ART",
+            "pax_count": 143,
+            "flight_number": "BA815",
+            "aircraft_type": "A320",
+            "origin_iata": "SVG",
+            "scheduled_time": "2024-06-15T04:00:00",
+            "actual_time": "2024-06-15T06:04:00",
+            "seat_capacity": 180,
+            "route_category": "medium_haul",
+            "airline_code": "BA",
+            "delay_minutes": 0,
+            "flight_type": "international_short",
+            "aircraft_registration": "ART-BA001",
+            "id": "a656d835-9a8c-464a-abc0-6ac5611a76af",
+            "estimated_time": "2024-06-15T04:00:00",
+            "direction": "arrival",
+            "status": "arrived",
+            "gate_id": "B01",
+            "runway_id": "27R",
+            "pax_boarded": 110,
+            "baggage_count": 91,
+            "baggage_loaded": 91,
+            "arrival_estimated_time": "",
+            "taxi_initial_minutes": 2.0,
+            "taxi_total_minutes": 6.966
+          }
+        ]
+      }
+    },
+    "gateway_health": {
+      "status": 200,
+      "elapsed_ms": 2.0,
+      "body": {
+        "status": "ok"
+      }
+    },
+    "flight_metrics": {
+      "status": 200,
+      "elapsed_ms": 27.2,
+      "body": ""
+    },
+    "passenger_metrics": {
+      "status": 200,
+      "elapsed_ms": 25.1,
+      "body": "service_tick_processing_seconds_bucket{le=\"0.001\",service=\"passenger-service\"} 0.0\nservice_tick_processing_seconds_bucket{le=\"0.005\",service=\"passenger-service\"} 0.0\nservice_tick_processing_seconds_bucket{le=\"0.01\",service=\"passenger-service\"} 0.0\nservice_tick_processing_seconds_bucket{le=\"0.025\",service=\"passenger-service\"} 0.0\nservice_tick_processing_seconds_bucket{le=\"0.05\",service=\"passenger-service\"} 0.0\nservice_tick_processing_seconds_bucket{le=\"0.1\",service=\"passenger-service\"} 30.0\nservice_tick_processing_seconds_bucket{le=\"0.25\",service=\"passenger-service\"} 170.0\nservice_tick_processing_seconds_bucket{le=\"0.5\",service=\"passenger-service\"} 186.0\nservice_tick_processing_seconds_bucket{le=\"1.0\",service=\"passenger-service\"} 187.0\nservice_tick_processing_seconds_bucket{le=\"2.5\",service=\"passenger-service\"} 187.0\nservice_tick_processing_seconds_bucket{le=\"5.0\",service=\"passenger-service\"} 187.0\nservice_tick_processing_seconds_bucket{le=\"+Inf\",service=\"passenger-service\"} 187.0\nservice_tick_processing_seconds_count{service=\"passenger-service\"} 187.0\nservice_tick_processing_seconds_sum{service=\"passenger-service\"} 27.723819358001492\nservice_tick_processing_seconds_created{service=\"passenger-service\"} 1.7949078635427635e+09\nservice_tick_phase_seconds_count{phase=\"event:other\",service=\"passenger-service\"} 893.0\nservice_tick_phase_seconds_sum{phase=\"event:other\",service=\"passenger-service\"} 0.008618183004728053\nservice_tick_phase_seconds_count{phase=\"event:FlightStatusChanged\",service=\"passenger-service\"} 188.0\nservice_tick_phase_seconds_sum{phase=\"event:FlightStatusChanged\",service=\"passenger-service\"} 3.340472641013548\nservice_tick_phase_seconds_count{phase=\"event:IncidentStatusChanged\",service=\"passenger-service\"} 29.0\nservice_tick_phase_seconds_sum{phase=\"event:IncidentStatusChanged\",service=\"passenger-service\"} 0.0007485320020350628\nservice_tick_phase_seconds_count{phase=\"event:BaggageStatusChanged\",service=\"passenger-service\"} 11042.0\nservice_tick_phase_seconds_sum{phase=\"event:BaggageStatusChanged\",service=\"passenger-service\"} 25.889476493885013\nservice_tick_phase_seconds_count{phase=\"prepare\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"prepare\",service=\"passenger-service\"} 1.4269167880083842\nservice_tick_phase_seconds_count{phase=\"wheelchair\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"wheelchair\",service=\"passenger-service\"} 0.5343045220088243\nservice_tick_phase_seconds_count{phase=\"reconcile\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"reconcile\",service=\"passenger-service\"} 1.1365871610087197\nservice_tick_phase_seconds_count{phase=\"booked_to_checkin\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"booked_to_checkin\",service=\"passenger-service\"} 1.073172695005269\nservice_tick_phase_seconds_count{phase=\"checkin_to_security\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"checkin_to_security\",service=\"passenger-service\"} 2.0431956039956276\nservice_tick_phase_seconds_count{phase=\"security_drain\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"security_drain\",service=\"passenger-service\"} 0.02089168999918911\nservice_tick_phase_seconds_count{phase=\"airside_to_gate\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"airside_to_gate\",service=\"passenger-service\"} 2.5981938950026233\nservice_tick_phase_seconds_count{phase=\"boarding\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"boarding\",service=\"passenger-service\"} 4.243124041002375\nservice_tick_phase_seconds_count{phase=\"arrivals\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"arrivals\",service=\"passenger-service\"} 2.498885948998577\nservice_tick_phase_seconds_count{phase=\"boarding_progress\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"boarding_progress\",service=\"passenger-service\"} 0.7064614450046065\nservice_tick_phase_seconds_count{phase=\"apply\",service=\"passenger-service\"} 187.0\nservice_tick_phase_seconds_sum{phase=\"apply\",service=\"passenger-service\"} 2.539064407981641\nservice_tick_phase_seconds_count{phase=\"ml\",service=\"passenger-service\"} 37.0\nservice_tick_phase_seconds_sum{phase=\"ml\",service=\"passenger-service\"} 0.005922779004322365\nservice_tick_phase_seconds_count{phase=\"connections\",service=\"passenger-service\"} 19.0\nservice_tick_phase_seconds_sum{phase=\"connections\",service=\"passenger-service\"} 0.35700394899686216\nservice_tick_phase_seconds_count{phase=\"event:IncidentCreated\",service=\"passenger-service\"} 25.0\nservice_tick_phase_seconds_sum{phase=\"event:IncidentCreated\",service=\"passenger-service\"} 0.0006556330026796786\nservice_tick_phase_seconds_count{phase=\"event:FlightGateAssigned\",service=\"passenger-service\"} 22.0\nservice_tick_phase_seconds_sum{phase=\"event:FlightGateAssigned\",service=\"passenger-service\"} 0.0007029969983705087"
+    },
+    "baggage_metrics": {
+      "status": 200,
+      "elapsed_ms": 22.7,
+      "body": "service_tick_processing_seconds_bucket{le=\"0.001\",service=\"baggage-service\"} 0.0\nservice_tick_processing_seconds_bucket{le=\"0.005\",service=\"baggage-service\"} 0.0\nservice_tick_processing_seconds_bucket{le=\"0.01\",service=\"baggage-service\"} 0.0\nservice_tick_processing_seconds_bucket{le=\"0.025\",service=\"baggage-service\"} 27.0\nservice_tick_processing_seconds_bucket{le=\"0.05\",service=\"baggage-service\"} 118.0\nservice_tick_processing_seconds_bucket{le=\"0.1\",service=\"baggage-service\"} 176.0\nservice_tick_processing_seconds_bucket{le=\"0.25\",service=\"baggage-service\"} 196.0\nservice_tick_processing_seconds_bucket{le=\"0.5\",service=\"baggage-service\"} 198.0\nservice_tick_processing_seconds_bucket{le=\"1.0\",service=\"baggage-service\"} 199.0\nservice_tick_processing_seconds_bucket{le=\"2.5\",service=\"baggage-service\"} 199.0\nservice_tick_processing_seconds_bucket{le=\"5.0\",service=\"baggage-service\"} 199.0\nservice_tick_processing_seconds_bucket{le=\"+Inf\",service=\"baggage-service\"} 199.0\nservice_tick_processing_seconds_count{service=\"baggage-service\"} 199.0\nservice_tick_processing_seconds_sum{service=\"baggage-service\"} 11.648342570993918\nservice_tick_processing_seconds_created{service=\"baggage-service\"} 1.7949078573803828e+09"
+    },
+    "analysis_metrics": {
+      "status": 200,
+      "elapsed_ms": 29.3,
+      "body": ""
+    }
+  },
+  "sim_time": "2024-06-15T22:24:00",
+  "source_hashes": {
+    "/app/kafka/consumer.py": "f1bbfda71fcbc8132c150bbfd71299159c59100c531c8c7315f28b85572a32c6",
+    "/app/_common/seed_requests.py": "82925696cc51a627ad210f4d603488eb1ab3d680904e4a9f5663dc72aa65c0f8",
+    "/app/_common/flight_view.py": "9b05c8af82b6b90a695ad0ab00a03e4582f83f12a72fc5b48e6d312a8430f181"
+  }
+}

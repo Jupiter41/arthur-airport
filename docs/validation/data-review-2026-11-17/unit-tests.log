@@ -1,0 +1,140 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/chevallier/Documents/dev/PERSOS/arthur-airport
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1470 items
+
+tests/unit/test_accounting_policy.py ..........                          [  0%]
+tests/unit/test_action_execution.py ........                             [  1%]
+tests/unit/test_aircraft_single_source.py .....                          [  1%]
+tests/unit/test_analysis_apply.py ..........                             [  2%]
+tests/unit/test_analysis_autonomous_routing.py ........                  [  2%]
+tests/unit/test_analysis_detectors.py .................................. [  5%]
+...                                                                      [  5%]
+tests/unit/test_analysis_discovery.py .....                              [  5%]
+tests/unit/test_analysis_outcome.py .....................                [  7%]
+tests/unit/test_analysis_projection.py ....................              [  8%]
+tests/unit/test_analysis_ranking.py .....                                [  8%]
+tests/unit/test_analysis_recommender.py ..............                   [  9%]
+tests/unit/test_analysis_state.py .......................                [ 11%]
+tests/unit/test_approval_queue.py ...............................        [ 13%]
+tests/unit/test_baggage_batch_persistence.py .........                   [ 14%]
+tests/unit/test_baggage_commands.py ............                         [ 14%]
+tests/unit/test_baggage_conveyor.py ........................             [ 16%]
+tests/unit/test_baggage_conveyor_spatial.py .......                      [ 16%]
+tests/unit/test_baggage_g1_closeout.py ....................              [ 18%]
+tests/unit/test_baggage_outbox.py .......                                [ 18%]
+tests/unit/test_baggage_screening.py ........                            [ 19%]
+tests/unit/test_baggage_spatial.py ................                      [ 20%]
+tests/unit/test_baggage_transfer.py ...                                  [ 20%]
+tests/unit/test_command_receipts.py ....................                 [ 21%]
+tests/unit/test_consumer_burst_recovery.py ......                        [ 22%]
+tests/unit/test_consumer_loop.py ................                        [ 23%]
+tests/unit/test_cost_engine.py ......................................... [ 26%]
+................                                                         [ 27%]
+tests/unit/test_cost_ledger.py .......................                   [ 28%]
+tests/unit/test_cost_p1_p2.py ...........................                [ 30%]
+tests/unit/test_cost_recommendations.py ..............                   [ 31%]
+tests/unit/test_data_source_registry.py ...............................  [ 33%]
+tests/unit/test_decision_history.py .......                              [ 34%]
+tests/unit/test_docker_storage.py ......                                 [ 34%]
+tests/unit/test_event_chain_contracts.py .........................       [ 36%]
+tests/unit/test_financial_rates.py .........                             [ 37%]
+tests/unit/test_financial_report_routes.py ............                  [ 37%]
+tests/unit/test_flight_clock_readiness.py ..                             [ 37%]
+tests/unit/test_flight_commands.py .....................                 [ 39%]
+tests/unit/test_flight_decisions.py ..........................           [ 41%]
+tests/unit/test_flight_outbox.py .................                       [ 42%]
+tests/unit/test_flight_runway_queue.py ...............                   [ 43%]
+tests/unit/test_flight_state_machine.py ................................ [ 45%]
+........................                                                 [ 47%]
+tests/unit/test_flow_projection.py ...                                   [ 47%]
+tests/unit/test_gate_assignment.py ...........                           [ 48%]
+tests/unit/test_ground_vehicle_trips.py .....                            [ 48%]
+tests/unit/test_idempotency.py .....................                     [ 49%]
+tests/unit/test_incident_cascade.py ...............                      [ 50%]
+tests/unit/test_incident_commands.py .............                       [ 51%]
+tests/unit/test_incident_lifecycle.py ...................                [ 53%]
+tests/unit/test_incident_ownership.py ......                             [ 53%]
+tests/unit/test_incident_protocols.py .........                          [ 54%]
+tests/unit/test_incident_recovery.py .........                           [ 54%]
+tests/unit/test_live_validation.py .                                     [ 54%]
+tests/unit/test_metric_contract.py .......................               [ 56%]
+tests/unit/test_operational_constants_single_source.py ..........        [ 57%]
+tests/unit/test_outbox_drain_loop.py .........                           [ 57%]
+tests/unit/test_outcome_attribution.py .........                         [ 58%]
+tests/unit/test_owner_command_execution.py .............                 [ 59%]
+tests/unit/test_owner_transaction_scope.py .........                     [ 59%]
+tests/unit/test_passenger_bounded_reads.py ....                          [ 60%]
+tests/unit/test_passenger_connections.py .........................       [ 61%]
+tests/unit/test_passenger_forecast.py ......                             [ 62%]
+tests/unit/test_passenger_g1_closeout.py ....................            [ 63%]
+tests/unit/test_passenger_outbox.py .....                                [ 63%]
+tests/unit/test_passenger_reconciliation.py ................             [ 64%]
+tests/unit/test_passenger_security.py ....................               [ 66%]
+tests/unit/test_passenger_spatial.py .................                   [ 67%]
+tests/unit/test_passenger_state_machine.py ............................. [ 69%]
+.......................                                                  [ 70%]
+tests/unit/test_pax_commands.py ..................                       [ 72%]
+tests/unit/test_pi_metrics.py .....                                      [ 72%]
+tests/unit/test_planning_adapters.py ................................    [ 74%]
+tests/unit/test_planning_engine.py .......................               [ 76%]
+tests/unit/test_planning_fidelity.py ....                                [ 76%]
+tests/unit/test_planning_jobs.py ........                                [ 77%]
+tests/unit/test_planning_outcomes.py .......                             [ 77%]
+tests/unit/test_planning_persistence.py ............                     [ 78%]
+tests/unit/test_planning_training_data.py .....                          [ 78%]
+tests/unit/test_proposal_store.py ...............                        [ 79%]
+tests/unit/test_rc10_source_health.py ......                             [ 80%]
+tests/unit/test_rc4_projections.py ................                      [ 81%]
+tests/unit/test_rc5_passenger_flow.py .........................          [ 82%]
+tests/unit/test_rc6_baggage_capacity.py .............                    [ 83%]
+tests/unit/test_rc7_seed_ownership.py ....                               [ 84%]
+tests/unit/test_rc8_baggage_recovery.py ...........                      [ 84%]
+tests/unit/test_retention.py ...........                                 [ 85%]
+tests/unit/test_rl_training_smoke.py ....                                [ 85%]
+tests/unit/test_runtime_checkpoint.py ..........                         [ 86%]
+tests/unit/test_schema_contract.py ...........................           [ 88%]
+tests/unit/test_security_lane_control.py ..                              [ 88%]
+tests/unit/test_security_teaching_runner.py ....                         [ 88%]
+tests/unit/test_shared_effects.py .................                      [ 89%]
+tests/unit/test_sim_activity_counts.py .                                 [ 90%]
+tests/unit/test_sim_scenario_engine_crud.py ....                         [ 90%]
+tests/unit/test_sim_speed_harness.py ..............                      [ 91%]
+tests/unit/test_spatial.py .....................                         [ 92%]
+tests/unit/test_training_honesty.py .....                                [ 92%]
+tests/unit/test_training_recovery.py ......                              [ 93%]
+tests/unit/test_turnaround_plan.py .................                     [ 94%]
+tests/unit/test_ui_observation_times.py ......                           [ 94%]
+tests/unit/test_watermark.py .........                                   [ 95%]
+tests/unit/test_weather_capacity_metar.py ...................            [ 96%]
+tests/unit/test_weather_fsm.py ...............                           [ 97%]
+tests/unit/test_weather_historical.py ....................               [ 99%]
+tests/unit/test_weather_live_metar.py ...........                        [100%]
+
+=============================== warnings summary ===============================
+tests/unit/test_planning_outcomes.py::test_measured_outcome_is_atomic_idempotent_and_emits_fact
+tests/unit/test_planning_outcomes.py::test_measured_outcome_is_atomic_idempotent_and_emits_fact
+tests/unit/test_planning_outcomes.py::test_measurement_pass_uses_sim_state_and_cost_windows
+  /home/chevallier/Documents/dev/PERSOS/arthur-airport/services/planning-service/audit/audit_trail.py:157: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "produced_at": datetime.utcnow().isoformat() + "+00:00", "sim_time": measured_at,
+
+tests/unit/test_planning_outcomes.py::test_measured_outcome_is_atomic_idempotent_and_emits_fact
+tests/unit/test_planning_persistence.py::test_audit_accuracy_compares_only_measured_recommendations
+tests/unit/test_planning_persistence.py::test_audit_accuracy_compares_only_measured_recommendations
+  /home/chevallier/Documents/dev/PERSOS/arthur-airport/services/planning-service/audit/audit_trail.py:42: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+
+tests/unit/test_planning_training_data.py::test_delay_training_reports_synthetic_source_and_no_undefined_auc
+  /home/chevallier/Documents/dev/PERSOS/arthur-airport/.venv/lib/python3.12/site-packages/lightgbm/sklearn.py:1106: LGBMDeprecationWarning: The argument 'eval_set' is deprecated, use 'eval_X' and 'eval_y' instead.
+    eval_set = _validate_eval_set_Xy(eval_set=eval_set, eval_X=eval_X, eval_y=eval_y)
+
+tests/unit/test_planning_training_data.py::test_delay_training_reports_synthetic_source_and_no_undefined_auc
+  /home/chevallier/Documents/dev/PERSOS/arthur-airport/.venv/lib/python3.12/site-packages/sklearn/metrics/_ranking.py:469: UndefinedMetricWarning: Only one class is present in y_true. ROC AUC score is not defined in that case.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/chevallier/Documents/dev/PERSOS/arthur-airport/docs/validation/data-review-2026-11-17/unit-tests.xml -
+====================== 1470 passed, 8 warnings in 33.73s =======================

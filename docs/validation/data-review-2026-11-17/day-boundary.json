@@ -1,0 +1,57 @@
+{
+  "clock": "2024-06-15T23:42:00+00:00",
+  "days": [
+    {
+      "day": "2024-06-15",
+      "ready": true
+    },
+    {
+      "day": "2024-06-16",
+      "ready": true
+    }
+  ],
+  "batches": [
+    {
+      "day": "2024-06-15",
+      "owner": "baggage",
+      "pending": false,
+      "n": 128
+    },
+    {
+      "day": "2024-06-15",
+      "owner": "flight",
+      "pending": false,
+      "n": 1
+    },
+    {
+      "day": "2024-06-15",
+      "owner": "passenger",
+      "pending": false,
+      "n": 142
+    },
+    {
+      "day": "2024-06-16",
+      "owner": "baggage",
+      "pending": false,
+      "n": 113
+    },
+    {
+      "day": "2024-06-16",
+      "owner": "baggage",
+      "pending": true,
+      "n": 7
+    },
+    {
+      "day": "2024-06-16",
+      "owner": "flight",
+      "pending": false,
+      "n": 1
+    },
+    {
+      "day": "2024-06-16",
+      "owner": "passenger",
+      "pending": false,
+      "n": 135
+    }
+  ]
+}

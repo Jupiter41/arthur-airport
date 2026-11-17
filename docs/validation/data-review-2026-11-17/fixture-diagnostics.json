@@ -1,0 +1,27 @@
+{
+  "fence_prepare": {
+    "returncode": 0,
+    "stdout": "{\"prepared\": true}\n",
+    "stderr": " Container art-data-review-planning-service-run-c70088587f90 Creating \n Container art-data-review-planning-service-run-c70088587f90 Created \n"
+  },
+  "fence_metadata_expectation_updated": {
+    "returncode": 0,
+    "stdout": "{\"validated\": \"fence\"}\n",
+    "stderr": " Container art-data-review-planning-service-run-e990fc41a952 Creating \n Container art-data-review-planning-service-run-e990fc41a952 Created \n"
+  },
+  "atomic_prepare": {
+    "returncode": 0,
+    "stdout": "{\"prepared\": true}\n",
+    "stderr": " Container art-data-review-planning-service-run-a7b946be4421 Creating \n Container art-data-review-planning-service-run-a7b946be4421 Created \n"
+  },
+  "atomic_metadata_expectation_updated": {
+    "returncode": 0,
+    "stdout": "{\"validated\": \"atomic\"}\n",
+    "stderr": " Container art-data-review-planning-service-run-bc1a51dd7e55 Creating \n Container art-data-review-planning-service-run-bc1a51dd7e55 Created \n"
+  },
+  "boarding_fixture_with_bootstrapped_view": {
+    "returncode": 0,
+    "stdout": "",
+    "stderr": " Container art-data-review-passenger-service-run-7b636c630914 Creating \n Container art-data-review-passenger-service-run-7b636c630914 Created \nReceived notification from DBMS server: <GqlStatusObject gql_status='01N00', status_description='warn: feature deprecated. CALL subquery without a variable scope clause is deprecated. Use CALL (f) { ... }', position=<SummaryInputPosition line=4, column=9, offset=72>, raw_classification='DEPRECATION', classification=<NotificationClassification.DEPRECATION: 'DEPRECATION'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'DEPRECATION', '_severity': 'WARNING', '_position': {'offset': 72, 'line': 4, 'column': 9}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: '\\n        UNWIND $fids AS fid\\n        MATCH (f:Flight {id: fid})\\n        CALL { WITH f MATCH (p:Passenger)-[:ON_FLIGHT]->(f) WHERE p.status = $status RETURN p }\\n        \\n        RETURN p.id AS id, p.name AS name, f.id AS flight_id,\\n               p.special_assistance AS special_assistance,\\n               p.location_zone AS location_zone,\\n               p.dwell_minutes AS dwell_minutes,\\n               p.airside_at AS airside_at,\\n               p.deplaning_at AS deplaning_at,\\n               p.baggage_claim_at AS baggage_claim_at,\\n               p.customs_at AS customs_at,\\n               p.show_up_at AS show_up_at,\\n               p.connection AS connection,\\n               p.connection_flight_id AS connection_flight_id\\n    '\nReceived notification from DBMS server: <GqlStatusObject gql_status='01N00', status_description='warn: feature deprecated. CALL subquery without a variable scope clause is deprecated. Use CALL (f) { ... }', position=<SummaryInputPosition line=4, column=9, offset=72>, raw_classification='DEPRECATION', classification=<NotificationClassification.DEPRECATION: 'DEPRECATION'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'DEPRECATION', '_severity': 'WARNING', '_position': {'offset': 72, 'line': 4, 'column': 9}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: '\\n        UNWIND $fids AS fid\\n        MATCH (f:Flight {id: fid})\\n        CALL { WITH f MATCH (p:Passenger)-[:ON_FLIGHT]->(f) WHERE p.status = $status RETURN p }\\n        \\n        RETURN p.id AS id, p.name AS name, f.id AS flight_id,\\n               p.special_assistance AS special_assistance,\\n               p.location_zone AS location_zone,\\n               p.dwell_minutes AS dwell_minutes,\\n               p.airside_at AS airside_at,\\n               p.deplaning_at AS deplaning_at,\\n               p.baggage_claim_at AS baggage_claim_at,\\n               p.customs_at AS customs_at,\\n               p.show_up_at AS show_up_at,\\n               p.connection AS connection,\\n               p.connection_flight_id AS connection_flight_id\\n    '\n"
+  }
+}

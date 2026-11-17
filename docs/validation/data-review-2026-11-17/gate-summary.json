@@ -1,0 +1,33 @@
+{
+  "unit-tests": {
+    "tests": 1470,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "live-rest-tests": {
+    "tests": 68,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "isolated-integration-repeat": {
+    "tests": 142,
+    "failures": 3,
+    "errors": 0,
+    "skipped": 0
+  },
+  "live-transactions": {
+    "tests": 36,
+    "failures": 2,
+    "errors": 0,
+    "skipped": 0
+  },
+  "checkout": "0ae109a",
+  "closure": "blocked",
+  "application_workarounds_in_full_stack": [
+    "explicit seed-existence Cypher grouping",
+    "allow airborne in passenger repository statuses"
+  ],
+  "application_sources_modified": false
+}

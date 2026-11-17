@@ -1,0 +1,14 @@
+[
+  {
+    "flight_status": "diverted",
+    "bags": 887,
+    "oldest": "2024-06-17T17:10:00",
+    "newest": "2024-06-22T07:55:00"
+  },
+  {
+    "flight_status": "arrived",
+    "bags": 144,
+    "oldest": "2024-06-23T04:25:00",
+    "newest": "2024-06-23T04:25:00"
+  }
+]

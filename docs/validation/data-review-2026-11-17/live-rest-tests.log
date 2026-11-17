@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/chevallier/Documents/dev/PERSOS/arthur-airport
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 68 items
+
+tests/integration/test_rest_endpoints.py ............................... [ 45%]
+..............                                                           [ 66%]
+tests/integration/test_dashboard_proxy.py ..                             [ 69%]
+tests/integration/test_cost_endpoints.py .....................           [100%]
+
+- generated xml file: /home/chevallier/Documents/dev/PERSOS/arthur-airport/docs/validation/data-review-2026-11-17/live-rest-tests.xml -
+============================== 68 passed in 9.87s ==============================

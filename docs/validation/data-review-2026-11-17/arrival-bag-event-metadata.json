@@ -1,0 +1,46 @@
+{
+  "counts": [
+    {
+      "status": "on_carousel",
+      "has_passenger": true,
+      "n": 491
+    },
+    {
+      "status": "collected",
+      "has_passenger": true,
+      "n": 491
+    }
+  ],
+  "examples": [
+    {
+      "baggage_id": "57b637c3-f4e6-4820-8e22-3922d2dc46a8",
+      "tag": "4907049996",
+      "passenger_id": "3e97acf2-862d-46c4-a200-62bac57bc652",
+      "flight_id": "73dd99be-3796-43b0-8309-5563bb9df6ac",
+      "previous_status": "arrived",
+      "new_status": "on_carousel",
+      "scan_zone": "arrival-belt-1",
+      "at": "2024-06-15T16:08:00"
+    },
+    {
+      "baggage_id": "57b637c3-f4e6-4820-8e22-3922d2dc46a8",
+      "tag": "4907049996",
+      "passenger_id": "3e97acf2-862d-46c4-a200-62bac57bc652",
+      "flight_id": "73dd99be-3796-43b0-8309-5563bb9df6ac",
+      "previous_status": "on_carousel",
+      "new_status": "collected",
+      "scan_zone": "arrival-belt-1",
+      "at": "2024-06-15T16:08:00"
+    },
+    {
+      "baggage_id": "4c4c6bef-1c13-478d-a995-e3e66c75e5ba",
+      "tag": "4907049914",
+      "passenger_id": "ff902527-6036-490b-977d-21cbb0b8c380",
+      "flight_id": "73dd99be-3796-43b0-8309-5563bb9df6ac",
+      "previous_status": "arrived",
+      "new_status": "on_carousel",
+      "scan_zone": "arrival-belt-1",
+      "at": "2024-06-15T16:08:00"
+    }
+  ]
+}

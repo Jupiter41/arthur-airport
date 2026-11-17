@@ -1,0 +1,60 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/chevallier/Documents/dev/PERSOS/arthur-airport
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 36 items
+
+tests/live_transactions/test_domain_transactions.py ..F................. [ 55%]
+.......F                                                                 [ 77%]
+tests/live_transactions/test_projection_recovery.py ........             [100%]
+
+=================================== FAILURES ===================================
+______ test_partial_tick_rolls_back_domain_checkpoint_and_outbox[baggage] ______
+tests/live_transactions/test_domain_transactions.py:46: in test_partial_tick_rolls_back_domain_checkpoint_and_outbox
+    assert after["entities"] != before["entities"]
+E   AssertionError: assert [{'labels': ['Baggage'], 'p': {'id': 'g1-bag', 'is_dangerous_goods': False, 'status': 'dropped_off', 'tag': '000000000...craft_type': 'A320', 'delay_minutes': 0, 'direction': 'departure', 'estimated_time': '2100-01-01T12:45:00', ...}}, ...] != [{'labels': ['Baggage'], 'p': {'id': 'g1-bag', 'is_dangerous_goods': False, 'status': 'dropped_off', 'tag': '000000000...craft_type': 'A320', 'delay_minutes': 0, 'direction': 'departure', 'estimated_time': '2100-01-01T12:45:00', ...}}, ...]
+____ test_replayed_baggage_tick_retains_new_incident_and_arrival_projection ____
+tests/live_transactions/test_domain_transactions.py:131: in test_replayed_baggage_tick_retains_new_incident_and_arrival_projection
+    worker("baggage", "replay-inputs")
+tests/live_transactions/test_domain_transactions.py:32: in worker
+    assert result.returncode == code, result.stdout + result.stderr
+E   AssertionError:  Container art-data-review-g1-baggage-service-run-53df2a03db3e Creating 
+E      Container art-data-review-g1-baggage-service-run-53df2a03db3e Created 
+E     Received notification from DBMS server: <GqlStatusObject gql_status='01N52', status_description='warn: property key does not exist. The property `owner` does not exist. Verify that the spelling is correct.', position=<SummaryInputPosition line=1, column=21, offset=20>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 20, 'line': 1, 'column': 21}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'MATCH (b:SeedBatch {owner: $owner, pending: true}) RETURN b.id AS id ORDER BY b.id LIMIT 1000'
+E     Received notification from DBMS server: <GqlStatusObject gql_status='01N52', status_description='warn: property key does not exist. The property `pending` does not exist. Verify that the spelling is correct.', position=<SummaryInputPosition line=1, column=36, offset=35>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 35, 'line': 1, 'column': 36}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'MATCH (b:SeedBatch {owner: $owner, pending: true}) RETURN b.id AS id ORDER BY b.id LIMIT 1000'
+E     Received notification from DBMS server: <GqlStatusObject gql_status='01N50', status_description='warn: label does not exist. The label `SeedBatch` does not exist. Verify that the spelling is correct.', position=<SummaryInputPosition line=1, column=10, offset=9>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 9, 'line': 1, 'column': 10}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'MATCH (b:SeedBatch {owner: $owner, pending: true}) RETURN b.id AS id ORDER BY b.id LIMIT 1000'
+E     Received notification from DBMS server: <GqlStatusObject gql_status='01N52', status_description='warn: property key does not exist. The property `current_zone` does not exist. Verify that the spelling is correct.', position=<SummaryInputPosition line=7, column=41, offset=300>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 300, 'line': 7, 'column': 41}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: "\n    MATCH (b:Baggage)\n    WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived', 'offloaded']\n    OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)\n    OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)\n    RETURN b.id AS id, b.tag AS tag, b.status AS status,\n           coalesce(b.last_scan_zone, b.current_zone) AS current_zone,\n           b.last_scan_at AS last_scan_at, f.id AS flight_id,\n           b.is_dangerous_goods AS is_dg, b.dg_class AS dg_class,\n           p.id AS passenger_id\n    "
+E     Received notification from DBMS server: <GqlStatusObject gql_status='01N52', status_description='warn: property key does not exist. The property `dg_class` does not exist. Verify that the spelling is correct.', position=<SummaryInputPosition line=9, column=45, offset=437>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 437, 'line': 9, 'column': 45}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: "\n    MATCH (b:Baggage)\n    WHERE b.status IN ['inducted', 'screening', 'sorting', 'arrived', 'offloaded']\n    OPTIONAL MATCH (b)-[:LOADED_ON]->(f:Flight)\n    OPTIONAL MATCH (p:Passenger)-[:CARRIES]->(b)\n    RETURN b.id AS id, b.tag AS tag, b.status AS status,\n           coalesce(b.last_scan_zone, b.current_zone) AS current_zone,\n           b.last_scan_at AS last_scan_at, f.id AS flight_id,\n           b.is_dangerous_goods AS is_dg, b.dg_class AS dg_class,\n           p.id AS passenger_id\n    "
+E     Zone induction-A set OFFLINE due to system_failure at power-A
+E     Zone screening-unit-1 set OFFLINE due to system_failure at power-A
+E     Zone screening-unit-2 set OFFLINE due to system_failure at power-A
+E     Received notification from DBMS server: <GqlStatusObject gql_status='01N52', status_description='warn: property key does not exist. The property `owner` does not exist. Verify that the spelling is correct.', position=<SummaryInputPosition line=1, column=21, offset=20>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 20, 'line': 1, 'column': 21}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'MATCH (b:SeedBatch {owner: $owner, pending: true}) RETURN b.id AS id ORDER BY b.id LIMIT 1000'
+E     Received notification from DBMS server: <GqlStatusObject gql_status='01N52', status_description='warn: property key does not exist. The property `pending` does not exist. Verify that the spelling is correct.', position=<SummaryInputPosition line=1, column=36, offset=35>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 35, 'line': 1, 'column': 36}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'MATCH (b:SeedBatch {owner: $owner, pending: true}) RETURN b.id AS id ORDER BY b.id LIMIT 1000'
+E     Received notification from DBMS server: <GqlStatusObject gql_status='01N50', status_description='warn: label does not exist. The label `SeedBatch` does not exist. Verify that the spelling is correct.', position=<SummaryInputPosition line=1, column=10, offset=9>, raw_classification='UNRECOGNIZED', classification=<NotificationClassification.UNRECOGNIZED: 'UNRECOGNIZED'>, raw_severity='WARNING', severity=<NotificationSeverity.WARNING: 'WARNING'>, diagnostic_record={'_classification': 'UNRECOGNIZED', '_severity': 'WARNING', '_position': {'offset': 9, 'line': 1, 'column': 10}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}> for query: 'MATCH (b:SeedBatch {owner: $owner, pending: true}) RETURN b.id AS id ORDER BY b.id LIMIT 1000'
+E     Traceback (most recent call last):
+E       File "/g1-tests/worker.py", line 277, in <module>
+E         asyncio.run(main())
+E       File "/usr/local/lib/python3.11/asyncio/runners.py", line 190, in run
+E         return runner.run(main)
+E                ^^^^^^^^^^^^^^^^
+E       File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+E         return self._loop.run_until_complete(task)
+E                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+E         return future.result()
+E                ^^^^^^^^^^^^^^^
+E       File "/g1-tests/worker.py", line 250, in main
+E         assert any(b.baggage_id == "g1-arrived" for b in
+E                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E     AssertionError
+E     
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['docker', 'compose', 'run', '--rm', '-T', '--no-deps', '-v', '/home/chevallier/Documents/dev/PE...t any(b.baggage_id == "g1-arrived" for b in\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n\n').returncode
+- generated xml file: /home/chevallier/Documents/dev/PERSOS/arthur-airport/docs/validation/data-review-2026-11-17/live-transactions.xml -
+=========================== short test summary info ============================
+FAILED tests/live_transactions/test_domain_transactions.py::test_partial_tick_rolls_back_domain_checkpoint_and_outbox[baggage]
+FAILED tests/live_transactions/test_domain_transactions.py::test_replayed_baggage_tick_retains_new_incident_and_arrival_projection
+=================== 2 failed, 34 passed in 465.37s (0:07:45) ===================

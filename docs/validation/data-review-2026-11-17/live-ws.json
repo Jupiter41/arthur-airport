@@ -1,0 +1,250 @@
+{
+  "duration_s": 45,
+  "counts": {
+    "snapshot": 1,
+    "subscribed": 1,
+    "FlightStatusChanged": 104,
+    "BaggageStatusBatchChanged": 39,
+    "BaggageZoneSnapshot": 39,
+    "PassengerStatusBatchChanged": 39,
+    "SecurityQueueUpdated": 117,
+    "GroundVehicleSnapshot": 40,
+    "CostRecorded": 24,
+    "SimClockTick": 40,
+    "BaggageFlagged": 17,
+    "IncidentAlert": 5,
+    "IncidentCreated": 3,
+    "IncidentCascaded": 2,
+    "FlightGateAssigned": 19,
+    "ping": 3,
+    "IncidentStatusChanged": 2
+  },
+  "bytes": 837073,
+  "first": {
+    "keys": [
+      "type",
+      "sim_time",
+      "mode",
+      "bootstrap"
+    ],
+    "type": "snapshot"
+  },
+  "sources": {
+    "sources": [
+      {
+        "id": "weather",
+        "name": "Weather Data",
+        "service": "weather-service",
+        "type": "weather",
+        "current_source": "simulated",
+        "available_sources": [
+          "simulated",
+          "historical",
+          "live"
+        ],
+        "details": {
+          "current_category": "CAVOK"
+        },
+        "health": {
+          "enabled": true,
+          "items": 1,
+          "last_ingest_at": "2026-11-17T09:11:12.025121Z",
+          "last_ingest_clock": "wall",
+          "last_observation_at": "2024-06-22T15:00:00",
+          "last_observation_clock": "sim",
+          "last_error": null,
+          "last_error_at": null,
+          "last_error_clock": "wall"
+        },
+        "status": "active",
+        "status_reason": "fresh",
+        "last_updated": "2024-06-22T15:00:00",
+        "last_updated_clock": "sim"
+      },
+      {
+        "id": "flights-adsb",
+        "name": "ADS-B Live Flights",
+        "service": "flight-service",
+        "type": "flights",
+        "current_source": "disabled",
+        "available_sources": [
+          "disabled",
+          "adsb.lol",
+          "opensky",
+          "synthetic"
+        ],
+        "details": {
+          "aircraft_count": 0
+        },
+        "health": {
+          "enabled": false,
+          "items": null,
+          "last_ingest_at": null,
+          "last_ingest_clock": "wall",
+          "last_observation_at": null,
+          "last_observation_clock": "sim",
+          "last_error": null,
+          "last_error_at": null,
+          "last_error_clock": "wall"
+        },
+        "status": "disabled",
+        "status_reason": "disabled by configuration",
+        "last_updated": null,
+        "last_updated_clock": null
+      },
+      {
+        "id": "flights-sim",
+        "name": "Simulated Flights",
+        "service": "sim-orchestrator",
+        "type": "flights",
+        "current_source": "simulation",
+        "available_sources": [
+          "simulation"
+        ],
+        "details": {
+          "speed_multiplier": 60,
+          "paused": false,
+          "day_number": 8,
+          "flights_today": 420
+        },
+        "health": {
+          "enabled": true,
+          "last_observation_at": "2024-06-22T15:50:00+00:00"
+        },
+        "status": "active",
+        "status_reason": "fresh",
+        "last_updated": "2024-06-22T15:50:00+00:00",
+        "last_updated_clock": "sim"
+      },
+      {
+        "id": "passengers",
+        "name": "Passenger Flow",
+        "service": "passenger-service",
+        "type": "passengers",
+        "current_source": "simulation",
+        "available_sources": [
+          "simulation",
+          "bts_historical"
+        ],
+        "details": {
+          "total_in_airport": 4978,
+          "status_counts": {
+            "airborne": 8939,
+            "airside": 1539,
+            "at_gate": 952,
+            "baggage_claim": 1797,
+            "boarded": 1460,
+            "booked": 7588,
+            "checked_in": 366,
+            "departed_airport": 69715,
+            "deplaning": 323,
+            "missed_connection": 33,
+            "missed_flight": 233,
+            "security_queue": 1
+          }
+        },
+        "health": {
+          "enabled": true,
+          "items": null,
+          "last_ingest_at": null,
+          "last_ingest_clock": "wall",
+          "last_observation_at": "2024-06-22T15:50:00",
+          "last_observation_clock": "sim",
+          "last_error": null,
+          "last_error_at": null,
+          "last_error_clock": "wall"
+        },
+        "status": "active",
+        "status_reason": "fresh",
+        "last_updated": "2024-06-22T15:50:00",
+        "last_updated_clock": "sim"
+      },
+      {
+        "id": "baggage",
+        "name": "Baggage Handling",
+        "service": "baggage-service",
+        "type": "baggage",
+        "current_source": "simulation",
+        "available_sources": [
+          "simulation"
+        ],
+        "details": {
+          "total_in_system": 57881,
+          "by_status": {
+            "collected": 25734,
+            "dropped_off": 7046,
+            "flagged": 1093,
+            "in_hold": 45965,
+            "inducted": 531,
+            "loaded": 3116,
+            "screening": 80,
+            "sorting": 50
+          },
+          "sim_time": "2024-06-22T15:50:00"
+        },
+        "health": {
+          "enabled": true,
+          "last_observation_at": "2024-06-22T15:50:00"
+        },
+        "status": "active",
+        "status_reason": "fresh",
+        "last_updated": "2024-06-22T15:50:00",
+        "last_updated_clock": "sim"
+      },
+      {
+        "id": "infrastructure",
+        "name": "Airport Infrastructure",
+        "service": "config",
+        "type": "infrastructure",
+        "current_source": "ourairports",
+        "available_sources": [
+          "ourairports"
+        ],
+        "details": {
+          "description": "Offline fixture data — runways, frequencies, navaids from OurAirports open dataset"
+        },
+        "status": "active",
+        "status_reason": "static reference data",
+        "last_updated": null,
+        "last_updated_clock": null,
+        "health": null
+      },
+      {
+        "id": "incidents",
+        "name": "Incident Calibration",
+        "service": "sim-orchestrator",
+        "type": "incidents",
+        "current_source": "simulated",
+        "available_sources": [
+          "simulated",
+          "asrs_historical"
+        ],
+        "details": {
+          "active": "simulated",
+          "available": [
+            {
+              "id": "simulated",
+              "label": "Simulated (default)",
+              "description": "Heuristic probabilities tuned for visible incidents during demonstration runs.",
+              "source": null
+            },
+            {
+              "id": "asrs_historical",
+              "label": "FAA ASRS calibrated",
+              "description": "Per-hour probabilities derived from FAA Aviation Safety Reporting System (ASRS) public summaries 2022–2024, normalised against ART nominal traffic (~40 movements/peak-hour). Adds bird strike and medical emergency categories observed in the dataset.",
+              "source": "https://asrs.arc.nasa.gov/search/database.html"
+            }
+          ]
+        },
+        "status": "active",
+        "status_reason": "static reference data",
+        "last_updated": null,
+        "last_updated_clock": null,
+        "health": null
+      }
+    ],
+    "timestamp": "2026-11-17T09:12:02.192Z",
+    "timestamp_clock": "wall",
+    "sim_time": "2024-06-22T15:50:00+00:00"
+  }
+}

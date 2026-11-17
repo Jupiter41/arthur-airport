@@ -1,0 +1,42 @@
+{
+  "flight": {
+    "ready": true,
+    "status": 200
+  },
+  "passenger": {
+    "ready": true,
+    "status": 200
+  },
+  "baggage": {
+    "ready": true,
+    "status": 200
+  },
+  "weather": {
+    "ready": true,
+    "status": 200
+  },
+  "incident": {
+    "ready": true,
+    "status": 200
+  },
+  "sim": {
+    "ready": true,
+    "status": 200
+  },
+  "analysis": {
+    "ready": true,
+    "status": 200
+  },
+  "cost": {
+    "ready": true,
+    "status": 200
+  },
+  "planning": {
+    "ready": false,
+    "error": "HTTPConnectionPool(host='localhost', port=18009): Max retries exceeded with url: /ready (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=18009): Failed to establish a new connection: [Errno 111] Connection refused\"))"
+  },
+  "gateway": {
+    "ready": false,
+    "status": 503
+  }
+}

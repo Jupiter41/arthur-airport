@@ -1,0 +1,53 @@
+{
+  "clock": "2024-06-22T21:53:00+00:00",
+  "missed_connection_history": [
+    {
+      "day": "2024-06-18",
+      "n": 3,
+      "oldest": "2024-06-18T15:51:00"
+    },
+    {
+      "day": "2024-06-19",
+      "n": 8,
+      "oldest": "2024-06-19T05:21:00"
+    },
+    {
+      "day": "2024-06-20",
+      "n": 2,
+      "oldest": "2024-06-20T05:02:00"
+    },
+    {
+      "day": "2024-06-21",
+      "n": 4,
+      "oldest": "2024-06-21T07:54:00"
+    },
+    {
+      "day": "2024-06-22",
+      "n": 21,
+      "oldest": "2024-06-22T05:04:00"
+    }
+  ],
+  "old_terminal_missed_connections": [
+    {
+      "n": 17
+    }
+  ],
+  "settings": [
+    {
+      "name": "db.memory.transaction.total.max",
+      "value": "0B"
+    },
+    {
+      "name": "db.tx_log.rotation.retention_policy",
+      "value": "256M size"
+    },
+    {
+      "name": "server.memory.heap.max_size",
+      "value": "2.00GiB"
+    },
+    {
+      "name": "server.memory.pagecache.size",
+      "value": "2.00GiB"
+    }
+  ]
+}

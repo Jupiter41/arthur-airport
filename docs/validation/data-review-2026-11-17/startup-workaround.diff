@@ -1,0 +1,9 @@
+--- current services/sim-orchestrator/services/seeder.py
++++ disposable validation copy only
+-RETURN CASE WHEN d.ready = true THEN 1 ELSE count(f) END AS cnt
++WITH d, count(f) AS n RETURN CASE WHEN d.ready = true THEN 1 ELSE n END AS cnt
+
+--- current services/passenger-service/db/neo4j.py
++++ disposable validation copy only
+-_VALID_STATUSES: booked, checked_in, ..., boarded, deplaning, ...
++_VALID_STATUSES: booked, checked_in, ..., boarded, airborne, deplaning, ...

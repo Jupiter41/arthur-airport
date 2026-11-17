@@ -1,0 +1,64 @@
+{
+  "flight-service": {
+    "checked_files": 25,
+    "different": [
+      "services/flight-service/kafka/consumer.py",
+      "services/flight-service/services/state_machine.py"
+    ],
+    "identical": 23
+  },
+  "passenger-service": {
+    "checked_files": 31,
+    "different": [
+      "services/passenger-service/db/neo4j.py",
+      "services/passenger-service/kafka/consumer.py",
+      "services/passenger-service/services/reconciliation.py"
+    ],
+    "identical": 28
+  },
+  "baggage-service": {
+    "checked_files": 21,
+    "different": [
+      "services/baggage-service/kafka/consumer.py",
+      "services/baggage-service/services/offload.py"
+    ],
+    "identical": 19
+  },
+  "sim-orchestrator": {
+    "checked_files": 31,
+    "different": [
+      "services/sim-orchestrator/db/neo4j.py",
+      "services/sim-orchestrator/kafka/producer.py",
+      "services/sim-orchestrator/services/passengers.py",
+      "services/sim-orchestrator/services/schedule.py",
+      "services/sim-orchestrator/services/baggage.py",
+      "services/sim-orchestrator/services/seeder.py"
+    ],
+    "identical": 25
+  },
+  "weather-service": {
+    "checked_files": 18,
+    "different": [],
+    "identical": 18
+  },
+  "incident-service": {
+    "checked_files": 18,
+    "different": [],
+    "identical": 18
+  },
+  "analysis-service": {
+    "checked_files": 44,
+    "different": [],
+    "identical": 44
+  },
+  "cost-service": {
+    "checked_files": 19,
+    "different": [],
+    "identical": 19
+  },
+  "planning-service": {
+    "checked_files": 41,
+    "different": [],
+    "identical": 41
+  }
+}

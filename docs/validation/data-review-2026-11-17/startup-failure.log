@@ -1,0 +1,81 @@
+{"log_level": "INFO", "event": "structured logging initialised", "service": "sim-orchestrator", "level": "info", "logger": "sim-orchestrator", "timestamp": "2026-11-17T09:08:54.053097Z"}
+{"event": "OpenTelemetry tracing disabled (OTEL_ENABLED=false)", "service": "sim-orchestrator", "level": "info", "logger": "_common._tracing", "timestamp": "2026-11-17T09:08:54.062428Z"}
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+{"event": "Airport config loaded: Arthur International Airport (ART/KART)", "service": "sim-orchestrator", "level": "info", "logger": "sim-orchestrator", "timestamp": "2026-11-17T09:08:54.097653Z"}
+{"event": "Loaded fixture: airlines (15 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.097921Z"}
+{"event": "Loaded fixture: aircraft_types (9 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.098046Z"}
+{"event": "Loaded fixture: destinations (62 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.098303Z"}
+{"event": "Loaded fixture: first_names (777 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.098476Z"}
+{"event": "Loaded fixture: surnames (539 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.098604Z"}
+{"event": "Loaded fixture: nationalities (40 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.098720Z"}
+{"event": "Loaded fixture: dg_classes (4 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.098820Z"}
+{"event": "Loaded fixture: events (10 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.098934Z"}
+{"event": "Loaded fixture: incident_calibrations (2 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.099032Z"}
+{"event": "Loaded fixture: layout (7 items)", "service": "sim-orchestrator", "level": "info", "logger": "services.fixtures", "timestamp": "2026-11-17T09:08:54.099150Z"}
+{"positional_args": [555, 118, 2, 0.7174], "event": "BTS parsed %d records \u2192 %d unique routes, %d months, global LF=%.3f", "service": "sim-orchestrator", "level": "info", "logger": "services.bts_calibration", "timestamp": "2026-11-17T09:08:54.105627Z"}
+{"positional_args": [118, 0.7174, "PosixPath('/app/data/bts/T100_reference.csv')"], "event": "BTS calibration loaded: %d routes, global load factor %.3f from %s", "service": "sim-orchestrator", "level": "info", "logger": "services.bts_calibration", "timestamp": "2026-11-17T09:08:54.105837Z"}
+{"event": "BTS calibration active: 118 routes, global LF=0.717", "service": "sim-orchestrator", "level": "info", "logger": "sim-orchestrator", "timestamp": "2026-11-17T09:08:54.105961Z"}
+{"event": "Neo4j driver initialized", "service": "sim-orchestrator", "level": "info", "logger": "_common.neo4j_client", "timestamp": "2026-11-17T09:08:54.120215Z"}
+{"event": "Kafka broker reachable", "service": "sim-orchestrator", "level": "info", "logger": "_common.kafka_runtime", "timestamp": "2026-11-17T09:08:54.189354Z"}
+{"event": "Kafka producer initialized", "service": "sim-orchestrator", "level": "info", "logger": "_common.kafka_runtime", "timestamp": "2026-11-17T09:08:54.189670Z"}
+{"event": "Neo4j constraints and indexes created", "service": "sim-orchestrator", "level": "info", "logger": "db.neo4j", "timestamp": "2026-11-17T09:08:54.388830Z"}
+{"event": "Airport structure seeded: 1 Airport, 3 Terminals, 42 Gates, 4 Runways", "service": "sim-orchestrator", "level": "info", "logger": "db.seed", "timestamp": "2026-11-17T09:08:55.348103Z"}
+ERROR:    neo4j.exceptions.GqlError: {gql_status: 42I18} {gql_status_description: error: syntax error or access rule violation - invalid reference to implicitly grouped expressions. The aggregation column contains implicit grouping expressions referenced by the variables `d.ready`. Implicit grouping expressions are variables not explicitly declared as grouping keys.} {message: 42I18: The aggregation column contains implicit grouping expressions referenced by the variables `d.ready`. Implicit grouping expressions are variables not explicitly declared as grouping keys.} {diagnostic_record: {'_classification': 'CLIENT_ERROR', '_position': {'offset': 134, 'column': 135, 'line': 1}, 'OPERATION': '', 'OPERATION_CODE': '0', 'CURRENT_SCHEMA': '/'}} {raw_classification: CLIENT_ERROR}
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 661, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+  File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/app/main.py", line 145, in lifespan
+    await seed_day(sim_day=clock.get_sim_day())
+  File "/app/services/seeder.py", line 66, in seed_day
+    if await _day_already_seeded(sim_date):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/services/seeder.py", line 27, in _day_already_seeded
+    result = await session.run(
+             ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/neo4j/_async/work/session.py", line 338, in run
+    await auto_result._run(
+  File "/usr/local/lib/python3.11/site-packages/neo4j/_async/work/result.py", line 240, in _run
+    await self._attach()
+  File "/usr/local/lib/python3.11/site-packages/neo4j/_async/work/result.py", line 441, in _attach
+    await self._connection.fetch_message()
+  File "/usr/local/lib/python3.11/site-packages/neo4j/_async/io/_common.py", line 204, in inner
+    await coroutine_func(*args, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/neo4j/_async/io/_bolt.py", line 868, in fetch_message
+    res = await self._process_message(tag, fields)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/neo4j/_async/io/_bolt5.py", line 1202, in _process_message
+    await response.on_failure(summary_metadata or {})
+  File "/usr/local/lib/python3.11/site-packages/neo4j/_async/io/_common.py", line 263, in on_failure
+    raise self._hydrate_error(metadata)
+neo4j.exceptions.CypherSyntaxError: {neo4j_code: Neo.ClientError.Statement.SyntaxError} {message: Aggregation column contains implicit grouping expressions. For example, in 'RETURN n.a, n.a + n.b + count(*)' the aggregation expression 'n.a + n.b + count(*)' includes the implicit grouping key 'n.b'. It may be possible to rewrite the query by extracting these grouping/aggregation expressions into a preceding WITH clause. Illegal expression(s): d.ready (line 1, column 135 (offset: 134))
+"OPTIONAL MATCH (d:SeedDay {id: $prefix}) WITH d OPTIONAL MATCH (f:Flight) WHERE f.scheduled_time STARTS WITH $prefix RETURN CASE WHEN d.ready = true THEN 1 ELSE count(f) END AS cnt"
+                                                                                                                                       ^} {gql_status: 42001} {gql_status_description: error: syntax error or access rule violation - invalid syntax}
+
+ERROR:    Application startup failed. Exiting.

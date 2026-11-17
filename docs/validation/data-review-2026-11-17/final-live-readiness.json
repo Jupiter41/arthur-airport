@@ -1,0 +1,12 @@
+{
+  "flight": 200,
+  "passenger": 200,
+  "baggage": 200,
+  "weather": 200,
+  "incident": 200,
+  "sim": 200,
+  "analysis": 200,
+  "cost": 200,
+  "planning": 200,
+  "gateway": 200
+}

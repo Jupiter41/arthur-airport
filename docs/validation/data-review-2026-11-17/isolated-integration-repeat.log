@@ -1,0 +1,87 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/chevallier/Documents/dev/PERSOS/arthur-airport
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 142 items
+
+tests/integration/test_accounting_policy.py ..                           [  1%]
+tests/integration/test_analysis_proposals.py ........                    [  7%]
+tests/integration/test_baggage_pagination.py .                           [  7%]
+tests/integration/test_baggage_review_lookup.py .                        [  8%]
+tests/integration/test_boarding_candidates.py F                          [  9%]
+tests/integration/test_cost_endpoints.py .....................           [ 23%]
+tests/integration/test_dashboard_proxy.py ..                             [ 25%]
+tests/integration/test_e2e_smoke.py .............                        [ 34%]
+tests/integration/test_event_chains.py ............                      [ 42%]
+tests/integration/test_financial_ledger.py .......                       [ 47%]
+tests/integration/test_financial_rates.py ..                             [ 49%]
+tests/integration/test_incident_commands.py ....                         [ 52%]
+tests/integration/test_incident_ranking.py .                             [ 52%]
+tests/integration/test_ldt_execution.py .....                            [ 56%]
+tests/integration/test_owner_seed_requests.py .                          [ 57%]
+tests/integration/test_passenger_pagination.py .                         [ 57%]
+tests/integration/test_planning_jobs.py FF...                            [ 61%]
+tests/integration/test_resilience.py ......                              [ 65%]
+tests/integration/test_rest_endpoints.py ............................... [ 87%]
+..............                                                           [ 97%]
+tests/integration/test_security_projection.py .                          [ 97%]
+tests/integration/test_training_jobs.py ...                              [100%]
+
+=================================== FAILURES ===================================
+________ test_boarding_query_keeps_eligible_states_cutoff_and_metadata _________
+tests/integration/test_boarding_candidates.py:55: in test_boarding_query_keeps_eligible_states_cutoff_and_metadata
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: Traceback (most recent call last):
+E       File "<string>", line 31, in <module>
+E       File "/usr/local/lib/python3.11/asyncio/runners.py", line 190, in run
+E         return runner.run(main)
+E                ^^^^^^^^^^^^^^^^
+E       File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+E         return self._loop.run_until_complete(task)
+E                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+E         return future.result()
+E                ^^^^^^^^^^^^^^^
+E       File "<string>", line 21, in main
+E     AssertionError: []
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['docker', 'compose', 'exec', '-T', 'passenger-service', 'python', '-c', "\nimport asyncio\nfrom...te\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File "<string>", line 21, in main\nAssertionError: []\n').returncode
+__________ test_real_job_lease_fencing_atomicity_and_heartbeat[fence] __________
+tests/integration/test_planning_jobs.py:148: in test_real_job_lease_fencing_atomicity_and_heartbeat
+    assert worker(mode, sid) == {"validated": mode}
+           ^^^^^^^^^^^^^^^^^
+tests/integration/test_planning_jobs.py:140: in worker
+    assert result.returncode == expected_code, result.stdout + result.stderr
+E   AssertionError:  Container art-data-review-planning-service-run-4240cd07670e Creating 
+E      Container art-data-review-planning-service-run-4240cd07670e Created 
+E     Traceback (most recent call last):
+E       File "<string>", line 60, in <module>
+E     AssertionError
+E     
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['docker', 'compose', 'run', '--rm', '-T', '--no-deps', 'planning-service', 'python', '-c', "\ni...240cd07670e Created \nTraceback (most recent call last):\n  File "<string>", line 60, in <module>\nAssertionError\n\n').returncode
+_________ test_real_job_lease_fencing_atomicity_and_heartbeat[atomic] __________
+tests/integration/test_planning_jobs.py:148: in test_real_job_lease_fencing_atomicity_and_heartbeat
+    assert worker(mode, sid) == {"validated": mode}
+           ^^^^^^^^^^^^^^^^^
+tests/integration/test_planning_jobs.py:140: in worker
+    assert result.returncode == expected_code, result.stdout + result.stderr
+E   AssertionError:  Container art-data-review-planning-service-run-d7247be7b794 Creating 
+E      Container art-data-review-planning-service-run-d7247be7b794 Created 
+E     Traceback (most recent call last):
+E       File "<string>", line 80, in <module>
+E     AssertionError
+E     
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['docker', 'compose', 'run', '--rm', '-T', '--no-deps', 'planning-service', 'python', '-c', "\ni...7247be7b794 Created \nTraceback (most recent call last):\n  File "<string>", line 80, in <module>\nAssertionError\n\n').returncode
+- generated xml file: /home/chevallier/Documents/dev/PERSOS/arthur-airport/docs/validation/data-review-2026-11-17/isolated-integration-repeat.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_boarding_candidates.py::test_boarding_query_keeps_eligible_states_cutoff_and_metadata
+FAILED tests/integration/test_planning_jobs.py::test_real_job_lease_fencing_atomicity_and_heartbeat[fence]
+FAILED tests/integration/test_planning_jobs.py::test_real_job_lease_fencing_atomicity_and_heartbeat[atomic]
+================== 3 failed, 139 passed in 407.81s (0:06:47) ===================

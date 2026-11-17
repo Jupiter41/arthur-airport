@@ -1,0 +1,20 @@
+tests/unit/test_action_execution.py:8:44: F401 [*] `tests.unit.test_proposal_store.context` imported but unused
+tests/unit/test_action_execution.py:11:72: F811 Redefinition of unused `context` from line 8: `context` redefined here
+tests/unit/test_action_execution.py:23:70: F811 Redefinition of unused `context` from line 8: `context` redefined here
+tests/unit/test_action_execution.py:36:58: F811 Redefinition of unused `context` from line 8: `context` redefined here
+tests/unit/test_action_execution.py:47:72: F811 Redefinition of unused `context` from line 8: `context` redefined here
+tests/unit/test_action_execution.py:60:46: F811 Redefinition of unused `context` from line 8: `context` redefined here
+tests/unit/test_action_execution.py:70:52: F811 Redefinition of unused `context` from line 8: `context` redefined here
+tests/unit/test_action_execution.py:80:50: F811 Redefinition of unused `context` from line 8: `context` redefined here
+tests/unit/test_action_execution.py:91:69: F811 Redefinition of unused `context` from line 8: `context` redefined here
+tests/unit/test_aircraft_single_source.py:24:1: E402 Module level import not at top of file
+tests/unit/test_operational_constants_single_source.py:26:1: E402 Module level import not at top of file
+tests/unit/test_pi_metrics.py:5:8: F401 [*] `sqlite3` imported but unused
+tests/unit/test_planning_engine.py:18:1: E402 Module level import not at top of file
+tests/unit/test_planning_engine.py:19:1: E402 Module level import not at top of file
+tests/unit/test_planning_engine.py:20:1: E402 Module level import not at top of file
+tests/unit/test_runtime_checkpoint.py:27:44: E702 Multiple statements on one line (semicolon)
+tests/unit/test_runtime_checkpoint.py:28:32: E702 Multiple statements on one line (semicolon)
+tests/unit/test_runtime_checkpoint.py:29:38: E702 Multiple statements on one line (semicolon)
+Found 18 errors.
+[*] 2 fixable with the `--fix` option.

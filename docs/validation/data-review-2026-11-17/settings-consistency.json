@@ -1,0 +1,360 @@
+{
+  "settings": {
+    "status": 200,
+    "body": {
+      "daily_flights": 420,
+      "load_factor_mean": 0.8,
+      "pax_multiplier": 1.0,
+      "special_event": null,
+      "hourly_weights": {
+        "5": 2,
+        "6": 8,
+        "7": 14,
+        "8": 16,
+        "9": 12,
+        "10": 10,
+        "11": 9,
+        "12": 8,
+        "13": 9,
+        "14": 10,
+        "15": 10,
+        "16": 12,
+        "17": 15,
+        "18": 14,
+        "19": 10,
+        "20": 7,
+        "21": 5,
+        "22": 3
+      },
+      "weather_lock": null,
+      "wind_kt": 15,
+      "gust_enabled": false,
+      "runway_incursion_rate": 0.005,
+      "baggage_fire_rate": 0.008,
+      "security_breach_rate": 0.01,
+      "system_failure_rate": 0.015,
+      "suppression_window_h": 2.0,
+      "lanes_a": 4,
+      "lanes_b": 3,
+      "lanes_c": 4,
+      "mct_minutes": 45,
+      "screening_units": 6,
+      "sorting_capacity": 1800,
+      "dg_false_positive_rate": 0.003,
+      "crew_delay_probability": 0.05,
+      "crew_delay_min": 5,
+      "crew_delay_max": 15,
+      "ctot_probability_peak": 0.1,
+      "ctot_delay_min": 5,
+      "ctot_delay_max": 30,
+      "noshow_rate": 0.03,
+      "equipment_failure_rate": 0.01,
+      "equipment_failure_delay_min": 8,
+      "equipment_failure_delay_max": 20,
+      "diversion_rate": 0.003,
+      "holding_fuel_burn_kg_per_hr": 2500,
+      "holding_fuel_warn_minutes": 30,
+      "holding_fuel_panpan_minutes": 45
+    }
+  },
+  "security": {
+    "status": 200,
+    "body": {
+      "sim_time": "2024-06-23T04:01:00",
+      "total_in_airport": 185,
+      "by_status": {
+        "airborne": 35139,
+        "airside": 124,
+        "booked": 35033,
+        "checked_in": 61,
+        "departed_airport": 65316,
+        "missed_connection": 38,
+        "missed_flight": 203
+      },
+      "counts_observed_sim_time": "2024-06-23T03:50:00",
+      "counts_age_seconds": 11.8,
+      "counts_stale": false,
+      "security": {
+        "A": {
+          "queue_length": 0,
+          "wait_minutes": 0.0,
+          "lanes_open": 8,
+          "frozen": false,
+          "observed_at": "2024-06-23T04:01:00"
+        },
+        "B": {
+          "queue_length": 0,
+          "wait_minutes": 0.0,
+          "lanes_open": 12,
+          "frozen": false,
+          "observed_at": "2024-06-23T04:01:00"
+        },
+        "C": {
+          "queue_length": 0,
+          "wait_minutes": 0.0,
+          "lanes_open": 8,
+          "frozen": false,
+          "observed_at": "2024-06-23T04:01:00"
+        }
+      },
+      "connections_at_risk": 0,
+      "connections_missed": 0,
+      "data_source": "simulation"
+    }
+  },
+  "baggage_map": {
+    "status": 200,
+    "body": {
+      "zones": [
+        {
+          "zone_id": "arrival-belt-1",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 2400,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "arrival-belt-2",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 2400,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "arrival-belt-3",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 2400,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "arrival-belt-4",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 2400,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "arrival-belt-5",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 2400,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "arrival-belt-6",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 2400,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "induction-A",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 1800,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "induction-B",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 3000,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "induction-C",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 1800,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-A-1",
+          "items": 9,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 75,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-A-2",
+          "items": 8,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 66,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-A-3",
+          "items": 9,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 75,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-A-4",
+          "items": 9,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 75,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-A-5",
+          "items": 9,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 75,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-B-1",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-B-2",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-B-3",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-B-4",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-B-5",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-C-1",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-C-2",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-C-3",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-C-4",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "make-up-C-5",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 150,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "screening-unit-1",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 900,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "screening-unit-2",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 900,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "screening-unit-3",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 1500,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "screening-unit-4",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 1500,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "screening-unit-5",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 900,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "screening-unit-6",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 900,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        },
+        {
+          "zone_id": "sorting-matrix",
+          "items": 0,
+          "status": "normal",
+          "throughput_per_hour": 5400,
+          "utilisation_pct": 0,
+          "observed_at": "2024-06-23T04:02:00"
+        }
+      ]
+    }
+  }
+}

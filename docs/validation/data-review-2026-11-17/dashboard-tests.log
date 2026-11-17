@@ -1,0 +1,111 @@
+
+> art-dashboard@0.1.0 test
+> vitest run
+
+9:08:37 AM [vite] warning: `esbuild` option was specified by "vite:react-babel" plugin. This option is deprecated, please use `oxc` instead.
+9:08:37 AM [vite] warning: `optimizeDeps.esbuildOptions` option was specified by "vite:react-babel" plugin. This option is deprecated, please use `optimizeDeps.rolldownOptions` instead.
+Both esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored. The following esbuild options were set: `{ jsx: 'automatic', jsxImportSource: undefined }`
+
+[1m[46m RUN [49m[22m [36mv4.1.1 [39m[90m/workspace/dashboards/art-dashboard[39m
+
+ [32m✓[39m src/test/stores/weatherStore.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/test/stores/incidentStore.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/test/stores/flightStore.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/test/airport3dTimeline.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/test/incidentTime.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+ [32m✓[39m src/test/simClock.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 72[2mms[22m[39m
+ [32m✓[39m src/test/observationTime.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 91[2mms[22m[39m
+ [32m✓[39m src/test/incidentEvents.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/test/liveProjections.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32m✓[39m src/test/wsDelivery.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 50[2mms[22m[39m
+ [32m✓[39m src/test/airport3d.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 382[2mms[22m[39m
+ [32m✓[39m src/test/airport3dFallback.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 490[2mms[22m[39m
+   [33m[2m✓[22m[39m provides operational links when the device cannot create a WebGL renderer [33m 485[2mms[22m[39m
+ [32m✓[39m src/test/whatIfPage.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 657[2mms[22m[39m
+     [33m[2m✓[22m[39m renders real graph/replay responses and submits the report schema [33m 652[2mms[22m[39m
+ [32m✓[39m src/test/formAccessibility.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 730[2mms[22m[39m
+   [33m[2m✓[22m[39m associates visible setting labels with unique controls and exposes units [33m 397[2mms[22m[39m
+ [32m✓[39m src/test/planningForm.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 684[2mms[22m[39m
+   [33m[2m✓[22m[39m accepts owner cost estimates that are not multiples of 1000 euros [33m 679[2mms[22m[39m
+ [32m✓[39m src/test/stores/simStore.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/flightBoardUX.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 828[2mms[22m[39m
+   [33m[2m✓[22m[39m retains chronological order when another flight updates and exposes keyboard sorting [33m 822[2mms[22m[39m
+ [32m✓[39m src/test/workspaceUX.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 949[2mms[22m[39m
+   [33m[2m✓[22m[39m separates operational navigation from planning and system tools [33m 879[2mms[22m[39m
+ [32m✓[39m src/test/operationalView.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 965[2mms[22m[39m
+   [33m[2m✓[22m[39m defaults airport to Board and preserves scope/selection in 3D [33m 662[2mms[22m[39m
+ [32m✓[39m src/test/decisionTimeline.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 1035[2mms[22m[39m
+     [33m[2m✓[22m[39m separates prediction, observation, attribution and honest validation limits [33m 620[2mms[22m[39m
+ [32m✓[39m src/test/airport3dAtc.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 954[2mms[22m[39m
+     [33m[2m✓[22m[39m renders owner sequence, capacity and selection without clearance controls [33m 636[2mms[22m[39m
+ [32m✓[39m src/test/stores/baggageStore.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/stores/connectionStore.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/eventHandlers.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/airport3dPage.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 1232[2mms[22m[39m
+     [33m[2m✓[22m[39m opens a passenger deep link and scopes observed lane metrics by terminal [33m 888[2mms[22m[39m
+     [33m[2m✓[22m[39m reads actual bag records and scan history rather than assigning representative meshes fake identities [33m 303[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m25 passed[39m[22m[90m (25)[39m
+[2m      Tests [22m [1m[32m115 passed[39m[22m[90m (115)[39m
+[2m   Start at [22m 09:08:37
+[2m   Duration [22m 8.67s[2m (transform 10.99s, setup 5.00s, import 17.26s, tests 9.33s, environment 114.46s)[22m
+
+npm notice
+npm notice New major version of npm available! 10.9.9 -> 12.2.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+npm notice To update run: npm install -g npm@12.2.2
+npm notice
+
+> art-dashboard@0.1.0 build
+> tsc -b && vite build
+
+vite v5.4.21 building for production...
+transforming...
+Browserslist: browsers data (caniuse-lite) is 8 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+✓ 969 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                  0.86 kB │ gzip:   0.47 kB
+dist/assets/WorldMapPage-Hc9Yahcc.css           56.04 kB │ gzip:  11.81 kB
+dist/assets/index-Qy_Cgrsf.css                  65.99 kB │ gzip:  12.13 kB
+dist/assets/formatCurrency-D4kZRnZS.js           0.18 kB │ gzip:   0.16 kB
+dist/assets/KpiCard-DVIzIUUF.js                  0.93 kB │ gzip:   0.39 kB
+dist/assets/DecisionsPage-A_mCLOd1.js            1.43 kB │ gzip:   0.50 kB
+dist/assets/LoadingState-BRRHLRdd.js             2.81 kB │ gzip:   0.67 kB
+dist/assets/WeatherHistoryChart-QeRQD96W.js      2.87 kB │ gzip:   0.99 kB
+dist/assets/useMutation-CbEemVpt.js              3.14 kB │ gzip:   1.30 kB
+dist/assets/BaggageInspector-D126PMQ1.js         4.89 kB │ gzip:   1.28 kB
+dist/assets/ApprovalQueue-D4m2sb33.js            5.86 kB │ gzip:   1.56 kB
+dist/assets/CarbonPage-BhcgGJHA.js              11.08 kB │ gzip:   2.60 kB
+dist/assets/AutonomousPanel-DHw4Ug2V.js         13.66 kB │ gzip:   3.11 kB
+dist/assets/WhatIfPage-B1DmA1hp.js              14.20 kB │ gzip:   2.82 kB
+dist/assets/AccessibilityPage-CMoucWfb.js       14.86 kB │ gzip:   2.06 kB
+dist/assets/CockpitPage-BHKByNRH.js             20.24 kB │ gzip:   4.40 kB
+dist/assets/AtcBoard-DMsZlM9G.js                23.40 kB │ gzip:   4.66 kB
+dist/assets/MLTrainingPage-BS5IuiNr.js          23.66 kB │ gzip:   3.40 kB
+dist/assets/BaggageTrackerPage-C0ZlZm_N.js      25.16 kB │ gzip:   4.59 kB
+dist/assets/PassengerFlowPage-pe8FiMLT.js       25.89 kB │ gzip:   4.35 kB
+dist/assets/SimHistoryPage-CDQ2rB8U.js          26.21 kB │ gzip:   4.38 kB
+dist/assets/SettingsPage-Bpn4ywka.js            31.24 kB │ gzip:   5.96 kB
+dist/assets/DecisionWorkspace-DGMF76vx.js       37.48 kB │ gzip:   6.99 kB
+dist/assets/DebugPage-Yb2wBIYm.js               42.14 kB │ gzip:   6.23 kB
+dist/assets/ScenariosPage-ypOxBtzs.js           46.16 kB │ gzip:   6.79 kB
+dist/assets/DataSourcesPage-BYhe4wUy.js         46.48 kB │ gzip:   9.13 kB
+dist/assets/CostDashboardPage-BlVmxW-M.js       46.63 kB │ gzip:   8.01 kB
+dist/assets/IncidentConsolePage-PN7YlUIC.js     49.35 kB │ gzip:   7.86 kB
+dist/assets/GroundOpsPage-CXeLP3Bz.js           53.62 kB │ gzip:   8.34 kB
+dist/assets/PlanningPage-CIszyWdo.js           110.96 kB │ gzip:  16.51 kB
+dist/assets/leaflet-B56Osfia.js                149.99 kB │ gzip:  43.55 kB
+dist/assets/WorldMapPage-DZeEMBeN.js           226.97 kB │ gzip:  77.00 kB
+dist/assets/index-BJOVPGyt.js                  303.39 kB │ gzip:  78.28 kB
+dist/assets/Airport3DPage-uXABedvQ.js          602.27 kB │ gzip: 156.82 kB
+dist/assets/recharts-VOPYWtZa.js               745.58 kB │ gzip: 223.01 kB
+dist/assets/mapbox-B6OFHZIA.js               1,703.07 kB │ gzip: 469.67 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 10.09s

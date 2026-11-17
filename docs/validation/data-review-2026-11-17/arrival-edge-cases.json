@@ -1,0 +1,27 @@
+{
+  "premature_carousel": [],
+  "exited_with_uncollected_bag": [],
+  "carousels_examples": [],
+  "seed_pending": [
+    {
+      "owner": "flight",
+      "pending": false,
+      "n": 1
+    },
+    {
+      "owner": "passenger",
+      "pending": false,
+      "n": 142
+    },
+    {
+      "owner": "baggage",
+      "pending": false,
+      "n": 128
+    }
+  ],
+  "checkpoint": [
+    {
+      "tick": "2024-06-15T10:14:00"
+    }
+  ]
+}

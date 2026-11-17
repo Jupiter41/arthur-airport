@@ -1,0 +1,634 @@
+{
+  "duration_s": 45,
+  "events": {
+    "CostRecorded": 162,
+    "FinancialEventProcessed": 122,
+    "BaggageStatusChanged": 4033,
+    "BaggageStatusBatchChanged": 46,
+    "BaggageZoneSnapshot": 42,
+    "SimClockTick": 42,
+    "METARIssued": 2,
+    "TurnaroundTaskCompleted": 123,
+    "TurnaroundTaskStarted": 101,
+    "FlightStatusChanged": 85,
+    "FlightGateAssigned": 13,
+    "CarbonRecorded": 20,
+    "CostSignalSnapshot": 8,
+    "ConveyorDelay": 85,
+    "BaggageFlagged": 7,
+    "WeatherStateChanged": 1
+  },
+  "events_per_s": 108.71111111111111,
+  "tick_to_produced_s": {
+    "FinancialEventProcessed": {
+      "n": 121,
+      "min": 0.0165,
+      "p50": 0.2915,
+      "p95": 0.487,
+      "max": 0.5398
+    },
+    "BaggageStatusChanged": {
+      "n": 3903,
+      "min": 0.5334,
+      "p50": 0.655,
+      "p95": 0.7737,
+      "max": 0.7815
+    },
+    "BaggageZoneSnapshot": {
+      "n": 41,
+      "min": 0.5159,
+      "p50": 0.6091,
+      "p95": 1.2551,
+      "max": 1.5412
+    },
+    "BaggageStatusBatchChanged": {
+      "n": 45,
+      "min": 0.5141,
+      "p50": 0.6071,
+      "p95": 1.3358,
+      "max": 1.5395
+    },
+    "METARIssued": {
+      "n": 2,
+      "min": 0.0933,
+      "p50": 0.1773,
+      "p95": 0.1773,
+      "max": 0.1773
+    },
+    "TurnaroundTaskCompleted": {
+      "n": 123,
+      "min": 0.0707,
+      "p50": 0.1996,
+      "p95": 0.2903,
+      "max": 0.2963
+    },
+    "TurnaroundTaskStarted": {
+      "n": 101,
+      "min": 0.0647,
+      "p50": 0.2131,
+      "p95": 0.2897,
+      "max": 0.2963
+    },
+    "FlightStatusChanged": {
+      "n": 85,
+      "min": 0.0646,
+      "p50": 0.1907,
+      "p95": 0.2812,
+      "max": 0.2912
+    },
+    "FlightGateAssigned": {
+      "n": 13,
+      "min": 0.085,
+      "p50": 0.1931,
+      "p95": 0.2704,
+      "max": 0.2704
+    },
+    "CostRecorded": {
+      "n": 159,
+      "min": 0.0188,
+      "p50": 0.2856,
+      "p95": 0.4687,
+      "max": 0.5279
+    },
+    "CarbonRecorded": {
+      "n": 20,
+      "min": 0.0193,
+      "p50": 0.3693,
+      "p95": 0.4694,
+      "max": 0.4694
+    },
+    "CostSignalSnapshot": {
+      "n": 8,
+      "min": 0.0194,
+      "p50": 0.0481,
+      "p95": 0.0712,
+      "max": 0.0712
+    },
+    "ConveyorDelay": {
+      "n": 85,
+      "min": 0.5472,
+      "p50": 0.6555,
+      "p95": 1.5418,
+      "max": 1.542
+    },
+    "BaggageFlagged": {
+      "n": 7,
+      "min": 0.5238,
+      "p50": 0.5979,
+      "p95": 0.6648,
+      "max": 0.6648
+    },
+    "WeatherStateChanged": {
+      "n": 1,
+      "min": 0.1771,
+      "p50": 0.1771,
+      "p95": 0.1771,
+      "max": 0.1771
+    }
+  },
+  "produced_to_broker_s": {
+    "CostRecorded": {
+      "n": 162,
+      "min": 0.072,
+      "p50": 0.6245,
+      "p95": 1.0321,
+      "max": 1.0901
+    },
+    "FinancialEventProcessed": {
+      "n": 122,
+      "min": 0.02,
+      "p50": 0.59,
+      "p95": 1.0382,
+      "max": 1.1541
+    },
+    "BaggageStatusChanged": {
+      "n": 4033,
+      "min": 0.0163,
+      "p50": 0.0611,
+      "p95": 0.1224,
+      "max": 0.1234
+    },
+    "BaggageStatusBatchChanged": {
+      "n": 46,
+      "min": 0.0274,
+      "p50": 0.0452,
+      "p95": 0.0983,
+      "max": 0.1074
+    },
+    "BaggageZoneSnapshot": {
+      "n": 42,
+      "min": 0.0265,
+      "p50": 0.042,
+      "p95": 0.0862,
+      "max": 0.1053
+    },
+    "SimClockTick": {
+      "n": 42,
+      "min": -0.0009,
+      "p50": -0.0005,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "METARIssued": {
+      "n": 2,
+      "min": -0.0002,
+      "p50": -0.0001,
+      "p95": -0.0001,
+      "max": -0.0001
+    },
+    "TurnaroundTaskCompleted": {
+      "n": 123,
+      "min": 0.0354,
+      "p50": 0.0456,
+      "p95": 0.0846,
+      "max": 0.7644
+    },
+    "TurnaroundTaskStarted": {
+      "n": 101,
+      "min": 0.0401,
+      "p50": 0.0476,
+      "p95": 0.084,
+      "max": 0.0847
+    },
+    "FlightStatusChanged": {
+      "n": 85,
+      "min": 0.037,
+      "p50": 0.0607,
+      "p95": 0.1063,
+      "max": 0.1382
+    },
+    "FlightGateAssigned": {
+      "n": 13,
+      "min": 0.0454,
+      "p50": 0.0837,
+      "p95": 0.1177,
+      "max": 0.1177
+    },
+    "CarbonRecorded": {
+      "n": 20,
+      "min": 0.2488,
+      "p50": 0.4565,
+      "p95": 1.1151,
+      "max": 1.1151
+    },
+    "CostSignalSnapshot": {
+      "n": 8,
+      "min": 0.1766,
+      "p50": 0.5448,
+      "p95": 1.1361,
+      "max": 1.1361
+    },
+    "ConveyorDelay": {
+      "n": 85,
+      "min": 0.0289,
+      "p50": 0.052,
+      "p95": 0.0806,
+      "max": 0.0811
+    },
+    "BaggageFlagged": {
+      "n": 7,
+      "min": 0.032,
+      "p50": 0.0554,
+      "p95": 0.0587,
+      "max": 0.0587
+    },
+    "WeatherStateChanged": {
+      "n": 1,
+      "min": -0.0009,
+      "p50": -0.0009,
+      "p95": -0.0009,
+      "max": -0.0009
+    }
+  },
+  "passenger_transitions": {},
+  "watermarks": [
+    {
+      "sim_time": "2024-06-15T07:25:00+00:00",
+      "paused": false,
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-15T07:24:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-15T07:25:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-15T06:01:00",
+          "lag_minutes": 84.0,
+          "stale": true
+        }
+      }
+    },
+    {
+      "sim_time": "2024-06-15T07:30:00+00:00",
+      "paused": false,
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-15T07:29:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-15T07:30:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-15T06:01:00",
+          "lag_minutes": 89.0,
+          "stale": true
+        }
+      }
+    },
+    {
+      "sim_time": "2024-06-15T07:35:00+00:00",
+      "paused": false,
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-15T07:34:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-15T07:35:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-15T06:01:00",
+          "lag_minutes": 94.0,
+          "stale": true
+        }
+      }
+    },
+    {
+      "sim_time": "2024-06-15T07:40:00+00:00",
+      "paused": false,
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-15T07:39:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-15T07:40:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-15T06:01:00",
+          "lag_minutes": 99.0,
+          "stale": true
+        }
+      }
+    },
+    {
+      "sim_time": "2024-06-15T07:45:00+00:00",
+      "paused": false,
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-15T07:44:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-15T07:45:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-15T06:01:00",
+          "lag_minutes": 104.0,
+          "stale": true
+        }
+      }
+    },
+    {
+      "sim_time": "2024-06-15T07:50:00+00:00",
+      "paused": false,
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-15T07:49:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-15T07:50:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-15T06:01:00",
+          "lag_minutes": 109.0,
+          "stale": true
+        }
+      }
+    },
+    {
+      "sim_time": "2024-06-15T07:55:00+00:00",
+      "paused": false,
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-15T07:54:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-15T07:55:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-15T06:01:00",
+          "lag_minutes": 114.0,
+          "stale": true
+        }
+      }
+    },
+    {
+      "sim_time": "2024-06-15T08:00:00+00:00",
+      "paused": false,
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-15T08:00:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-15T08:00:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-15T06:01:00",
+          "lag_minutes": 119.0,
+          "stale": true
+        }
+      }
+    },
+    {
+      "sim_time": "2024-06-15T08:05:00+00:00",
+      "paused": false,
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-15T08:05:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-15T08:05:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-15T06:01:00",
+          "lag_minutes": 124.0,
+          "stale": true
+        }
+      }
+    }
+  ],
+  "examples": {
+    "CostRecorded": {
+      "sim_time": "2024-06-15T07:28:00",
+      "payload_keys": [
+        "category",
+        "amount_eur",
+        "sim_time",
+        "sim_day",
+        "description",
+        "is_revenue",
+        "currency",
+        "rates_version",
+        "flight_id",
+        "cost_record_id",
+        "incident_id"
+      ]
+    },
+    "FinancialEventProcessed": {
+      "sim_time": "2024-06-15T07:28:00",
+      "payload_keys": [
+        "source_event_id",
+        "event_type",
+        "sim_day",
+        "cost_record_ids",
+        "carbon_record_ids"
+      ]
+    },
+    "BaggageStatusChanged": {
+      "sim_time": "2024-06-15T07:28:00",
+      "payload_keys": [
+        "baggage_id",
+        "tag",
+        "passenger_id",
+        "flight_id",
+        "previous_status",
+        "new_status",
+        "scan_zone",
+        "at"
+      ]
+    },
+    "BaggageStatusBatchChanged": {
+      "sim_time": "2024-06-15T07:28:00",
+      "payload_keys": [
+        "status_changes",
+        "flags",
+        "loaded_rows",
+        "batch_id",
+        "part",
+        "part_count"
+      ]
+    },
+    "BaggageZoneSnapshot": {
+      "sim_time": "2024-06-15T07:28:00",
+      "payload_keys": [
+        "zones",
+        "at"
+      ]
+    },
+    "SimClockTick": {
+      "sim_time": "2024-06-15T07:29:00",
+      "payload_keys": [
+        "sim_time",
+        "real_time",
+        "speed_multiplier",
+        "tick_number",
+        "day_of_sim",
+        "step_minutes",
+        "mode"
+      ]
+    },
+    "METARIssued": {
+      "sim_time": "2024-06-15T07:30:00",
+      "payload_keys": [
+        "raw",
+        "at"
+      ]
+    },
+    "TurnaroundTaskCompleted": {
+      "sim_time": "2024-06-15T07:30:00",
+      "payload_keys": [
+        "flight_id",
+        "aircraft_registration",
+        "task_name",
+        "status",
+        "duration_min"
+      ]
+    },
+    "TurnaroundTaskStarted": {
+      "sim_time": "2024-06-15T07:30:00",
+      "payload_keys": [
+        "flight_id",
+        "aircraft_registration",
+        "task_name",
+        "status",
+        "duration_min"
+      ]
+    },
+    "FlightStatusChanged": {
+      "sim_time": "2024-06-15T07:30:00",
+      "payload_keys": [
+        "flight_id",
+        "flight_number",
+        "previous_status",
+        "new_status",
+        "gate_id",
+        "runway_id",
+        "delay_minutes",
+        "reason",
+        "direction",
+        "destination_iata",
+        "scheduled_time",
+        "estimated_time",
+        "actual_time",
+        "flight_type",
+        "pax_count",
+        "origin_iata",
+        "aircraft_registration"
+      ]
+    },
+    "FlightGateAssigned": {
+      "sim_time": "2024-06-15T07:30:00",
+      "payload_keys": [
+        "flight_id",
+        "flight_number",
+        "gate_id",
+        "reason"
+      ]
+    },
+    "CarbonRecorded": {
+      "sim_time": "2024-06-15T07:30:00",
+      "payload_keys": [
+        "source",
+        "co2_kg",
+        "sim_time",
+        "sim_day",
+        "description",
+        "flight_id",
+        "rates_version",
+        "carbon_record_id"
+      ]
+    },
+    "CostSignalSnapshot": {
+      "sim_time": "2024-06-15T07:30:00",
+      "payload_keys": [
+        "eu261_exposure",
+        "holding_fuel",
+        "ground_handling",
+        "total_cost_eur",
+        "at",
+        "sim_day",
+        "rates_version",
+        "source_event_id"
+      ]
+    },
+    "ConveyorDelay": {
+      "sim_time": "2024-06-15T07:34:00",
+      "payload_keys": [
+        "zone_id",
+        "terminal",
+        "items",
+        "capacity",
+        "overflow",
+        "estimated_delay_min",
+        "at"
+      ]
+    },
+    "BaggageFlagged": {
+      "sim_time": "2024-06-15T07:36:00",
+      "payload_keys": [
+        "baggage_id",
+        "tag",
+        "passenger_id",
+        "flight_id",
+        "flag_reason",
+        "dg_class",
+        "scan_zone",
+        "at"
+      ]
+    },
+    "WeatherStateChanged": {
+      "sim_time": "2024-06-15T08:00:00",
+      "payload_keys": [
+        "weather_id",
+        "previous_category",
+        "new_category",
+        "visibility_m",
+        "wind_direction",
+        "wind_speed_kt",
+        "wind_gust_kt",
+        "ceiling_ft",
+        "temperature_c",
+        "phenomena",
+        "runway_impact",
+        "recommended_arrival_rate",
+        "recommended_departure_rate",
+        "at"
+      ]
+    }
+  }
+}

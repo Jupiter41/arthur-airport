@@ -1,0 +1,349 @@
+
+> api-gateway@0.1.0 test
+> node scripts/run-tests.cjs
+
+TAP version 13
+# Subtest: exclusive controller sessions
+    # Subtest: isolates tabs of the same account, expires leases, and serializes writes
+    ok 1 - isolates tabs of the same account, expires leases, and serializes writes
+      ---
+      duration_ms: 2.21643
+      type: 'test'
+      ...
+    1..1
+ok 1 - exclusive controller sessions
+  ---
+  duration_ms: 4.272622
+  type: 'suite'
+  ...
+# Subtest: public route boundaries
+    # Subtest: rejects encoded paths, dot segments and all admin routes
+    ok 1 - rejects encoded paths, dot segments and all admin routes
+      ---
+      duration_ms: 2.550217
+      type: 'test'
+      ...
+    1..1
+ok 2 - public route boundaries
+  ---
+  duration_ms: 2.8569
+  type: 'suite'
+  ...
+# Subtest: blocks viewer writes and requires operator lease; merges concurrent reads
+ok 3 - blocks viewer writes and requires operator lease; merges concurrent reads
+  ---
+  duration_ms: 220.256901
+  type: 'test'
+  ...
+# Subtest: handleToken
+    # Subtest: rejects a request with no client_id (400)
+    ok 1 - rejects a request with no client_id (400)
+      ---
+      duration_ms: 1.863917
+      type: 'test'
+      ...
+    # Subtest: rejects a known client with no secret (401) — no dev backdoor
+    ok 2 - rejects a known client with no secret (401) — no dev backdoor
+      ---
+      duration_ms: 0.338587
+      type: 'test'
+      ...
+    # Subtest: rejects a known client with the wrong secret (401)
+    ok 3 - rejects a known client with the wrong secret (401)
+      ---
+      duration_ms: 0.691353
+      type: 'test'
+      ...
+    # Subtest: rejects an unknown client id (401)
+    ok 4 - rejects an unknown client id (401)
+      ---
+      duration_ms: 0.309298
+      type: 'test'
+      ...
+    # Subtest: issues a verifiable JWT carrying the client's role for valid credentials
+    ok 5 - issues a verifiable JWT carrying the client's role for valid credentials
+      ---
+      duration_ms: 7.447147
+      type: 'test'
+      ...
+    1..5
+ok 4 - handleToken
+  ---
+  duration_ms: 13.08509
+  type: 'suite'
+  ...
+# Subtest: authMiddleware
+    # Subtest: rejects a missing Authorization header (401) and does not call next()
+    ok 1 - rejects a missing Authorization header (401) and does not call next()
+      ---
+      duration_ms: 0.774828
+      type: 'test'
+      ...
+    # Subtest: rejects a token signed with the wrong secret (401)
+    ok 2 - rejects a token signed with the wrong secret (401)
+      ---
+      duration_ms: 1.804956
+      type: 'test'
+      ...
+    # Subtest: accepts a valid token and calls next()
+    ok 3 - accepts a valid token and calls next()
+      ---
+      duration_ms: 1.334475
+      type: 'test'
+      ...
+    1..3
+ok 5 - authMiddleware
+  ---
+  duration_ms: 4.5324
+  type: 'suite'
+  ...
+# Subtest: requireRole (RBAC)
+    # Subtest: allows a role of equal rank
+    ok 1 - allows a role of equal rank
+      ---
+      duration_ms: 0.945328
+      type: 'test'
+      ...
+    # Subtest: allows a role of higher rank
+    ok 2 - allows a role of higher rank
+      ---
+      duration_ms: 0.536383
+      type: 'test'
+      ...
+    # Subtest: rejects a role of lower rank (403)
+    ok 3 - rejects a role of lower rank (403)
+      ---
+      duration_ms: 0.276321
+      type: 'test'
+      ...
+    # Subtest: rejects a request with no role (403)
+    ok 4 - rejects a request with no role (403)
+      ---
+      duration_ms: 0.194356
+      type: 'test'
+      ...
+    # Subtest: rejects an unknown role value (403)
+    ok 5 - rejects an unknown role value (403)
+      ---
+      duration_ms: 0.161533
+      type: 'test'
+      ...
+    1..5
+ok 6 - requireRole (RBAC)
+  ---
+  duration_ms: 2.691332
+  type: 'suite'
+  ...
+# Subtest: verifyTokenFromRequest
+    # Subtest: returns false when no token is present
+    ok 1 - returns false when no token is present
+      ---
+      duration_ms: 0.3129
+      type: 'test'
+      ...
+    # Subtest: accepts a valid token from the Authorization header
+    ok 2 - accepts a valid token from the Authorization header
+      ---
+      duration_ms: 1.078829
+      type: 'test'
+      ...
+    # Subtest: accepts a valid token from the ?token= query string (WebSocket upgrade)
+    ok 3 - accepts a valid token from the ?token= query string (WebSocket upgrade)
+      ---
+      duration_ms: 1.504044
+      type: 'test'
+      ...
+    # Subtest: rejects a malformed token in the query string
+    ok 4 - rejects a malformed token in the query string
+      ---
+      duration_ms: 0.399189
+      type: 'test'
+      ...
+    1..4
+ok 7 - verifyTokenFromRequest
+  ---
+  duration_ms: 3.592884
+  type: 'suite'
+  ...
+# Subtest: derives status from owner-reported health, first match wins (RC10)
+ok 8 - derives status from owner-reported health, first match wins (RC10)
+  ---
+  duration_ms: 3.134494
+  type: 'test'
+  ...
+# Subtest: labels the clock of last_updated and never uses request time
+ok 9 - labels the clock of last_updated and never uses request time
+  ---
+  duration_ms: 2.024466
+  type: 'test'
+  ...
+# Subtest: reports ADS-B as disabled when the owner says so, not adsb.lol/active
+ok 10 - reports ADS-B as disabled when the owner says so, not adsb.lol/active
+  ---
+  duration_ms: 3.703327
+  type: 'test'
+  ...
+# Subtest: reports an owner that does not answer as unavailable
+ok 11 - reports an owner that does not answer as unavailable
+  ---
+  duration_ms: 1.923836
+  type: 'test'
+  ...
+# Subtest: complete digital twin readiness
+    # Subtest: releases every response stream across repeated probes and recovery
+    ok 1 - releases every response stream across repeated probes and recovery
+      ---
+      duration_ms: 4.909528
+      type: 'test'
+      ...
+    # Subtest: checks readiness of all nine upstreams
+    ok 2 - checks readiness of all nine upstreams
+      ---
+      duration_ms: 1.630408
+      type: 'test'
+      ...
+    # Subtest: returns 503 when planning is unavailable
+    ok 3 - returns 503 when planning is unavailable
+      ---
+      duration_ms: 1.096838
+      type: 'test'
+      ...
+    # Subtest: returns 503 when costs is unavailable
+    ok 4 - returns 503 when costs is unavailable
+      ---
+      duration_ms: 1.021566
+      type: 'test'
+      ...
+    # Subtest: returns 503 when analysis is unavailable
+    ok 5 - returns 503 when analysis is unavailable
+      ---
+      duration_ms: 1.342399
+      type: 'test'
+      ...
+    # Subtest: services health does not report an unready analysis as healthy
+    ok 6 - services health does not report an unready analysis as healthy
+      ---
+      duration_ms: 1.435234
+      type: 'test'
+      ...
+    1..6
+ok 12 - complete digital twin readiness
+  ---
+  duration_ms: 13.322307
+  type: 'suite'
+  ...
+# [Kafka] Consumer connected
+# [Kafka] Failed to start consumer: Error: UNKNOWN_TOPIC_OR_PARTITION
+#     at FakeConsumer.subscribe (/workspace/services/api-gateway/src/kafka.test.ts:15:35)
+#     at startAttempt (/workspace/services/api-gateway/src/kafka.ts:112:16)
+#     at async TestContext.<anonymous> (/workspace/services/api-gateway/src/kafka.test.ts:48:3)
+#     at async Test.run (node:internal/test_runner/test:1054:7)
+#     at async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+# [Kafka] Consumer connected
+# [Kafka] Subscribed to 10 topics
+# (node:47) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# [Kafka] Consumer connected
+# [Kafka] Subscribed to 10 topics
+# Subtest: replaces a failed subscription and restores readiness after broker recovery
+ok 13 - replaces a failed subscription and restores readiness after broker recovery
+  ---
+  duration_ms: 41.633488
+  type: 'test'
+  ...
+# [Kafka] Consumer connected
+# [Kafka] Subscribed to 10 topics
+# [Kafka] Consumer connected
+# [Kafka] Subscribed to 10 topics
+# [Kafka] Consumer connected
+# [Kafka] Subscribed to 10 topics
+# Subtest: replaces a non-restarting crash but leaves KafkaJS runtime retries single-owned
+ok 14 - replaces a non-restarting crash but leaves KafkaJS runtime retries single-owned
+  ---
+  duration_ms: 10.952605
+  type: 'test'
+  ...
+# Subtest: heartbeats keep paused-clock readiness fresh without inventing messages
+ok 15 - heartbeats keep paused-clock readiness fresh without inventing messages
+  ---
+  duration_ms: 7.015583
+  type: 'test'
+  ...
+# Subtest: shutdown cancels queued replacement after a crash
+ok 16 - shutdown cancels queued replacement after a crash
+  ---
+  duration_ms: 7.615992
+  type: 'test'
+  ...
+# Subtest: retains independent security terminals and full fleet snapshots across unrelated events
+ok 17 - retains independent security terminals and full fleet snapshots across unrelated events
+  ---
+  duration_ms: 2.911805
+  type: 'test'
+  ...
+# Subtest: relays all operational snapshots immediately in BULK mode
+ok 18 - relays all operational snapshots immediately in BULK mode
+  ---
+  duration_ms: 1043.886257
+  type: 'test'
+  ...
+# Subtest: production rejects invalid identities, forged claims, admin endpoints, and brute-force attempts
+ok 19 - production rejects invalid identities, forged claims, admin endpoints, and brute-force attempts
+  ---
+  duration_ms: 344.987473
+  type: 'test'
+  ...
+# Subtest: WebSocket requires same-site origin and JWT; rejects oversized frames
+ok 20 - WebSocket requires same-site origin and JWT; rejects oversized frames
+  ---
+  duration_ms: 50.331487
+  type: 'test'
+  ...
+# Subtest: native proxy preserves queries/JSON, follows only slash redirects, and caps responses
+ok 21 - native proxy preserves queries/JSON, follows only slash redirects, and caps responses
+  ---
+  duration_ms: 280.120947
+  type: 'test'
+  ...
+# Subtest: classifies UI events and drops per-entity firehose facts (RC9)
+ok 22 - classifies UI events and drops per-entity firehose facts (RC9)
+  ---
+  duration_ms: 2.65214
+  type: 'test'
+  ...
+# Subtest: coalesces to the newest envelope per key and strips hint payloads
+ok 23 - coalesces to the newest envelope per key and strips hint payloads
+  ---
+  duration_ms: 13.371839
+  type: 'test'
+  ...
+# Subtest: bootstrap keeps only delivered, replayable envelopes
+ok 24 - bootstrap keeps only delivered, replayable envelopes
+  ---
+  duration_ms: 0.91084
+  type: 'test'
+  ...
+# Subtest: a browser receives one coalesced frame instead of the firehose
+ok 25 - a browser receives one coalesced frame instead of the firehose
+  ---
+  duration_ms: 234.706093
+  type: 'test'
+  ...
+1..25
+# tests 43
+# suites 7
+# pass 43
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5484.330507
+npm notice
+npm notice New major version of npm available! 10.9.9 -> 12.2.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+npm notice To update run: npm install -g npm@12.2.2
+npm notice
+
+> api-gateway@0.1.0 build
+> tsc
+
