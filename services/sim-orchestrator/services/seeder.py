@@ -20,12 +20,14 @@ def _daily_flight_target() -> int:
 
 
 async def _day_already_seeded(sim_date) -> bool:
-    """Check if flights for this date already exist in Neo4j."""
+    """A complete manifest fences retries; preserve existing legacy days."""
     driver = get_driver()
     prefix = sim_date.isoformat()
     async with driver.session() as session:
         result = await session.run(
-            "MATCH (f:Flight) WHERE f.scheduled_time STARTS WITH $prefix RETURN count(f) AS cnt",
+            "OPTIONAL MATCH (d:SeedDay {id: $prefix}) "
+            "WITH d OPTIONAL MATCH (f:Flight) WHERE f.scheduled_time STARTS WITH $prefix "
+            "RETURN CASE WHEN d.ready = true THEN 1 ELSE count(f) END AS cnt",
             prefix=prefix,
         )
         record = await result.single()
@@ -91,7 +93,7 @@ async def seed_day(sim_day: int) -> None:
     free_seats = {f["id"]: max(0, int(f.get("seat_capacity") or 0) - local_pax.get(f["id"], 0))
                   for f in departure_flights}
     arr_pax, arrivals = await generate_passengers(
-        arrival_flights_for_pax, seed=rng_seed + 1500, initial_status="airborne",
+        arrival_flights_for_pax, seed=rng_seed + 1500, initial_status="booked",
         onward_departures=departure_flights, onward_free_seats=free_seats,
     )
     # Transfers fly on their onward departure too: count them in its load.
@@ -101,10 +103,6 @@ async def seed_day(sim_day: int) -> None:
             transfers[p["connection_flight_id"]] = transfers.get(p["connection_flight_id"], 0) + 1
     for f in departure_flights:
         f["pax_count"] = local_pax.get(f["id"], 0) + transfers.get(f["id"], 0)
-    if transfers:
-        from services.passengers import _update_flight_pax_counts
-        await _update_flight_pax_counts(
-            {fid: local_pax.get(fid, 0) + n for fid, n in transfers.items()})
     total_pax = dep_pax + arr_pax
 
     # 3. Generate baggage
@@ -119,9 +117,14 @@ async def seed_day(sim_day: int) -> None:
                      for b in arrival_bags if b.get("transfer_flight_id")]
     _check_bhs_capacity(departure_flights, departure_bags + transfer_bags)
 
-    # 4. Emit FlightScheduleSeeded event
+    # 4. Persist immutable owner commands atomically before notifying Kafka.
     sim_time = get_sim_time() if get_sim_day() >= 1 else SIM_START_TIME
-    emit_flight_schedule_seeded(sim_time, sim_day, flights)
+    from _common.seed_requests import store_day
+    if await store_day(get_driver, sim_date.isoformat(), sim_time, {
+        "flight": flights, "passenger": passengers + arrivals,
+        "baggage": departure_bags + arrival_bags,
+    }):
+        emit_flight_schedule_seeded(sim_time, sim_day, flights, seed_day_id=sim_date.isoformat())
 
     logger.info(
         "Day %d seeded: %d flights, %d passengers, %d baggage",

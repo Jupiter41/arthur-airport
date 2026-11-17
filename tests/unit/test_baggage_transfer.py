@@ -105,7 +105,7 @@ def test_seeder_gives_connecting_passengers_transfer_bags():
         _, pax = await passengers.generate_passengers(
             arrs, seed=8, initial_status="airborne", onward_departures=deps)
         _, with_pax = await baggage.generate_arrival_baggage(arrs, seed=9, arrival_passengers=pax)
-        _, without = await baggage.generate_arrival_baggage(arrs, seed=9)
+        _, without = await baggage.generate_arrival_baggage(arrs, seed=9, arrival_passengers=pax)
         return pax, with_pax, without
 
     pax, with_pax, without = asyncio.run(run())
@@ -113,7 +113,7 @@ def test_seeder_gives_connecting_passengers_transfer_bags():
     transfer = [b for b in with_pax if b.get("transfer_flight_id")]
     assert transfer and all(onward[b["passenger_id"]] == b["transfer_flight_id"] for b in transfer)
     assert all(b["status"] == "in_hold" and b["flight_id"] != b["transfer_flight_id"] for b in transfer)
-    assert not any(b.get("passenger_id") for b in with_pax if not b.get("transfer_flight_id"))
+    assert all(b.get("passenger_id") for b in with_pax)
     assert len({b["tag"] for b in with_pax}) == len(with_pax)
     # Total arrival volume stays of the same order: transfer bags replace anonymous ones.
     assert 0.5 < len(with_pax) / len(without) < 1.5

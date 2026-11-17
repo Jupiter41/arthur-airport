@@ -185,11 +185,11 @@ class TestEvaluateTransitionArrival:
         result = evaluate_transition(flight, sim_time)
         assert result == "approach"
 
-    def test_scheduled_stays_before_t_minus_20(self):
+    def test_scheduled_becomes_airborne_after_origin_departure(self):
         sim_time = BASE_TIME - timedelta(minutes=25)
         flight = _flight(status="scheduled", direction="arrival")
         result = evaluate_transition(flight, sim_time)
-        assert result is None
+        assert result == "airborne"
 
     def test_approach_to_landed_at_eta_runway_available(self):
         flight = _flight(status="approach", direction="arrival")

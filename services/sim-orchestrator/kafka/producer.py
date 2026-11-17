@@ -118,11 +118,13 @@ def emit_flight_schedule_seeded(
     sim_time: datetime,
     sim_day: int,
     flights: list[dict],
+    seed_day_id: str | None = None,
 ) -> None:
     """Emit a FlightScheduleSeeded batch event to flights.schedule."""
     payload = {
         "sim_day": sim_day,
-        "sim_date": sim_time.date().isoformat(),
+        "sim_date": seed_day_id or sim_time.date().isoformat(),
+        "seed_day_id": seed_day_id,
         "total_flights": len(flights),
         "flight_ids": [f["id"] for f in flights],
     }

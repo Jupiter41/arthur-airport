@@ -27,7 +27,7 @@ from typing import Any, Callable, Iterable
 FIELDS = (
     "flight_number", "direction", "status", "scheduled_time", "estimated_time",
     "actual_time", "delay_minutes", "gate_id", "flight_type", "pax_count",
-    "destination_iata", "origin_iata", "aircraft_registration",
+    "destination_iata", "origin_iata", "aircraft_registration", "flight_duration_minutes",
 )
 HANDLED_EVENTS = frozenset({
     "FlightsScheduled", "FlightStatusChanged", "FlightGateAssigned",
@@ -60,6 +60,7 @@ class FlightView:
         self.gate_terminal: dict[str, str] = {}
         self.stamp: str | None = None  # bootstrap snapshot time (reader's clock)
         self.ready = False
+        self.recovery_ids: set[str] = set()
 
     # ── feeding ──────────────────────────────────────────────────
 
@@ -136,6 +137,7 @@ class FlightView:
         self.gate_terminal = {g["id"]: g.get("terminal_id") for g in gates if g.get("id")}
         self.stamp = _iso(stamp)
         self.flights = {}
+        self.recovery_ids = set()
         for row in rows:
             if row.get("id"):
                 self._merge(row["id"], row, None)
@@ -144,7 +146,7 @@ class FlightView:
     def evict(self, now: datetime) -> int:
         cutoff = (now.replace(tzinfo=None) - timedelta(hours=EVICT_AFTER_H)).isoformat()
         gone = [fid for fid, f in self.flights.items()
-                if f.get("status") in TERMINAL_STATUSES
+                if fid not in self.recovery_ids and f.get("status") in TERMINAL_STATUSES
                 and (f.get("actual_time") or f.get("estimated_time") or f.get("scheduled_time") or "") < cutoff]
         for fid in gone:
             del self.flights[fid]
@@ -185,7 +187,9 @@ VIEW = FlightView()
 
 BOOTSTRAP_FLIGHTS_QUERY = """
 MATCH (f:Flight)
-WHERE f.scheduled_time >= $from AND f.scheduled_time <= $to
+WHERE (f.scheduled_time >= $from AND f.scheduled_time <= $to)
+   OR EXISTS { MATCH (:Baggage {status: 'in_hold'})-[:LOADED_ON]->(f)
+               WHERE f.direction = 'arrival' }
 OPTIONAL MATCH (f)-[:ASSIGNED_TO]->(g:Gate)
 RETURN f.id AS id, f.flight_number AS flight_number, f.direction AS direction,
        f.status AS status, f.scheduled_time AS scheduled_time,
@@ -193,7 +197,8 @@ RETURN f.id AS id, f.flight_number AS flight_number, f.direction AS direction,
        f.delay_minutes AS delay_minutes, coalesce(g.id, f.gate_id) AS gate_id,
        f.flight_type AS flight_type, f.pax_count AS pax_count,
        f.destination_iata AS destination_iata, f.origin_iata AS origin_iata,
-       f.aircraft_registration AS aircraft_registration
+       f.aircraft_registration AS aircraft_registration,
+       f.flight_duration_minutes AS flight_duration_minutes
 """
 BOOTSTRAP_GATES_QUERY = "MATCH (g:Gate) RETURN g.id AS id, g.terminal_id AS terminal_id"
 
@@ -210,6 +215,10 @@ async def bootstrap(view: FlightView, get_driver: Callable[[], Any], stamp: date
                "to": (centre + timedelta(hours=BOOTSTRAP_FUTURE_H)).isoformat()},
         )).data()
     view.load(rows, gates, stamp)
+    # Preserve old arrivals with outstanding holds until this process restarts.
+    view.recovery_ids = {r["id"] for r in rows
+                         if r.get("direction") == "arrival" and (r.get("scheduled_time") or "")
+                         < (centre - timedelta(hours=BOOTSTRAP_PAST_H)).isoformat()}
     return len(rows)
 
 

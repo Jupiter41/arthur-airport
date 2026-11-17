@@ -130,10 +130,13 @@ def _eval_scheduled(flight: dict, sim_time: datetime, estimated_time: datetime,
                 return "boarding"
             elif not flight.get("gate_id"):
                 return "boarding"  # will need gate assignment, consumer handles it
-    # Arrivals: T-20 minutes -> approach
+    # Inbound passengers become airborne only after the synthetic origin departure.
     else:
+        duration = max(20, int(flight.get("flight_duration_minutes") or 60))
         if sim_time >= estimated_time - timedelta(minutes=20):
             return "approach"
+        if sim_time >= estimated_time - timedelta(minutes=duration):
+            return "airborne"
     return None
 
 

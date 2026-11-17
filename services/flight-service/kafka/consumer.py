@@ -304,7 +304,7 @@ def _make_consumer() -> Consumer:
     return Consumer({
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
         "group.id": "flight-svc",
-        "auto.offset.reset": "latest",
+        "auto.offset.reset": "earliest",
         "enable.auto.commit": False,
         "session.timeout.ms": 10000,
     })
@@ -333,6 +333,8 @@ def _bootstrap_clock(envelope: dict) -> None:
 async def run_consumer() -> None:
     """Main consumer loop — runs as background asyncio task."""
     global _consumer, _consumer_running
+    from _common.seed_requests import apply_pending
+    await apply_pending("flight", get_driver)
     _consumer = _make_consumer()
     _consumer.subscribe(_TOPICS)
     _consumer_running = True
@@ -629,6 +631,8 @@ async def _prepare_tick(candidate: FlightConsumerState) -> None:
 
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
+    from _common.seed_requests import apply_pending
+    await apply_pending("flight", get_driver)
     """Commit the entire owner tick, its durable state and facts together."""
     await run_tick("FlightRuntime", "FlightOutbox", _state, tick_snapshot,
                    get_driver, _advance_tick, payload, sim_time, _prepare_tick)
@@ -1838,13 +1842,11 @@ def _on_boarding_progress(payload: dict, sim_time: datetime) -> None:
 
 
 async def _on_schedule_seeded(payload: dict, sim_time: datetime) -> None:
-    """Handle FlightScheduleSeeded — publish the owned flight records (RC4).
-
-    The seeder writes the Flight nodes (RC7); flight-service, as their owner,
-    publishes them as ``FlightsScheduled`` so non-owners can maintain an
-    event-fed FlightView instead of reading live Flight nodes. Chunked, staged
-    through the outbox, and deduped on the seeding event's identity.
-    """
+    """Apply owner seed requests; retain publication-only replay for legacy seeds."""
+    if payload.get("seed_day_id"):
+        from _common.seed_requests import apply_pending
+        await apply_pending("flight", get_driver)
+        return
     from _common.flight_view import flight_record
     from db.neo4j import get_flight_records
     total = payload.get("total_flights", 0)

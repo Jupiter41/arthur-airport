@@ -1118,3 +1118,40 @@ the owner's last watermark and is ignored by the clock. A stopped owner, or one 
 
 flight-service subscribes to `passengers.events` for `BoardingProgress` only and drops every
 other passenger fact before validation.
+
+
+### Owner-applied seeding and recovery (RC7 / RC8, 2026-11-17)
+
+This supersedes the legacy direct-write seeding instructions above. The
+orchestrator generates complete manifests without writing Flight, Passenger or
+Baggage nodes. It atomically stores a SeedDay and bounded SeedBatch requests
+(owner, immutable JSON rows, simulation timestamp), then publishes a
+FlightScheduleSeeded notification on flights.schedule. Each owner alone applies
+its batches: domain creation, identity relationships, durable acceptance and
+batch creation facts commit with its transactional outbox. Seed batches wait
+until referenced identities exist, so independently starting owners cannot
+silently drop links. Startup and each clock tick retry pending owner requests;
+a lost notification or publication crash does not lose a manifest. A SeedDay
+marker, rather than a partially created timetable, fences repeat generation.
+Existing legacy days are preserved, without inventing historical passengers.
+
+Arrival bags are generated per named passenger, including local arrivals, and
+always carry passenger_id and optional transfer_flight_id. Arrival passengers
+start booked; consumed inbound airborne/approach/landed/taxiing facts advance
+them to airborne, and at_gate/arrived/completed facts to deplaning. The arrival
+flight enters airborne at ETA minus its synthetic flight duration.
+
+Owner consumer groups start at earliest when no valid offset exists; committed
+offsets remain authoritative. Reconciliation uses consumed FlightView state,
+never another owner's mutable graph state. Arrival baggage recovery runs on
+startup ticks and hourly, includes old in_hold bags even outside the normal
+flight-view history window, and calls the same atomic offload path as the fact
+handler. New bags created after a flight fact are picked up by recovery. Facts
+for recovery transitions remain durable in BULK mode.
+
+Seed notifications contain `seed_day_id`, `sim_day`, `sim_date`, `total_flights`
+and `flight_ids`. Durable SeedBatch rows use chunks of at most 500 entities.
+Owners publish `FlightsScheduled {flights, seed_batch_id}`,
+`PassengersSeeded {passengers, seed_batch_id}` and
+`BaggageSeeded {baggage, seed_batch_id}` through their normal domain outboxes.
+Batch IDs and fact IDs are stable across replay; accepted batches never overwrite entities.

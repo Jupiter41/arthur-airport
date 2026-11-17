@@ -8,7 +8,6 @@ from uuid import uuid4
 from scipy.stats import beta as beta_dist
 
 from services.airport_config import load_airport_runtime_config
-from db.neo4j import get_driver
 from services.fixtures import get_fixtures
 from _common.show_up import draw_show_up
 
@@ -148,7 +147,8 @@ async def generate_passengers(
 
         pax_count = round(seat_cap * load_factor)
         scheduled_time = flight.get("scheduled_time")
-        draws_show_up = initial_status == "booked" and bool(scheduled_time)
+        draws_show_up = (initial_status == "booked" and flight.get("direction", "departure") == "departure"
+                         and bool(scheduled_time))
 
         onward = _onward_candidates(flight, onward_departures) if onward_departures else []
 
@@ -200,59 +200,5 @@ async def generate_passengers(
         flight_pax_counts[flight["id"]] = pax_count
         flight["pax_count"] = pax_count   # keep the schedule dict in step with Neo4j
 
-    # Write to Neo4j in batches
-    await _persist_passengers(all_passengers)
-
-    # Update pax_count on flights
-    await _update_flight_pax_counts(flight_pax_counts)
-
     logger.info("Generated %d passengers for %d flights", len(all_passengers), len(flights))
     return len(all_passengers), all_passengers
-
-
-async def _persist_passengers(passengers: list[dict]) -> None:
-    """Batch-insert passengers into Neo4j and create BOOKED_ON relationships."""
-    driver = get_driver()
-    batch_size = 2000
-    for i in range(0, len(passengers), batch_size):
-        batch = passengers[i : i + batch_size]
-        async with driver.session() as session:
-            await session.run(
-                """
-                UNWIND $passengers AS p
-                MATCH (f:Flight {id: p.flight_id})
-                CREATE (pax:Passenger {
-                    id: p.id,
-                    name: p.name,
-                    pnr: p.pnr,
-                    nationality: p.nationality,
-                    status: p.status,
-                    location_zone: p.location_zone,
-                    seat: p.seat,
-                    special_assistance: p.special_assistance,
-                    connection: p.connection,
-                    connection_flight_id: p.connection_flight_id,
-                    show_up_at: p.show_up_at
-                })
-                CREATE (pax)-[:ON_FLIGHT]->(f)
-                """,
-                passengers=batch,
-            )
-
-
-async def _update_flight_pax_counts(counts: dict[str, int]) -> None:
-    """Update pax_count on Flight nodes."""
-    driver = get_driver()
-    items = [{"id": fid, "pax_count": cnt} for fid, cnt in counts.items()]
-    batch_size = 200
-    for i in range(0, len(items), batch_size):
-        batch = items[i : i + batch_size]
-        async with driver.session() as session:
-            await session.run(
-                """
-                UNWIND $items AS item
-                MATCH (f:Flight {id: item.id})
-                SET f.pax_count = item.pax_count
-                """,
-                items=batch,
-            )

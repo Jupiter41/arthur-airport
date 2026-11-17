@@ -203,7 +203,7 @@ def _make_consumer() -> Consumer:
     return Consumer({
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
         "group.id": "bag-svc",
-        "auto.offset.reset": "latest",
+        "auto.offset.reset": "earliest",
         "enable.auto.commit": False,
         "session.timeout.ms": 10000,
     })
@@ -223,8 +223,10 @@ async def run_consumer() -> None:
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     global _consumer, _consumer_running
 
+    from _common.seed_requests import apply_pending
+    await apply_pending("baggage", get_driver)
     _consumer = _make_consumer()
-    _consumer.subscribe(["sim.clock", "flights.events", "incidents.events", "baggage.commands"])
+    _consumer.subscribe(["sim.clock", "flights.schedule", "flights.events", "incidents.events", "baggage.commands"])
     _consumer_running = True
 
     logger.info(
@@ -300,6 +302,9 @@ async def _dispatch(envelope: dict) -> None:
     VIEW.apply(event_type, payload, sim_time)
 
     match event_type:
+        case "FlightScheduleSeeded":
+            from _common.seed_requests import apply_pending
+            await apply_pending("baggage", get_driver)
         case "SimClockTick":
             await _on_clock_tick(payload, sim_time)
         case "FlightStatusChanged":
@@ -657,12 +662,60 @@ async def _prepare_tick(candidate: BaggageConsumerState) -> None:
             candidate.conveyor.set_zone_status(zone_id, "offline")
 
 
+RECONCILE_BOOT_TICKS = max(1, int(os.getenv("RECONCILE_BOOT_TICKS", "5")))
+RECONCILE_INTERVAL_MIN = max(1, int(os.getenv("RECONCILE_INTERVAL_MIN", "60")))
+_reconcile_cadence: dict = {"boot_ticks": 0, "last": None}
+
+
+async def _reconcile_flight_baggage(sim_time: datetime, *, force: bool = False) -> None:
+    """Recover missed triggers from consumed state, through the normal atomic paths.
+
+    Runs outside the tick transaction: each flight's inbox/statuses/facts commit
+    together, and a failed sweep does not advance its cadence. Identity reads
+    start at our own live bags, including overdue holds from any simulated day.
+    """
+    from _common.flight_view import VIEW
+    cadence = _reconcile_cadence
+    last = cadence["last"]
+    if not (force or cadence["boot_ticks"] < RECONCILE_BOOT_TICKS or last is None
+            or (sim_time - last).total_seconds() >= RECONCILE_INTERVAL_MIN * 60):
+        return
+    async with get_driver().session() as session:
+        candidates = await (await session.run(
+            "MATCH (b:Baggage) WHERE b.status IN $statuses "
+            "MATCH (b)-[:LOADED_ON]->(f:Flight) RETURN DISTINCT f.id AS id",
+            statuses=["in_hold", "loaded", *SHORT_SHIP_STATUSES],
+        )).data()
+    for row in candidates:
+        flight = VIEW.get(row["id"])
+        if not flight:
+            continue
+        # Never recover ahead of the consumed fact's simulation timestamp.
+        observed = flight.get("updated_at") or flight.get("actual_time")
+        if observed and datetime.fromisoformat(observed) > sim_time:
+            continue
+        fid, status = flight["id"], flight.get("status")
+        recovery_id = f"reconcile:{fid}:{sim_time.isoformat()}"
+        if flight.get("direction") == "arrival" and status in ("at_gate", "arrived", "completed"):
+            await _apply_arrival_at_gate(fid, flight.get("gate_id") or "", sim_time, recovery_id)
+        elif flight.get("direction") == "departure" and status in ("departed", "airborne", "arrived", "completed"):
+            await _apply_departure_in_hold(fid, sim_time, recovery_id)
+        elif status == "cancelled":
+            await _on_flight_cancelled({"flight_id": fid}, sim_time)
+    cadence["boot_ticks"] += 1
+    cadence["last"] = sim_time
+
+
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     from db.neo4j import get_driver
+    from _common.seed_requests import apply_pending
+    seeded = await apply_pending("baggage", get_driver)
     # Replay a coalesced backlog as bounded steps (see catch_up_times).
     from _common._profiler import tick_timer, update_speed
     update_speed(payload.get("speed_multiplier") or 60)
     for step_time in catch_up_times(_state.last_tick_sim_time, sim_time, CATCH_UP_MAX_STEP_MIN):
+        await _reconcile_flight_baggage(step_time, force=bool(seeded))
+        seeded = 0
         with tick_timer():
             await run_tick("BaggageOutboxSeq", "BaggageOutbox", _state,
                            _TICK_CODEC, get_driver, _advance_tick, payload, step_time, _prepare_tick)
@@ -1321,7 +1374,7 @@ async def _apply_arrival_at_gate(
         fact["document"]["payload"]["inbound_flight_id"] = flight_id
         transfer_facts.append(fact)
     suppress = is_bulk_mode()
-    facts = [] if suppress else [
+    facts = [
         _status_changed_fact(
             event_id=event_id,
             baggage_id=bag["id"],

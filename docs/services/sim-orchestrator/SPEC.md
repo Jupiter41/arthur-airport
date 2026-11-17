@@ -301,3 +301,33 @@ the normal first-day initialization path. Existing `SimState` remains authoritat
 `GET /sim/status` counts both `flights_today` and `passengers_today` against
 flights scheduled on the current simulated UTC date. Historical passengers
 retained in the graph must not inflate today's activity count.
+
+
+### Owner-applied seeding and recovery (RC7 / RC8, 2026-11-17)
+
+This supersedes the legacy direct-write seeding instructions above. The
+orchestrator generates complete manifests without writing Flight, Passenger or
+Baggage nodes. It atomically stores a SeedDay and bounded SeedBatch requests
+(owner, immutable JSON rows, simulation timestamp), then publishes a
+FlightScheduleSeeded notification on flights.schedule. Each owner alone applies
+its batches: domain creation, identity relationships, durable acceptance and
+batch creation facts commit with its transactional outbox. Seed batches wait
+until referenced identities exist, so independently starting owners cannot
+silently drop links. Startup and each clock tick retry pending owner requests;
+a lost notification or publication crash does not lose a manifest. A SeedDay
+marker, rather than a partially created timetable, fences repeat generation.
+Existing legacy days are preserved, without inventing historical passengers.
+
+Arrival bags are generated per named passenger, including local arrivals, and
+always carry passenger_id and optional transfer_flight_id. Arrival passengers
+start booked; consumed inbound airborne/approach/landed/taxiing facts advance
+them to airborne, and at_gate/arrived/completed facts to deplaning. The arrival
+flight enters airborne at ETA minus its synthetic flight duration.
+
+Owner consumer groups start at earliest when no valid offset exists; committed
+offsets remain authoritative. Reconciliation uses consumed FlightView state,
+never another owner's mutable graph state. Arrival baggage recovery runs on
+startup ticks and hourly, includes old in_hold bags even outside the normal
+flight-view history window, and calls the same atomic offload path as the fact
+handler. New bags created after a flight fact are picked up by recovery. Facts
+for recovery transitions remain durable in BULK mode.

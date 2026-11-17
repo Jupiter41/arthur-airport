@@ -25,6 +25,7 @@ from _common.data_sources import DataSourceRegistry, SimulatedSourceAdapter
 
 from confluent_kafka import Consumer
 
+from db.neo4j import get_driver
 from db.neo4j import (
     get_passengers_by_status,
     get_security_queue_members,
@@ -410,7 +411,7 @@ def _make_consumer() -> Consumer:
     return Consumer({
         "bootstrap.servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
         "group.id": "pax-svc",
-        "auto.offset.reset": "latest",
+        "auto.offset.reset": "earliest",
         "enable.auto.commit": False,
         "session.timeout.ms": 10000,
     })
@@ -482,9 +483,12 @@ async def run_consumer() -> None:
     _state = current_tick.get().state if current_tick.get() else globals()["_state"]
     global _consumer, _consumer_running
 
+    from _common.seed_requests import apply_pending
+    await apply_pending("passenger", get_driver)
     _consumer = _make_consumer()
     _consumer.subscribe([
         "sim.clock",
+        "flights.schedule",
         "flights.events",
         "incidents.events",
         "baggage.events",
@@ -814,6 +818,8 @@ async def _prepare_tick(candidate: PassengerConsumerState) -> None:
 
 async def _on_clock_tick(payload: dict, sim_time: datetime) -> None:
     from db.neo4j import get_driver
+    from _common.seed_requests import apply_pending
+    await apply_pending("passenger", get_driver)
     # Replay a coalesced backlog as bounded steps (see catch_up_times).
     from _common._profiler import tick_timer, update_speed
     update_speed(payload.get("speed_multiplier") or 60)
@@ -1872,6 +1878,22 @@ async def _on_flight_status_changed(payload: dict, sim_time: datetime, event_id:
     facts: list[dict] = []
     bookkeeping: list[tuple] = []  # ("move", old, new) / ("remove", old) — after commit
     departed_count = 0
+
+    # Inbound origin departure is a consumed flight fact, not a seed-time guess.
+    if (payload.get("direction") == "arrival"
+            and new_status in ("airborne", "approach", "landed", "taxiing")):
+        eligible = [p for p in await get_passengers_by_flight(flight_id)
+                    if p.get("status") == "booked"]
+        if eligible:
+            groups.append({"ids": [p["id"] for p in eligible],
+                           "status": "airborne", "zone": "in-flight"})
+            for pax in eligible:
+                fact = build_passenger_status_changed_fact(
+                    passenger_id=pax["id"], name=pax.get("name", ""),
+                    previous_status="booked", new_status="airborne", location_zone="in-flight",
+                    sim_time=sim_time, flight_id=flight_id,
+                )
+                facts.append({"id": fact["event_id"], "document": fact})
 
     # Arrival: flight at_gate → passengers deplaning
     if new_status == "at_gate" and payload.get("previous_status") in ("taxiing", "landed"):

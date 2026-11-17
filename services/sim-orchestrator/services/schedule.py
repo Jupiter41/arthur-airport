@@ -211,7 +211,7 @@ async def generate_schedule(
     target_departures: int = 210,
     seed: int | None = None,
 ) -> list[dict]:
-    """Generate a full day's flight schedule and persist to Neo4j.
+    """Generate a full day's flight schedule without domain writes.
 
     Creates *target_departures* departure flights using a realistic hourly
     traffic distribution (morning and evening peaks with sustained mid-day
@@ -340,56 +340,11 @@ async def generate_schedule(
         flights.append(arr_flight)
         runway_toggle += 1
 
-    # Write all flights to Neo4j in batches
-    await _persist_flights(flights)
-
     logger.info(
         "Schedule generated: %d flights for %s (%d departures, %d arrivals)",
         len(flights), sim_date, target_departures, target_departures,
     )
     return flights
-
-
-async def _persist_flights(flights: list[dict]) -> None:
-    """Batch-insert flights into Neo4j using UNWIND."""
-    driver = get_driver()
-    batch_size = 100
-    for i in range(0, len(flights), batch_size):
-        batch = flights[i : i + batch_size]
-        async with driver.session() as session:
-            await session.run(
-                """
-                UNWIND $flights AS f
-                MATCH (g:Gate {id: f.gate_id})
-                MATCH (r:Runway {id: f.runway_id})
-                CREATE (fl:Flight {
-                    id: f.id,
-                    flight_number: f.flight_number,
-                    airline_code: f.airline_code,
-                    direction: f.direction,
-                    status: f.status,
-                    aircraft_type: f.aircraft_type,
-                    aircraft_registration: f.aircraft_registration,
-                    origin_iata: f.origin_iata,
-                    destination_iata: f.destination_iata,
-                    scheduled_time: f.scheduled_time,
-                    estimated_time: f.estimated_time,
-                    delay_minutes: f.delay_minutes,
-                    delay_reason: '',
-                    seat_capacity: f.seat_capacity,
-                    pax_count: f.pax_count,
-                    flight_type: f.flight_type,
-                    route_category: f.route_category,
-                    flight_duration_minutes: COALESCE(f.flight_duration_minutes, 0),
-                    actual_time: '',
-                    arrival_estimated_time: '',
-                    gate_id: f.gate_id
-                })
-                CREATE (fl)-[:ASSIGNED_TO]->(g)
-                CREATE (fl)-[:USES_RUNWAY {operation: CASE WHEN f.direction = 'departure' THEN 'takeoff' ELSE 'landing' END}]->(r)
-                """,
-                flights=batch,
-            )
 
 
 async def get_schedule_from_neo4j(sim_date: date | None = None) -> list[dict]:

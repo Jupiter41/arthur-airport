@@ -7,6 +7,8 @@ from _common import neo4j_client
 logger = logging.getLogger(__name__)
 
 CONSTRAINTS = [
+    "CREATE CONSTRAINT seed_day_id IF NOT EXISTS FOR (d:SeedDay) REQUIRE d.id IS UNIQUE",
+    "CREATE CONSTRAINT seed_batch_id IF NOT EXISTS FOR (b:SeedBatch) REQUIRE b.id IS UNIQUE",
     "CREATE CONSTRAINT flight_id IF NOT EXISTS FOR (f:Flight) REQUIRE f.id IS UNIQUE",
     "CREATE CONSTRAINT passenger_id IF NOT EXISTS FOR (p:Passenger) REQUIRE p.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_tag IF NOT EXISTS FOR (b:Baggage) REQUIRE b.tag IS UNIQUE",
@@ -16,6 +18,7 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    "CREATE INDEX seed_batch_pending IF NOT EXISTS FOR (b:SeedBatch) ON (b.owner, b.pending)",
     "CREATE INDEX flight_number IF NOT EXISTS FOR (f:Flight) ON (f.flight_number)",
     "CREATE INDEX flight_status IF NOT EXISTS FOR (f:Flight) ON (f.status)",
     "CREATE INDEX passenger_pnr IF NOT EXISTS FOR (p:Passenger) ON (p.pnr)",
