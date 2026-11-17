@@ -138,7 +138,11 @@ owner (flight, passenger, baggage) publishes `TickProcessed {owner, sim_time}` o
 clock** (does not emit the next tick) while the slowest *live* owner is more than
 `WATERMARK_MAX_LAG_MIN` sim-minutes (default 5) behind the next tick. An owner silent for
 `WATERMARK_STALE_S` wall seconds (default 30) is treated as down and does not hold the
-clock (it is reported instead), so one crashed service cannot freeze the sim. Lag per
+clock (it is reported instead), so one crashed service cannot freeze the sim. Owners also
+publish `OwnerHeartbeat` every `WATERMARK_HEARTBEAT_S` seconds (default 2) from a
+background thread and `OwnerStopped` on a clean shutdown: a stopped owner, or one that
+beat and then missed `WATERMARK_HEARTBEAT_STALE_S` seconds (default 7) of beats, is down
+at once, while a slow owner that still beats keeps holding the clock. Lag per
 owner and held ticks are Prometheus metrics (`sim_owner_lag_minutes`,
 `sim_clock_held_total`) and appear in `GET /sim/status` as `watermarks`. Lag becomes
 visible back-pressure instead of silently coarsened ticks.

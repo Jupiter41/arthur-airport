@@ -6,6 +6,13 @@ owner is too far behind, turning silent tick coalescing into visible
 back-pressure. An owner silent for ``WATERMARK_STALE_S`` wall seconds is treated
 as down: it no longer holds the clock (one crashed service must not freeze the
 sim) and is reported as stale instead.
+
+Owners also send ``OwnerHeartbeat`` every few wall seconds from a background
+thread and ``OwnerStopped`` on a clean shutdown. An owner that has been
+heard beating and then misses ``WATERMARK_HEARTBEAT_STALE_S`` seconds of
+beats (a crash) or announced its stop is down at once, instead of after the
+full ``WATERMARK_STALE_S``; a slow owner that still beats keeps holding the
+clock until its progress itself is ``WATERMARK_STALE_S`` old.
 """
 
 from __future__ import annotations
@@ -23,16 +30,33 @@ logger = logging.getLogger(__name__)
 ENABLED = os.getenv("WATERMARK_BACKPRESSURE", "true").lower() != "false"
 MAX_LAG_MIN = float(os.getenv("WATERMARK_MAX_LAG_MIN", "5"))
 STALE_S = float(os.getenv("WATERMARK_STALE_S", "30"))
+HEARTBEAT_STALE_S = float(os.getenv("WATERMARK_HEARTBEAT_STALE_S", "7"))
 TOPIC = "sim.watermark"
 
 
 class WatermarkTracker:
     def __init__(self, *, max_lag_min: float = MAX_LAG_MIN, stale_s: float = STALE_S,
-                 clock=time.monotonic) -> None:
+                 heartbeat_stale_s: float = HEARTBEAT_STALE_S, clock=time.monotonic) -> None:
         self.max_lag_min = max_lag_min
         self.stale_s = stale_s
+        self.heartbeat_stale_s = heartbeat_stale_s
         self.clock = clock
         self.marks: dict[str, tuple[datetime, float]] = {}
+        self.beats: dict[str, float] = {}
+
+    def beat(self, owner: str) -> None:
+        self.beats[owner] = self.clock()
+
+    def stopped(self, owner: str) -> None:
+        """A clean shutdown: the owner no longer holds the clock."""
+        self.beats[owner] = float("-inf")
+
+    def _down(self, owner: str, now: float, seen: float) -> bool:
+        if now - seen > self.stale_s:
+            return True
+        beat = self.beats.get(owner)
+        # Owners that never beat (older builds) fall back to progress staleness.
+        return beat is not None and now - beat > self.heartbeat_stale_s
 
     def observe(self, owner: str, sim_time: datetime) -> None:
         sim_time = sim_time.replace(tzinfo=None)
@@ -41,13 +65,17 @@ class WatermarkTracker:
             self.marks[owner] = (sim_time, self.clock())
         else:  # a rewind (reset/restore): accept it, the owner restarted its clock
             self.marks[owner] = (sim_time, self.clock())
+        if self.beats.get(owner) is not None:
+            self.beat(owner)   # a watermark proves the owner is alive
 
     def reset(self) -> None:
         self.marks.clear()
+        self.beats.clear()
 
     def live(self) -> dict[str, datetime]:
         now = self.clock()
-        return {owner: at for owner, (at, seen) in self.marks.items() if now - seen <= self.stale_s}
+        return {owner: at for owner, (at, seen) in self.marks.items()
+                if not self._down(owner, now, seen)}
 
     def blocking(self, next_sim_time: datetime, step_minutes: int = 1) -> list[str]:
         """Live owners more than the allowed lag behind ``next_sim_time``."""
@@ -62,7 +90,7 @@ class WatermarkTracker:
             owner: {
                 "sim_time": at.isoformat(),
                 "lag_minutes": round((current - at).total_seconds() / 60, 1),
-                "stale": now - seen > self.stale_s,
+                "stale": self._down(owner, now, seen),
             }
             for owner, (at, seen) in sorted(self.marks.items())
         }
@@ -72,9 +100,19 @@ TRACKER = WatermarkTracker()
 
 
 def handle(envelope: dict, tracker: WatermarkTracker = TRACKER) -> bool:
-    if envelope.get("event_type") != "TickProcessed":
-        return False
+    event_type = envelope.get("event_type")
     payload = envelope.get("payload") or {}
+    if event_type in ("OwnerHeartbeat", "OwnerStopped"):
+        owner = payload.get("owner")
+        if not owner:
+            return False
+        if event_type == "OwnerStopped":
+            tracker.stopped(owner)
+        else:
+            tracker.beat(owner)
+        return True
+    if event_type != "TickProcessed":
+        return False
     owner, at = payload.get("owner"), payload.get("sim_time")
     if not owner or not at:
         return False

@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Awaitable, Callable
 from uuid import uuid4
@@ -59,6 +60,7 @@ def init_producer(name: str, brokers: str | None = None) -> Producer:
 def close_producer(producer: Producer | None) -> None:
     """Flush pending messages and shut down the producer."""
     if producer is not None:
+        stop_owner_heartbeats(producer)
         producer.flush(timeout=10)
         logger.info("Kafka producer flushed and closed")
 
@@ -287,3 +289,74 @@ def produce_tick_processed(producer: "Producer | None", owner: str, sim_time: da
         )
     except Exception:
         logger.warning("Tick watermark not produced", exc_info=True)
+    _register_heartbeat(producer, owner, sim_time)
+
+
+# ── Owner liveness heartbeat ──────────────────────────────────────────────
+#
+# The clock stops waiting for an owner whose TickProcessed is older than
+# WATERMARK_STALE_S (30 s): that bound must stay generous, since a slow but
+# alive owner legitimately holds the clock. A crashed owner, though, should be
+# released at once. Each owner therefore also publishes ``OwnerHeartbeat`` from
+# a daemon thread every WATERMARK_HEARTBEAT_S seconds (it keeps beating while a
+# long tick runs on the event loop), and ``OwnerStopped`` on a clean shutdown.
+# A missing heartbeat means the process is gone; the orchestrator releases the
+# clock after a few missed beats instead of 30 s.
+
+HEARTBEAT_INTERVAL_S = float(os.getenv("WATERMARK_HEARTBEAT_S", "2"))
+_heartbeats: dict[str, tuple["Producer", datetime]] = {}
+_heartbeat_lock = threading.Lock()
+_heartbeat_thread: threading.Thread | None = None
+
+
+def _register_heartbeat(producer: "Producer", owner: str, sim_time: datetime) -> None:
+    global _heartbeat_thread
+    if HEARTBEAT_INTERVAL_S <= 0:
+        return
+    with _heartbeat_lock:
+        _heartbeats[owner] = (producer, sim_time)
+        if _heartbeat_thread is None or not _heartbeat_thread.is_alive():
+            _heartbeat_thread = threading.Thread(
+                target=_heartbeat_loop, name="owner-heartbeat", daemon=True)
+            _heartbeat_thread.start()
+
+
+def _beat_once() -> None:
+    with _heartbeat_lock:
+        owners = list(_heartbeats.items())
+    for owner, (producer, sim_time) in owners:
+        try:
+            produce_event(
+                producer, "OwnerHeartbeat", sim_time,
+                {"owner": owner, "sim_time": sim_time.replace(tzinfo=None).isoformat()},
+                producer_name=owner, topic=WATERMARK_TOPIC, key=owner,
+            )
+        except Exception:
+            logger.debug("Owner heartbeat not produced", exc_info=True)
+
+
+def _heartbeat_loop() -> None:
+    import time
+    while True:
+        time.sleep(HEARTBEAT_INTERVAL_S)
+        with _heartbeat_lock:
+            if not _heartbeats:
+                return
+        _beat_once()
+
+
+def stop_owner_heartbeats(producer: "Producer") -> None:
+    """Stop beating for the owners of ``producer`` and announce ``OwnerStopped``."""
+    with _heartbeat_lock:
+        owners = [(o, t) for o, (p, t) in _heartbeats.items() if p is producer]
+        for owner, _ in owners:
+            del _heartbeats[owner]
+    for owner, sim_time in owners:
+        try:
+            produce_event(
+                producer, "OwnerStopped", sim_time,
+                {"owner": owner, "sim_time": sim_time.replace(tzinfo=None).isoformat()},
+                producer_name=owner, topic=WATERMARK_TOPIC, key=owner,
+            )
+        except Exception:
+            logger.debug("OwnerStopped not produced", exc_info=True)

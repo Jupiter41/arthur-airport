@@ -43,7 +43,7 @@ entity transitions still advance only on `SimClockTick`.
 | `incidents.commands`   | api-gateway, analysis-service | incident-service                                                            | 1h        |
 | `cost.events`          | cost-service                 | api-gateway                                                                  | 7 days    |
 | `analysis.events`      | analysis-service             | api-gateway                                                                  | 7 days    |
-| `sim.watermark`        | flight-, passenger-, baggage-service | sim-orchestrator (`TickProcessed`, RC4)                              | 1h        |
+| `sim.watermark`        | flight-, passenger-, baggage-service | sim-orchestrator (`TickProcessed`, `OwnerHeartbeat`, `OwnerStopped`, RC4) | 1h        |
 
 ---
 
@@ -1101,6 +1101,17 @@ tick (a lost watermark is superseded by the next one):
 
 ```json
 {"event_type": "TickProcessed", "payload": {"owner": "passenger-service", "sim_time": "2024-06-18T06:05:00"}}
+```
+
+**`OwnerHeartbeat`** / **`OwnerStopped`** (`sim.watermark`, same producers and consumer).
+Liveness only, never progress: each owner sends `OwnerHeartbeat` every
+`WATERMARK_HEARTBEAT_S` wall seconds (default 2) from a background thread once it has
+published a first watermark, and `OwnerStopped` when its producer closes. `sim_time` repeats
+the owner's last watermark and is ignored by the clock. A stopped owner, or one silent for
+`WATERMARK_HEARTBEAT_STALE_S` seconds (default 7) after beating, stops holding the clock.
+
+```json
+{"event_type": "OwnerHeartbeat", "payload": {"owner": "passenger-service", "sim_time": "2024-06-18T06:05:00"}}
 ```
 
 flight-service subscribes to `passengers.events` for `BoardingProgress` only and drops every
