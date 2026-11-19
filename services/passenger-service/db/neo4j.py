@@ -11,6 +11,7 @@ from services.reconciliation import PHYSICAL_STATUSES
 logger = logging.getLogger(__name__)
 
 CONSTRAINTS = [
+    "CREATE CONSTRAINT passenger_baggage_observation_id IF NOT EXISTS FOR (o:PassengerBaggageObservation) REQUIRE o.id IS UNIQUE",
     "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT security_checkpoint_terminal IF NOT EXISTS FOR (s:SecurityCheckpoint) REQUIRE s.terminal IS UNIQUE",
     "CREATE CONSTRAINT security_projection_terminal IF NOT EXISTS FOR (s:SecurityProjection) REQUIRE s.terminal IS UNIQUE",
@@ -26,6 +27,7 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    "CREATE INDEX passenger_baggage_observation_at IF NOT EXISTS FOR (o:PassengerBaggageObservation) ON (o.observed_at)",
     "CREATE INDEX flight_status IF NOT EXISTS FOR (f:Flight) ON (f.status)",
     "CREATE INDEX passenger_page_order IF NOT EXISTS FOR (p:Passenger) ON (p.name, p.id)",
     "CREATE INDEX passenger_outbox_order IF NOT EXISTS FOR (o:PassengerOutbox) ON (o.revision, o.position)",
@@ -801,6 +803,7 @@ async def get_passengers_by_status(
     *,
     due_field: str | None = None,
     due_at: str | None = None,
+    observed_at: str | None = None,
     include_ids: list[str] | None = None,
     include_missing_due: bool = False,
 ) -> list[dict]:
@@ -827,13 +830,21 @@ async def get_passengers_by_status(
         """
     else:
         start = "MATCH (p:Passenger {status: $status})-[:ON_FLIGHT]->(f:Flight) "
+    arrival_observation = status in ("deplaning", "customs", "baggage_claim")
+    if arrival_observation:
+        start += " OPTIONAL MATCH (o:PassengerBaggageObservation {id:p.id}) "
+    else:
+        start += " WITH p, f, null AS o "
     if due_field is not None:
         if due_field not in _DUE_FIELDS or due_at is None:
             raise ValueError(f"unsupported due filter: {due_field!r}")
         params["due_at"] = due_at
         params["include_ids"] = list(include_ids or [])
         missing = f" OR p.{due_field} IS NULL" if include_missing_due else ""
-        start += f" WITH p, f WHERE p.{due_field} <= $due_at OR p.id IN $include_ids{missing} "
+        early = " OR o.collected_at <= $observed_at" if status == "baggage_claim" else ""
+        if early:
+            params["observed_at"] = (observed_at or due_at)
+        start += f" WITH p, f, o WHERE p.{due_field} <= $due_at OR p.id IN $include_ids{missing}{early} "
     query = start + """
         RETURN p.id AS id, p.name AS name, f.id AS flight_id,
                p.special_assistance AS special_assistance,
@@ -845,7 +856,9 @@ async def get_passengers_by_status(
                p.customs_at AS customs_at,
                p.show_up_at AS show_up_at,
                p.connection AS connection,
-               p.connection_flight_id AS connection_flight_id
+               p.connection_flight_id AS connection_flight_id,
+               o.collected_at AS baggage_collected_at,
+               o.carousel_at AS baggage_carousel_at, o.carousel_zone AS baggage_carousel_zone
     """
     async with get_driver().session() as session:
         result = await session.run(query, **params)

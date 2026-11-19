@@ -522,11 +522,12 @@ def _plan_status_change(
     plan.status_changes.append({
         "id": bag.baggage_id, "status": new_status, "zone": zone,
         "previous_status": previous_status, "flight_id": bag.flight_id or None,
+        "passenger_id": bag.passenger_id,
     })
     plan.metrics.append(("transition", previous_status, new_status))
     if loaded_flight_id:
         plan.loaded_rows.append({"baggage_id": bag.baggage_id, "flight_id": loaded_flight_id})
-    if not suppress and new_status in PER_BAG_TICK_STATUSES:
+    if new_status in PER_BAG_TICK_STATUSES and (not suppress or new_status in {"on_carousel", "collected"}):
         fact = build_status_changed_fact(
             id_base=sim_time.isoformat(),
             baggage_id=bag.baggage_id,

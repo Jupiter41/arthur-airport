@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Callable
 
 from _common import outbox, retention
+from _common.kafka_runtime import build_envelope
 from db.neo4j import get_driver
 
 PRODUCER = "passenger-service"
@@ -55,7 +56,9 @@ async def purge_archived(purge_before: str, sim_time: datetime, batch: int) -> i
     async def apply(tx) -> int:
         row = await (await tx.run(
             "MATCH (p:PassengerArchive) WHERE p.archived_at < $before "
-            "WITH p LIMIT $batch DETACH DELETE p RETURN count(*) AS n",
+            "WITH p LIMIT $batch "
+            "OPTIONAL MATCH (o:PassengerBaggageObservation {id:p.id}) "
+            "DETACH DELETE o, p RETURN count(*) AS n",
             before=purge_before, batch=batch,
         )).single()
         count = int(row["n"]) if row else 0
@@ -64,6 +67,29 @@ async def purge_archived(purge_before: str, sim_time: datetime, batch: int) -> i
                 retention.purged_fact("Passenger", count, purge_before, sim_time, PRODUCER),
             ], retention.FACT_REVISION)
         return count
+
+    async with get_driver().session() as session:
+        return await session.execute_write(apply)
+
+
+async def purge_orphan_observations(purge_before: str, sim_time: datetime, batch: int) -> int:
+    """Bound unmatched historical inputs while preserving active/archive progress."""
+    async def apply(tx) -> int:
+        rows = await (await tx.run(
+            "MATCH (o:PassengerBaggageObservation) WHERE o.observed_at < $before "
+            "AND NOT EXISTS { MATCH (:Passenger {id:o.id}) } "
+            "AND NOT EXISTS { MATCH (:PassengerArchive {id:o.id}) } "
+            "WITH o LIMIT $batch WITH o, o.id AS id DETACH DELETE o RETURN id",
+            before=purge_before, batch=batch,
+        )).data()
+        if rows:
+            document = build_envelope("PassengerBaggageObservationsPurged", sim_time, {
+                "ids": [row["id"] for row in rows], "count": len(rows), "purge_before": purge_before,
+            }, PRODUCER)
+            await outbox.stage_outbox(tx, "PassengerOutbox", [
+                {"id": document["event_id"], "document": document},
+            ], retention.FACT_REVISION)
+        return len(rows)
 
     async with get_driver().session() as session:
         return await session.execute_write(apply)
@@ -96,8 +122,14 @@ def tasks(sim_time: Callable[[], datetime | None], batch: int | None = None) -> 
         before, _ = retention.cutoffs(now)
         return await archive_departed(before, now, batch, "missed_connection") if before else 0
 
+    async def passenger_prune_orphan_observations() -> int:
+        now = sim_time()
+        _, before = retention.cutoffs(now)
+        return await purge_orphan_observations(before, now, batch) if before else 0
+
     return [passenger_archive_departed, passenger_purge_archive, passenger_prune_inbox,
-            passenger_archive_missed_flight, passenger_archive_missed_connection]
+            passenger_archive_missed_flight, passenger_archive_missed_connection,
+            passenger_prune_orphan_observations]
 
 
 async def setup() -> None:

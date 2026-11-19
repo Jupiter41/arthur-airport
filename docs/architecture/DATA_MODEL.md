@@ -552,3 +552,16 @@ and optional `transfer_flight_id` matching its Passenger's `connection_flight_id
 Inbound Passenger starts `booked`, with no departure airport `show_up_at`.
 Legacy anonymous bags are not arbitrarily assigned to people. Legacy airborne
 passengers on still-scheduled arrivals converge to booked through owner recovery.
+
+### Passenger-owned baggage observations (RC8 / RC12, 2026-11-19)
+
+`PassengerBaggageObservation {id: passenger_id, flight_id, carousel_zone,
+carousel_at, collected_at}` is keyed by a unique ID constraint. It may predate
+Passenger seeding. Arrival decisions join by passenger identity and compare
+source timestamps to the owner tick. Its mutation commits with PassengerInbox
+and PassengerOutbox; archive purge removes it with the passenger.
+
+`BaggageTagSequence {id:'global', next, lock}` is owned by baggage-service.
+Seed acceptance reserves unique numeric tag ranges with domain creation and
+creation facts. Initial migration reads the owner's live/archive tag identities
+once; retries and competing acceptances cannot allocate the same range.

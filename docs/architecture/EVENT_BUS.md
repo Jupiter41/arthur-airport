@@ -1162,3 +1162,18 @@ Owners publish `FlightsScheduled {flights, seed_batch_id}`,
 `PassengersSeeded {passengers, seed_batch_id}` and
 `BaggageSeeded {baggage, seed_batch_id}` through their normal domain outboxes.
 Batch IDs and fact IDs are stable across replay; accepted batches never overwrite entities.
+
+### Durable claim observations (RC8 / RC12, 2026-11-19)
+
+`PassengerBaggageObserved` on `passengers.events` carries `passenger_id`,
+`flight_id`, `status` (`on_carousel`/`collected`), `scan_zone`, `observed_at`
+and `location_updates` (only actual baggage-claim moves). It commits with the
+passenger-owned observation and inbox. Stable input-derived IDs deduplicate
+replay. Baggage's per-bag carousel/collection facts are unsuppressed in BULK;
+batch rows also carry passenger identity. Startup snapshot recovery uses source
+scan time, and arrival decisions fence observations at their owner tick time.
+
+`PassengerBaggageObservationsPurged` on `passengers.events` carries bounded
+`ids`, `count`, and `purge_before`, atomically with removal of orphan observations
+older than the configured sim-time purge age. Live/archive passenger observations
+remain protected; normal passenger archive purge removes its own observation.

@@ -158,6 +158,25 @@ class Tx:
                 db["pax"].setdefault(row["id"], {})["dwell"] = row["dwell"]
             return Result()
 
+        if "MERGE (o:PassengerBaggageObservation" in query:
+            observation = db.setdefault("observations", {}).setdefault(params["pid"], {})
+            if params["status"] == "collected":
+                observation["collected_at"] = min(params["at"], observation.get("collected_at", params["at"]))
+            else:
+                if params["at"] >= observation.get("carousel_at", ""):
+                    observation.update(carousel_at=params["at"], carousel_zone=params["zone"])
+            return Result()
+        if "MATCH (o:PassengerBaggageObservation" in query:
+            pax = db["pax"].get(params["pid"], {})
+            obs = db.get("observations", {}).get(params["pid"], {})
+            if (params["move"] and params["status"] == "on_carousel"
+                    and pax.get("status") == "baggage_claim" and obs.get("carousel_at", "") <= params["at"]
+                    and pax.get("zone") != obs.get("carousel_zone")):
+                old = pax.get("zone")
+                pax["zone"] = obs["carousel_zone"]
+                return Result([{"id": params["pid"], "old_zone": old, "zone": pax["zone"]}])
+            return Result()
+
         # --- inbox mark / outbox stage+drain ---
         if "MERGE (i:PassengerInbox" in query:
             db["inbox"].setdefault(params["id"], params["sim_time"])
@@ -480,6 +499,7 @@ def test_baggage_on_carousel_stages_location_update_atomically(monkeypatch):
     consumer = _consumer(monkeypatch)
     db = importlib.import_module("db.neo4j")
     driver = Driver()
+    driver.db["pax"]["p1"] = {"status": "baggage_claim", "zone": "baggage-claim"}
     monkeypatch.setattr(db, "get_driver", lambda: driver)
     monkeypatch.setattr(consumer, "get_passengers_by_flight", AsyncMock(return_value=[
         {"id": "p1", "status": "baggage_claim"},
@@ -489,7 +509,7 @@ def test_baggage_on_carousel_stages_location_update_atomically(monkeypatch):
                "scan_zone": "arrival-belt-3"}
     asyncio.run(consumer._on_baggage_status_changed(payload, SIM_TIME, "bag-evt-1"))
 
-    assert set(driver.db["inbox"]) == {"bag-evt-1"}
+    assert set(driver.db["inbox"]) == {"bag-evt-1:legacy:p1"}
     assert driver.db["pax"]["p1"]["zone"] == "carousel-3"
     assert "p2" not in driver.db["pax"]
     assert "p1" in consumer._state.passengers_at_carousel  # in-memory set updated post-commit
@@ -500,6 +520,7 @@ def test_later_arrival_bags_on_a_mapped_carousel_skip_the_flight_read(monkeypatc
     consumer = _consumer(monkeypatch)
     db = importlib.import_module("db.neo4j")
     driver = Driver()
+    driver.db["pax"]["p1"] = {"status": "baggage_claim", "zone": "baggage-claim"}
     monkeypatch.setattr(db, "get_driver", lambda: driver)
     by_flight = AsyncMock(return_value=[{"id": "p1", "status": "baggage_claim"}])
     monkeypatch.setattr(consumer, "get_passengers_by_flight", by_flight)
@@ -507,7 +528,7 @@ def test_later_arrival_bags_on_a_mapped_carousel_skip_the_flight_read(monkeypatc
     asyncio.run(consumer._on_baggage_status_changed(payload, SIM_TIME, "bag-evt-1"))
     asyncio.run(consumer._on_baggage_status_changed(payload, SIM_TIME, "bag-evt-2"))
     assert by_flight.await_count == 1
-    assert set(driver.db["inbox"]) == {"bag-evt-1"}
+    assert set(driver.db["inbox"]) == {"bag-evt-1:legacy:p1"}
     # A bag on a different belt for the same flight remaps and re-reads.
     moved = {**payload, "scan_zone": "arrival-belt-4"}
     asyncio.run(consumer._on_baggage_status_changed(moved, SIM_TIME, "bag-evt-3"))

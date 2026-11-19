@@ -98,6 +98,8 @@ async def lifespan(app: FastAPI):
 
     # 5b. Rebuild in-memory security queues from Neo4j
     await rebuild_security_from_neo4j()
+    from services.baggage_observations import bootstrap as bootstrap_baggage_observations
+    await bootstrap_baggage_observations()
 
     # 5c. Load spatial positions for walking time computation
     await load_spatial_positions()

@@ -145,7 +145,6 @@ class PassengerConsumerState:
         self._idempotency = IdempotencyTracker(max_size=20_000)
         self.security_enqueued: set[str] = set()
         self.airside_transitioned: set[str] = set()
-        self.baggage_collected: set[str] = set()
         self.passengers_at_carousel: set[str] = set()
         self.flight_carousel_zone: dict[str, str] = {}  # flight_id → carousel zone
         self.ws_broadcast: Callable[[dict], Awaitable[None]] | None = None
@@ -600,6 +599,13 @@ async def _dispatch_fact(event_type: str, payload: dict, sim_time: datetime, env
             await _on_incident_status_changed(payload, sim_time)
         case "WeatherStateChanged":
             await _on_weather_changed(payload, sim_time)
+        case "BaggageStatusBatchChanged":
+            for row in payload.get("status_changes") or []:
+                await _on_baggage_status_changed({
+                    "baggage_id": row.get("id"),
+                    "passenger_id": row.get("passenger_id"), "flight_id": row.get("flight_id"),
+                    "new_status": row.get("status"), "scan_zone": row.get("zone"),
+                }, sim_time, f"{envelope.get('event_id', '')}:bag:{row.get('id', '')}")
         case "BaggageStatusChanged":
             await _on_baggage_status_changed(payload, sim_time, envelope.get("event_id", ""))
         case _:
@@ -792,7 +798,7 @@ _TICK_CODEC = SnapshotCodec(
     [SecuritySystem, SecurityCheckpoint],
     (
         "last_tick_sim_time", "sim_day", "security", "security_enqueued",
-        "airside_transitioned", "baggage_collected", "passengers_at_carousel",
+        "airside_transitioned", "passengers_at_carousel",
         "flight_carousel_zone", "current_mode", "last_mode", "last_sync_sim_time",
         "tick_counter",
     ),
@@ -801,7 +807,7 @@ _TICK_CODEC = SnapshotCodec(
     ),
     # RC5: the no-show draw is a deterministic per-passenger hash, so the
     # ever-growing per-flight "drawn" set is no longer checkpointed.
-    retired_fields=("noshow_drawn_flights",),
+    retired_fields=("noshow_drawn_flights", "baggage_collected"),
 )
 
 
@@ -1592,7 +1598,10 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
     def _assign_carousels(paxes: list[dict]) -> None:
         for pax in paxes:
             pid = pax["id"]
-            carousel_zone = _carousel_zone_for(pax)
+            observed = pax.get("baggage_carousel_at")
+            carousel_zone = (pax.get("baggage_carousel_zone")
+                             if observed and observed <= sim_time.isoformat()
+                             else _carousel_zone_for(pax))
             if carousel_zone and pid not in _state.passengers_at_carousel:
                 move_passenger("baggage-claim", carousel_zone)
                 _state.passengers_at_carousel.add(pid)
@@ -1708,7 +1717,7 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
         claiming = await get_passengers_by_status(
             "baggage_claim", due_field="baggage_claim_at",
             due_at=(sim_time - timedelta(minutes=BAGGAGE_CLAIM_TIMEOUT_MINUTES)).isoformat(),
-            include_ids=sorted(_state.baggage_collected),
+            observed_at=sim_time.isoformat(),
         )
     except Exception:
         if current_tick.get() is not None:
@@ -1717,8 +1726,8 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
 
     to_depart: list[dict] = []
     for pax in claiming:
-        pid = pax["id"]
-        collected = pid in _state.baggage_collected
+        observed = pax.get("baggage_collected_at")
+        collected = bool(observed and observed <= sim_time.isoformat())
         bc_at = pax.get("baggage_claim_at")
         if should_depart_airport(sim_time, bc_at, collected):
             to_depart.append(pax)
@@ -1730,7 +1739,6 @@ async def _advance_arrivals(sim_time: datetime) -> TickContribution:
         for pax in to_depart:
             old_zone = pax.get("location_zone") or "baggage-claim"
             remove_passenger(old_zone)
-            _state.baggage_collected.discard(pax["id"])
             _state.passengers_at_carousel.discard(pax["id"])
 
     return plan
@@ -2165,69 +2173,27 @@ async def _on_weather_changed(payload: dict, sim_time: datetime) -> None:
 
 
 async def _on_baggage_status_changed(payload: dict, sim_time: datetime, event_id: str = "") -> None:
-    """Track baggage collection for arrival passengers — atomic location write (G1-c).
-
-    Carousel re-location writes commit in ONE ``apply_changes_atomic`` transaction
-    with durable inbox dedup on the input ``event_id``; the derived in-memory
-    carousel set and zone-density counters update only after a successful,
-    non-deduped commit. ``collected`` carries no domain write (in-memory tracking
-    only, rebuildable), so it stays an in-memory set update.
-    """
-    _state = current_tick.get().state if current_tick.get() else globals()["_state"]
-    new_status = payload.get("new_status")
-    if new_status not in ("on_carousel", "collected"):
-        return
-
-    passenger_id = payload.get("passenger_id")
-    flight_id = payload.get("flight_id")
-
-    if new_status == "on_carousel":
-        scan_zone = str(payload.get("scan_zone") or "")
-        if not scan_zone.startswith("arrival-belt-"):
+    """Persist named claim observations before ACK; position only actual claimants."""
+    from services.baggage_observations import observe
+    state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    if not payload.get("passenger_id") and payload.get("new_status") == "on_carousel":
+        fid = payload.get("flight_id")
+        zone = str(payload.get("scan_zone") or "")
+        if not fid or not zone.startswith("arrival-belt-"):
             return
-        belt_num = scan_zone.rsplit("-", 1)[-1]
-        carousel_zone = f"carousel-{belt_num}"
-
-        # Track flight→carousel mapping so late-arriving passengers get assigned
-        # (pure in-memory, idempotent on redelivery).
-        already_mapped = bool(flight_id) and _state.flight_carousel_zone.get(flight_id) == carousel_zone
-        if flight_id:
-            _state.flight_carousel_zone[flight_id] = carousel_zone
-
-        move_ids: list[str] = []
-        if passenger_id and passenger_id not in _state.passengers_at_carousel:
-            # Departure bag with known passenger
-            move_ids.append(passenger_id)
-        elif not passenger_id and flight_id:
-            # Arrival bag — no CARRIES relationship; move all baggage_claim
-            # passengers on this flight to the carousel zone. Once the flight is
-            # mapped to this carousel, passengers reaching baggage claim later
-            # are placed by the tick (_assign_carousels), so repeating the
-            # flight read + write for every further bag (~150 per flight) only
-            # finds passengers that are already there.
-            if already_mapped:
-                return
-            try:
-                pax_list = await get_passengers_by_flight(flight_id)
-            except Exception:
-                pax_list = []
-            for pax in pax_list:
-                pid = pax["id"]
-                if pax.get("status") == "baggage_claim" and pid not in _state.passengers_at_carousel:
-                    move_ids.append(pid)
-
-        if move_ids:
-            location_updates = [{"id": pid, "zone": carousel_zone} for pid in move_ids]
-            applied = await apply_changes_atomic(
-                event_id, sim_time, location_updates=location_updates,
-            )
-            if applied:
-                for pid in move_ids:
-                    move_passenger("baggage-claim", carousel_zone)
-                    _state.passengers_at_carousel.add(pid)
-
-    if new_status == "collected" and passenger_id:
-        _state.baggage_collected.add(passenger_id)
+        carousel = "carousel-" + zone.rsplit("-", 1)[-1]
+        if state.flight_carousel_zone.get(fid) == carousel:
+            return
+        for pax in await get_passengers_by_flight(fid):
+            if pax.get("status") == "baggage_claim":
+                await _on_baggage_status_changed({**payload, "passenger_id": pax["id"]},
+                                                sim_time, f"{event_id}:legacy:{pax['id']}")
+        state.flight_carousel_zone[fid] = carousel
+        return
+    moved = await observe(payload, sim_time, event_id)
+    for row in moved:
+        move_passenger(row.get("old_zone") or "baggage-claim", row["zone"])
+        state.passengers_at_carousel.add(row["id"])
 
 
 def _add_alert(alert: dict) -> None:

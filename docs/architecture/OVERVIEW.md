@@ -237,6 +237,9 @@ specifications and `_common/seed_requests.py`.
 offsets. Baggage startup/hourly sweeps use consumed `FlightView` state and call
 the normal atomic arrival/departure/cancellation paths. Startup includes old
 arrival flights with live `in_hold` bags, beyond the normal projection window.
+Passenger startup also bootstraps a timestamped snapshot of linked arrival bag
+observations into its own durable projection (RC8/RC12). Tick decisions use
+that projection and fence future observations by owner simulation time.
 
 ---
 

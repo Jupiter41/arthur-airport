@@ -286,3 +286,18 @@ def test_analysis_drops_archived_and_collected_bags_from_targets():
     state.on_baggage_status_batch_changed({"status_changes": [
         {"id": "b3", "status": "collected", "zone": "carousel-1"}]})
     assert state.baggage_targets == {}
+
+
+def test_orphan_observation_purge_is_bounded_and_commits_a_fact(monkeypatch):
+    import_service_module("passenger", "application.commands")
+    module = importlib.import_module("services.retention")
+    driver = _Driver(lambda q, p: [{"id": "orphan"}] if "DETACH DELETE o RETURN id" in q else [])
+    monkeypatch.setattr(module, "get_driver", lambda: driver)
+    assert asyncio.run(module.purge_orphan_observations("2024-07-01T12:00:00", NOW, 1)) == 1
+    query, params = driver.txs[0].queries[0]
+    assert "o.observed_at < $before" in query and params["batch"] == 1
+    assert "NOT EXISTS { MATCH (:Passenger {id:o.id}) }" in query
+    assert "NOT EXISTS { MATCH (:PassengerArchive {id:o.id}) }" in query
+    [fact] = _staged(driver.txs[0])
+    assert fact["event_type"] == "PassengerBaggageObservationsPurged"
+    assert fact["payload"]["ids"] == ["orphan"]

@@ -891,3 +891,36 @@ archived 24 sim-hours after its owner-written `missed_connection_at`, using an
 indexed age seek. Relationships remain; archives purge 168 sim-hours after
 archival. Each batch and its `EntitiesArchived`/`EntitiesPurged` fact commit
 together. Flight schedule and wall time do not substitute for transition time.
+
+### Durable baggage observations (RC8 / RC12, 2026-11-19)
+
+The passenger owner persists one `PassengerBaggageObservation` per passenger ID,
+independently of whether seeding has created that passenger yet. Named
+`on_carousel`/`collected` facts commit observation timestamps, durable inbox and
+`PassengerBaggageObserved` outbox facts together under the passenger runtime
+lock, before acknowledgement. Duplicates and stale carousel inputs cannot erase
+collection. No mutable baggage-owner state is read in tick decisions.
+
+Carousel positioning is allowed only while the passenger is `baggage_claim`.
+Early observations remain durable until that lifecycle prerequisite is reached.
+Arrival tick queries join these owner observations and use only timestamps at
+or before the tick. Collected observations include claimants before their
+timeout; cached sets are optional accelerators, never the recovery source.
+`PassengerBaggageObservation` survives passenger archival and is deleted with
+the passenger's archive at purge. Identity links and flight assignments remain.
+
+At startup only, a read-only snapshot of linked live/archived arrival bags in
+`on_carousel`/`collected` rebuilds missing observations for active passengers.
+This bootstrap handles missing/expired offsets beyond Kafka retention. Persist
+the source scan timestamp, and fence its use by owner tick sim time; never
+pretend an ahead-of-checkpoint scan happened earlier. Bootstrap uses the same
+atomic observation path and durable facts. Anonymous legacy bags cannot prove
+collection for an individual passenger and retain the documented timeout.
+
+Observation records with no live or archived passenger expire after
+`RETENTION_PURGE_AFTER_H` sim-hours since their latest source observation.
+An indexed, bounded background sweep commits deletion with
+`PassengerBaggageObservationsPurged`; linked active/archive observations remain
+under passenger retention. This bounds obsolete replay records without retaining
+whole-history checkpoint sets. `baggage_collected` is retired from snapshots;
+legacy checkpoints remain readable and the durable projection supplies progress.
