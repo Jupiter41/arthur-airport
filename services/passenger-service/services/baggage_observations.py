@@ -26,6 +26,10 @@ async def observe(payload: dict, sim_time: datetime, event_id: str, *, allow_mov
         if await outbox.inbox_seen(tx, "PassengerInbox", input_id):
             return []
         revision = await next_outbox_revision(tx)
+        # Another replica can commit this same input while we wait for the
+        # owner lock; recheck before creating its uniquely keyed outbox fact.
+        if await outbox.inbox_seen(tx, "PassengerInbox", input_id):
+            return []
         await (await tx.run(
             "MERGE (o:PassengerBaggageObservation {id:$pid}) "
             "SET o.flight_id = coalesce($fid, o.flight_id), "

@@ -8,6 +8,10 @@
 > includes old arrival holds; it never reads live cross-domain state per tick.
 
 
+> **RC7 completion (2026-11-19):** seed-existence Cypher explicitly groups
+> the legacy flight count before testing `SeedDay.ready`. Final baggage tag
+> allocation belongs to the baggage owner; generated tags are provisional.
+
 ## Startup sequence · Clock loop · Schedule seeding · Probabilistic injection
 
 > Full specification: `docs/services/sim-orchestrator/SPEC.md`

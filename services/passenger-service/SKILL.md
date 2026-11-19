@@ -12,6 +12,13 @@
 > 24 sim-hours after its indexed `missed_connection_at`, and follows the existing
 > archive purge/fact policy. There is no automatic rebooking transition.
 
+> **RC8 / RC12 completion (2026-11-19):** named bag observations commit to
+> `PassengerBaggageObservation` with inbox/outbox before ACK, including early
+> inputs. Position only `baggage_claim` passengers. Arrival decisions join this
+> owner projection with a sim-time fence; never read live baggage state per tick.
+> Startup bootstraps linked arrival scans once for expired-offset recovery.
+> Passenger purge removes its observation; orphan observations age out with facts.
+
 ## State machine · Queue model · Forecasting · Connection risk
 
 > Full specification: `docs/services/passenger-service/SPEC.md`

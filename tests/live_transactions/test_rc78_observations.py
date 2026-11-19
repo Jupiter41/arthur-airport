@@ -106,3 +106,38 @@ def test_actual_bulk_planner_fact_reaches_claimant_after_ack_and_restart():
     worker("consume-exit", code=29, group="g1-rc78-" + uuid4().hex, **source)
     worker("advance", batch=True)
     assert worker("snapshot")["passengers"][0]["p"]["status"] == "departed_airport"
+
+
+def test_competing_observation_workers_commit_one_fact():
+    from concurrent.futures import ThreadPoolExecutor
+    worker("seed")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: worker("observe"), range(2)))
+    after = worker("snapshot")
+    assert len(after["observations"]) == 1
+    assert len([f for f in after["facts"] if f["event_type"] == "PassengerBaggageObserved"]) == 1
+
+
+@pytest.mark.parametrize("speed", ["REALTIME", "BULK"])
+def test_old_arrived_flight_holds_recover_and_finish_after_worker_restart(speed):
+    def baggage(mode, **params):
+        result = subprocess.run([
+            "docker", "compose", "run", "--rm", "-T", "--no-deps", "-e", "G1_DISPOSABLE_STACK=1",
+            "-v", f"{ROOT}/tests/live_transactions:/g1-tests:ro",
+            "-v", f"{ROOT}/services/baggage-service:/g1-source:ro",
+            "baggage-service", "python", "/g1-tests/rc1_worker.py",
+        ], input=json.dumps({"owner": "baggage", "mode": mode, **params}),
+            text=True, capture_output=True, cwd=ROOT, timeout=120)
+        assert result.returncode == 0, result.stdout + result.stderr
+        lines = result.stdout.strip().splitlines()
+        return json.loads(lines[-1]) if lines else None
+    baggage("seed", flight_status="arrived")
+    baggage("recover")
+    recovered = baggage("snapshot")
+    assert next(n["p"]["status"] for n in recovered["nodes"] if n["id"] == "g1-rc1-held") == "arrived"
+    baggage("arrival-flow", speed=speed)
+    finished = baggage("snapshot")
+    assert next(n["p"]["status"] for n in finished["nodes"] if n["id"] == "g1-rc1-held") == "collected"
+    outcomes = {f["payload"].get("new_status") for f in finished["facts"]
+                if f["event_type"] == "BaggageStatusChanged"}
+    assert {"arrived", "on_carousel", "collected"} <= outcomes

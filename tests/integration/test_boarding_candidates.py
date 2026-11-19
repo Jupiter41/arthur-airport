@@ -25,6 +25,9 @@ async def main():
                     CASE WHEN n=10 THEN '1900-02-01T12:00:00' ELSE '1900-01-01T12:00:00' END})
                 CREATE (p:Passenger {id:$ids[n],name:$prefix,status:$prefix})-[:ON_FLIGHT]->(f)
             ''',states=states,ids=ids,prefix=prefix)).consume()
+        from _common.flight_view import VIEW, bootstrap
+        from datetime import datetime
+        await bootstrap(VIEW, get_driver, None, datetime(1900, 1, 1, 12))
         before='1900-01-01T13:00:00'
         filtered=await get_passengers_by_status(prefix,scheduled_before=before,flight_statuses=eligible)
         assert {r['id'] for r in filtered}==set(ids[:6]),filtered

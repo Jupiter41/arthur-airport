@@ -58,6 +58,19 @@ async def main():
                         "scheduled_time:'2100-01-01T12:00:00'}) "
                         "CREATE (:Baggage {id:'g1-rc1-active', tag:'RC1-ACTIVE', status:'in_hold', "
                         "last_scan_at:'2100-01-01T12:00:00'})-[:LOADED_ON]->(a)")
+        if ARGS.get("flight_status"):
+            await query("MATCH(f:Flight {id:'g1-rc1-diverted'}) SET f.status=$status",
+                        status=ARGS["flight_status"])
+    elif mode == "arrival-flow":
+        from kafka import consumer, producer
+        from _common.flight_view import VIEW, bootstrap
+        await bootstrap(VIEW, db.get_driver, None, NOW)
+        await consumer._state.rebuild_from_neo4j()
+        producer.init_kafka_producer()
+        for minute in range(1, 4):
+            await consumer._on_clock_tick({"step_minutes": 1, "mode": ARGS.get("speed", "REALTIME")},
+                                          NOW + timedelta(minutes=minute))
+        producer.close_kafka_producer()
     elif mode in ("recover", "rollback-recovery"):
         from kafka import consumer
         from _common.flight_view import VIEW, bootstrap

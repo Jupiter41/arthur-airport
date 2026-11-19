@@ -196,6 +196,11 @@ async def main():
     await db.init_neo4j()
     await db.create_constraints_and_indexes()
     mode = ARGS["mode"]
+    if mode != "seed":
+        # Production bootstraps its event-fed view before consuming. These
+        # fixtures create identities directly, so each worker must do so too.
+        from _common.flight_view import VIEW, bootstrap
+        await bootstrap(VIEW, db.get_driver, None, CLOCK)
     if mode == "seed":
         await seed()
     elif mode == "startup":
@@ -240,8 +245,11 @@ async def main():
     elif mode == "replay-inputs":
         await tick()
         await query("MATCH (f:Flight {id:'g1-target'}) "
-                    "CREATE (:Baggage {id:'g1-arrived', tag:'0000000002', status:'arrived', "
+                    "CREATE (:Baggage {id:'g1-arrived', tag:'0000000002', status:'in_hold', "
                     "last_scan_zone:'arrival-belt-1', last_scan_at:'2100-01-01T12:00:00'})-[:LOADED_ON]->(f)")
+        # Owner flight path commits arrival and updates the rebuildable belt;
+        # a raw graph insertion cannot bypass the documented refresh cadence.
+        await consumer._apply_arrival_at_gate("g1-target", "A01", CLOCK, "g1-late-arrival")
         await consumer._on_incident_created({
             "incident_id": "g1-power", "type": "system_failure", "location": "power-A",
         }, CLOCK)

@@ -24,12 +24,12 @@ def _bag_config():
 
 
 def _generate_tag(counter: int) -> str:
-    """Generate a 10-digit barcode tag from a globally-unique counter."""
+    """Generate a provisional barcode; the baggage owner allocates the final tag."""
     return f"{counter:010d}"
 
 
 def _unique_tag_start() -> int:
-    """Return a high, random starting counter to avoid collisions with existing tags."""
+    """Return a provisional counter; this is not a global uniqueness guarantee."""
     import time
     # Use timestamp-based offset + random jitter to avoid collisions across calls
     base = int(time.time() * 1000) % 9_000_000_000 + 1_000_000_000

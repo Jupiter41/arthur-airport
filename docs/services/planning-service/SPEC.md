@@ -636,6 +636,11 @@ diversification recommendations.
 
 #### `GET /network/dependency`
 
+If the optional local reference dataset or analyzer dependency is unavailable,
+return `503` with a `detail` beginning `Network analyzer unavailable:`. This
+truthful unavailable response is part of the API contract; full-stack tests
+validate it rather than skipping the check or downloading real reference data.
+
 Returns hub dependency scoring: Herfindahl-Hirschman Index, concentration
 rating (`low`/`moderate`/`high`/`very_high`), top airline shares, effective
 number of airlines.

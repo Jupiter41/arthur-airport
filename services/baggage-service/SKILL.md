@@ -13,6 +13,11 @@
 > with atomic scan/inbox/outbox and unsuppressed facts. The 24-sim-hour archive
 > policy starts at the owner observation scan; active arrival holds stay live.
 
+> **RC7 / RC8 completion (2026-11-19):** seed acceptance allocates final
+> 10-digit tags from the owner `BaggageTagSequence` in the creation transaction.
+> Generator tags are provisional. `on_carousel`/`collected` named per-bag facts
+> are unsuppressed in BULK; batch rows retain passenger identity for replay.
+
 ## Conveyor pipeline · DG detection · System failures · Offload logic
 
 > Full specification: `docs/services/baggage-service/SPEC.md`

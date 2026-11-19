@@ -191,9 +191,12 @@ class TestNetworkResilience:
             f"{PLANNING_SVC}/api/v1/planning/network/dependency",
             timeout=10,
         )
-        # 503 acceptable if BTS data not available in CI
+        # Optional local reference data has an explicit unavailable contract.
+        # Validate that response too; a skipped check cannot certify the stack.
         if r.status_code == 503:
-            pytest.skip("BTS data not available in CI environment")
+            detail = r.json().get("detail")
+            assert isinstance(detail, str) and detail.startswith("Network analyzer unavailable:")
+            return
         assert r.status_code == 200
         data = r.json()
         assert "herfindahl_index" in data

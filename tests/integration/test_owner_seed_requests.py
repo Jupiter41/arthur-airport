@@ -20,7 +20,8 @@ def test_owner_seeds_are_atomic_order_independent_and_replay_safe(monkeypatch):
     from neo4j import AsyncGraphDatabase
 
     async def run():
-        driver = AsyncGraphDatabase.driver(os.environ["RC7_NEO4J_URI"])
+        driver = AsyncGraphDatabase.driver(os.environ["RC7_NEO4J_URI"], auth=(
+            os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "art-digital-twin")))
         prefix = "SeedTest" + uuid4().hex
 
         class Scoped:
