@@ -29,6 +29,18 @@ export interface SimStatus {
   day_number: number;
 }
 
+export interface OwnerSettings {
+  status: "available" | "unavailable";
+  sim_time: string | null;
+  values: Record<string, number> | null;
+}
+
+export interface SettingsResponse extends SimSettings {
+  requested: SimSettings;
+  application: Record<string, string>;
+  effective?: { passenger: OwnerSettings; baggage: OwnerSettings };
+}
+
 export type AutonomousMode = "off" | "rule_based" | "threshold" | "rl_agent";
 
 export interface AutonomousState {

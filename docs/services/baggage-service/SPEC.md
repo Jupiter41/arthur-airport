@@ -9,6 +9,12 @@
 
 ## 1. Domain responsibilities
 
+`GET /api/v1/baggage/configuration` reports `sim_time` and `values` containing
+the initialized conveyor's screening-unit count and sorting throughput per hour,
+and the screening engine's DG false-positive rate. These are nominal owner
+capacities; temporary zone failures are reported separately by conveyor status.
+Changes require owner configuration/restart, not orchestrator preferences.
+
 Status summaries count non-null persisted statuses through the existing status
 index, avoiding full node/property scans as synthetic history accumulates.
 

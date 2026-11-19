@@ -1,5 +1,15 @@
 # api-gateway — specification
 
+## Effective settings aggregation (RC13)
+
+GET `/api/v1/sim/settings` preserves the orchestrator's requested preferences
+and application modes and adds `effective.passenger` / `effective.baggage` from
+the respective `/api/v1/flow/configuration` and `/api/v1/baggage/configuration`
+owner endpoints. Bounded concurrent reads return owner `sim_time` and `values`;
+failed, timed-out or malformed observations return `status: unavailable` with
+null values. Orchestrator failure returns 502. The gateway does not apply
+preferences or infer effective values. Existing authorization applies.
+
 ## Production Raspberry access contract (2026-10-15)
 
 With `PUBLIC_DEPLOYMENT=true`, public `POST /auth/viewer` issues short-lived,

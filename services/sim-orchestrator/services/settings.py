@@ -1,10 +1,4 @@
-"""In-memory simulation settings store.
-
-Holds all tuneable parameters for the simulation. Services consume
-the ``sim.settings`` Kafka event to pick up changes. The values here
-are the *defaults* — they can be overridden at runtime via the REST
-API (``PATCH /api/v1/sim/settings``).
-"""
+"""Durably checkpointed preferences, distinct from effective owner state."""
 
 from __future__ import annotations
 
@@ -49,14 +43,19 @@ class SimSettings(BaseModel):
     suppression_window_h: float = Field(2.0, ge=0.5, le=24.0)
 
     # ── Security ────────────────────────────────────────────
-    lanes_a: int = Field(4, ge=1, le=20)
-    lanes_b: int = Field(3, ge=1, le=20)
-    lanes_c: int = Field(4, ge=1, le=20)
+    lanes_a: int = Field(_runtime.operations.security_lanes_open["A"], ge=1, le=20)
+    lanes_b: int = Field(_runtime.operations.security_lanes_open["B"], ge=1, le=20)
+    lanes_c: int = Field(_runtime.operations.security_lanes_open["C"], ge=1, le=20)
     mct_minutes: int = Field(45, ge=15, le=180)
 
     # ── Baggage ─────────────────────────────────────────────
-    screening_units: int = Field(6, ge=1, le=30)
-    sorting_capacity: int = Field(1800, ge=100, le=10000)
+    screening_units: int = Field(
+        _runtime.operations.baggage.screening_units_per_terminal
+        * len(_runtime.operations.security_lanes_open), ge=1, le=30,
+    )
+    sorting_capacity: int = Field(
+        _runtime.operations.baggage.sorting_matrix_hr, ge=100, le=10000,
+    )
     dg_false_positive_rate: float = Field(0.003, ge=0.0, le=0.5)
 
     # ── Noise & variability (Phase 1.2) ─────────────────────
@@ -83,7 +82,21 @@ _settings = SimSettings(daily_flights=int(os.getenv("DAILY_FLIGHT_TARGET", str(_
 
 def get_settings() -> SimSettings:
     """Return the current settings (read-only snapshot)."""
-    return _settings.model_copy()
+    return _settings.model_copy(deep=True)
+
+
+def settings_response() -> dict:
+    """Describe storage/application truth without claiming owner execution."""
+    requested = get_settings().model_dump()
+    application = dict.fromkeys(requested, "stored_only")
+    for key in ("daily_flights", "hourly_weights"):
+        application[key] = "next_manifest"
+    for key in ("lanes_a", "lanes_b", "lanes_c"):
+        application[key] = "owner_command"
+    for key in ("load_factor_mean", "mct_minutes", "screening_units",
+                "sorting_capacity", "dg_false_positive_rate"):
+        application[key] = "configuration_restart"
+    return {**requested, "requested": requested, "application": application}
 
 
 def update_settings(patch: dict) -> SimSettings:
@@ -97,4 +110,4 @@ def update_settings(patch: dict) -> SimSettings:
     current.update({k: v for k, v in patch.items() if k in SimSettings.model_fields})
     _settings = SimSettings(**current)
     logger.info("Settings updated: %s", list(patch.keys()))
-    return _settings.model_copy()
+    return _settings.model_copy(deep=True)

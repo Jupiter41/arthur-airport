@@ -22,6 +22,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1")
 
 
+@router.get("/baggage/configuration")
+async def baggage_configuration() -> dict:
+    """Nominal values from the initialized conveyor and screening model."""
+    from services.screening import FALSE_POSITIVE_RATE
+
+    zones = get_conveyor().get_all_zones()
+    sim_time = get_sim_time()
+    return {
+        "sim_time": sim_time.isoformat() if sim_time else None,
+        "values": {
+            "screening_units": sum(z.startswith("screening-unit-") for z in zones),
+            "sorting_capacity": zones["sorting-matrix"].throughput_per_hr,
+            "dg_false_positive_rate": FALSE_POSITIVE_RATE,
+        },
+    }
+
+
 @router.get("/baggage")
 async def list_baggage(
     flight_id: Optional[str] = Query(None),

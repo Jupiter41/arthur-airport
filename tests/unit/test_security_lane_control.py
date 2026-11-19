@@ -50,3 +50,17 @@ def test_owner_lane_control_requires_clock_and_validates_request(owner, monkeypa
         monkeypatch.setattr(route, "get_sim_time", lambda: None)
         assert client.post("/api/v1/flow/security/A/lanes", json={"lanes_open": 2}).status_code == 503
     atomic.assert_not_awaited()
+
+
+def test_configuration_reads_durable_overrides_and_owner_defaults(owner, monkeypatch):
+    route, _, _, now = owner
+    db = importlib.import_module("db.neo4j")
+    monkeypatch.setattr(db, "load_security_lanes", AsyncMock(return_value={"A": 2}))
+    monkeypatch.setattr(importlib.import_module("services.security"), "default_lanes",
+                        lambda terminal: {"A": 8, "B": 12, "C": 8}[terminal])
+    response = asyncio.run(route.flow_configuration())
+    assert response["sim_time"] == now.isoformat()
+    assert response["values"] == {"lanes_a": 2, "lanes_b": 12, "lanes_c": 8, "mct_minutes": 45}
+    monkeypatch.setattr(db, "load_security_lanes", AsyncMock(side_effect=RuntimeError("DB offline")))
+    with pytest.raises(RuntimeError, match="DB offline"):
+        asyncio.run(route.flow_configuration())

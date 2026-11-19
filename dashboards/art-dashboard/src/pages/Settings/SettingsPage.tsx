@@ -1,421 +1,103 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { simApi } from "../../hooks/useApi";
 import { SnapshotExport } from "../../components/SnapshotExport";
 import { SimControls } from "../../components/SimControls";
 import { useAccess } from "../../hooks/auth";
-import { NumberInput, Toggle, SelectInput, Section } from "./FormControls";
+import { NumberInput, Section } from "./FormControls";
 import { HourlyWeightsEditor } from "./HourlyWeightsEditor";
-import { SpeedSelector } from "./SpeedSelector";
 import { AutonomousSection } from "./AutonomousSection";
-import type { SimSettings, SimStatus } from "./types";
-import { WEATHER_OPTIONS } from "./types";
+import { EffectiveSettings } from "./EffectiveSettings";
+import type { SettingsResponse } from "./types";
 
-/* ──────── Main page ──────── */
+type ManifestRequest = Pick<SettingsResponse, "daily_flights" | "hourly_weights">;
 
 export default function SettingsPage() {
-  const queryClient = useQueryClient();
+  const client = useQueryClient();
   const publicDeployment = import.meta.env.VITE_PUBLIC_DEPLOYMENT === "true";
   const access = useAccess();
-  const [refreshingAccess, setRefreshingAccess] = useState(false);
+  const canChange = access.role !== "viewer" && (!publicDeployment || access.controlling);
   const [controlReady, setControlReady] = useState(false);
-  const canChange =
-    access.role !== "viewer" &&
-    (import.meta.env.VITE_PUBLIC_DEPLOYMENT !== "true" || access.controlling);
-
-  const { data: status } = useQuery<SimStatus>({
-    queryKey: ["sim-status"],
-    queryFn: () => simApi.status() as Promise<SimStatus>,
+  const [local, setLocal] = useState<ManifestRequest | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const { data: settings, isError, isLoading } = useQuery<SettingsResponse>({
+    queryKey: ["sim-settings"],
+    queryFn: () => simApi.settings() as Promise<SettingsResponse>,
     refetchInterval: 3000,
   });
 
-  const {
-    data: serverSettings,
-    isLoading,
-    isError,
-  } = useQuery<SimSettings>({
-    queryKey: ["sim-settings"],
-    queryFn: () => simApi.settings() as Promise<SimSettings>,
-  });
-
-  const [local, setLocal] = useState<SimSettings | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [saved, setSaved] = useState(false);
-
+  // Refresh on acquiring control without replacing unsaved edits on every poll.
   useEffect(() => {
+    let active = true;
     setControlReady(false);
     if (!canChange) return;
-    setRefreshingAccess(true);
-    void simApi
-      .settings()
-      .then((settings) => {
-        setLocal(settings as SimSettings);
-        setDirty(false);
-        queryClient.setQueryData(["sim-settings"], settings);
-        setControlReady(true);
-      })
-      .catch(() => setControlReady(false))
-      .finally(() => setRefreshingAccess(false));
-  }, [canChange, queryClient]);
+    void simApi.settings().then(value => {
+      if (!active) return;
+      const response = value as SettingsResponse;
+      client.setQueryData(["sim-settings"], response);
+      setLocal({ daily_flights: response.daily_flights, hourly_weights: response.hourly_weights });
+      setDirty(false);
+      setControlReady(true);
+    }).catch(() => { if (active) setControlReady(false); });
+    return () => { active = false; };
+  }, [canChange, client]);
 
   useEffect(() => {
-    if (serverSettings && !local) {
-      setLocal(serverSettings);
-    }
-  }, [serverSettings, local]);
-
-  const patch = useCallback(
-    <K extends keyof SimSettings>(key: K, value: SimSettings[K]) => {
-      setLocal((prev) => (prev ? { ...prev, [key]: value } : prev));
-      setDirty(true);
-      setSaved(false);
-    },
-    [],
-  );
+    if (settings && !dirty) setLocal({ daily_flights: settings.daily_flights, hourly_weights: settings.hourly_weights });
+  }, [settings, dirty]);
 
   const mutation = useMutation({
-    mutationFn: (body: Partial<SimSettings>) => simApi.updateSettings(body),
+    mutationFn: (body: Partial<ManifestRequest>) => simApi.updateSettings(body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sim-settings"] });
       setDirty(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      void client.invalidateQueries({ queryKey: ["sim-settings"] });
     },
   });
 
-  const speedMutation = useMutation({
-    mutationFn: (speed: number) => simApi.speed(speed),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["sim-status"] }),
-  });
-
-  const pauseMutation = useMutation({
-    mutationFn: () => (status?.paused ? simApi.resume() : simApi.pause()),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["sim-status"] }),
-  });
-
-  const handleApply = () => {
-    if (!local) return;
-    const diff: Record<string, unknown> = {};
-    if (serverSettings) {
-      for (const key of Object.keys(local) as (keyof SimSettings)[]) {
-        if (
-          JSON.stringify(local[key]) !== JSON.stringify(serverSettings[key])
-        ) {
-          diff[key] = local[key];
-        }
-      }
-    } else {
-      Object.assign(diff, local);
-    }
-    if (Object.keys(diff).length > 0) {
-      mutation.mutate(diff as Partial<SimSettings>);
-    } else {
-      setDirty(false);
-    }
-  };
-
-  const handleReset = () => {
-    if (serverSettings) {
-      setLocal(serverSettings);
-      setDirty(false);
-    }
-  };
-
-  if (isError && !local)
-    return (
-      <div className="page-container space-y-4">
-        <h1>Simulation controls</h1>
-        <SimControls />
-        <p role="alert">
-          Settings unavailable.{" "}
-          <button
-            className="btn-secondary"
-            onClick={() =>
-              void queryClient.invalidateQueries({ queryKey: ["sim-settings"] })
-            }
-          >
-            Retry
-          </button>
-        </p>
-        <SnapshotExport />
-      </div>
-    );
-
-  if (isLoading || !local) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-400">
-        Loading settings…
-      </div>
-    );
-  }
-
-  return (
-    <div className="page-container space-y-4">
-      <header>
-        <p className="section-label">Shared airport</p>
-        <h1>Simulation controls</h1>
-        <p className="text-gray-400 mt-2">
-          Changes affect the shared simulation. Operator access and control are
-          required where enabled.
-        </p>
-      </header>
-      <section className="card">
-        <SimControls />
-      </section>
-      <SnapshotExport />
-      <fieldset
-        disabled={!canChange || refreshingAccess || !controlReady}
-        className="h-full overflow-y-auto p-4 space-y-4"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            Simulation parameters
-          </h2>
-          <div className="flex items-center gap-2">
-            {saved && (
-              <span className="text-green-400 text-sm animate-pulse">
-                ✓ Saved
-              </span>
-            )}
-            {mutation.isError && (
-              <span className="text-red-400 text-sm">
-                Error: {(mutation.error as Error).message}
-              </span>
-            )}
-            <button
-              onClick={handleReset}
-              disabled={!dirty}
-              className="px-3 py-1.5 text-sm rounded bg-gray-700 text-gray-300
-                       hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Reset
-            </button>
-            <button
-              onClick={handleApply}
-              disabled={!dirty || mutation.isPending}
-              className="px-4 py-1.5 text-sm rounded font-semibold transition-colors
-                       bg-blue-600 text-white hover:bg-blue-500
-                       disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {mutation.isPending ? "Applying…" : "Apply"}
+  return <div className="page-container space-y-4">
+    <header>
+      <p className="section-label">Shared airport</p>
+      <h1>Simulation controls</h1>
+      <p className="text-gray-400 mt-2">Changes affect the shared simulation. Operator access and control are required where enabled.</p>
+    </header>
+    <section className="card"><SimControls /></section>
+    <SnapshotExport />
+    {isError && <p role="alert">Settings refresh failed. Last observations may be stale. <button className="btn-secondary"
+      onClick={() => void client.invalidateQueries({ queryKey: ["sim-settings"] })}>Retry</button></p>}
+    {isLoading && <p>Loading settings…</p>}
+    <EffectiveSettings effective={isError ? undefined : settings?.effective}
+      canChange={canChange && controlReady && !publicDeployment && !isError} />
+    {settings && local && <>
+      <Section title="Future manifest requests" icon="📈">
+        <p>Saved requests take effect when a new daily manifest is generated. Existing flights and passengers keep their manifest values.</p>
+        <fieldset disabled={!canChange || !controlReady || mutation.isPending || isError} className="space-y-3">
+          <NumberInput label="Daily flights" value={local.daily_flights} min={50} max={publicDeployment ? 100 : 5000}
+            onChange={daily_flights => { setLocal({ ...local, daily_flights }); setDirty(true); mutation.reset(); }} />
+          <fieldset disabled={publicDeployment}>
+            <HourlyWeightsEditor weights={local.hourly_weights}
+              onChange={hourly_weights => { setLocal({ ...local, hourly_weights }); setDirty(true); mutation.reset(); }} />
+          </fieldset>
+          <div className="flex gap-2">
+            <button className="btn-secondary" disabled={!dirty} onClick={() => { setDirty(false); mutation.reset(); }}>Discard edits</button>
+            <button className="btn-primary" disabled={!dirty} onClick={() => mutation.mutate(publicDeployment
+              ? { daily_flights: local.daily_flights } : local)}>
+              {mutation.isPending ? "Saving request…" : "Save manifest request"}
             </button>
           </div>
-        </div>
-
-        {/* Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {/* ── Time & Speed ── */}
-          <Section title="Time & Speed" icon="⏱️">
-            <SpeedSelector
-              current={status?.speed_multiplier ?? 60}
-              onChange={(s) => speedMutation.mutate(s)}
-            />
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm text-gray-300">Day</span>
-              <span className="text-sm font-mono text-white">
-                {status?.day_number ?? "–"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm text-gray-300">Sim Time</span>
-              <span className="text-sm font-mono text-white">
-                {status?.sim_time
-                  ? new Date(status.sim_time).toLocaleTimeString()
-                  : "–"}
-              </span>
-            </div>
-            <Toggle
-              label="Paused"
-              checked={status?.paused ?? false}
-              onChange={() => pauseMutation.mutate()}
-            />
-          </Section>
-
-          {/* ── Demand ── */}
-          <Section title="Demand" icon="📈">
-            <NumberInput
-              label="Daily flights"
-              value={local.daily_flights}
-              onChange={(v) => patch("daily_flights", v)}
-              min={50}
-              max={publicDeployment ? 100 : 1200}
-            />
-            <NumberInput
-              label="Load factor"
-              value={local.load_factor_mean}
-              onChange={(v) => patch("load_factor_mean", v)}
-              min={0.1}
-              max={1.0}
-              step={0.05}
-            />
-            <NumberInput
-              label="Pax multiplier"
-              value={local.pax_multiplier}
-              onChange={(v) => patch("pax_multiplier", v)}
-              min={0.1}
-              max={publicDeployment ? 1 : 5.0}
-              step={0.1}
-            />
-            <SelectInput
-              label="Special event"
-              value={local.special_event ?? ""}
-              options={[
-                { value: "", label: "None" },
-                { value: "holiday", label: "Holiday rush" },
-                { value: "sports", label: "Sports event" },
-                { value: "convention", label: "Convention" },
-              ]}
-              onChange={(v) => patch("special_event", v || null)}
-            />
-          </Section>
-
-          {/* ── Schedule Distribution ── */}
-          <Section title="Hourly Distribution" icon="📊">
-            <HourlyWeightsEditor
-              weights={local.hourly_weights ?? {}}
-              onChange={(w) => patch("hourly_weights", w)}
-            />
-          </Section>
-
-          {/* ── Weather ── */}
-          <Section title="Weather" icon="🌤️">
-            <SelectInput
-              label="Lock to"
-              value={local.weather_lock ?? ""}
-              options={WEATHER_OPTIONS}
-              onChange={(v) => patch("weather_lock", v || null)}
-            />
-            <NumberInput
-              label="Wind"
-              value={local.wind_kt}
-              onChange={(v) => patch("wind_kt", v)}
-              min={0}
-              max={100}
-              unit="kt"
-            />
-            <Toggle
-              label="Gusts enabled"
-              checked={local.gust_enabled}
-              onChange={(v) => patch("gust_enabled", v)}
-            />
-          </Section>
-
-          {/* ── Incidents ── */}
-          <Section title="Incidents" icon="🚨">
-            <NumberInput
-              label="Runway incursion"
-              value={local.runway_incursion_rate}
-              onChange={(v) => patch("runway_incursion_rate", v)}
-              min={0}
-              max={1}
-              step={0.001}
-              unit="/h"
-            />
-            <NumberInput
-              label="Baggage fire"
-              value={local.baggage_fire_rate}
-              onChange={(v) => patch("baggage_fire_rate", v)}
-              min={0}
-              max={1}
-              step={0.001}
-              unit="/h"
-            />
-            <NumberInput
-              label="Security breach"
-              value={local.security_breach_rate}
-              onChange={(v) => patch("security_breach_rate", v)}
-              min={0}
-              max={1}
-              step={0.001}
-              unit="/h"
-            />
-            <NumberInput
-              label="System failure"
-              value={local.system_failure_rate}
-              onChange={(v) => patch("system_failure_rate", v)}
-              min={0}
-              max={1}
-              step={0.001}
-              unit="/h"
-            />
-            <NumberInput
-              label="Suppression window"
-              value={local.suppression_window_h}
-              onChange={(v) => patch("suppression_window_h", v)}
-              min={0.5}
-              max={24}
-              step={0.5}
-              unit="h"
-            />
-          </Section>
-
-          {/* ── Security ── */}
-          <Section title="Security" icon="🔒">
-            <NumberInput
-              label="Lanes — Terminal A"
-              value={local.lanes_a}
-              onChange={(v) => patch("lanes_a", v)}
-              min={1}
-              max={20}
-            />
-            <NumberInput
-              label="Lanes — Terminal B"
-              value={local.lanes_b}
-              onChange={(v) => patch("lanes_b", v)}
-              min={1}
-              max={20}
-            />
-            <NumberInput
-              label="Lanes — Terminal C"
-              value={local.lanes_c}
-              onChange={(v) => patch("lanes_c", v)}
-              min={1}
-              max={20}
-            />
-            <NumberInput
-              label="MCT"
-              value={local.mct_minutes}
-              onChange={(v) => patch("mct_minutes", v)}
-              min={15}
-              max={180}
-              unit="min"
-            />
-          </Section>
-
-          {/* ── Baggage ── */}
-          <Section title="Baggage" icon="🧳">
-            <NumberInput
-              label="Screening units"
-              value={local.screening_units}
-              onChange={(v) => patch("screening_units", v)}
-              min={1}
-              max={30}
-            />
-            <NumberInput
-              label="Sorting capacity"
-              value={local.sorting_capacity}
-              onChange={(v) => patch("sorting_capacity", v)}
-              min={100}
-              max={10000}
-              unit="/h"
-            />
-            <NumberInput
-              label="DG false-pos rate"
-              value={local.dg_false_positive_rate}
-              onChange={(v) => patch("dg_false_positive_rate", v)}
-              min={0}
-              max={0.5}
-              step={0.001}
-            />
-          </Section>
-        </div>
-
-        {/* ── Autonomous Operations (P2-4-1) ── */}
-        {!publicDeployment && <AutonomousSection />}
-      </fieldset>
-    </div>
-  );
+        </fieldset>
+        {mutation.isSuccess && <p role="status">Request saved for future manifests. Current owner settings are shown above.</p>}
+        {mutation.isError && <p role="alert">Request unconfirmed: {(mutation.error as Error).message}</p>}
+      </Section>
+      <details className="card">
+        <summary>Other saved preferences and application status</summary>
+        <p className="text-gray-400 my-3">Configuration/restart values require changes in the owning service. Stored-only preferences have no runtime consumer. Lane preferences require an explicit owner command above.</p>
+        <dl className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+          {Object.entries(settings.requested ?? {}).filter(([key]) => !["daily_flights", "hourly_weights"].includes(key)).map(([key, value]) =>
+            <div key={key}><dt className="text-gray-400">{key} · {settings.application[key]?.replace(/_/g, " ") ?? "application unknown"}</dt>
+              <dd>{JSON.stringify(value)}</dd></div>)}
+        </dl>
+      </details>
+      {!publicDeployment && <fieldset disabled={!canChange || !controlReady}><AutonomousSection /></fieldset>}
+    </>}
+  </div>;
 }

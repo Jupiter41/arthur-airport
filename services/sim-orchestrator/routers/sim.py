@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from services import clock
 from services.airport_config import load_airport_runtime_config
 from services.schedule import get_schedule_from_neo4j
-from services.settings import get_settings, update_settings
+from services.settings import settings_response, update_settings
 from services.runtime_state import checkpoint
 from kafka.producer import emit_inject_incident
 from db.neo4j import get_driver
@@ -386,20 +386,20 @@ async def sim_history():
 
 @router.get("/sim/settings")
 async def sim_settings_get():
-    """Return the current simulation settings."""
-    return get_settings().model_dump()
+    """Return saved preferences and their application contract."""
+    return settings_response()
 
 
 @router.patch("/sim/settings")
 async def sim_settings_patch(body: dict):
-    """Apply a partial update to simulation settings.
+    """Save a partial preference update; application modes are explicit.
 
     Any subset of SimSettings fields may be sent. Unknown keys are
     silently ignored. Pydantic validates every value.
     """
     try:
-        updated = update_settings(body)
+        update_settings(body)
     except Exception as e:
         raise HTTPException(status_code=422, detail=str(e))
     await checkpoint(command="settings")
-    return updated.model_dump()
+    return settings_response()

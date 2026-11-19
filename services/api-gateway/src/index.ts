@@ -9,6 +9,7 @@ import { accessPolicy, setupControl, readCache, publicDeployment } from "./acces
 import { setupProxy } from "./proxy";
 import { handleAggregate } from "./aggregate";
 import { handleDataSources } from "./dataSources";
+import { handleSettings } from "./settings";
 import { handleServicesHealth, handleReady } from "./health";
 import { setupKafka, shutdownKafka } from "./kafka";
 import { setupWebSocket } from "./websocket";
@@ -112,6 +113,7 @@ app.use(readCache);
 // Aggregate and health
 app.get("/api/v1/airport", handleAggregate);
 app.get("/api/v1/data-sources", handleDataSources);
+app.get("/api/v1/sim/settings", handleSettings);
 app.get("/api/v1/health/services", handleServicesHealth);
 
 // Proxy routes to upstream services

@@ -46,6 +46,24 @@ class SecurityLaneResponse(BaseModel):
     applied: bool
 
 
+@router.get("/flow/configuration")
+async def flow_configuration() -> dict:
+    """Observe durable owner overrides, never orchestrator preferences."""
+    from db.neo4j import load_security_lanes
+    from services.security import default_lanes
+    from services.connections import MCT_MINUTES
+
+    overrides = await load_security_lanes()
+    sim_time = get_sim_time()
+    return {
+        "sim_time": sim_time.isoformat() if sim_time else None,
+        "values": {
+            **{f"lanes_{t.lower()}": overrides.get(t, default_lanes(t)) for t in "ABC"},
+            "mct_minutes": MCT_MINUTES,
+        },
+    }
+
+
 @router.post("/flow/security/{terminal}/lanes", response_model=SecurityLaneResponse)
 async def set_security_lanes(terminal: str, body: SecurityLaneRequest) -> dict:
     if terminal not in {"A", "B", "C"}:

@@ -18,6 +18,11 @@ files may be installed by the host administrator.
 
 ## 1. Domain responsibilities
 
+`GET /api/v1/flow/configuration` reports `sim_time` and `values` containing
+`lanes_a/b/c` (durable checkpoint overrides, otherwise this owner's configured
+defaults) and `mct_minutes` from the connection model. A failed checkpoint read
+fails the request rather than reporting defaults as effective state.
+
 ### Explicit lane control (operator cockpit, 2026-11-14)
 
 `POST /api/v1/flow/security/{terminal}/lanes` accepts `lanes_open` (strict integer

@@ -182,6 +182,11 @@ export const weatherApi = {
 
 // ── Passengers ──
 export const passengersApi = {
+  setLanes: (terminal: string, lanes: number, commandId: string) =>
+    apiFetch<unknown>(`/passengers/flow/security/${terminal}/lanes`, {
+      method: "POST",
+      body: JSON.stringify({ lanes_open: lanes, command_id: commandId }),
+    }),
   summary: () => apiFetch<unknown>("/passengers/flow/summary"),
   heatmap: () => apiFetch<unknown>("/passengers/flow/heatmap"),
   atRisk: () => apiFetch<unknown>("/passengers/connections/at-risk"),

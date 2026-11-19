@@ -1,5 +1,27 @@
 # sim-orchestrator — specification
 
+## Settings contract (RC13, 2026-11-19)
+
+GET/PATCH `/api/v1/sim/settings` retain legacy flat fields and include `requested`
+and a per-field `application` map. A persisted preference is not an owner
+acknowledgement. Only `daily_flights` and `hourly_weights` affect future manifests
+(`next_manifest`); existing manifests are immutable. Lane preferences require
+the passenger owner's explicit command (`owner_command`). Baggage capacities,
+MCT, load factor and DG rate require owner configuration/restart
+(`configuration_restart`). Other legacy knobs are `stored_only`: they have no
+runtime consumer and must not be presented as applied or pending execution.
+Initial lane/sorting/screening preferences derive from `airport.yaml`.
+Restoring a historical preference never overrides the live owner's state.
+
+The gateway enriches GET with `effective.passenger` and `effective.baggage`
+observations from owner configuration endpoints. Each observation carries
+`status`, `sim_time`, and `values`; an unavailable owner has null values, never
+substituted requested defaults. The UI polls these independently of unsaved
+edits, shows configuration-only values read-only, and submits lane commands to
+the passenger owner with a stable command ID. Public deployment restrictions
+on lane commands remain in force. PATCH acknowledges durable preference
+storage only; it does not claim cross-domain application.
+
 ## Durable runtime state (2026-10-15)
 
 The runtime checkpoints `sim_time`, day, tick, speed, pause state, and validated
