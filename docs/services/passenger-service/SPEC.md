@@ -883,3 +883,11 @@ startup ticks and hourly, includes old in_hold bags even outside the normal
 flight-view history window, and calls the same atomic offload path as the fact
 handler. New bags created after a flight fact are picked up by recovery. Facts
 for recovery transitions remain durable in BULK mode.
+
+### Terminal retention completion (RC1, 2026-11-19)
+
+`missed_connection` is terminal in this model (no automatic rebooking). It is
+archived 24 sim-hours after its owner-written `missed_connection_at`, using an
+indexed age seek. Relationships remain; archives purge 168 sim-hours after
+archival. Each batch and its `EntitiesArchived`/`EntitiesPurged` fact commit
+together. Flight schedule and wall time do not substitute for transition time.

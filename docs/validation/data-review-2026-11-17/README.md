@@ -2,6 +2,8 @@
 
 Date: 2026-11-17 (Europe/Luxembourg). Reviewed checkout: `0ae109a`.
 
+> Follow-up (2026-11-19): RC1 is now closed against [new lifecycle regression evidence](../rc1-2026-11-19/README.md). The following verdict and measurements describe the historical 2026-11-17 audit; the overall review remains open.
+
 **Verdict: do not close the review. RC1, RC7 and RC8 are reopened; earlier fixes are retained.**
 The earlier green unit/transaction checks did not exercise the real orchestrator
 startup query or the new airborne transition through the passenger repository.

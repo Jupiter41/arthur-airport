@@ -8,6 +8,10 @@
 > includes old arrival holds; it never reads live cross-domain state per tick.
 
 
+> **RC1 completion (2026-11-19):** `missed_connection` is terminal, archives
+> 24 sim-hours after its indexed `missed_connection_at`, and follows the existing
+> archive purge/fact policy. There is no automatic rebooking transition.
+
 ## State machine · Queue model · Forecasting · Connection risk
 
 > Full specification: `docs/services/passenger-service/SPEC.md`

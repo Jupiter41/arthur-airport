@@ -3,6 +3,10 @@
 Review date: 2026-11-16 · Reviewed commit: `1e7b16d` (main, clean)
 Reviewed stack: `art-ldt-g6-*` compose project. It had been running continuously for about 23 simulated days at 60× (sim day 23–24, 2024-07-07 → 07-08).
 
+> **RC1 closed — 2026-11-19.** Terminal missed-connection retention and diverted-arrival
+> baggage disposition now meet RC1's closure criteria. See [closure evidence](docs/validation/rc1-2026-11-19/README.md).
+> The review remains open for the other findings; deployment verification stays under RC14.
+
 > **Closure revalidation — 2026-11-17, commit `0ae109a`: DO NOT CLOSE.**
 > [Full report and reproducible evidence](docs/validation/data-review-2026-11-17/README.md).
 > The current orchestrator fails cold start on its seed-existence Cypher query;
@@ -30,13 +34,14 @@ problems share one cause.
 ## 0. TL;DR
 
 The original review identified RC1–RC11. Closure revalidation adds RC12–RC20, including
-promotion of five unresolved lower-level findings. RC1, RC7 and RC8 are **reopened**;
+promotion of five unresolved lower-level findings. RC7 and RC8 remain **reopened**;
+RC1 is **closed** with the 2026-11-19 evidence below. Previously
 completed implementation work is retained, but the review remains open until the new
 closure criteria are met. See the [revalidation report](docs/validation/data-review-2026-11-17/README.md).
 
 | #    | Root cause                                                                                                                                                           | Main visible symptom                                                                                                                                               | Severity   | Done?       | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| RC1  | The live operational graph keeps all history, and per-tick queries scan it by status                                                                                 | baggage/passenger ticks take 1–2 s; Neo4j 81% CPU; 11 GB tx logs                                                                                                   | 🔴 High    | ❌ Reopened | Hot-path queries bounded and Neo4j memory raised (`78a9975`, `dfe4e77`). Lifecycle retention added: finished passengers/bags/scan events archived 24 sim-h after their terminal transition, archives purged after 168 sim-h, inbox markers pruned after the 168 h Kafka retention (`873dab8`, `8e1c160`). Revalidation found terminal missed-connection and diverted-arrival baggage retention gaps; [report B5](docs/validation/data-review-2026-11-17/README.md); archive terminal missed connections and dispose of diverted-arrival holds before closure |
+| RC1 | Live graph/history separation and bounded hot-path queries | Historical graph growth caused 1–2 s owner ticks | 🔴 High | ✅ Closed | Existing bounded-query/archive fixes retained. Terminal missed connections now archive by `missed_connection_at`; diverted-arrival holds receive atomic owner disposition/scan/facts and restart recovery, then indexed age-based archival/purge. [2026-11-19 closure evidence](docs/validation/rc1-2026-11-19/README.md). Deployment remains RC14. |
 | RC2  | Each owner rewrites its **whole in-memory state** as one JSON property **every tick**; the baggage one grows without bound (8.6 MB)                                  | baggage-service at 100% CPU, processing about 0.45 ticks/s                                                                                                         | 🔴 High    | ✅ Done     | `inducted_bag_ids` no longer persisted, decode skipped when in sync, double deepcopy removed; checkpoint 8.6 MB → 0.17–2.2 MB, baggage CPU 100% → ~30% (`78a9975`)                                                                                                                                                                                                                                                                                                                                                                                           |
 | RC3  | The outbox drains in 100-row round trips, and every bag/passenger transition is published twice (per-entity + batch)                                                 | +0.5–1.3 s before an event reaches Kafka; 340 baggage msgs/s                                                                                                       | 🟠 Medium  | ✅ Done     | Outbox drains 1,000 rows per round trip with delete+read in one query, woken by tick commits; each transition published once (tick hops batch-only, random 2% passenger sampling removed); cost-service unsubscribed from baggage/passenger streams (`dfe4e77`, `9d9e794`)                                                                                                                                                                                                                                                                                   |
 | RC4  | The clock is open-loop with no back-pressure. Services read **other domains' live state from the shared Neo4j** instead of the event stream                          | passengers deplane/depart from a polling sweep, up to 64 sim-min late; causality broken                                                                            | 🔴 High    | ✅ Done     | Event-fed FlightView + BoardingProgress replace live cross-domain decision reads; tick watermark (`sim.watermark`) holds the clock on owner lag; reconciliation boot/hourly only; analysis evaluates on a sim-time cadence (`e08a5f9`, `f4981d9`, `97239a5`, `dc79fb3`). Revalidation sampled 9,146 batch transitions with no reconciliation reason; restart certification still depends on RC15/RC16                                                                                                                                                        |
@@ -309,17 +314,19 @@ clock. The remaining ticks are coalesced by `run_consumer_loop` ("keep only the 
 
 ### RC1 — Live graph = full history, and per-tick queries scan it 🔴
 
-> **Status: ❌ reopened — terminal retention remains incomplete (2026-11-17).**
-> The bounded queries, gauge throttling and existing archival fixes remain in place.
-> Revalidation found 17 terminal `missed_connection` passengers older than the archive
-> cutoff and 887 live in-hold bags on diverted arrivals. Neither terminal disposition
-> is covered by the current retention path. See [report B5](docs/validation/data-review-2026-11-17/README.md),
-> [passenger evidence](docs/validation/data-review-2026-11-17/retention-and-sizing.json) and
-> [baggage evidence](docs/validation/data-review-2026-11-17/terminal-arrival-holds.json).
-> **Close when:** both dispositions have owner-defined terminal/recovery rules,
-> age-based archival/purge facts, and restart/retention regression evidence. RC8
-> shares the diverted-hold recovery requirement. Prior fixes: `78a9975`, `dfe4e77`,
-> `873dab8`, `8e1c160`; see DATA_MODEL.md “Lifecycle retention”.
+> **Status: ✅ Closed (2026-11-19).** The original bounded queries, gauge throttling
+> and archive/purge fixes remain. B5's two omissions are resolved: terminal
+> `missed_connection` passengers archive by their indexed owner transition time;
+> diverted-arrival held bags become terminal `diverted` through an atomic owner
+> status/scan/inbox/outbox transaction. Both diversion fact types, startup/hourly
+> recovery, old out-of-window holds, late seeding and BULK are covered.
+> Archive/purge keeps the existing 24/168-sim-hour policy and atomic lifecycle facts.
+> [Evidence and reproduction](docs/validation/rc1-2026-11-19/README.md): 1,477 unit
+> tests and two independent-process real-Neo4j lifecycle regressions pass; Ruff passes.
+> The latter cover rollback, restart, strict age cutoffs, preserved links, archived
+> scan trails and actual scan deletion on purge. No application workarounds.
+> RC8's remaining collection/replay work and RC14 deployment checks stay open.
+> Historical B5 measurements remain in the [2026-11-17 report](docs/validation/data-review-2026-11-17/README.md).
 
 **Evidence**
 
@@ -752,13 +759,15 @@ events (rule 4).
 > Bag offload sweeps and earliest offsets do not recover acknowledged collection
 > observations lost before a passenger checkpoint. BULK suppresses the individual
 > collection facts, while passenger-service ignores the batch. Diverted arrival
-> holds also lack a recovery/terminal disposition. See [report B3/B5/B8](docs/validation/data-review-2026-11-17/README.md),
+> hold disposition/recovery is now fixed under RC1 (2026-11-19);
+> [closure evidence](docs/validation/rc1-2026-11-19/README.md). Historical [report B3/B5/B8](docs/validation/data-review-2026-11-17/README.md),
 > [collection durability evidence](docs/validation/data-review-2026-11-17/carousel-reproduction.json),
 > [BULK evidence](docs/validation/data-review-2026-11-17/bulk-collection-reproduction.json) and
 > [terminal holds](docs/validation/data-review-2026-11-17/terminal-arrival-holds.json).
 > **Close when:** RC12 makes the consumed observation durable and available in
-> every mode; RC1 covers terminal retention; crash-after-ACK, missing/expired
-> offsets, late bags and diverted-flight recovery pass without workarounds.
+> every mode; crash-after-ACK and missing/expired offset recovery pass without
+> workarounds. RC1 terminal retention and diverted-flight restart/late-bag
+> recovery are satisfied by the 2026-11-19 regression evidence.
 > The following implementation notes describe retained work, not completed closure.
 > Flight/passenger/baggage owner groups default to `earliest` for missing or
 > expired offsets, retaining manual commits. Baggage recovery runs on the first
@@ -1122,8 +1131,8 @@ remaining order of work; see the [report](docs/validation/data-review-2026-11-17
 2. **RC12 + RC8:** make collection observations durable and available in every
    mode; enforce passenger lifecycle prerequisites; verify acknowledgement/crash,
    late-input and replay recovery.
-3. **RC1:** finish terminal retention for missed connections and diverted-flight
-   baggage, with owner facts and restart/age-based tests.
+3. **RC1 — complete (2026-11-19):** terminal retention, diverted-flight
+   disposition and restart/age-based regressions are green; see closure evidence.
 4. **RC13 + RC17–RC20:** reconcile effective settings, financial clock sanity,
    UI replay semantics, weather/incident atomicity and UTC normalization.
 5. **RC15:** repair stale fixtures and pass all mandatory gates without the
@@ -1131,7 +1140,7 @@ remaining order of work; see the [report](docs/validation/data-review-2026-11-17
    defects by themselves.
 6. **RC14:** deploy a coherent fixed revision, record the legacy-data disposition,
    and remeasure daytime flows, transfers, pickup, outages/replay, day-boundary
-   seeding and retention. Close RC1/RC7/RC8 and RC12–RC20 only against their
+   seeding and retention. RC1 is closed in the checkout; close RC7/RC8 and RC12–RC20 against their
    individual evidence and closure criteria, or explicitly record accepted
    exclusions as remaining risks rather than “fixed”.
 

@@ -311,7 +311,8 @@ def test_missed_flight_passengers_are_archived_by_retention(monkeypatch):
     monkeypatch.setattr(retention, "get_driver", lambda: type("D", (), {"session": lambda s: Session()})())
     asyncio.run(retention.archive_departed("2024-07-06T00:00:00", NOW, 10, "missed_flight"))
     assert "p.missed_flight_at < $before AND p.status = 'missed_flight'" in queries[0]
-    *_, missed_task = retention.tasks(lambda: None, batch=10)
+    missed_task = next(task for task in retention.tasks(lambda: None, batch=10)
+                       if task.__name__ == "passenger_archive_missed_flight")
     assert missed_task.__name__ == "passenger_archive_missed_flight"
 
 

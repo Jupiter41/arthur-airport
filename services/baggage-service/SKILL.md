@@ -8,6 +8,11 @@
 > includes old arrival holds; it never reads live cross-domain state per tick.
 
 
+> **RC1 completion (2026-11-19):** consumed diverted-arrival facts and startup/hourly
+> recovery dispose `in_hold` bags as terminal `diverted` (`diverted-aircraft`),
+> with atomic scan/inbox/outbox and unsuppressed facts. The 24-sim-hour archive
+> policy starts at the owner observation scan; active arrival holds stay live.
+
 ## Conveyor pipeline · DG detection · System failures · Offload logic
 
 > Full specification: `docs/services/baggage-service/SPEC.md`

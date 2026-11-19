@@ -494,8 +494,8 @@ transactions of at most `RETENTION_BATCH` rows:
 
 | Live label | Finished when | Archive label | Owner |
 | ---------- | ------------- | ------------- | ----- |
-| `Passenger` | `status = 'departed_airport'` and `departed_airport_at` (or `status = 'missed_flight'` and `missed_flight_at`, RC5) older than `RETENTION_ARCHIVE_AFTER_H` (24 sim-h) | `PassengerArchive` | passenger-service |
-| `Baggage` | `status IN ['collected', 'short_shipped']`, or `status = 'in_hold'` with `LOADED_ON` a departure flight; `last_scan_at` older than 24 sim-h | `BaggageArchive` | baggage-service |
+| `Passenger` | `status = 'departed_airport'` and `departed_airport_at` (or terminal `missed_flight` / `missed_connection` and its `<status>_at`) older than `RETENTION_ARCHIVE_AFTER_H` (24 sim-h) | `PassengerArchive` | passenger-service |
+| `Baggage` | `status IN ['collected', 'short_shipped', 'diverted']`, or `status = 'in_hold'` with `LOADED_ON` a departure flight; `last_scan_at` older than 24 sim-h | `BaggageArchive` | baggage-service |
 | `ScanEvent` | its bag is archived | `ScanEventArchive` | baggage-service |
 
 - Archival swaps the label (and drops the derived `UnscannedBaggage` /
@@ -505,8 +505,9 @@ transactions of at most `RETENTION_BATCH` rows:
   include them. Live queries, live indexes and the `Baggage.tag` / `Passenger.id`
   uniqueness constraints no longer see archived nodes; single-entity REST lookups
   return 404 for them.
-- `in_hold` bags of an **arrival** flight are never archived, even when stale
-  (they are the RC8 anomaly, not history).
+- `in_hold` bags of an **arrival** flight stay live until an owner disposition, even
+  when stale (RC8). Consumed diversion changes them to terminal `diverted` and
+  starts the 24-sim-hour archive age at the owner observation scan.
 - Archives are `DETACH DELETE`d `RETENTION_PURGE_AFTER_H` (168 sim-h) after
   `archived_at`; a bag's archived scan trail is deleted with it.
 - Inbox markers (`FlightInbox`, `PassengerInbox`, `BaggageInbox`, `CostInbox`)
@@ -524,6 +525,7 @@ CREATE INDEX baggage_archive_at IF NOT EXISTS FOR (b:BaggageArchive) ON (b.archi
 CREATE INDEX baggage_archive_id IF NOT EXISTS FOR (b:BaggageArchive) ON (b.id);
 CREATE INDEX passenger_departed_at IF NOT EXISTS FOR (p:Passenger) ON (p.departed_airport_at);
 CREATE INDEX passenger_missed_flight_at IF NOT EXISTS FOR (p:Passenger) ON (p.missed_flight_at);
+CREATE INDEX passenger_missed_connection_at IF NOT EXISTS FOR (p:Passenger) ON (p.missed_connection_at);
 CREATE INDEX passenger_archive_at IF NOT EXISTS FOR (p:PassengerArchive) ON (p.archived_at);
 CREATE INDEX passenger_archive_id IF NOT EXISTS FOR (p:PassengerArchive) ON (p.id);
 CREATE INDEX flightinbox_seen_at IF NOT EXISTS FOR (i:FlightInbox) ON (i.seen_at);

@@ -22,6 +22,9 @@ def setup(monkeypatch, *, status="arrived", direction="arrival"):
     original = Tx.run
 
     async def run(tx, query, **params):
+        if "MATCH (b:Baggage {status: 'in_hold'})" in query:
+            return Result([dict(b) for b in tx.db["baggage"].values()
+                           if b["flight_id"] == params["fid"] and b["status"] == "in_hold"])
         if "RETURN DISTINCT f.id AS id" in query:
             # A Flight property is deliberately unavailable to this query.
             assert "f.status" not in query and "f.direction" not in query
@@ -100,6 +103,55 @@ def test_bulk_recovery_keeps_arrival_facts_for_passenger_claim(monkeypatch):
     monkeypatch.setattr(consumer, "is_bulk_mode", lambda: True)
     asyncio.run(consumer._reconcile_flight_baggage(NOW))
     assert len(driver.db["outbox"]) == 1
+
+
+@pytest.mark.parametrize("event_type", ["FlightDiverted", "FlightStatusChanged", "recovery"])
+def test_diversion_disposes_held_arrival_bags_once_in_bulk(monkeypatch, event_type):
+    consumer, driver, _ = setup(monkeypatch, status="diverted")
+    monkeypatch.setattr(consumer, "is_bulk_mode", lambda: True)
+    driver.db["baggage"]["unloaded"] = {"id": "unloaded", "flight_id": "f1", "status": "arrived"}
+    if event_type == "recovery":
+        asyncio.run(consumer._reconcile_flight_baggage(NOW))
+    else:
+        asyncio.run(consumer._dispatch({"event_id": "diversion", "event_type": event_type,
+                    "sim_time": NOW.isoformat(),
+                    "payload": {"flight_id": "f1", "new_status": "diverted"}}))
+    assert driver.db["baggage"]["b1"]["status"] == "diverted"
+    assert driver.db["baggage"]["b1"]["zone"] == "diverted-aircraft"
+    assert driver.db["baggage"]["unloaded"]["status"] == "arrived"
+    [fact] = [json.loads(row["document"]) for row in driver.db["outbox"].values()]
+    assert fact["payload"]["passenger_id"] == "p1"
+    assert fact["payload"]["new_status"] == "diverted"
+    assert fact["sim_time"] == NOW.isoformat()
+    asyncio.run(consumer._apply_arrival_diverted("f1", NOW + timedelta(hours=1), "other-diversion"))
+    assert driver.db["baggage"]["b1"]["scans"] == 1
+    assert len(driver.db["outbox"]) == 1
+
+
+def test_diversion_failure_rolls_back_then_restart_recovers_late_bags(monkeypatch):
+    consumer, driver, _ = setup(monkeypatch, status="diverted")
+    before = deepcopy(driver.db)
+    driver.fail_on = "CREATE (e:BaggageOutbox"
+    with pytest.raises(RuntimeError, match="Injected"):
+        asyncio.run(consumer._reconcile_flight_baggage(NOW))
+    assert driver.db == before
+    asyncio.run(consumer._reconcile_flight_baggage(NOW))
+    driver.db["baggage"]["late"] = {"id": "late", "tag": "late", "flight_id": "f1",
+                                      "status": "in_hold", "scans": 0}
+    consumer._state = consumer.BaggageConsumerState()
+    consumer._reconcile_cadence = {"boot_ticks": 0, "last": None}
+    asyncio.run(consumer._reconcile_flight_baggage(NOW + timedelta(minutes=1)))
+    assert driver.db["baggage"]["late"]["status"] == "diverted"
+    assert driver.db["baggage"]["b1"]["scans"] == 1
+
+
+def test_diversion_ignores_departures_and_future_observations(monkeypatch):
+    consumer, driver, view = setup(monkeypatch, status="diverted", direction="departure")
+    asyncio.run(consumer._apply_arrival_diverted("f1", NOW, "diverted"))
+    view.flights["f1"].update(direction="arrival", updated_at=(NOW + timedelta(minutes=1)).isoformat())
+    asyncio.run(consumer._reconcile_flight_baggage(NOW))
+    assert driver.db["baggage"]["b1"]["status"] == "in_hold"
+    assert not driver.db["outbox"]
 
 
 def test_departure_recovery_does_not_load_unscreened_bags(monkeypatch):

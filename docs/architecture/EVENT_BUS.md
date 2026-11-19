@@ -1036,6 +1036,13 @@ reconstructed historical boarding time.
 
 ### Retention facts (RC1, 2026-11-16)
 
+RC1 completion (2026-11-19): terminal `missed_connection` passengers and
+`diverted` bags follow this archive/purge contract. Diverted-arrival held bags
+first emit `BaggageStatusChanged` (`in_hold` → `diverted`,
+`scan_zone=diverted-aircraft`) with passenger/flight identity and owner sim time,
+including recovery and BULK. This does not imply local collection.
+
+
 Lifecycle retention (DATA_MODEL.md "Lifecycle retention") is a state change of
 the owner's graph, so each archive/purge transaction stages one fact with it,
 on the owner's topic (`passengers.events` / `baggage.events`):

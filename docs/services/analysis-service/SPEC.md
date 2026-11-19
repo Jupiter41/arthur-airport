@@ -256,3 +256,9 @@ clock instead of once per consumer batch, and the consumer loop yields every
 CPU-bound on the event loop and the consumer fell further behind its input.
 Analysis remains a read-only observer of the graph: its recommendations reach
 owners only as commands, which each owner validates against its own state.
+
+### Terminal baggage targets (RC1, 2026-11-19)
+
+Terminal `diverted` baggage leaves event-fed action targets immediately, like
+`collected` and `short_shipped`. The graph rebuild already selects only active
+BHS statuses. No intervention targets bags aboard aircraft diverted away.

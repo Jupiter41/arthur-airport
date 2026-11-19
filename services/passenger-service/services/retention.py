@@ -1,7 +1,7 @@
 """Passenger lifecycle retention (RC1): archive departed passengers, purge archives.
 
 A passenger is finished once ``departed_airport`` (both directions end there) or
-``missed_flight`` (the departure left without them, RC5).
+``missed_flight`` (the departure left without them, RC5) or ``missed_connection``.
 Archival swaps ``Passenger`` → ``PassengerArchive`` ``RETENTION_ARCHIVE_AFTER_H``
 simulated hours after ``departed_airport_at``; relationships (``ON_FLIGHT``,
 ``CARRIES``) are kept so per-flight history counts still resolve. See
@@ -20,13 +20,14 @@ PRODUCER = "passenger-service"
 
 
 # Terminal status → the timestamp it stamps (``<status>_at``).
-FINISHED = {"departed_airport": "departed_airport_at", "missed_flight": "missed_flight_at"}
+FINISHED = {"departed_airport": "departed_airport_at", "missed_flight": "missed_flight_at",
+            "missed_connection": "missed_connection_at"}
 
 
 async def archive_departed(
     archive_before: str, sim_time: datetime, batch: int, status: str = "departed_airport"
 ) -> int:
-    """Archive one batch of finished passengers (``departed_airport`` / ``missed_flight``)."""
+    """Archive one batch of passengers in a whitelisted terminal status."""
     at_field = FINISHED[status]
 
     async def apply(tx) -> int:
@@ -90,8 +91,13 @@ def tasks(sim_time: Callable[[], datetime | None], batch: int | None = None) -> 
         before, _ = retention.cutoffs(now)
         return await archive_departed(before, now, batch, "missed_flight") if before else 0
 
+    async def passenger_archive_missed_connection() -> int:
+        now = sim_time()
+        before, _ = retention.cutoffs(now)
+        return await archive_departed(before, now, batch, "missed_connection") if before else 0
+
     return [passenger_archive_departed, passenger_purge_archive, passenger_prune_inbox,
-            passenger_archive_missed_flight]
+            passenger_archive_missed_flight, passenger_archive_missed_connection]
 
 
 async def setup() -> None:

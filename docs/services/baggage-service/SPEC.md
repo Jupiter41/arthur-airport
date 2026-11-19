@@ -524,3 +524,21 @@ startup ticks and hourly, includes old in_hold bags even outside the normal
 flight-view history window, and calls the same atomic offload path as the fact
 handler. New bags created after a flight fact are picked up by recovery. Facts
 for recovery transitions remain durable in BULK mode.
+
+### Diverted-arrival disposition and retention (RC1 / RC8, 2026-11-19)
+
+An arrival diverted away from KART never unloads here. On consumed
+`FlightDiverted` or `FlightStatusChanged(new_status=diverted)`, baggage-service
+changes only that arrival's live `in_hold` bags to terminal `diverted`, zone
+`diverted-aircraft`. Decisions use the consumed FlightView. Status, sim-time
+scan, inbox marker and unsuppressed per-bag `BaggageStatusChanged` facts commit
+atomically, including BULK. Identity relationships and transfer metadata remain;
+no local carousel or onward transfer is invented. Other statuses/directions stay.
+
+Startup/hourly recovery uses the same path for missed events, old arrival holds
+loaded by the startup FlightView beyond its time window, and late seeded bags.
+Recovery stamps observation time, never an invented historical diversion time.
+Duplicates and later sweeps do not re-stamp terminal bags. `diverted` joins
+`collected`/`short_shipped` in indexed 24-sim-hour archival. Scan trails archive
+with the bag and purge 168 sim-hours after archival, with atomic
+`EntitiesArchived`/`EntitiesPurged` facts. Active arrival holds remain live.

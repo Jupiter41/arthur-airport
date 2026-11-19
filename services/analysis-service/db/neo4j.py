@@ -160,7 +160,7 @@ async def query_active_flights_summary() -> dict:
 TARGET_BAG_STATUSES = ("inducted", "screening", "sorting", "loaded", "arrived", "on_carousel", "flagged")
 # Event-fed targets drop bags entering these (not yet in, or out of, the BHS).
 NON_TARGET_BAG_STATUSES = frozenset({
-    "dropped_off", "in_hold", "collected", "delivered", "short_shipped", "lost",
+    "dropped_off", "in_hold", "collected", "delivered", "short_shipped", "lost", "diverted",
 })
 # Flights older than this are history: finished departures end "arrived" and were
 # re-read on every evaluation for the rest of the simulation.

@@ -21,6 +21,7 @@ class BaggageStatus(str, Enum):
     OFFLOADED = "offloaded"
     HELD_FOR_REVIEW = "held_for_review"
     SHORT_SHIPPED = "short_shipped"  # not loaded when its flight departed (RC6)
+    DIVERTED = "diverted"  # remained aboard an arrival diverted away from KART
 
 
 class ZoneStatus(str, Enum):

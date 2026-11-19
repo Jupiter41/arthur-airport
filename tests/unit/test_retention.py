@@ -223,8 +223,8 @@ def test_purge_deletes_archived_bags_and_reports_the_count(monkeypatch):
 def test_baggage_tasks_are_inert_before_the_first_clock_tick(monkeypatch):
     driver = _Driver(lambda q, p: [{"n": 0}])
     module = _baggage_retention(monkeypatch, driver)
-    archive, hold, purge, _, short_shipped = module.tasks(lambda: None, batch=10)
-    for task in (archive, hold, purge, short_shipped):
+    archive, hold, purge, _, short_shipped, diverted = module.tasks(lambda: None, batch=10)
+    for task in (archive, hold, purge, short_shipped, diverted):
         assert asyncio.run(task()) == 0
     assert driver.txs == []
 
@@ -245,6 +245,33 @@ def test_departed_passengers_are_archived_with_an_event(monkeypatch):
     assert fact["payload"]["entity"] == "Passenger" and fact["payload"]["ids"] == ["p1"]
 
 
+def test_missed_connection_has_an_age_based_task_and_atomic_archive_fact(monkeypatch):
+    import_service_module("passenger", "application.commands")
+    module = importlib.import_module("services.retention")
+    driver = _Driver(lambda q, p: [{"id": "missed"}] if "SET p:PassengerArchive" in q else [])
+    monkeypatch.setattr(module, "get_driver", lambda: driver)
+    task = next(t for t in module.tasks(lambda: NOW, batch=2)
+                if t.__name__ == "passenger_archive_missed_connection")
+    assert asyncio.run(task()) == 1
+    query, params = driver.txs[0].queries[0]
+    assert "p.missed_connection_at < $before" in query
+    assert "p.status = 'missed_connection'" in query
+    assert params["before"] == "2024-07-07T12:00:00" and params["batch"] == 2
+    assert _staged(driver.txs[0])[0]["payload"]["ids"] == ["missed"]
+
+
+def test_diverted_bags_use_indexed_terminal_retention(monkeypatch):
+    driver = _Driver(lambda q, p: [{"id": "diverted"}] if "status = 'diverted'" in q else [])
+    module = _baggage_retention(monkeypatch, driver)
+    task = next(t for t in module.tasks(lambda: NOW, batch=2)
+                if t.__name__ == "baggage_archive_diverted")
+    assert asyncio.run(task()) == 1
+    query, params = driver.txs[0].queries[0]
+    assert "USING INDEX b:Baggage(status, last_scan_at, id)" in query
+    assert "b.last_scan_at < $before" in query and params["batch"] == 2
+    assert _staged(driver.txs[0])[0]["payload"]["ids"] == ["diverted"]
+
+
 # ── consumers ─────────────────────────────────────────────────────
 
 def test_analysis_drops_archived_and_collected_bags_from_targets():
@@ -255,6 +282,7 @@ def test_analysis_drops_archived_and_collected_bags_from_targets():
     state.on_entities_archived({"entity": "Passenger", "ids": ["b2"]})
     assert "b2" in state.baggage_targets
     state.on_entities_archived({"entity": "Baggage", "ids": ["b1", "missing"]})
+    state.on_baggage_status_changed({"baggage_id": "b2", "new_status": "diverted"})
     state.on_baggage_status_batch_changed({"status_changes": [
         {"id": "b3", "status": "collected", "zone": "carousel-1"}]})
-    assert state.baggage_targets == {"b2": {"status": "loaded"}}
+    assert state.baggage_targets == {}

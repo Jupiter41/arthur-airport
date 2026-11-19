@@ -37,3 +37,14 @@ Coverage for flight, passenger and baggage owners, plus analysis discovery:
 The separate `domain-transactions` CI job runs this suite. The existing
 `full-stack` job continues to require every application service and all REST,
 event-chain, financial, planning and resilience integration tests.
+
+## RC1 lifecycle gate
+
+`test_rc1_retention.py` uses independent owner processes and actual Neo4j
+transactions for terminal missed connections and diverted arrival holds. It can
+run on the disposable G1 stack above or a Neo4j-only project with cached owner
+runtime images and current sources mounted by the harness. It checks rollback,
+startup FlightView recovery beyond the time window, idempotent restarts, strict
+archive/purge age boundaries, identity links, scans and atomic outbox facts.
+As with the other G1 tests, never target an operational airport database.
+See [recorded RC1 validation](../../docs/validation/rc1-2026-11-19/README.md).

@@ -1,6 +1,6 @@
 """Kafka consumer for baggage-service.
 
-Consumes: SimClockTick, FlightStatusChanged, FlightCancelled,
+Consumes: SimClockTick, FlightStatusChanged, FlightCancelled, FlightDiverted,
           IncidentCreated (system_failure), IncidentStatusChanged
 On each tick: advances conveyor pipeline, inducts new bags, screens items.
 """
@@ -311,6 +311,8 @@ async def _dispatch(envelope: dict) -> None:
             await _on_flight_status_changed(payload, sim_time, event_id)
         case "FlightCancelled":
             await _on_flight_cancelled(payload, sim_time)
+        case "FlightDiverted":
+            await _apply_arrival_diverted(payload.get("flight_id"), sim_time, event_id)
         case "IncidentCreated":
             await _on_incident_created(payload, sim_time)
         case "IncidentStatusChanged":
@@ -702,6 +704,8 @@ async def _reconcile_flight_baggage(sim_time: datetime, *, force: bool = False) 
             await _apply_departure_in_hold(fid, sim_time, recovery_id)
         elif status == "cancelled":
             await _on_flight_cancelled({"flight_id": fid}, sim_time, recovery_id=recovery_id)
+        elif flight.get("direction") == "arrival" and status == "diverted":
+            await _apply_arrival_diverted(fid, sim_time, recovery_id)
     cadence["boot_ticks"] += 1
     cadence["last"] = sim_time
 
@@ -1156,6 +1160,57 @@ async def _on_flight_status_changed(
     elif new_status == "cancelled":
         # Flight cancelled — offload all baggage
         await _on_flight_cancelled(payload, sim_time)
+
+    elif new_status == "diverted":
+        await _apply_arrival_diverted(flight_id, sim_time, event_id)
+
+
+async def _apply_arrival_diverted(
+    flight_id: str | None, sim_time: datetime, event_id: str,
+) -> None:
+    """Dispose held bags aboard a diverted arrival; never invent local unloading.
+
+    Select after taking the owner revision lock, so the two diversion facts or
+    a concurrent recovery cannot re-stamp bags already disposed by another tx.
+    """
+    from _common.flight_view import VIEW
+    flight = VIEW.get(flight_id) if flight_id else None
+    if not flight or flight.get("direction") != "arrival" or flight.get("status") != "diverted":
+        return
+    observed = flight.get("updated_at") or flight.get("actual_time")
+    if observed and datetime.fromisoformat(observed) > sim_time:
+        return
+    state = current_tick.get().state if current_tick.get() else globals()["_state"]
+    input_id = event_id or f"diverted:{flight_id}:{sim_time.isoformat()}"
+    zone = "diverted-aircraft"
+
+    async def apply(tx) -> list[dict]:
+        if await outbox.inbox_seen(tx, "BaggageInbox", input_id):
+            return []
+        revision = await next_outbox_revision_tx(tx)
+        bags = await (await tx.run(
+            "MATCH (b:Baggage {status: 'in_hold'})-[:LOADED_ON]->(:Flight {id: $fid}) "
+            "OPTIONAL MATCH (p)-[:CARRIES]->(b) "
+            "RETURN b.id AS id, b.tag AS tag, p.id AS passenger_id",
+            fid=flight_id,
+        )).data()
+        await write_baggage_statuses_tx(tx, [
+            {"id": b["id"], "status": "diverted", "zone": zone} for b in bags
+        ], sim_time)
+        facts = [_status_changed_fact(
+            event_id=input_id, baggage_id=b["id"], tag=b["tag"],
+            previous_status="in_hold", new_status="diverted", scan_zone=zone,
+            sim_time=sim_time, passenger_id=b.get("passenger_id"), flight_id=flight_id,
+        ) for b in bags]
+        await outbox.mark_inbox(tx, "BaggageInbox", input_id, sim_time.isoformat())
+        await outbox.stage_outbox(tx, "BaggageOutbox", facts, revision)
+        return bags
+
+    async with get_driver().session() as session:
+        bags = await session.execute_write(apply)
+    for bag in bags:
+        state.conveyor.remove_bag_from_all_zones(bag["id"])
+        _track_transition("in_hold", "diverted")
 
 
 def _status_changed_fact(

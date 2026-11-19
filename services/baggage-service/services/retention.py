@@ -1,6 +1,7 @@
 """Baggage lifecycle retention (RC1): archive finished bags, purge old archives.
 
-Finished bags are ``collected`` (arrival), ``short_shipped`` (left behind at
+Finished bags are ``collected`` (arrival), ``diverted`` (arrival never landed here),
+``short_shipped`` (left behind at
 departure, RC6) and ``in_hold`` on a *departure* flight (the hold left with the
 aircraft). ``in_hold`` bags of an arrival flight
 are still waiting for the belt — even stale ones (see DATA_FLOW_REVIEW RC8) stay
@@ -42,7 +43,7 @@ async def _archive_tx(tx, ids: list[str], archive_before: str, sim_time: datetim
     ], retention.FACT_REVISION)
 
 
-TERMINAL_STATUSES = ("collected", "short_shipped")
+TERMINAL_STATUSES = ("collected", "short_shipped", "diverted")
 
 
 async def archive_collected(
@@ -173,8 +174,14 @@ def tasks(sim_time: Callable[[], datetime | None], batch: int | None = None) -> 
         before, _ = retention.cutoffs(now)
         return await archive_collected(before, now, batch, "short_shipped") if before else 0
 
+    async def baggage_archive_diverted() -> int:
+        now = sim_time()
+        before, _ = retention.cutoffs(now)
+        return await archive_collected(before, now, batch, "diverted") if before else 0
+
     return [baggage_archive_collected, baggage_archive_departed_hold,
-            baggage_purge_archive, baggage_prune_inbox, baggage_archive_short_shipped]
+            baggage_purge_archive, baggage_prune_inbox, baggage_archive_short_shipped,
+            baggage_archive_diverted]
 
 
 async def setup() -> None:
