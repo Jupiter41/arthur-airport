@@ -1,0 +1,19 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/chevallier/Documents/dev/PERSOS/arthur-airport
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 7 items
+
+tests/live_transactions/test_rc11_resilience.py .......                  [100%]
+
+==================================== PASSES ====================================
+______ test_hot_recovery_query_ignores_unrelated_live_history[passenger] _______
+----------------------------- Captured stdout call -----------------------------
+{"owner": "passenger", "history_entities": 40000, "rows": 0, "hits": 6, "operators": ["ProduceResults@neo4j", "Projection@neo4j", "CacheProperties@neo4j", "Limit@neo4j", "Expand(Into)@neo4j", "Apply@neo4j", "Apply@neo4j", "Unwind@neo4j", "NodeUniqueIndexSeek@neo4j", "NodeIndexSeek@neo4j"]}
+_______ test_hot_recovery_query_ignores_unrelated_live_history[baggage] ________
+----------------------------- Captured stdout call -----------------------------
+{"owner": "baggage", "history_entities": 40000, "rows": 1, "hits": 17, "operators": ["ProduceResults@neo4j", "Projection@neo4j", "CacheProperties@neo4j", "OptionalExpand(All)@neo4j", "Expand(Into)@neo4j", "Apply@neo4j", "Apply@neo4j", "Unwind@neo4j", "NodeUniqueIndexSeek@neo4j", "NodeIndexSeek@neo4j"]}
+---------------- generated xml file: /tmp/rc11-transactions.xml ----------------
+============================== 7 passed in 53.93s ==============================

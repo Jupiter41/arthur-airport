@@ -1,0 +1,5 @@
+{"phase": "initial", "clock": "2024-06-17T02:31:00"}
+{"phase": "database_recovered", "clock": "2024-06-17T02:34:00"}
+{"phase": "six_hour_outage", "clock": "2024-06-17T08:45:00"}
+{"phase": "owners_caught_up", "seconds": 37.46880357500049}
+{"passed": true, "ticks": 2049, "recovery_seconds": 37.46880357500049, "report": "/tmp/rc11-live.json"}

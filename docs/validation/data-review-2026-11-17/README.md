@@ -2,7 +2,7 @@
 
 Date: 2026-11-17 (Europe/Luxembourg). Reviewed checkout: `0ae109a`.
 
-> Follow-up (2026-11-19): RC7, RC8 and RC12 are now closed against [cold-start and durable recovery evidence](../rc7-rc8-2026-11-19/README.md). RC1 is also closed against [new lifecycle regression evidence](../rc1-2026-11-19/README.md). The following verdict and measurements describe the historical 2026-11-17 audit; the overall review remains open.
+> Follow-up (2026-11-19): RC11 is now closed against [commit, boundary and backlog recovery evidence](../rc11-2026-11-19/README.md). RC7, RC8 and RC12 are now closed against [cold-start and durable recovery evidence](../rc7-rc8-2026-11-19/README.md). RC1 is also closed against [new lifecycle regression evidence](../rc1-2026-11-19/README.md). The following verdict and measurements describe the historical 2026-11-17 audit; the overall review remains open.
 
 **Verdict: do not close the review. RC1, RC7 and RC8 are reopened; earlier fixes are retained.**
 The earlier green unit/transaction checks did not exercise the real orchestrator

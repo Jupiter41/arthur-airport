@@ -148,8 +148,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pytest
-      - name: Build domain owners and projection recovery worker
-        run: docker compose build flight-service passenger-service baggage-service analysis-service
+      - name: Build domain, clock and projection recovery workers
+        run: docker compose build flight-service passenger-service baggage-service analysis-service sim-orchestrator
       - name: Start disposable Neo4j and Kafka
         run: |
           docker compose up -d --wait neo4j kafka

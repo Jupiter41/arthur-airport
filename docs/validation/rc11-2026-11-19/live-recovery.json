@@ -1,0 +1,3398 @@
+{
+  "initial": {
+    "clock": "2024-06-17T02:31:00",
+    "watermarks": {
+      "baggage-service": {
+        "sim_time": "2024-06-17T02:29:00",
+        "lag_minutes": 2.0,
+        "stale": false
+      },
+      "flight-service": {
+        "sim_time": "2024-06-17T02:28:00",
+        "lag_minutes": 3.0,
+        "stale": false
+      },
+      "passenger-service": {
+        "sim_time": "2024-06-17T02:28:00",
+        "lag_minutes": 3.0,
+        "stale": false
+      }
+    },
+    "checkpoints": [
+      {
+        "owner": [
+          "FlightRuntime"
+        ],
+        "at": "2024-06-17T02:28:00"
+      },
+      {
+        "owner": [
+          "BaggageOutboxSeq"
+        ],
+        "at": "2024-06-17T02:30:00"
+      },
+      {
+        "owner": [
+          "PassengerRuntime"
+        ],
+        "at": "2024-06-17T02:28:00"
+      }
+    ],
+    "days": [
+      {
+        "day": "2024-06-15",
+        "ready": true
+      },
+      {
+        "day": "2024-06-16",
+        "ready": true
+      },
+      {
+        "day": "2024-06-17",
+        "ready": true
+      }
+    ],
+    "seed_times": [
+      {
+        "at": "2024-06-15T23:25:00",
+        "pending": false,
+        "n": 41
+      },
+      {
+        "at": "2024-06-15T23:30:00",
+        "pending": false,
+        "n": 35
+      },
+      {
+        "at": "2024-06-16T23:30:00",
+        "pending": false,
+        "n": 38
+      }
+    ]
+  },
+  "before_database_pause": {
+    "clock": "2024-06-17T02:31:00",
+    "watermarks": {
+      "baggage-service": {
+        "sim_time": "2024-06-17T02:29:00",
+        "lag_minutes": 2.0,
+        "stale": false
+      },
+      "flight-service": {
+        "sim_time": "2024-06-17T02:28:00",
+        "lag_minutes": 3.0,
+        "stale": false
+      },
+      "passenger-service": {
+        "sim_time": "2024-06-17T02:28:00",
+        "lag_minutes": 3.0,
+        "stale": false
+      }
+    },
+    "checkpoints": [
+      {
+        "owner": [
+          "FlightRuntime"
+        ],
+        "at": "2024-06-17T02:28:00"
+      },
+      {
+        "owner": [
+          "BaggageOutboxSeq"
+        ],
+        "at": "2024-06-17T02:30:00"
+      },
+      {
+        "owner": [
+          "PassengerRuntime"
+        ],
+        "at": "2024-06-17T02:30:00"
+      }
+    ],
+    "days": [
+      {
+        "day": "2024-06-15",
+        "ready": true
+      },
+      {
+        "day": "2024-06-16",
+        "ready": true
+      },
+      {
+        "day": "2024-06-17",
+        "ready": true
+      }
+    ],
+    "seed_times": [
+      {
+        "at": "2024-06-15T23:25:00",
+        "pending": false,
+        "n": 41
+      },
+      {
+        "at": "2024-06-15T23:30:00",
+        "pending": false,
+        "n": 35
+      },
+      {
+        "at": "2024-06-16T23:30:00",
+        "pending": false,
+        "n": 38
+      }
+    ]
+  },
+  "after_database_pause": {
+    "clock": "2024-06-17T02:34:00",
+    "watermarks": {
+      "baggage-service": {
+        "sim_time": "2024-06-17T02:31:00",
+        "lag_minutes": 3.0,
+        "stale": false
+      },
+      "flight-service": {
+        "sim_time": "2024-06-17T02:30:00",
+        "lag_minutes": 4.0,
+        "stale": false
+      },
+      "passenger-service": {
+        "sim_time": "2024-06-17T02:32:00",
+        "lag_minutes": 2.0,
+        "stale": false
+      }
+    },
+    "checkpoints": [
+      {
+        "owner": [
+          "FlightRuntime"
+        ],
+        "at": "2024-06-17T02:30:00"
+      },
+      {
+        "owner": [
+          "BaggageOutboxSeq"
+        ],
+        "at": "2024-06-17T02:32:00"
+      },
+      {
+        "owner": [
+          "PassengerRuntime"
+        ],
+        "at": "2024-06-17T02:33:00"
+      }
+    ],
+    "days": [
+      {
+        "day": "2024-06-15",
+        "ready": true
+      },
+      {
+        "day": "2024-06-16",
+        "ready": true
+      },
+      {
+        "day": "2024-06-17",
+        "ready": true
+      }
+    ],
+    "seed_times": [
+      {
+        "at": "2024-06-15T23:25:00",
+        "pending": false,
+        "n": 41
+      },
+      {
+        "at": "2024-06-15T23:30:00",
+        "pending": false,
+        "n": 35
+      },
+      {
+        "at": "2024-06-16T23:30:00",
+        "pending": false,
+        "n": 38
+      }
+    ]
+  },
+  "before_owner_outage": {
+    "clock": "2024-06-17T02:43:00",
+    "watermarks": {
+      "baggage-service": {
+        "sim_time": "2024-06-17T02:37:00",
+        "lag_minutes": 6.0,
+        "stale": true
+      },
+      "flight-service": {
+        "sim_time": "2024-06-17T02:38:00",
+        "lag_minutes": 5.0,
+        "stale": false
+      },
+      "passenger-service": {
+        "sim_time": "2024-06-17T02:37:00",
+        "lag_minutes": 6.0,
+        "stale": true
+      }
+    },
+    "checkpoints": [
+      {
+        "owner": [
+          "FlightRuntime"
+        ],
+        "at": "2024-06-17T02:41:00"
+      },
+      {
+        "owner": [
+          "BaggageOutboxSeq"
+        ],
+        "at": "2024-06-17T02:37:00"
+      },
+      {
+        "owner": [
+          "PassengerRuntime"
+        ],
+        "at": "2024-06-17T02:37:00"
+      }
+    ],
+    "days": [
+      {
+        "day": "2024-06-15",
+        "ready": true
+      },
+      {
+        "day": "2024-06-16",
+        "ready": true
+      },
+      {
+        "day": "2024-06-17",
+        "ready": true
+      }
+    ],
+    "seed_times": [
+      {
+        "at": "2024-06-15T23:25:00",
+        "pending": false,
+        "n": 41
+      },
+      {
+        "at": "2024-06-15T23:30:00",
+        "pending": false,
+        "n": 35
+      },
+      {
+        "at": "2024-06-16T23:30:00",
+        "pending": false,
+        "n": 38
+      }
+    ]
+  },
+  "six_hour_outage": {
+    "clock": "2024-06-17T08:45:00",
+    "watermarks": {
+      "baggage-service": {
+        "sim_time": "2024-06-17T02:37:00",
+        "lag_minutes": 368.0,
+        "stale": true
+      },
+      "flight-service": {
+        "sim_time": "2024-06-17T08:41:00",
+        "lag_minutes": 4.0,
+        "stale": false
+      },
+      "passenger-service": {
+        "sim_time": "2024-06-17T02:37:00",
+        "lag_minutes": 368.0,
+        "stale": true
+      }
+    },
+    "checkpoints": [
+      {
+        "owner": [
+          "FlightRuntime"
+        ],
+        "at": "2024-06-17T08:44:00"
+      },
+      {
+        "owner": [
+          "BaggageOutboxSeq"
+        ],
+        "at": "2024-06-17T02:37:00"
+      },
+      {
+        "owner": [
+          "PassengerRuntime"
+        ],
+        "at": "2024-06-17T02:37:00"
+      }
+    ],
+    "days": [
+      {
+        "day": "2024-06-15",
+        "ready": true
+      },
+      {
+        "day": "2024-06-16",
+        "ready": true
+      },
+      {
+        "day": "2024-06-17",
+        "ready": true
+      }
+    ],
+    "seed_times": [
+      {
+        "at": "2024-06-15T23:25:00",
+        "pending": false,
+        "n": 41
+      },
+      {
+        "at": "2024-06-15T23:30:00",
+        "pending": false,
+        "n": 35
+      },
+      {
+        "at": "2024-06-16T23:30:00",
+        "pending": false,
+        "n": 38
+      }
+    ]
+  },
+  "recovery_samples": [
+    {
+      "clock": "2024-06-17T09:05:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 388.0,
+          "stale": true
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:05:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 388.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:05:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T02:37:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:06:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 389.0,
+          "stale": true
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:06:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 389.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:06:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T02:37:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:07:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 390.0,
+          "stale": true
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:07:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 390.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:07:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T02:37:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:08:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 391.0,
+          "stale": true
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:08:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 391.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:08:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T02:37:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:09:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 392.0,
+          "stale": true
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:09:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 392.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:09:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T02:37:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:10:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T04:57:00",
+          "lag_minutes": 253.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:10:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 393.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:10:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T05:32:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:10:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T07:52:00",
+          "lag_minutes": 78.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:10:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 393.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:10:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T08:07:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:10:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T08:57:00",
+          "lag_minutes": 13.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:10:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 393.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:10:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:02:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:11:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:11:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:11:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 394.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:11:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:11:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:12:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:12:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:12:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 395.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:12:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:12:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:13:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:13:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:13:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 396.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:13:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:13:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:14:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:14:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:14:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 397.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:14:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:14:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:15:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:15:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:15:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 398.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:15:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:15:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:16:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:16:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:16:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 399.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:16:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:16:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:17:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:17:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:17:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 400.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:17:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:17:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:18:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:18:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:18:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 401.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:18:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:18:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:19:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:19:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:19:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 402.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:19:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:19:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:20:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:20:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:20:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 403.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:20:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:20:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:21:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:21:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:21:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 404.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:21:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:21:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:23:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:22:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:22:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 406.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:22:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:22:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:24:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:23:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:23:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 407.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:23:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:23:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:25:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:24:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:24:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 408.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:24:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:24:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:26:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:25:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:25:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 409.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:25:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:25:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:27:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:26:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:26:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 410.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:26:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:26:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:28:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:27:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:27:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 411.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:27:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:27:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:29:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:28:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:28:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 412.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:28:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:29:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:30:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:29:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:29:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 413.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:29:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:29:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:31:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:30:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:30:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 414.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:30:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:30:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:32:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:31:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:31:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 415.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:31:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:32:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:33:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:32:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:32:00",
+          "lag_minutes": 1.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T02:37:00",
+          "lag_minutes": 416.0,
+          "stale": true
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:32:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T02:37:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:33:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T04:22:00",
+          "lag_minutes": 311.0,
+          "stale": false
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T04:57:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:33:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T06:32:00",
+          "lag_minutes": 181.0,
+          "stale": false
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T06:52:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:33:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T07:47:00",
+          "lag_minutes": 106.0,
+          "stale": false
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T08:02:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:33:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T09:10:00",
+          "lag_minutes": 23.0,
+          "stale": false
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T09:10:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:33:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T09:10:00",
+          "lag_minutes": 23.0,
+          "stale": false
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T09:10:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:33:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T09:10:00",
+          "lag_minutes": 23.0,
+          "stale": false
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T09:10:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:33:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:33:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T09:10:00",
+          "lag_minutes": 23.0,
+          "stale": false
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:33:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T09:10:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    },
+    {
+      "clock": "2024-06-17T09:34:00",
+      "watermarks": {
+        "baggage-service": {
+          "sim_time": "2024-06-17T09:34:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "flight-service": {
+          "sim_time": "2024-06-17T09:34:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        },
+        "passenger-service": {
+          "sim_time": "2024-06-17T09:34:00",
+          "lag_minutes": 0.0,
+          "stale": false
+        }
+      },
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "at": "2024-06-17T09:34:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "at": "2024-06-17T09:34:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "at": "2024-06-17T09:34:00"
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        },
+        {
+          "day": "2024-06-17",
+          "ready": true
+        }
+      ],
+      "seed_times": [
+        {
+          "at": "2024-06-15T23:25:00",
+          "pending": false,
+          "n": 41
+        },
+        {
+          "at": "2024-06-15T23:30:00",
+          "pending": false,
+          "n": 35
+        },
+        {
+          "at": "2024-06-16T23:30:00",
+          "pending": false,
+          "n": 38
+        }
+      ]
+    }
+  ],
+  "recovery_wall_seconds": 37.46880357500049,
+  "final": {
+    "clock": "2024-06-17T09:34:00",
+    "checkpoints": [
+      {
+        "owner": [
+          "FlightRuntime"
+        ],
+        "at": "2024-06-17T09:34:00"
+      },
+      {
+        "owner": [
+          "BaggageOutboxSeq"
+        ],
+        "at": "2024-06-17T09:34:00"
+      },
+      {
+        "owner": [
+          "PassengerRuntime"
+        ],
+        "at": "2024-06-17T09:34:00"
+      }
+    ],
+    "readiness": {
+      "flight": {
+        "ready": true,
+        "status": 200
+      },
+      "passenger": {
+        "ready": true,
+        "status": 200
+      },
+      "baggage": {
+        "ready": true,
+        "status": 200
+      },
+      "weather": {
+        "ready": true,
+        "status": 200
+      },
+      "incident": {
+        "ready": true,
+        "status": 200
+      },
+      "sim": {
+        "ready": true,
+        "status": 200
+      },
+      "analysis": {
+        "ready": true,
+        "status": 200
+      },
+      "cost": {
+        "ready": true,
+        "status": 200
+      },
+      "planning": {
+        "ready": true,
+        "status": 200
+      },
+      "gateway": {
+        "ready": true,
+        "status": 200
+      }
+    }
+  },
+  "tick_count": 2049,
+  "boundary_ticks": [
+    {
+      "at": "2024-06-15T23:26:00",
+      "produced_at": "2026-11-19T11:16:50.645203+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:27:00",
+      "produced_at": "2026-11-19T11:16:50.745065+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:28:00",
+      "produced_at": "2026-11-19T11:16:50.845557+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:29:00",
+      "produced_at": "2026-11-19T11:16:50.946155+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:30:00",
+      "produced_at": "2026-11-19T11:16:51.046531+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:31:00",
+      "produced_at": "2026-11-19T11:16:51.388483+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:32:00",
+      "produced_at": "2026-11-19T11:16:51.488275+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:33:00",
+      "produced_at": "2026-11-19T11:16:51.588371+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:34:00",
+      "produced_at": "2026-11-19T11:16:51.688654+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:35:00",
+      "produced_at": "2026-11-19T11:16:51.788828+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:36:00",
+      "produced_at": "2026-11-19T11:16:51.888616+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:37:00",
+      "produced_at": "2026-11-19T11:16:51.989412+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:38:00",
+      "produced_at": "2026-11-19T11:16:52.089458+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-15T23:39:00",
+      "produced_at": "2026-11-19T11:16:52.189384+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:00:00",
+      "produced_at": "2026-11-19T11:16:54.294288+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:01:00",
+      "produced_at": "2026-11-19T11:16:54.394503+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:02:00",
+      "produced_at": "2026-11-19T11:16:54.494635+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:03:00",
+      "produced_at": "2026-11-19T11:16:54.594515+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:04:00",
+      "produced_at": "2026-11-19T11:16:54.695222+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:05:00",
+      "produced_at": "2026-11-19T11:16:54.795810+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:06:00",
+      "produced_at": "2026-11-19T11:16:54.896082+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:07:00",
+      "produced_at": "2026-11-19T11:16:54.996221+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:08:00",
+      "produced_at": "2026-11-19T11:16:55.096968+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T00:09:00",
+      "produced_at": "2026-11-19T11:16:55.197489+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:20:00",
+      "produced_at": "2026-11-19T11:20:43.930735+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:21:00",
+      "produced_at": "2026-11-19T11:20:44.031916+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:22:00",
+      "produced_at": "2026-11-19T11:20:44.132355+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:23:00",
+      "produced_at": "2026-11-19T11:20:44.232116+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:24:00",
+      "produced_at": "2026-11-19T11:20:44.332167+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:25:00",
+      "produced_at": "2026-11-19T11:20:44.432243+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:26:00",
+      "produced_at": "2026-11-19T11:20:44.532813+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:27:00",
+      "produced_at": "2026-11-19T11:20:44.632530+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:28:00",
+      "produced_at": "2026-11-19T11:20:44.732671+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:29:00",
+      "produced_at": "2026-11-19T11:20:44.832181+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:30:00",
+      "produced_at": "2026-11-19T11:20:44.932073+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:31:00",
+      "produced_at": "2026-11-19T11:20:45.100651+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:32:00",
+      "produced_at": "2026-11-19T11:20:45.200708+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:33:00",
+      "produced_at": "2026-11-19T11:20:45.300425+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:34:00",
+      "produced_at": "2026-11-19T11:20:45.401185+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:35:00",
+      "produced_at": "2026-11-19T11:20:45.501342+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:36:00",
+      "produced_at": "2026-11-19T11:20:45.602136+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:37:00",
+      "produced_at": "2026-11-19T11:20:46.455992+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:38:00",
+      "produced_at": "2026-11-19T11:20:46.807613+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-16T23:39:00",
+      "produced_at": "2026-11-19T11:20:46.907551+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:00:00",
+      "produced_at": "2026-11-19T11:20:51.672878+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:01:00",
+      "produced_at": "2026-11-19T11:20:51.772042+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:02:00",
+      "produced_at": "2026-11-19T11:20:51.872803+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:03:00",
+      "produced_at": "2026-11-19T11:20:51.971911+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:04:00",
+      "produced_at": "2026-11-19T11:20:52.273812+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:05:00",
+      "produced_at": "2026-11-19T11:20:52.877464+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:06:00",
+      "produced_at": "2026-11-19T11:20:52.977460+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:07:00",
+      "produced_at": "2026-11-19T11:20:53.077475+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:08:00",
+      "produced_at": "2026-11-19T11:20:53.177394+00:00",
+      "step": 1
+    },
+    {
+      "at": "2024-06-17T00:09:00",
+      "produced_at": "2026-11-19T11:20:53.278425+00:00",
+      "step": 1
+    }
+  ],
+  "continuous_clock_stream": true,
+  "no_oom_or_auto_pause": true
+}

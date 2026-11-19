@@ -3,6 +3,13 @@
 Review date: 2026-11-16 · Reviewed commit: `1e7b16d` (main, clean)
 Reviewed stack: `art-ldt-g6-*` compose project. It had been running continuously for about 23 simulated days at 60× (sim day 23–24, 2024-07-07 → 07-08).
 
+> **RC11 closed — 2026-11-19.** Late checkpoint commit errors now participate
+> in retry/acknowledgement policy, and failed midnight barriers cannot advance
+> into an unseeded day. Seven real database/Kafka fault/profile regressions,
+> six restart checks and 1,493 unit tests pass. A live six-hour owner outage
+> converges to the current clock in 37.47 seconds at 60x without operator resume.
+> [Closure evidence](docs/validation/rc11-2026-11-19/README.md). RC16/RC14 remain open.
+
 > **RC7 / RC8 / RC12 closed — 2026-11-19.** Real cold start, owner inbound
 > transitions, named links/transfers, 23:30/midnight seeding and durable collection
 > recovery pass without application workarounds. See [closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md).
@@ -42,7 +49,7 @@ problems share one cause.
 
 The original review identified RC1–RC11. Closure revalidation adds RC12–RC20, including
 promotion of five unresolved lower-level findings. RC1, RC7, RC8 and RC12 are now
-**closed** with the 2026-11-19 evidence below. Previously
+**closed** with the 2026-11-19 evidence below; RC11 closure is also recorded above. Previously
 completed implementation work is retained, but the review remains open until the new
 closure criteria are met. See the [revalidation report](docs/validation/data-review-2026-11-17/README.md).
 
@@ -58,7 +65,7 @@ closure criteria are met. See the [revalidation report](docs/validation/data-rev
 | RC8 | Missed-trigger recovery and consumer restart convergence | Historical arrival holds stranded; collection lost after ACK or in BULK | 🔴 High | ✅ Closed | Earliest offsets and atomic reconciliation retained. Durable passenger observations survive ACK/process death; startup snapshots cover expired inputs, BULK collection is unsuppressed, and real old arrived-flight holds complete after restart. RC1 retention and RC12 observation dependencies satisfied. [Closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md). |
 | RC9  | The gateway forwards the raw firehose to browsers, and the dashboard does no-op store writes per event                                                               | about 450 WS msgs/s per tab; ~280 useless React store updates/s                                                                                                    | 🟠 Medium  | ✅ Done     | Gateway UI delivery policy (`wsDeliveryPolicy.json`): flight/incident/alert facts immediate, clock + snapshots coalesced to the latest per key every 1 s, batch facts as payload-free refetch hints, per-entity facts dropped; dashboard no-op handlers removed, `updateZone` no-op on empty patch, query invalidation throttled to 1/s per key (`3f9d4e5`). Revalidated at ~10.9 domain messages/s and 18.6 KB/s; stale replay is separately open as RC18                                                                                                   |
 | RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it                                                                        | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft                                                                                       | 🟡 Low–Med | ✅ Done     | Owners report a `SourceHealth` block (enabled, items, wall ingest/error, sim observation); gateway derives `unavailable/disabled/error/stale/active` with a reason and clock-labelled timestamps; new `GET /flights/adsb/source` (`83feb91`). Unit-tested                                                                                                                                                                                                                                                                                                    |
-| RC11 | History-wide query plans exhaust Neo4j's _shared_ transaction memory; coalesced catch-up ticks grow with each failed retry; the clock pauses on any checkpoint error | passenger-service stuck 6 sim-h behind, then the whole sim auto-paused (found during deployment)                                                                   | 🔴 High    | ✅ Done     | Query plans pinned, catch-up split into ≤5-min ticks, clock checkpoint retries transient errors, seeding moved off the tick path, transaction pool 0.7 → 1.4 GiB (`78a9975`, `dfe4e77`)                                                                                                                                                                                                                                                                                                                                                                      |
+| RC11 | Planner traps, coalesced catch-up and clock checkpoint/day-boundary failures | Historical six-hour owner stall followed by whole-airport auto-pause | 🔴 High | ✅ Closed | Original bounded queries and ≤5-minute transactions retained. Checkpoint results are consumed inside retry policy; failed midnight barriers pause before the new day and retry on resume. Real six-hour partial-crash recovery, 40k-history PROFILE checks, database interruption and moving-clock convergence pass. [2026-11-19 evidence](docs/validation/rc11-2026-11-19/README.md). RC16 poison policy and RC14 rollout remain separate. |
 | RC12 | Arrival baggage observation durability and lifecycle guards | Historical volatile collection and premature carousel positioning | 🔴 High | ✅ Closed | Observation/inbox/outbox commit before ACK; early inputs persist independently of passenger creation, claim lifecycle gates location, and owner ticks fence source timestamps. Actual BULK planner → Kafka → passenger ACK/death/restart exits claim. [Closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md). |
 | RC13 | Settings API defaults diverge from owner configuration                                                                                                               | Settings show lanes 4/3/4 and sorting 1,800/h; actual owners use 8/12/8 and 5,400/h                                                                                | 🟠 Medium  | ❌ Open     | Report B6; settings must report effective values and distinguish requested changes; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                               |
 | RC14 | Owner images and shared libraries are deployed at different revisions                                                                                                | 13 source files differ across four images; no live seed manifests despite current shared mounts                                                                    | 🔴 High    | ❌ Open     | Report B7; coherent rollout and legacy-data disposition required; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -97,7 +104,7 @@ Measured after the fixes:
 | RC6  | holds                       | 29,734 bags in holds, 0 without a screening scan; 0 short-shipped from 05:00 on day 1 after the warm-start fix; induction across all three terminals                                                |
 | RC9  | one dashboard tab           | 12–13 msg/s, ~18 KB/s (was ~450 msg/s)                                                                                                                                                              |
 | RC10 | `/api/v1/data-sources`      | ADS-B `disabled · disabled by configuration`; weather, flights-sim, passengers, baggage `active · fresh`                                                                                            |
-| RC11 | clock                       | 0 skipped sim-minutes over the day; 23:30 seeding 1.0–1.2 s ticks; 0 `MemoryPoolOutOfMemory`, 0 auto-pause, 0 tracebacks in any service                                                             |
+| RC11 | Planner traps, coalesced catch-up and clock checkpoint/day-boundary failures | Historical six-hour owner stall followed by whole-airport auto-pause | 🔴 High | ✅ Closed | Original bounded queries and ≤5-minute transactions retained. Checkpoint results are consumed inside retry policy; failed midnight barriers pause before the new day and retry on resume. Real six-hour partial-crash recovery, 40k-history PROFILE checks, database interruption and moving-clock convergence pass. [2026-11-19 evidence](docs/validation/rc11-2026-11-19/README.md). RC16 poison policy and RC14 rollout remain separate. |
 
 Observations from that run, fixed afterwards (2026-11-17, verified on the running stack):
 
@@ -870,10 +877,23 @@ from it. Label every timestamp's clock (sim vs wall).
 
 ### RC11 — Lag turns into a permanent stall: planner traps + coalesced catch-up + clock auto-pause 🔴 (found while deploying the fixes)
 
-> **Revalidation note (2026-11-17):** the original planner/OOM/catch-up fixes remain
-> implemented. The newly reproduced permanent retry stall is tracked in RC7/RC16,
-> not evidence that the old OOM cause recurred. Review-wide restart certification
-> still depends on RC15; see the [report](docs/validation/data-review-2026-11-17/README.md).
+> **Status: ✅ Closed (2026-11-19).** Original bounded hot queries, ≤5-minute
+> catch-up transactions, transient retries, memory configuration and background
+> day seeding remain. The checkpoint now explicitly consumes the auto-commit
+> result so late failures cannot be swallowed by session cleanup. Midnight
+> barriers now run before the clock enters the new day; failures preserve the
+> valid minute/prefix, pause with a control fact and retry on resume.
+> [Evidence](docs/validation/rc11-2026-11-19/README.md): 1,493 unit tests, seven
+> real Neo4j/Kafka fault/profile checks and six full-stack restart tests pass.
+> Both flow owners resume a six-hour backlog in 72 bounded commits after an
+> injected partial transaction failure and process death. Recovery/induction
+> PROFILE reads take 6/17 DB hits despite 40,000 unrelated history entities.
+> A live database interruption and ≥6-hour owner outage recover to the moving
+> clock in 37.47 seconds at the normal 60x budget, with all ten services ready
+> and zero clock gaps, OOM or automatic-pause markers. A discarded high-speed
+> probe is documented, not claimed as a performance certification.
+> Generic poison-message policy remains RC16; deployment verification remains
+> RC14. The measurements below describe the historical failure chain.
 
 **Evidence.** At 08:27 (real time) the sim **paused itself**: `Clock checkpoint failed;
 simulation paused`, caused by `Neo.TransientError.General.MemoryPoolOutOfMemoryError`. By then

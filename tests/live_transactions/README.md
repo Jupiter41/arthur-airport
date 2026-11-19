@@ -6,7 +6,7 @@ flight data and resets its synthetic fixtures and owner runtime/outbox records
 between cases. Missing infrastructure fails; strict CI forbids skipped checks.
 
 ```bash
-docker compose build flight-service passenger-service baggage-service
+python scripts/docker_storage.py build flight-service passenger-service baggage-service analysis-service sim-orchestrator
 docker compose up -d --wait neo4j kafka
 docker compose run --rm --no-deps kafka-init
 G1_DISPOSABLE_STACK=1 REQUIRE_LIVE_STACK=1 \
@@ -48,3 +48,12 @@ startup FlightView recovery beyond the time window, idempotent restarts, strict
 archive/purge age boundaries, identity links, scans and atomic outbox facts.
 As with the other G1 tests, never target an operational airport database.
 See [recorded RC1 validation](../../docs/validation/rc1-2026-11-19/README.md).
+
+## RC11 clock and backlog gate
+
+`test_rc11_resilience.py` also needs the sim-orchestrator runtime image. CI builds
+it explicitly alongside the three owners and analysis worker. The tests use
+independent processes for six-hour bounded catch-up, partial-write rollback and
+process death, uncertain clock commit acknowledgements, real midnight callback
+retry and PROFILE checks with 40,000 history entities. See the
+[RC11 validation record](../../docs/validation/rc11-2026-11-19/README.md).
