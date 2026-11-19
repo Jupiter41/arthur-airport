@@ -259,9 +259,25 @@ async def run_clock_loop() -> None:
                 await asyncio.sleep(0.05)
                 continue
 
-        # Advance sim_time minute-by-minute so boundary callbacks fire
+        # A failed midnight barrier must leave the clock on the valid side of
+        # the boundary, so resume retries it rather than skipping a missing day.
+        advanced = 0
+        checkpoint_command = None
         for _ in range(step):
-            _sim_time += timedelta(minutes=1)
+            next_time = _sim_time + timedelta(minutes=1)
+            if next_time.date() != _sim_time.date():
+                if _on_day_start:
+                    try:
+                        await _on_day_start(_sim_day + 1, next_time)
+                    except Exception:
+                        pause()
+                        checkpoint_command = "day_seed_failed"
+                        logger.exception("Day start barrier failed; clock held at %s", _sim_time)
+                        break
+                _sim_day += 1
+                logger.info("Day boundary: now day %d (%s)", _sim_day, next_time.date())
+            _sim_time = next_time
+            advanced += 1
 
             # Hour boundary check
             if _sim_time.minute == 0 and _on_hour_boundary:
@@ -284,39 +300,29 @@ async def run_clock_loop() -> None:
                 except Exception as e:
                     logger.error("Tick callback error: %s", e)
 
-            # Detect day rollover
-            prev = _sim_time - timedelta(minutes=1)
-            if _sim_time.date() != prev.date():
-                _sim_day += 1
-                logger.info("Day boundary: now day %d (%s)", _sim_day, _sim_time.date())
-                if _on_day_start:
-                    try:
-                        await _on_day_start(_sim_day, _sim_time)
-                    except Exception as e:
-                        logger.error("Day start callback error: %s", e)
-
-        _tick_number += 1
-
-        mode = compute_mode()
-
-        # Emit one tick per outer iteration with the final sim_time
-        try:
-            emit_clock_tick(
-                sim_time=_sim_time,
-                speed_multiplier=_speed_multiplier,
-                tick_number=_tick_number,
-                day_of_sim=_sim_day,
-                step_minutes=step,
-                mode=mode,
-            )
-            _events_produced += 1
-            m_tick_total.inc()
-        except Exception as e:
-            logger.error("Failed to emit SimClockTick at tick %d: %s", _tick_number, e)
+        if advanced:
+            _tick_number += 1
+            mode = compute_mode()
+            try:
+                emit_clock_tick(
+                    sim_time=_sim_time,
+                    speed_multiplier=_speed_multiplier,
+                    tick_number=_tick_number,
+                    day_of_sim=_sim_day,
+                    step_minutes=advanced,
+                    mode=mode,
+                )
+                _events_produced += 1
+                m_tick_total.inc()
+            except Exception as e:
+                logger.error("Failed to emit SimClockTick at tick %d: %s", _tick_number, e)
 
         if _on_checkpoint:
             try:
-                await _on_checkpoint()
+                if checkpoint_command:
+                    await _on_checkpoint(command=checkpoint_command)
+                else:
+                    await _on_checkpoint()
             except Exception:
                 pause()
                 logger.exception("Clock checkpoint failed; simulation paused")
@@ -327,6 +333,6 @@ async def run_clock_loop() -> None:
         if len(_tick_latencies) > 1000:
             _tick_latencies = _tick_latencies[-500:]
 
-        sleep_s = step * 60.0 / _speed_multiplier
+        sleep_s = max(1, advanced) * 60.0 / _speed_multiplier
         actual_sleep = max(0, sleep_s - tick_elapsed / 1000)
         await asyncio.sleep(actual_sleep)

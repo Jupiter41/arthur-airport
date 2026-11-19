@@ -186,3 +186,72 @@ def test_day_seeding_runs_in_background_with_a_midnight_barrier():
     midnight = emitted.index(("tick", datetime(2024, 6, 16, 0, 0)))
     assert seeded < midnight                                 # barrier before day 2
     assert clock.get_sim_day() == 2
+
+
+def test_late_commit_error_is_retried_before_control_acknowledgement():
+    from neo4j.exceptions import ServiceUnavailable
+    module, clock, producer, session, _ = load_runtime()
+    module.CHECKPOINT_RETRY_DELAYS_S = (0, 0)
+    result = session.run.return_value
+    result.consume.side_effect = [ServiceUnavailable("lost commit response"), None]
+    producer.produce_event.side_effect = lambda **kwargs: result.consume.assert_awaited()
+    asyncio.run(module.checkpoint(command="speed"))
+    assert result.consume.await_count == 2 and session.run.await_count == 2
+    clock.pause.assert_not_called()
+    producer.produce_event.assert_called_once()
+
+
+def test_exhausted_late_commit_failure_pauses_without_acknowledging_control():
+    from neo4j.exceptions import TransientError
+    module, clock, producer, session, _ = load_runtime()
+    module.CHECKPOINT_RETRY_DELAYS_S = (0,)
+    session.run.return_value.consume.side_effect = TransientError("memory pool at commit")
+    try:
+        asyncio.run(module.checkpoint(command="resume"))
+        assert False, "an unconfirmed checkpoint cannot acknowledge resume"
+    except TransientError:
+        pass
+    assert session.run.return_value.consume.await_count == 2
+    clock.pause.assert_called_once()
+    producer.produce_event.assert_not_called()
+
+
+def test_failed_midnight_barrier_retries_without_skipping_minutes_or_emitting_unseeded_ticks():
+    for step in (1, 6):
+        emitted, minutes = [], []
+        clock = load_clock([])
+        start = datetime(2024, 6, 15, 23, 59) if step == 1 else datetime(2024, 6, 15, 23, 58)
+        clock.restore_state(start, 1, 0, 600 * step)
+        clock.emit_clock_tick = lambda **kw: emitted.append(kw)
+        attempts = []
+        failures = []
+
+        async def barrier(day, at):
+            attempts.append((day, at))
+            if len(attempts) == 1:
+                raise RuntimeError("seeding unavailable")
+
+        async def checkpoint(**kwargs):
+            if kwargs.get("command") == "day_seed_failed":
+                assert clock.is_paused() and clock.get_sim_day() == 1
+                assert clock.get_sim_time() == datetime(2024, 6, 15, 23, 59)
+                assert all(row["sim_time"].date() == start.date() for row in emitted)
+                failures.append(clock.get_sim_time())
+                clock.resume()
+
+        async def tick(at):
+            minutes.append(at)
+            if at.date() != start.date():
+                assert len(attempts) == 2
+            if at >= datetime(2024, 6, 16, 0, 1):
+                clock.stop()
+
+        clock.configure_callbacks(on_tick=tick, on_day_start=barrier, on_checkpoint=checkpoint)
+        asyncio.run(asyncio.wait_for(clock.run_clock_loop(), 5))
+        assert failures == [datetime(2024, 6, 15, 23, 59)]
+        assert attempts == [(2, datetime(2024, 6, 16))] * 2
+        assert minutes == [start + timedelta(minutes=n) for n in range(1, len(minutes) + 1)]
+        assert emitted[0]["step_minutes"] == 1
+        if step == 6:
+            assert emitted[0]["sim_time"] == datetime(2024, 6, 15, 23, 59)
+            assert emitted[1]["step_minutes"] == 6

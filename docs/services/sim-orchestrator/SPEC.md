@@ -339,3 +339,20 @@ evaluating readiness. Empty graphs, ready manifests without applied flights,
 and legacy days are valid inputs. Inbound `airborne` is an accepted passenger
 owner status in every atomic repository path. Cold-start and 23:30/midnight
 checks must execute these real paths without monkeypatches.
+
+### RC11 checkpoint and boundary failure contract (2026-11-19)
+
+Clock checkpoints explicitly consume the auto-commit result inside the retry
+block: a late commit/connection error must reach retry policy rather than be
+suppressed by session cleanup. Transient database failures retry at bounded
+0.2/0.5/1/2-second delays; exhaustion or non-transient failure pauses the clock
+and prevents a successful control acknowledgement. An uncertain commit can be
+repeated safely with the same clock/settings snapshot.
+
+At midnight, complete the day-start seeding barrier before advancing into the
+new day or invoking that minute's callbacks. If background seeding and its
+inline retry fail, pause at the last valid minute and persist/publish
+`SimControlChanged(command=day_seed_failed)`. Never emit an unseeded new-day
+tick. Resume retries that same barrier, even after its task has been consumed.
+If a multi-minute tick partially advanced before the barrier failed, emit only
+that valid prefix and its actual `step_minutes`; no minutes are skipped on resume.

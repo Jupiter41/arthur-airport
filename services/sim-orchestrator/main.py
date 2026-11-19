@@ -70,6 +70,8 @@ async def _on_day_start(new_day: int, sim_time):
     global _seed_task
     task, _seed_task = _seed_task, None
     if task is None:
+        # Retry an already-consumed failed barrier on operator resume.
+        await seed_day(sim_day=new_day)
         return
     if not task.done():
         logger.info("Waiting for day %d seeding to finish before its first tick", new_day)

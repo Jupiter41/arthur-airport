@@ -79,7 +79,7 @@ async def _write_checkpoint(*, command: str | None = None) -> None:
     while True:
         try:
             async with get_driver().session() as session:
-                await session.run(
+                result = await session.run(
                     "MERGE (s:SimState {id: 'airport'}) "
                     "SET s.sim_time=$sim_time, s.day_number=$day, s.tick_number=$tick, "
                     "s.speed_multiplier=$speed, s.paused=$paused, s.settings_json=$settings",
@@ -87,6 +87,7 @@ async def _write_checkpoint(*, command: str | None = None) -> None:
                     tick=state["tick_number"], speed=state["speed_multiplier"],
                     paused=state["paused"], settings=json.dumps(settings),
                 )
+                await result.consume()
             break
         except Exception as exc:
             delay = next(delays, None) if _is_transient(exc) else None

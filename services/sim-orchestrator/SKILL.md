@@ -12,6 +12,12 @@
 > the legacy flight count before testing `SeedDay.ready`. Final baggage tag
 > allocation belongs to the baggage owner; generated tags are provisional.
 
+> **RC11 completion (2026-11-19):** consume clock checkpoint results inside
+> the transient retry block. Midnight seeding is a barrier before advancing
+> into the new day; failure pauses on the last valid minute and emits only
+> the valid prefix of a multi-minute tick. Resume retries a consumed failed
+> seed task through idempotent `seed_day`. Never acknowledge unconfirmed writes.
+
 ## Startup sequence · Clock loop · Schedule seeding · Probabilistic injection
 
 > Full specification: `docs/services/sim-orchestrator/SPEC.md`
