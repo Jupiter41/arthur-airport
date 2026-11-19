@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/chevallier/Documents/dev/PERSOS/arthur-airport
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 44 items
+
+tests/live_transactions/test_domain_transactions.py .................... [ 45%]
+........                                                                 [ 63%]
+tests/live_transactions/test_projection_recovery.py ........             [ 81%]
+tests/live_transactions/test_rc1_retention.py ..                         [ 86%]
+tests/live_transactions/test_rc78_observations.py ......                 [100%]
+
+--------------------- generated xml file: /tmp/rc78-g1.xml ---------------------
+======================== 44 passed in 504.95s (0:08:24) ========================

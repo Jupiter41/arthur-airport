@@ -1,0 +1,73 @@
+services:
+  flight-service:
+    image: art-ldt-g6-flight-service:latest
+    volumes:
+    - ${ARTHUR_REPO_ROOT}/services/flight-service:/current-source:ro
+    environment:
+      ADSB_ENABLED: 'false'
+      PYTHONPATH: /current-source:/app
+    working_dir: /current-source
+  passenger-service:
+    image: art-ldt-g6-passenger-service:latest
+    volumes:
+    - ${ARTHUR_REPO_ROOT}/services/passenger-service:/current-source:ro
+    environment:
+      PASSENGER_SOURCE: simulation
+      PYTHONPATH: /current-source:/app
+    working_dir: /current-source
+  baggage-service:
+    image: art-ldt-g6-baggage-service:latest
+    volumes:
+    - ${ARTHUR_REPO_ROOT}/services/baggage-service:/current-source:ro
+    working_dir: /current-source
+    environment:
+      PYTHONPATH: /current-source:/app
+  sim-orchestrator:
+    image: art-ldt-g6-sim-orchestrator:latest
+    volumes:
+    - ${ARTHUR_REPO_ROOT}/services/sim-orchestrator:/current-source:ro
+    environment:
+      DAILY_FLIGHT_TARGET: '60'
+      SIM_SPEED_MULTIPLIER: '600'
+      PYTHONPATH: /current-source:/app
+    working_dir: /current-source
+  weather-service:
+    image: art-ldt-g6-weather-service:latest
+    volumes:
+    - ${ARTHUR_REPO_ROOT}/services/weather-service:/current-source:ro
+    environment:
+      WEATHER_SOURCE: simulated
+      PYTHONPATH: /current-source:/app
+    working_dir: /current-source
+  incident-service:
+    image: art-ldt-g6-incident-service:latest
+    volumes:
+    - ${ARTHUR_REPO_ROOT}/services/incident-service:/current-source:ro
+    working_dir: /current-source
+    environment:
+      PYTHONPATH: /current-source:/app
+  analysis-service:
+    image: art-ldt-g6-analysis-service:latest
+    volumes:
+    - ${ARTHUR_REPO_ROOT}/services/analysis-service:/current-source:ro
+    working_dir: /current-source
+    environment:
+      PYTHONPATH: /current-source:/app
+  cost-service:
+    image: art-ldt-g6-cost-service:latest
+    volumes:
+    - ${ARTHUR_REPO_ROOT}/services/cost-service:/current-source:ro
+    working_dir: /current-source
+    environment:
+      PYTHONPATH: /current-source:/app
+  planning-service:
+    image: art-ldt-g6-planning-service:latest
+    volumes:
+    - ${ARTHUR_REPO_ROOT}/services/planning-service:/current-source:ro
+    working_dir: /current-source
+    environment:
+      PYTHONPATH: /current-source:/app
+  api-gateway:
+    image: art-ldt-g6-api-gateway:latest
+  dashboard:
+    image: art-ldt-g6-dashboard:latest

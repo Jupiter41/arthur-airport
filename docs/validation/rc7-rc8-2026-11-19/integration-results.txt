@@ -1,0 +1,33 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/chevallier/Documents/dev/PERSOS/arthur-airport
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 142 items
+
+tests/integration/test_accounting_policy.py ..                           [  1%]
+tests/integration/test_analysis_proposals.py ........                    [  7%]
+tests/integration/test_baggage_pagination.py .                           [  7%]
+tests/integration/test_baggage_review_lookup.py .                        [  8%]
+tests/integration/test_boarding_candidates.py .                          [  9%]
+tests/integration/test_cost_endpoints.py .....................           [ 23%]
+tests/integration/test_dashboard_proxy.py ..                             [ 25%]
+tests/integration/test_e2e_smoke.py .............                        [ 34%]
+tests/integration/test_event_chains.py ............                      [ 42%]
+tests/integration/test_financial_ledger.py .......                       [ 47%]
+tests/integration/test_financial_rates.py ..                             [ 49%]
+tests/integration/test_incident_commands.py ....                         [ 52%]
+tests/integration/test_incident_ranking.py .                             [ 52%]
+tests/integration/test_ldt_execution.py .....                            [ 56%]
+tests/integration/test_owner_seed_requests.py .                          [ 57%]
+tests/integration/test_passenger_pagination.py .                         [ 57%]
+tests/integration/test_planning_jobs.py .....                            [ 61%]
+tests/integration/test_resilience.py ......                              [ 65%]
+tests/integration/test_rest_endpoints.py ............................... [ 87%]
+..............                                                           [ 97%]
+tests/integration/test_security_projection.py .                          [ 97%]
+tests/integration/test_training_jobs.py ...                              [100%]
+
+---------------- generated xml file: /tmp/rc78-integration.xml -----------------
+======================= 142 passed in 334.82s (0:05:34) ========================

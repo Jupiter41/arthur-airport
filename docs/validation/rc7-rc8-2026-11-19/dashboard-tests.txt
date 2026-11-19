@@ -1,0 +1,16 @@
+
+> art-dashboard@0.1.0 test
+> vitest run
+
+11:59:16 AM [vite] warning: `esbuild` option was specified by "vite:react-babel" plugin. This option is deprecated, please use `oxc` instead.
+11:59:16 AM [vite] warning: `optimizeDeps.esbuildOptions` option was specified by "vite:react-babel" plugin. This option is deprecated, please use `optimizeDeps.rolldownOptions` instead.
+Both esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored. The following esbuild options were set: `{ jsx: 'automatic', jsxImportSource: undefined }`
+
+ RUN  v4.1.1 /home/chevallier/Documents/dev/PERSOS/arthur-airport/dashboards/art-dashboard
+
+
+ Test Files  25 passed (25)
+      Tests  115 passed (115)
+   Start at  11:59:17
+   Duration  7.99s (transform 17.43s, setup 8.03s, import 25.95s, tests 8.62s, environment 86.16s)
+

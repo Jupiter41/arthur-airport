@@ -1,0 +1,58 @@
+
+> art-dashboard@0.1.0 build
+> tsc -b && vite build --outDir /tmp/rc78-dashboard-dist
+
+vite v5.4.21 building for production...
+
+(!) outDir /tmp/rc78-dashboard-dist is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+transforming...
+Browserslist: browsers data (caniuse-lite) is 8 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+✓ 964 modules transformed.
+rendering chunks...
+computing gzip size...
+../../../../../../../../tmp/rc78-dashboard-dist/index.html                                  0.86 kB │ gzip:   0.46 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/WorldMapPage-Hc9Yahcc.css           56.04 kB │ gzip:  11.81 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/index-Qy_Cgrsf.css                  65.99 kB │ gzip:  12.13 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/formatCurrency-D4kZRnZS.js           0.18 kB │ gzip:   0.16 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/KpiCard-yuaoQt3T.js                  0.44 kB │ gzip:   0.28 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/DecisionsPage-DjOcTpFp.js            0.63 kB │ gzip:   0.39 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/LoadingState-VTqw67ec.js             1.15 kB │ gzip:   0.52 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/WeatherHistoryChart-D2pZ0QrF.js      1.65 kB │ gzip:   0.85 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/BaggageInspector-JZzodyl1.js         2.40 kB │ gzip:   1.05 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/useMutation-DKpgdx8_.js              3.14 kB │ gzip:   1.29 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/ApprovalQueue-BY_bf8wf.js            3.19 kB │ gzip:   1.34 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/CarbonPage-BawBmGJ4.js               5.41 kB │ gzip:   2.23 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/AccessibilityPage-DYibr1bf.js        5.72 kB │ gzip:   1.57 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/WhatIfPage-B6ORZdq6.js               7.24 kB │ gzip:   2.39 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/AutonomousPanel-DVt7_imK.js          7.75 kB │ gzip:   2.71 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/MLTrainingPage-B8dPpGNI.js          10.21 kB │ gzip:   2.69 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/CockpitPage-CB744-b1.js             10.70 kB │ gzip:   3.80 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/PassengerFlowPage-BnDjmq41.js       10.97 kB │ gzip:   3.51 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/AtcBoard-BqhpAbIw.js                11.60 kB │ gzip:   3.95 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/SimHistoryPage-DY2up4Uu.js          11.93 kB │ gzip:   3.58 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/BaggageTrackerPage-aWTTi8Ah.js      12.40 kB │ gzip:   3.86 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/SettingsPage-C9QhR5Te.js            15.44 kB │ gzip:   5.03 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/DecisionWorkspace-fgj01gw6.js       18.88 kB │ gzip:   5.91 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/ScenariosPage-DxRZSrx1.js           20.87 kB │ gzip:   5.51 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/DebugPage-4woPLG3K.js               21.56 kB │ gzip:   5.05 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/IncidentConsolePage-BjvcAuHg.js     22.66 kB │ gzip:   6.43 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/CostDashboardPage-B5QKIgTO.js       23.49 kB │ gzip:   6.73 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/GroundOpsPage-Ce4aYVyW.js           23.57 kB │ gzip:   6.62 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/DataSourcesPage-D-tbg430.js         26.16 kB │ gzip:   7.90 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/PlanningPage-BwbKQ4R7.js            52.65 kB │ gzip:  13.15 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/leaflet-BpWzsvUC.js                149.99 kB │ gzip:  43.55 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/index-Sg-F0ARf.js                  199.36 kB │ gzip:  62.98 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/WorldMapPage-D_VRilfu.js           200.82 kB │ gzip:  75.38 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/recharts-AO1ctPyu.js               551.01 kB │ gzip: 164.11 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/Airport3DPage-D4hb9RYA.js          590.67 kB │ gzip: 156.12 kB
+../../../../../../../../tmp/rc78-dashboard-dist/assets/mapbox-C-c-N2ld.js               1,703.07 kB │ gzip: 469.67 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 8.04s

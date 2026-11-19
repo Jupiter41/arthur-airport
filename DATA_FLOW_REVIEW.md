@@ -3,11 +3,18 @@
 Review date: 2026-11-16 · Reviewed commit: `1e7b16d` (main, clean)
 Reviewed stack: `art-ldt-g6-*` compose project. It had been running continuously for about 23 simulated days at 60× (sim day 23–24, 2024-07-07 → 07-08).
 
+> **RC7 / RC8 / RC12 closed — 2026-11-19.** Real cold start, owner inbound
+> transitions, named links/transfers, 23:30/midnight seeding and durable collection
+> recovery pass without application workarounds. See [closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md).
+> Current gates: 1,490 Python unit tests, 142 integration tests, 50 distinct live
+> transaction regressions, gateway/dashboard tests and builds, and Ruff pass.
+> Existing-airport rollout and legacy-data disposition remain under RC14.
+
 > **RC1 closed — 2026-11-19.** Terminal missed-connection retention and diverted-arrival
 > baggage disposition now meet RC1's closure criteria. See [closure evidence](docs/validation/rc1-2026-11-19/README.md).
 > The review remains open for the other findings; deployment verification stays under RC14.
 
-> **Closure revalidation — 2026-11-17, commit `0ae109a`: DO NOT CLOSE.**
+> **Historical closure revalidation — 2026-11-17, commit `0ae109a`: DO NOT CLOSE.**
 > [Full report and reproducible evidence](docs/validation/data-review-2026-11-17/README.md).
 > The current orchestrator fails cold start on its seed-existence Cypher query;
 > after a disposable-only correction, inbound `airborne` passenger transitions
@@ -34,8 +41,8 @@ problems share one cause.
 ## 0. TL;DR
 
 The original review identified RC1–RC11. Closure revalidation adds RC12–RC20, including
-promotion of five unresolved lower-level findings. RC7 and RC8 remain **reopened**;
-RC1 is **closed** with the 2026-11-19 evidence below. Previously
+promotion of five unresolved lower-level findings. RC1, RC7, RC8 and RC12 are now
+**closed** with the 2026-11-19 evidence below. Previously
 completed implementation work is retained, but the review remains open until the new
 closure criteria are met. See the [revalidation report](docs/validation/data-review-2026-11-17/README.md).
 
@@ -47,12 +54,12 @@ closure criteria are met. See the [revalidation report](docs/validation/data-rev
 | RC4  | The clock is open-loop with no back-pressure. Services read **other domains' live state from the shared Neo4j** instead of the event stream                          | passengers deplane/depart from a polling sweep, up to 64 sim-min late; causality broken                                                                            | 🔴 High    | ✅ Done     | Event-fed FlightView + BoardingProgress replace live cross-domain decision reads; tick watermark (`sim.watermark`) holds the clock on owner lag; reconciliation boot/hourly only; analysis evaluates on a sim-time cadence (`e08a5f9`, `f4981d9`, `97239a5`, `dc79fb3`). Revalidation sampled 9,146 batch transitions with no reconciliation reason; restart certification still depends on RC15/RC16                                                                                                                                                        |
 | RC5  | Passenger flow is a step function (whole flight checked in at T-120 and sent to security at T-45). Boarding isn't gated by flight state                              | 80% of departures delayed ≥30 min ("boarding_incomplete"); 11.5% of pax board **after** their flight left; no-show rate 0.08% instead of 3%                        | 🔴 High    | ✅ Done     | Spec contradiction resolved in favour of §3: per-passenger `show_up_at` (Beta(3,2) over [T-180, T-45]) drives check-in and security; deterministic per-passenger no-show draw at show-up over the whole cohort; check-in/gate/boarding only for flights still `scheduled`/`boarding`/`delayed`; non-boarded passengers → `missed_flight` on departure; default lanes A 8 / B 12 / C 8 (`6c5cd00`). Verified live on a reset stack (see RC5 status)                                                                                                           |
 | RC6  | Baggage-system capacity (1,800 bags/h) is less than generated demand (peak 4,900/h), and the departure handler hides the deficit by teleporting bags                 | 27–37% of departing bags are "in_hold" **without ever being screened**                                                                                             | 🔴 High    | ✅ Done     | Checked bags/pax 1.56 → ~0.9 (per-type λ, no one-bag floor); BHS A 1,800 / B 3,000 / C 1,800 per h, sorting 5,400, all from `airport.yaml`; seed-time check peak ≤ 85% of slowest stage; departure short-ships unloaded bags with `BaggageMissedFlight` instead of teleporting them to `in_hold` (`5220472`); three bugs found live fixed in `b35db23`. Verified live on a reset stack                                                                                                                                                                       |
-| RC7  | The seeder writes other domains' entities directly and leaves out cross-domain links                                                                                 | 0 of 39,975 arrival bags linked to a passenger, so every arrival pax leaves claim on the 45-min timeout; 33,651 pax "airborne" on flights that haven't left origin | 🔴 High    | ❌ Reopened | Cold-start seed query invalid; inbound airborne status rejected by owner repository; [report B1/B2](docs/validation/data-review-2026-11-17/README.md). Fix both real startup/owner paths; require cold-start and day-boundary validation without workarounds. Deployment tracked in RC14                                                                                                                                                                                                                                                                     |
-| RC8  | One-shot event triggers with no reconciliation, and consumers start at `latest`                                                                                      | 39,969 arrival bags from 2024-06-29 stuck `in_hold` permanently                                                                                                    | 🔴 High    | ❌ Reopened | Collection progress not durable across ACK/crash; BULK collection facts suppressed; diverted arrival holds stay live; [report B3/B5/B8](docs/validation/data-review-2026-11-17/README.md). Closure depends on RC12 and RC1 recovery/retention checks                                                                                                                                                                                                                                                                                                         |
+| RC7 | Seeder ownership, links and inbound lifecycle | Historical anonymous arrival bags and phantom airborne passengers | 🔴 High | ✅ Closed | Real startup aggregation and airborne repository fixed; owner tag allocation also fixes a cold-start collision. Fresh full stack crosses 23:30/midnight with all 76 batches accepted, 16,570 named bags, 910 passenger / 848 bag transfers and zero phantom airborne passengers. [Closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md). Deployment remains RC14. |
+| RC8 | Missed-trigger recovery and consumer restart convergence | Historical arrival holds stranded; collection lost after ACK or in BULK | 🔴 High | ✅ Closed | Earliest offsets and atomic reconciliation retained. Durable passenger observations survive ACK/process death; startup snapshots cover expired inputs, BULK collection is unsuppressed, and real old arrived-flight holds complete after restart. RC1 retention and RC12 observation dependencies satisfied. [Closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md). |
 | RC9  | The gateway forwards the raw firehose to browsers, and the dashboard does no-op store writes per event                                                               | about 450 WS msgs/s per tab; ~280 useless React store updates/s                                                                                                    | 🟠 Medium  | ✅ Done     | Gateway UI delivery policy (`wsDeliveryPolicy.json`): flight/incident/alert facts immediate, clock + snapshots coalesced to the latest per key every 1 s, batch facts as payload-free refetch hints, per-entity facts dropped; dashboard no-op handlers removed, `updateZone` no-op on empty patch, query invalidation throttled to 1/s per key (`3f9d4e5`). Revalidated at ~10.9 domain messages/s and 18.6 KB/s; stale replay is separately open as RC18                                                                                                   |
 | RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it                                                                        | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft                                                                                       | 🟡 Low–Med | ✅ Done     | Owners report a `SourceHealth` block (enabled, items, wall ingest/error, sim observation); gateway derives `unavailable/disabled/error/stale/active` with a reason and clock-labelled timestamps; new `GET /flights/adsb/source` (`83feb91`). Unit-tested                                                                                                                                                                                                                                                                                                    |
 | RC11 | History-wide query plans exhaust Neo4j's _shared_ transaction memory; coalesced catch-up ticks grow with each failed retry; the clock pauses on any checkpoint error | passenger-service stuck 6 sim-h behind, then the whole sim auto-paused (found during deployment)                                                                   | 🔴 High    | ✅ Done     | Query plans pinned, catch-up split into ≤5-min ticks, clock checkpoint retries transient errors, seeding moved off the tick path, transaction pool 0.7 → 1.4 GiB (`78a9975`, `dfe4e77`)                                                                                                                                                                                                                                                                                                                                                                      |
-| RC12 | Arrival bag observations bypass durable passenger progress and lifecycle guards                                                                                      | Collection can be lost after ACK/crash or omitted in BULK; deplaning passengers move to carousels                                                                  | 🔴 High    | ❌ Open     | Report B3/B4/B8; complements RC8's recovery gap; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| RC12 | Arrival baggage observation durability and lifecycle guards | Historical volatile collection and premature carousel positioning | 🔴 High | ✅ Closed | Observation/inbox/outbox commit before ACK; early inputs persist independently of passenger creation, claim lifecycle gates location, and owner ticks fence source timestamps. Actual BULK planner → Kafka → passenger ACK/death/restart exits claim. [Closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md). |
 | RC13 | Settings API defaults diverge from owner configuration                                                                                                               | Settings show lanes 4/3/4 and sorting 1,800/h; actual owners use 8/12/8 and 5,400/h                                                                                | 🟠 Medium  | ❌ Open     | Report B6; settings must report effective values and distinguish requested changes; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                               |
 | RC14 | Owner images and shared libraries are deployed at different revisions                                                                                                | 13 source files differ across four images; no live seed manifests despite current shared mounts                                                                    | 🔴 High    | ❌ Open     | Report B7; coherent rollout and legacy-data disposition required; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | RC15 | Validation coverage and fixtures lag the architecture                                                                                                                | Unit checks miss real startup failures; 3 integration and 2 transaction fixtures fail                                                                              | 🟠 Medium  | ❌ Open     | Report validation gates; no closure from temporary application workarounds; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -689,36 +696,17 @@ cascade fires only sometimes, and the KPIs look fine.
 
 ### RC7 — Seeder writes other domains' data, without links or events 🔴
 
-> **Status: ❌ reopened; severity raised to High (2026-11-17).**
-> The real `_day_already_seeded()` query fails Neo4j aggregation validation, so the
-> orchestrator cannot start. After correcting only that query in the disposable
-> stack, `booked → airborne` fails because the passenger repository excludes
-> `airborne`; normal generated traffic then stalls the consumer. See
-> [report B1/B2](docs/validation/data-review-2026-11-17/README.md), [startup log](docs/validation/data-review-2026-11-17/startup-failure.log)
-> and [consumer stall](docs/validation/data-review-2026-11-17/passenger-stall.log).
-> **Close when:** both repository/startup paths are fixed and a cold full-stack
-> run, inbound lifecycle, links/transfers and 23:30 seeding pass without application
-> workarounds. RC12 covers downstream bag observations; RC14 covers coherent
-> deployment and the treatment of legacy anonymous bags; RC15 covers the test gap.
-> The following implementation notes describe retained work, not completed closure.
-> `5b30ba8` removes all domain persistence from schedule/passenger/baggage
-> generators. The orchestrator atomically records complete `SeedDay` / `SeedBatch`
-> commands and notifies `flights.schedule`; each owner creates its entities,
-> `ON_FLIGHT` / `CARRIES` / `LOADED_ON` links and creation facts in one transaction.
-> Missing identities leave a request pending; startup/tick retries survive a lost
-> notification. All arrival bags now belong to named manifest passengers, with
-> the configured per-passenger cap. Connections preserve `connection_flight_id`
-> and `transfer_flight_id`. Inbound passengers start booked, become airborne on
-> consumed inbound lifecycle facts, and deplane at gate. The flight owner models
-> origin departure at ETA minus flight duration. Existing phantom airborne
-> passengers converge back to booked while their inbound flight is still scheduled.
-> Existing anonymous historical bags are preserved; their owners cannot be
-> reconstructed reliably and are not fabricated. The old measurements below
-> remain evidence of the original defect, not post-fix results.
->
-> Validation: `test_rc7_seed_ownership.py`, updated transfer/FSM tests, and
-> `test_owner_seed_requests.py` on isolated Neo4j (concurrent seeders, dependency
-> ordering, outbox rollback, replay, creation facts and identity links).
+> **Status: ✅ Closed (2026-11-19).** The real seed-existence aggregation and
+> inbound `airborne` owner path are fixed. A fresh full stack crosses daytime
+> arrival flow, transfers, 23:30 next-day seeding and midnight with all owner
+> batches accepted, complete named bag links and no phantom airborne passengers.
+> Cold validation additionally found overlapping provisional barcode ranges;
+> the baggage owner now allocates unique final tags atomically with creation.
+> Generators remain write-free; owners retain atomic links/creation facts and
+> retryable immutable manifests. [Evidence and reproduction](docs/validation/rc7-rc8-2026-11-19/README.md).
+> RC12 now supplies durable downstream observations. Existing-airport rollout and
+> historical anonymous-data disposition remain RC14; assignments are not invented.
+> The original measurements below are historical defect evidence.
 
 **Evidence**
 
@@ -755,35 +743,20 @@ events (rule 4).
 
 ### RC8 — One-shot triggers with no reconciliation; consumers start at `latest` 🔴
 
-> **Status: ❌ reopened; severity raised to High (2026-11-17).**
-> Bag offload sweeps and earliest offsets do not recover acknowledged collection
-> observations lost before a passenger checkpoint. BULK suppresses the individual
-> collection facts, while passenger-service ignores the batch. Diverted arrival
-> hold disposition/recovery is now fixed under RC1 (2026-11-19);
-> [closure evidence](docs/validation/rc1-2026-11-19/README.md). Historical [report B3/B5/B8](docs/validation/data-review-2026-11-17/README.md),
-> [collection durability evidence](docs/validation/data-review-2026-11-17/carousel-reproduction.json),
-> [BULK evidence](docs/validation/data-review-2026-11-17/bulk-collection-reproduction.json) and
-> [terminal holds](docs/validation/data-review-2026-11-17/terminal-arrival-holds.json).
-> **Close when:** RC12 makes the consumed observation durable and available in
-> every mode; crash-after-ACK and missing/expired offset recovery pass without
-> workarounds. RC1 terminal retention and diverted-flight restart/late-bag
-> recovery are satisfied by the 2026-11-19 regression evidence.
-> The following implementation notes describe retained work, not completed closure.
-> Flight/passenger/baggage owner groups default to `earliest` for missing or
-> expired offsets, retaining manual commits. Baggage recovery runs on the first
-> ticks and hourly (or when new seed batches are accepted), using only consumed
-> `FlightView` state plus bag/flight identities. It invokes the normal atomic
-> arrival, departure and cancellation paths, including late-created bags, and
-> keeps recovery facts in BULK. Catch-up sweeps use each simulation step's time.
-> Bootstrap includes old arrival flights with live in-hold bags beyond its normal
-> time window and pins them for recovery. Snapshot stamps only suppress facts
-> for identities actually in the snapshot, so late seed events are not discarded.
-> Passenger recovery remains consumed-state based; pending seed requests are
-> retried independently of Kafka notification delivery. No airport reset is needed.
->
-> Validation: `test_rc8_baggage_recovery.py`, existing atomic outbox/consumer
-> tests, `test_rc4_projections.py`, and isolated Neo4j historical bootstrap.
-> The original 39,969 bags have not been remeasured against the deployed stack.
+> **Status: ✅ Closed (2026-11-19).** Primary owner groups retain `earliest`
+> recovery with manual commits and consumed-state reconciliation. Real old
+> arrived-flight holds outside the startup window recover through the normal
+> atomic arrival path, survive another worker restart and finish collection in
+> REALTIME and BULK. RC1 covers diverted-hold disposition and terminal retention.
+> RC12 now commits named collection observations before ACK, gates carousel
+> placement and uses the same durable contract in all modes. A startup-only
+> timestamped bag snapshot rebuilds missing observations after input retention;
+> owner tick decisions use the resulting projection and a simulation-time fence.
+> [Independent-process evidence](docs/validation/rc7-rc8-2026-11-19/README.md) covers
+> actual Kafka ACK followed by process death, duplicate replay, late passenger
+> creation, competing replicas, and the actual BULK planner through claim exit.
+> The historical deployed 39,969-bag cohort is not claimed remeasured; RC14 owns
+> rollout verification. The original measurements below remain historical evidence.
 
 **Evidence**
 
@@ -939,8 +912,16 @@ transaction pool was doubled (2G heap), and `seed_day` moved off the tick path (
 
 ### RC12 — Arrival baggage facts bypass durable passenger progress and lifecycle guards 🔴
 
-> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
-> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+> **Status: ✅ Closed (2026-11-19).** Passenger-owned observations, inbox and
+> outbox facts commit before acknowledgement, even before passenger creation.
+> Location writes require actual `baggage_claim`; early observations remain for
+> later owner ticks. BULK publishes named public facts and batch replay is
+> supported. Source-time fences, startup bootstrap, passenger purge and bounded
+> orphan cleanup keep recovery durable and bounded.
+> [Closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md): partial-write
+> rollback, ACK/process death, replay, competing workers, early inputs, expired
+> input bootstrap, production BULK delivery and post-restart claim exits pass.
+> Evidence below describes the historical B3/B4/B8 defect.
 
 **Evidence.** Report B3/B4/B8. A production-handler/database reproduction left collection only in memory (checkpoint unchanged), and moved a `deplaning` passenger to `carousel-3`. The production BULK planner writes the collection transition but emits no individual collection fact; passenger-service does not consume the batch.
 
@@ -992,6 +973,13 @@ transaction pool was doubled (2G heap), and `seed_day` moved off the tick path (
 
 > **Status: ❌ Open — added by closure revalidation (2026-11-17).**
 > [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+
+> **2026-11-19 follow-up:** RC7 startup/repository regressions and RC8/RC12
+> durability gaps now have real cold-stack and independent-process coverage.
+> The stale FlightView/arrival/planning fixtures are repaired; current unit,
+> integration and transaction gates are green. [Evidence](docs/validation/rc7-rc8-2026-11-19/README.md).
+> This local run uses cached dependency images with current Python sources; the
+> built-image CI gate and deployment identity checks are not claimed completed.
 
 **Evidence.** The unit/gateway/dashboard suites pass, yet the unchanged full stack fails startup and the inbound repository transition (RC7). The conditional integration repeat is 139/142; independent-process transactions are 34/36. Three integration failures and two baggage fixtures use stale result/projection assumptions.
 
@@ -1125,12 +1113,10 @@ RC10 fabricated source health ─► "active" sources that are disabled/stale
 The original performance fixes are retained. The closure revalidation changes the
 remaining order of work; see the [report](docs/validation/data-review-2026-11-17/README.md).
 
-1. **RC7 + RC16:** fix the real startup query and airborne mutation contract;
-   prevent deterministic consumer failures from freezing the domain. Add the
-   missing end-to-end regressions under RC15.
-2. **RC12 + RC8:** make collection observations durable and available in every
-   mode; enforce passenger lifecycle prerequisites; verify acknowledgement/crash,
-   late-input and replay recovery.
+1. **RC16:** prevent poison inputs from freezing domains. RC7 startup, inbound
+   mutation and end-to-end regression work is complete (2026-11-19).
+2. **RC12 + RC8 — complete (2026-11-19):** durable observations, lifecycle
+   guards and acknowledgement/crash, late-input, BULK and replay checks pass.
 3. **RC1 — complete (2026-11-19):** terminal retention, diverted-flight
    disposition and restart/age-based regressions are green; see closure evidence.
 4. **RC13 + RC17–RC20:** reconcile effective settings, financial clock sanity,
@@ -1140,7 +1126,8 @@ remaining order of work; see the [report](docs/validation/data-review-2026-11-17
    defects by themselves.
 6. **RC14:** deploy a coherent fixed revision, record the legacy-data disposition,
    and remeasure daytime flows, transfers, pickup, outages/replay, day-boundary
-   seeding and retention. RC1 is closed in the checkout; close RC7/RC8 and RC12–RC20 against their
+   seeding and retention. RC1/RC7/RC8/RC12 are closed in the checkout; close
+   remaining findings against their
    individual evidence and closure criteria, or explicitly record accepted
    exclusions as remaining risks rather than “fixed”.
 

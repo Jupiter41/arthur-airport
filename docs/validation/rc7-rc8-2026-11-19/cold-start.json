@@ -1,0 +1,1131 @@
+{
+  "readiness": {
+    "flight": {
+      "ready": true,
+      "status": 200
+    },
+    "passenger": {
+      "ready": true,
+      "status": 200
+    },
+    "baggage": {
+      "ready": true,
+      "status": 200
+    },
+    "weather": {
+      "ready": true,
+      "status": 200
+    },
+    "incident": {
+      "ready": true,
+      "status": 200
+    },
+    "sim": {
+      "ready": true,
+      "status": 200
+    },
+    "analysis": {
+      "ready": true,
+      "status": 200
+    },
+    "cost": {
+      "ready": true,
+      "status": 200
+    },
+    "planning": {
+      "ready": true,
+      "status": 200
+    },
+    "gateway": {
+      "ready": true,
+      "status": 200
+    }
+  },
+  "initial": {
+    "clock": [
+      {
+        "state": {
+          "paused": false,
+          "sim_time": "2024-06-15T06:54:00+00:00",
+          "tick_number": 54,
+          "speed_multiplier": 600,
+          "day_number": 1,
+          "id": "airport",
+          "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+        }
+      }
+    ],
+    "days": [
+      {
+        "day": "2024-06-15",
+        "ready": true
+      }
+    ],
+    "pending": [
+      {
+        "owner": "baggage",
+        "pending": false,
+        "n": 13
+      },
+      {
+        "owner": "baggage",
+        "pending": true,
+        "n": 6
+      },
+      {
+        "owner": "flight",
+        "pending": false,
+        "n": 1
+      },
+      {
+        "owner": "passenger",
+        "pending": false,
+        "n": 21
+      }
+    ],
+    "bag_links": [
+      {
+        "bags": 6088,
+        "anonymous": 0
+      }
+    ],
+    "passenger_links": [
+      {
+        "passengers": 10058,
+        "invalid": 0
+      }
+    ],
+    "phantom_airborne": [
+      {
+        "n": 0
+      }
+    ],
+    "transfers": [
+      {
+        "passengers": 0
+      }
+    ],
+    "transfer_bags": [
+      {
+        "bags": 0
+      }
+    ],
+    "claim_exits": [
+      {
+        "n": 0,
+        "early": 0
+      }
+    ],
+    "observations": [
+      {
+        "n": 0,
+        "collected": 0
+      }
+    ],
+    "checkpoints": [
+      {
+        "owner": [
+          "FlightRuntime"
+        ],
+        "tick": "2024-06-15T06:54:00"
+      },
+      {
+        "owner": [
+          "BaggageOutboxSeq"
+        ],
+        "tick": "2024-06-15T06:54:00"
+      },
+      {
+        "owner": [
+          "PassengerRuntime"
+        ],
+        "tick": "2024-06-15T06:01:00"
+      }
+    ]
+  },
+  "samples": [
+    {
+      "clock": [
+        {
+          "state": {
+            "paused": false,
+            "sim_time": "2024-06-15T06:54:00+00:00",
+            "tick_number": 54,
+            "speed_multiplier": 600,
+            "day_number": 1,
+            "id": "airport",
+            "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+          }
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        }
+      ],
+      "pending": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 13
+        },
+        {
+          "owner": "baggage",
+          "pending": true,
+          "n": 6
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 1
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 21
+        }
+      ],
+      "bag_links": [
+        {
+          "bags": 6088,
+          "anonymous": 0
+        }
+      ],
+      "passenger_links": [
+        {
+          "passengers": 10058,
+          "invalid": 0
+        }
+      ],
+      "phantom_airborne": [
+        {
+          "n": 0
+        }
+      ],
+      "transfers": [
+        {
+          "passengers": 0
+        }
+      ],
+      "transfer_bags": [
+        {
+          "bags": 0
+        }
+      ],
+      "claim_exits": [
+        {
+          "n": 0,
+          "early": 0
+        }
+      ],
+      "observations": [
+        {
+          "n": 0,
+          "collected": 0
+        }
+      ],
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T06:54:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T06:54:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T06:01:00"
+        }
+      ]
+    },
+    {
+      "clock": [
+        {
+          "state": {
+            "paused": false,
+            "sim_time": "2024-06-15T08:59:00+00:00",
+            "tick_number": 179,
+            "speed_multiplier": 600,
+            "day_number": 1,
+            "id": "airport",
+            "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+          }
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        }
+      ],
+      "pending": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 19
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 1
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 21
+        }
+      ],
+      "bag_links": [
+        {
+          "bags": 9088,
+          "anonymous": 0
+        }
+      ],
+      "passenger_links": [
+        {
+          "passengers": 10058,
+          "invalid": 0
+        }
+      ],
+      "phantom_airborne": [
+        {
+          "n": 0
+        }
+      ],
+      "transfers": [
+        {
+          "passengers": 286
+        }
+      ],
+      "transfer_bags": [
+        {
+          "bags": 329
+        }
+      ],
+      "claim_exits": [
+        {
+          "n": 1086,
+          "early": 710
+        }
+      ],
+      "observations": [
+        {
+          "n": 755,
+          "collected": 755
+        }
+      ],
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T08:59:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T08:59:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T08:54:00"
+        }
+      ]
+    },
+    {
+      "clock": [
+        {
+          "state": {
+            "paused": false,
+            "sim_time": "2024-06-15T11:07:00+00:00",
+            "tick_number": 307,
+            "speed_multiplier": 600,
+            "day_number": 1,
+            "id": "airport",
+            "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+          }
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        }
+      ],
+      "pending": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 19
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 1
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 21
+        }
+      ],
+      "bag_links": [
+        {
+          "bags": 9088,
+          "anonymous": 0
+        }
+      ],
+      "passenger_links": [
+        {
+          "passengers": 10058,
+          "invalid": 0
+        }
+      ],
+      "phantom_airborne": [
+        {
+          "n": 0
+        }
+      ],
+      "transfers": [
+        {
+          "passengers": 403
+        }
+      ],
+      "transfer_bags": [
+        {
+          "bags": 402
+        }
+      ],
+      "claim_exits": [
+        {
+          "n": 1579,
+          "early": 1012
+        }
+      ],
+      "observations": [
+        {
+          "n": 1012,
+          "collected": 1012
+        }
+      ],
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T11:07:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T11:06:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T11:05:00"
+        }
+      ]
+    },
+    {
+      "clock": [
+        {
+          "state": {
+            "paused": false,
+            "sim_time": "2024-06-15T13:11:00+00:00",
+            "tick_number": 431,
+            "speed_multiplier": 600,
+            "day_number": 1,
+            "id": "airport",
+            "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+          }
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        }
+      ],
+      "pending": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 19
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 1
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 21
+        }
+      ],
+      "bag_links": [
+        {
+          "bags": 9088,
+          "anonymous": 0
+        }
+      ],
+      "passenger_links": [
+        {
+          "passengers": 10058,
+          "invalid": 0
+        }
+      ],
+      "phantom_airborne": [
+        {
+          "n": 0
+        }
+      ],
+      "transfers": [
+        {
+          "passengers": 538
+        }
+      ],
+      "transfer_bags": [
+        {
+          "bags": 526
+        }
+      ],
+      "claim_exits": [
+        {
+          "n": 2206,
+          "early": 1314
+        }
+      ],
+      "observations": [
+        {
+          "n": 1422,
+          "collected": 1422
+        }
+      ],
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T13:11:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T13:11:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T13:06:00"
+        }
+      ]
+    },
+    {
+      "clock": [
+        {
+          "state": {
+            "paused": false,
+            "sim_time": "2024-06-15T15:16:00+00:00",
+            "tick_number": 556,
+            "speed_multiplier": 600,
+            "day_number": 1,
+            "id": "airport",
+            "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+          }
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        }
+      ],
+      "pending": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 19
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 1
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 21
+        }
+      ],
+      "bag_links": [
+        {
+          "bags": 9088,
+          "anonymous": 0
+        }
+      ],
+      "passenger_links": [
+        {
+          "passengers": 10058,
+          "invalid": 0
+        }
+      ],
+      "phantom_airborne": [
+        {
+          "n": 0
+        }
+      ],
+      "transfers": [
+        {
+          "passengers": 580
+        }
+      ],
+      "transfer_bags": [
+        {
+          "bags": 582
+        }
+      ],
+      "claim_exits": [
+        {
+          "n": 2457,
+          "early": 1480
+        }
+      ],
+      "observations": [
+        {
+          "n": 1515,
+          "collected": 1515
+        }
+      ],
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T15:16:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T15:16:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T15:11:00"
+        }
+      ]
+    },
+    {
+      "clock": [
+        {
+          "state": {
+            "paused": false,
+            "sim_time": "2024-06-15T17:29:00+00:00",
+            "tick_number": 689,
+            "speed_multiplier": 600,
+            "day_number": 1,
+            "id": "airport",
+            "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+          }
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        }
+      ],
+      "pending": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 19
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 1
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 21
+        }
+      ],
+      "bag_links": [
+        {
+          "bags": 9088,
+          "anonymous": 0
+        }
+      ],
+      "passenger_links": [
+        {
+          "passengers": 10058,
+          "invalid": 0
+        }
+      ],
+      "phantom_airborne": [
+        {
+          "n": 0
+        }
+      ],
+      "transfers": [
+        {
+          "passengers": 749
+        }
+      ],
+      "transfer_bags": [
+        {
+          "bags": 699
+        }
+      ],
+      "claim_exits": [
+        {
+          "n": 3060,
+          "early": 1818
+        }
+      ],
+      "observations": [
+        {
+          "n": 1818,
+          "collected": 1818
+        }
+      ],
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T17:29:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T17:28:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T17:28:00"
+        }
+      ]
+    },
+    {
+      "clock": [
+        {
+          "state": {
+            "paused": false,
+            "sim_time": "2024-06-15T19:33:00+00:00",
+            "tick_number": 813,
+            "speed_multiplier": 600,
+            "day_number": 1,
+            "id": "airport",
+            "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+          }
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        }
+      ],
+      "pending": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 19
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 1
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 21
+        }
+      ],
+      "bag_links": [
+        {
+          "bags": 9088,
+          "anonymous": 0
+        }
+      ],
+      "passenger_links": [
+        {
+          "passengers": 10058,
+          "invalid": 0
+        }
+      ],
+      "phantom_airborne": [
+        {
+          "n": 0
+        }
+      ],
+      "transfers": [
+        {
+          "passengers": 870
+        }
+      ],
+      "transfer_bags": [
+        {
+          "bags": 848
+        }
+      ],
+      "claim_exits": [
+        {
+          "n": 3701,
+          "early": 2184
+        }
+      ],
+      "observations": [
+        {
+          "n": 2229,
+          "collected": 2229
+        }
+      ],
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T19:32:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T19:33:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T19:29:00"
+        }
+      ]
+    },
+    {
+      "clock": [
+        {
+          "state": {
+            "paused": false,
+            "sim_time": "2024-06-15T21:41:00+00:00",
+            "tick_number": 941,
+            "speed_multiplier": 600,
+            "day_number": 1,
+            "id": "airport",
+            "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+          }
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        }
+      ],
+      "pending": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 19
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 1
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 21
+        }
+      ],
+      "bag_links": [
+        {
+          "bags": 9088,
+          "anonymous": 0
+        }
+      ],
+      "passenger_links": [
+        {
+          "passengers": 10058,
+          "invalid": 0
+        }
+      ],
+      "phantom_airborne": [
+        {
+          "n": 0
+        }
+      ],
+      "transfers": [
+        {
+          "passengers": 910
+        }
+      ],
+      "transfer_bags": [
+        {
+          "bags": 848
+        }
+      ],
+      "claim_exits": [
+        {
+          "n": 4044,
+          "early": 2437
+        }
+      ],
+      "observations": [
+        {
+          "n": 2437,
+          "collected": 2437
+        }
+      ],
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T21:41:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T21:41:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T21:41:00"
+        }
+      ]
+    },
+    {
+      "clock": [
+        {
+          "state": {
+            "paused": false,
+            "sim_time": "2024-06-15T23:57:00+00:00",
+            "tick_number": 1077,
+            "speed_multiplier": 600,
+            "day_number": 1,
+            "id": "airport",
+            "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+          }
+        }
+      ],
+      "days": [
+        {
+          "day": "2024-06-15",
+          "ready": true
+        },
+        {
+          "day": "2024-06-16",
+          "ready": true
+        }
+      ],
+      "pending": [
+        {
+          "owner": "baggage",
+          "pending": false,
+          "n": 34
+        },
+        {
+          "owner": "flight",
+          "pending": false,
+          "n": 2
+        },
+        {
+          "owner": "passenger",
+          "pending": false,
+          "n": 40
+        }
+      ],
+      "bag_links": [
+        {
+          "bags": 16570,
+          "anonymous": 0
+        }
+      ],
+      "passenger_links": [
+        {
+          "passengers": 19110,
+          "invalid": 0
+        }
+      ],
+      "phantom_airborne": [
+        {
+          "n": 0
+        }
+      ],
+      "transfers": [
+        {
+          "passengers": 910
+        }
+      ],
+      "transfer_bags": [
+        {
+          "bags": 848
+        }
+      ],
+      "claim_exits": [
+        {
+          "n": 4157,
+          "early": 2437
+        }
+      ],
+      "observations": [
+        {
+          "n": 2437,
+          "collected": 2437
+        }
+      ],
+      "checkpoints": [
+        {
+          "owner": [
+            "FlightRuntime"
+          ],
+          "tick": "2024-06-15T23:57:00"
+        },
+        {
+          "owner": [
+            "BaggageOutboxSeq"
+          ],
+          "tick": "2024-06-15T23:58:00"
+        },
+        {
+          "owner": [
+            "PassengerRuntime"
+          ],
+          "tick": "2024-06-15T23:56:00"
+        }
+      ]
+    }
+  ],
+  "final": {
+    "clock": [
+      {
+        "state": {
+          "paused": true,
+          "sim_time": "2024-06-16T00:39:00+00:00",
+          "tick_number": 1119,
+          "speed_multiplier": 600,
+          "day_number": 2,
+          "id": "airport",
+          "settings_json": "{\"daily_flights\": 60, \"load_factor_mean\": 0.8, \"pax_multiplier\": 1.0, \"special_event\": null, \"hourly_weights\": {\"5\": 2, \"6\": 8, \"7\": 14, \"8\": 16, \"9\": 12, \"10\": 10, \"11\": 9, \"12\": 8, \"13\": 9, \"14\": 10, \"15\": 10, \"16\": 12, \"17\": 15, \"18\": 14, \"19\": 10, \"20\": 7, \"21\": 5, \"22\": 3}, \"weather_lock\": null, \"wind_kt\": 15, \"gust_enabled\": false, \"runway_incursion_rate\": 0.005, \"baggage_fire_rate\": 0.008, \"security_breach_rate\": 0.01, \"system_failure_rate\": 0.015, \"suppression_window_h\": 2.0, \"lanes_a\": 4, \"lanes_b\": 3, \"lanes_c\": 4, \"mct_minutes\": 45, \"screening_units\": 6, \"sorting_capacity\": 1800, \"dg_false_positive_rate\": 0.003, \"crew_delay_probability\": 0.05, \"crew_delay_min\": 5, \"crew_delay_max\": 15, \"ctot_probability_peak\": 0.1, \"ctot_delay_min\": 5, \"ctot_delay_max\": 30, \"noshow_rate\": 0.03, \"equipment_failure_rate\": 0.01, \"equipment_failure_delay_min\": 8, \"equipment_failure_delay_max\": 20, \"diversion_rate\": 0.003, \"holding_fuel_burn_kg_per_hr\": 2500, \"holding_fuel_warn_minutes\": 30, \"holding_fuel_panpan_minutes\": 45}"
+        }
+      }
+    ],
+    "days": [
+      {
+        "day": "2024-06-15",
+        "ready": true
+      },
+      {
+        "day": "2024-06-16",
+        "ready": true
+      }
+    ],
+    "pending": [
+      {
+        "owner": "baggage",
+        "pending": false,
+        "n": 34
+      },
+      {
+        "owner": "flight",
+        "pending": false,
+        "n": 2
+      },
+      {
+        "owner": "passenger",
+        "pending": false,
+        "n": 40
+      }
+    ],
+    "bag_links": [
+      {
+        "bags": 16570,
+        "anonymous": 0
+      }
+    ],
+    "passenger_links": [
+      {
+        "passengers": 19110,
+        "invalid": 0
+      }
+    ],
+    "phantom_airborne": [
+      {
+        "n": 0
+      }
+    ],
+    "transfers": [
+      {
+        "passengers": 910
+      }
+    ],
+    "transfer_bags": [
+      {
+        "bags": 848
+      }
+    ],
+    "claim_exits": [
+      {
+        "n": 4157,
+        "early": 2437
+      }
+    ],
+    "observations": [
+      {
+        "n": 2437,
+        "collected": 2437
+      }
+    ],
+    "checkpoints": [
+      {
+        "owner": [
+          "FlightRuntime"
+        ],
+        "tick": "2024-06-16T00:39:00"
+      },
+      {
+        "owner": [
+          "BaggageOutboxSeq"
+        ],
+        "tick": "2024-06-16T00:39:00"
+      },
+      {
+        "owner": [
+          "PassengerRuntime"
+        ],
+        "tick": "2024-06-16T00:39:00"
+      }
+    ]
+  }
+}

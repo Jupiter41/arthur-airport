@@ -1,0 +1,42 @@
+{
+  "flight": {
+    "ready": true,
+    "status": 200
+  },
+  "passenger": {
+    "ready": true,
+    "status": 200
+  },
+  "baggage": {
+    "ready": true,
+    "status": 200
+  },
+  "weather": {
+    "ready": true,
+    "status": 200
+  },
+  "incident": {
+    "ready": true,
+    "status": 200
+  },
+  "sim": {
+    "ready": true,
+    "status": 200
+  },
+  "analysis": {
+    "ready": true,
+    "status": 200
+  },
+  "cost": {
+    "ready": true,
+    "status": 200
+  },
+  "planning": {
+    "ready": true,
+    "status": 200
+  },
+  "gateway": {
+    "ready": true,
+    "status": 200
+  }
+}
