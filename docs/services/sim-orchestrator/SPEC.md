@@ -331,3 +331,11 @@ startup ticks and hourly, includes old in_hold bags even outside the normal
 flight-view history window, and calls the same atomic offload path as the fact
 handler. New bags created after a flight fact are picked up by recovery. Facts
 for recovery transitions remain durable in BULK mode.
+
+### RC7 startup completion (2026-11-19)
+
+Seed existence groups the optional SeedDay and legacy Flight count before
+evaluating readiness. Empty graphs, ready manifests without applied flights,
+and legacy days are valid inputs. Inbound `airborne` is an accepted passenger
+owner status in every atomic repository path. Cold-start and 23:30/midnight
+checks must execute these real paths without monkeypatches.

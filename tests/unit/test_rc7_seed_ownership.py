@@ -91,3 +91,15 @@ def test_arrival_reconciliation_requires_a_consumed_flight_lifecycle():
         {**pax, "status": "airborne", "flight_status": "scheduled"}, now
     ) == ("booked", "remote-origin")
     assert rules.reconciliation_transition({**pax, "flight_status": "airborne"}, now) == ("airborne", "in-flight")
+
+
+def test_real_passenger_repository_accepts_inbound_airborne(monkeypatch):
+    from tests.unit.test_passenger_g1_closeout import Driver
+    db = import_service_module("passenger", "db.neo4j")
+    driver = Driver()
+    monkeypatch.setattr(db, "get_driver", lambda: driver)
+    assert asyncio.run(db.apply_status_change_atomic(
+        "inbound-airborne", [{"ids": ["p1"], "status": "airborne", "zone": "in-flight"}],
+        [], datetime(2024, 6, 15, 10),
+    ))
+    assert driver.db["pax"]["p1"]["status"] == "airborne"

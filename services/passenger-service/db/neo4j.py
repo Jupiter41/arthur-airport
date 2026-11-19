@@ -257,7 +257,7 @@ async def search_passengers(pnr: str | None = None, name: str | None = None) -> 
 
 _VALID_STATUSES = frozenset({
     "booked", "checked_in", "security_queue", "airside", "at_gate",
-    "boarded", "deplaning", "customs", "baggage_claim", "departed_airport",
+    "boarded", "airborne", "deplaning", "customs", "baggage_claim", "departed_airport",
     "missed_connection", "disrupted", "no_show", "cancelled",
     "missed_flight",  # RC5: flight departed before the passenger boarded
 })

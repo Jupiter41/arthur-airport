@@ -27,7 +27,8 @@ async def _day_already_seeded(sim_date) -> bool:
         result = await session.run(
             "OPTIONAL MATCH (d:SeedDay {id: $prefix}) "
             "WITH d OPTIONAL MATCH (f:Flight) WHERE f.scheduled_time STARTS WITH $prefix "
-            "RETURN CASE WHEN d.ready = true THEN 1 ELSE count(f) END AS cnt",
+            "WITH d, count(f) AS flights "
+            "RETURN CASE WHEN d.ready = true THEN 1 ELSE flights END AS cnt",
             prefix=prefix,
         )
         record = await result.single()
