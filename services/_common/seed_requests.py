@@ -20,6 +20,33 @@ OWNERS = {
 }
 
 
+async def allocate_baggage_tags(tx: Any, rows: list[dict]) -> None:
+    """Owner-only monotonic allocation, atomic with seed acceptance and facts."""
+    record = await (await tx.run(
+        "MERGE (s:BaggageTagSequence {id:'global'}) "
+        "SET s.lock = coalesce(s.lock, 0) + 1 RETURN s.next AS next"
+    )).single()
+    start = record["next"]
+    if start is None:
+        # One-time migration reads only this owner's tag identities. Archives
+        # retain their barcode too, so legacy history cannot be reassigned.
+        record = await (await tx.run(
+            "CALL { MATCH (b:Baggage) RETURN max(toInteger(b.tag)) AS live } "
+            "CALL { MATCH (b:BaggageArchive) RETURN max(toInteger(b.tag)) AS archived } "
+            "RETURN CASE WHEN coalesce(live, 0) > coalesce(archived, 0) "
+            "THEN coalesce(live, 0) ELSE coalesce(archived, 0) END AS last"
+        )).single()
+        start = max(1_000_000_000, record["last"] + 1)
+    if start + len(rows) > 10_000_000_000:
+        raise ValueError("Synthetic 10-digit baggage tag namespace exhausted")
+    for offset, row in enumerate(rows):
+        row["tag"] = f"{start + offset:010d}"
+    await (await tx.run(
+        "MATCH (s:BaggageTagSequence {id:'global'}) SET s.next = $next",
+        next=start + len(rows),
+    )).consume()
+
+
 async def store_day(get_driver: Callable[[], Any], day_id: str, sim_time: datetime,
                     manifests: dict[str, list[dict]]) -> bool:
     """Commit the complete day or nothing; retries cannot generate duplicate IDs."""
@@ -96,6 +123,8 @@ async def apply_pending(owner: str, get_driver: Callable[[], Any]) -> int:
             ready = await (await tx.run(query, **params)).single()
             if ready["count"] != len(rows):
                 return False
+            if owner == "baggage":
+                await allocate_baggage_tags(tx, rows)
             # Link references stay on the owned entity too (restart/audit).
             await (await tx.run(
                 f"UNWIND $rows AS row MERGE (n:{label} {{id: row.id}}) "

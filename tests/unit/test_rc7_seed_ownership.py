@@ -103,3 +103,36 @@ def test_real_passenger_repository_accepts_inbound_airborne(monkeypatch):
         [], datetime(2024, 6, 15, 10),
     ))
     assert driver.db["pax"]["p1"]["status"] == "airborne"
+
+
+def test_baggage_tag_allocation_ignores_overlapping_generator_ranges():
+    import_service_module("baggage", "application.commands")
+    requests = importlib.import_module("_common.seed_requests")
+
+    class Result:
+        def __init__(self, value=None):
+            self.value = value
+
+        async def single(self):
+            return self.value
+
+        async def consume(self):
+            pass
+
+    class Tx:
+        next_tag = None
+
+        async def run(self, query, **params):
+            if "RETURN s.next" in query:
+                return Result({"next": self.next_tag})
+            if "AS last" in query:
+                return Result({"last": 1000000005})
+            self.next_tag = params["next"]
+            return Result()
+
+    tx = Tx()
+    first = [{"tag": "123"}, {"tag": "124"}]
+    second = [{"tag": "123"}]
+    asyncio.run(requests.allocate_baggage_tags(tx, first))
+    asyncio.run(requests.allocate_baggage_tags(tx, second))
+    assert [b["tag"] for b in first + second] == ["1000000006", "1000000007", "1000000008"]

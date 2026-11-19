@@ -542,3 +542,21 @@ Duplicates and later sweeps do not re-stamp terminal bags. `diverted` joins
 `collected`/`short_shipped` in indexed 24-sim-hour archival. Scan trails archive
 with the bag and purge 168 sim-hours after archival, with atomic
 `EntitiesArchived`/`EntitiesPurged` facts. Active arrival holds remain live.
+
+### Collection delivery in every speed mode (RC8 / RC12, 2026-11-19)
+
+`on_carousel` and `collected` per-bag facts carry passenger ID and flight ID
+and are never suppressed in BULK. Other pipeline transitions retain the
+batch contract. This makes the passenger observation contract identical in
+REALTIME, FAST and BULK. Batch transitions retain passenger ID for compatible
+consumers and replay; passenger-service accepts both forms idempotently.
+
+### Owner-allocated manifest tags (RC7 cold-start follow-up, 2026-11-19)
+
+The baggage owner replaces generated provisional barcode tags with globally
+unique 10-digit synthetic tags when accepting a seed batch. A durable
+`BaggageTagSequence` high watermark is locked under the owner runtime. Its
+initial value exceeds live/archive legacy tag identities; allocation, bag
+creation, links, accepted manifest and creation facts commit together. Retries
+consume no extra range. Exhausting the 10-digit namespace rejects the batch
+explicitly. Generator timing/randomness cannot define global uniqueness.

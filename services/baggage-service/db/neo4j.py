@@ -10,6 +10,7 @@ from _common import neo4j_client
 logger = logging.getLogger(__name__)
 
 CONSTRAINTS = [
+    "CREATE CONSTRAINT baggage_tag_sequence_id IF NOT EXISTS FOR (s:BaggageTagSequence) REQUIRE s.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_index_migration_id IF NOT EXISTS FOR (m:BaggageIndexMigration) REQUIRE m.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_projection_id IF NOT EXISTS FOR (p:BaggageProjection) REQUIRE p.id IS UNIQUE",
     "CREATE CONSTRAINT commandreceipt_id IF NOT EXISTS FOR (r:CommandReceipt) REQUIRE r.id IS UNIQUE",
