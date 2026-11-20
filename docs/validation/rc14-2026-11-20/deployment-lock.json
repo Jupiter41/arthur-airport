@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "revision": "04038a42ce314584137291bf5b158ddf1a3a11e4",
+  "dirty": false,
+  "services": {
+    "analysis-service": {
+      "image": "arthur-airport-analysis-service:04038a42ce31-97cc9f554923",
+      "image_id": "sha256:97cc9f55492359f9f20d1098eedc93600084fcbe4588477a98e3612a85fa211b"
+    },
+    "api-gateway": {
+      "image": "arthur-airport-api-gateway:04038a42ce31-04f27056f081",
+      "image_id": "sha256:04f27056f081c00c6cfa95c73c69e9837ed14d3643d192160bdeb4688f407ff3"
+    },
+    "cost-service": {
+      "image": "arthur-airport-cost-service:04038a42ce31-0fbb1a0eab3b",
+      "image_id": "sha256:0fbb1a0eab3bba05965cfd98b01d5e15b285ae112ffbae8e8b7217265e6a6d8d"
+    },
+    "sim-orchestrator": {
+      "image": "arthur-airport-sim-orchestrator:04038a42ce31-d9c15d8b18ac",
+      "image_id": "sha256:d9c15d8b18ac976bf7115f0e6f950583c57fca431cfec6a3c208a26a8b2dd70e"
+    },
+    "baggage-service": {
+      "image": "arthur-airport-baggage-service:04038a42ce31-e973cb46c108",
+      "image_id": "sha256:e973cb46c10824ad75071f9315b4526c896a050d81aa6f860a4d199075413696"
+    },
+    "flight-service": {
+      "image": "arthur-airport-flight-service:04038a42ce31-bcffcf13516d",
+      "image_id": "sha256:bcffcf13516dc048cfcd65ff32cb30f1204d5965704519c5b3aef323cf36a697"
+    },
+    "incident-service": {
+      "image": "arthur-airport-incident-service:04038a42ce31-713c0151eff7",
+      "image_id": "sha256:713c0151eff7c27f234b4b78c1edaa82818c1e7e336380da922cf180d84c3ff5"
+    },
+    "passenger-service": {
+      "image": "arthur-airport-passenger-service:04038a42ce31-1944b2ea2fa0",
+      "image_id": "sha256:1944b2ea2fa01306c4766ee45e9b8d752e4e7226b341c0589333eb0d5fab7dbd"
+    },
+    "weather-service": {
+      "image": "arthur-airport-weather-service:04038a42ce31-ac2d48f1fe0a",
+      "image_id": "sha256:ac2d48f1fe0ad721aa03ab78c40ad12a4832f190d9d67986a5c5fdf9e09744b5"
+    },
+    "dashboard": {
+      "image": "arthur-airport-dashboard:04038a42ce31-d08e9246e718",
+      "image_id": "sha256:d08e9246e718cce4def73505c2f3f6c776b234e23fc48b976eb960567054ff11"
+    },
+    "planning-service": {
+      "image": "arthur-airport-planning-service:04038a42ce31-afb213cd0949",
+      "image_id": "sha256:afb213cd094931f14a523bc712449aad4942663571e722e6d9add695e62beb54"
+    }
+  }
+}

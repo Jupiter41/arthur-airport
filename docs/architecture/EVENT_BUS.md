@@ -1177,3 +1177,14 @@ scan time, and arrival decisions fence observations at their owner tick time.
 `ids`, `count`, and `purge_before`, atomically with removal of orphan observations
 older than the configured sim-time purge age. Live/archive passenger observations
 remain protected; normal passenger archive purge removes its own observation.
+
+
+### BaggageIdentityDisposition (RC14)
+
+Topic: `baggage.events`; producer: `baggage-service`. Standard envelope at the
+owner's persisted simulation checkpoint. Payload contains `migration`,
+`linked_ids` and `quarantined_ids` for one bounded legacy classification batch.
+The bag/scan label changes, proven identity backfills, counters and outbox fact
+commit together. It neither claims collection nor fabricates passenger links.
+The owner migration is restart-idempotent. This audit fact is retained on Kafka;
+it is not a per-entity dashboard stream or a financial baggage transition.

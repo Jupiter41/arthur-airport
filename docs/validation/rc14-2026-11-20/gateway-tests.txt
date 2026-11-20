@@ -1,0 +1,90 @@
+
+> api-gateway@0.1.0 test
+> node scripts/run-tests.cjs
+
+▶ exclusive controller sessions
+  ✔ isolates tabs of the same account, expires leases, and serializes writes (2.056536ms)
+✔ exclusive controller sessions (3.81149ms)
+▶ public route boundaries
+  ✔ rejects encoded paths, dot segments and all admin routes (2.300817ms)
+✔ public route boundaries (2.560313ms)
+✔ blocks viewer writes and requires operator lease; merges concurrent reads (214.878479ms)
+▶ handleToken
+  ✔ rejects a request with no client_id (400) (1.745655ms)
+  ✔ rejects a known client with no secret (401) — no dev backdoor (0.378423ms)
+  ✔ rejects a known client with the wrong secret (401) (0.411232ms)
+  ✔ rejects an unknown client id (401) (0.721138ms)
+  ✔ issues a verifiable JWT carrying the client's role for valid credentials (7.056194ms)
+✔ handleToken (12.419996ms)
+▶ authMiddleware
+  ✔ rejects a missing Authorization header (401) and does not call next() (0.653468ms)
+  ✔ rejects a token signed with the wrong secret (401) (1.848678ms)
+  ✔ accepts a valid token and calls next() (1.17789ms)
+✔ authMiddleware (4.358495ms)
+▶ requireRole (RBAC)
+  ✔ allows a role of equal rank (0.791733ms)
+  ✔ allows a role of higher rank (0.716171ms)
+  ✔ rejects a role of lower rank (403) (0.362ms)
+  ✔ rejects a request with no role (403) (0.274395ms)
+  ✔ rejects an unknown role value (403) (0.244978ms)
+✔ requireRole (RBAC) (2.945625ms)
+▶ verifyTokenFromRequest
+  ✔ returns false when no token is present (0.681839ms)
+  ✔ accepts a valid token from the Authorization header (1.098529ms)
+  ✔ accepts a valid token from the ?token= query string (WebSocket upgrade) (1.323663ms)
+  ✔ rejects a malformed token in the query string (0.351263ms)
+✔ verifyTokenFromRequest (3.790968ms)
+✔ rejects mixed revisions, contracts, configurations and unverified owner identity (2.045874ms)
+✔ detects changes to compiled JSON policy as well as executable JavaScript (13.82165ms)
+✔ derives status from owner-reported health, first match wins (RC10) (2.726132ms)
+✔ labels the clock of last_updated and never uses request time (1.646327ms)
+✔ reports ADS-B as disabled when the owner says so, not adsb.lol/active (3.737334ms)
+✔ reports an owner that does not answer as unavailable (1.661402ms)
+▶ complete digital twin readiness
+  ✔ releases every response stream across repeated probes and recovery (5.696914ms)
+  ✔ checks readiness of all nine upstreams (1.903825ms)
+  ✔ returns 503 when planning is unavailable (1.293936ms)
+  ✔ returns 503 when costs is unavailable (0.976903ms)
+  ✔ returns 503 when analysis is unavailable (1.060119ms)
+  ✔ services health does not report an unready analysis as healthy (1.020854ms)
+✔ complete digital twin readiness (13.993126ms)
+✔ fails readiness for a mismatched owner build while operational checks remain healthy (2.855372ms)
+[Kafka] Consumer connected
+[Kafka] Failed to start consumer: Error: UNKNOWN_TOPIC_OR_PARTITION
+    at FakeConsumer.subscribe (/home/chevallier/Documents/dev/PERSOS/arthur-airport/services/api-gateway/src/kafka.test.ts:15:35)
+    at startAttempt (/home/chevallier/Documents/dev/PERSOS/arthur-airport/services/api-gateway/src/kafka.ts:112:16)
+    at async TestContext.<anonymous> (/home/chevallier/Documents/dev/PERSOS/arthur-airport/services/api-gateway/src/kafka.test.ts:48:3)
+    at async Test.run (node:internal/test_runner/test:1113:7)
+    at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)
+[Kafka] Consumer connected
+[Kafka] Subscribed to 10 topics
+[Kafka] Consumer connected
+[Kafka] Subscribed to 10 topics
+✔ replaces a failed subscription and restores readiness after broker recovery (22.872652ms)
+[Kafka] Consumer connected
+[Kafka] Subscribed to 10 topics
+[Kafka] Consumer connected
+[Kafka] Subscribed to 10 topics
+[Kafka] Consumer connected
+[Kafka] Subscribed to 10 topics
+✔ replaces a non-restarting crash but leaves KafkaJS runtime retries single-owned (4.440058ms)
+✔ heartbeats keep paused-clock readiness fresh without inventing messages (3.469544ms)
+✔ shutdown cancels queued replacement after a crash (3.752094ms)
+✔ retains independent security terminals and full fleet snapshots across unrelated events (2.920653ms)
+✔ relays all operational snapshots immediately in BULK mode (1036.289095ms)
+✔ production rejects invalid identities, forged claims, admin endpoints, and brute-force attempts (155.385411ms)
+✔ WebSocket requires same-site origin and JWT; rejects oversized frames (18.329772ms)
+✔ native proxy preserves queries/JSON, follows only slash redirects, and caps responses (246.552761ms)
+✔ reports owner values separately from restored requests and degrades without inventing application (267.131882ms)
+✔ classifies UI events and drops per-entity firehose facts (RC9) (1.695405ms)
+✔ coalesces to the newest envelope per key and strips hint payloads (3.068824ms)
+✔ bootstrap keeps only delivered, replayable envelopes (0.534451ms)
+✔ a browser receives one coalesced frame instead of the firehose (279.659009ms)
+ℹ tests 47
+ℹ suites 7
+ℹ pass 47
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4036.366472

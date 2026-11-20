@@ -1,0 +1,14 @@
+{"phase": "projection_lookup_correction", "result": "PassengerBaggageObservation.id is a passenger ID; use the observed owner passenger cohort, not bag IDs."}
+ Container art-ldt-g6-api-gateway-1 Restarting
+ Container art-ldt-g6-baggage-service-1 Restarting
+ Container art-ldt-g6-passenger-service-1 Restarting
+ Container art-ldt-g6-sim-orchestrator-1 Restarting
+ Container art-ldt-g6-sim-orchestrator-1 Started
+ Container art-ldt-g6-baggage-service-1 Started
+ Container art-ldt-g6-passenger-service-1 Started
+ Container art-ldt-g6-api-gateway-1 Started
+{"waiting": "('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))"}
+{"phase": "durable_collection_restart", "result": {"n": 1896, "collected": 1896}}
+{"verified": true, "services": {"flight-service": true, "passenger-service": true, "baggage-service": true, "weather-service": true, "incident-service": true, "sim-orchestrator": true, "analysis-service": true, "cost-service": true, "planning-service": true, "api-gateway": true, "dashboard": true}}
+{"phase": "final_readiness", "result": {"status": "ready", "kafka": true, "kafka_fresh": true, "upstream": true, "services": {"flight_service": true, "passenger_service": true, "baggage_service": true, "weather_service": true, "incident_service": true, "sim_orchestrator": true, "analysis_service": true, "cost_service": true, "planning_service": true}, "build_identity": true, "identity": {"flight_service": true, "passenger_service": true, "baggage_service": true, "weather_service": true, "incident_service": true, "sim_orchestrator": true, "analysis_service": true, "cost_service": true, "planning_service": true}}}
+{"phase": "passed", "result": true}

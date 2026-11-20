@@ -1,0 +1,6 @@
+ Container art-rc14-g1-neo4j-1 Stopping
+ Container art-rc14-g1-neo4j-1 Stopped
+ Container art-rc14-g1-neo4j-1 Removing
+ Container art-rc14-g1-neo4j-1 Removed
+ Network art-rc14-g1_default Removing
+ Network art-rc14-g1_default Removed

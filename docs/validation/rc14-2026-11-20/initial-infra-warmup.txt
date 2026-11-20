@@ -1,0 +1,46 @@
+ Container art-ldt-g6-planning-service-1 Recreate
+ Container art-ldt-g6-analysis-service-1 Recreate
+ Container art-ldt-g6-baggage-service-1 Recreate
+ Container art-ldt-g6-cost-service-1 Recreate
+ Container art-ldt-g6-flight-service-1 Recreate
+ Container art-ldt-g6-incident-service-1 Recreate
+ Container art-ldt-g6-passenger-service-1 Recreate
+ Container art-ldt-g6-weather-service-1 Recreate
+ Container art-ldt-g6-flight-service-1 Recreated
+ Container art-ldt-g6-planning-service-1 Recreated
+ Container art-ldt-g6-baggage-service-1 Recreated
+ Container art-ldt-g6-incident-service-1 Recreated
+ Container art-ldt-g6-weather-service-1 Recreated
+ Container art-ldt-g6-cost-service-1 Recreated
+ Container art-ldt-g6-passenger-service-1 Recreated
+ Container art-ldt-g6-sim-orchestrator-1 Recreate
+ Container art-ldt-g6-analysis-service-1 Recreated
+ Container art-ldt-g6-sim-orchestrator-1 Recreated
+ Container art-ldt-g6-api-gateway-1 Recreate
+ Container art-ldt-g6-api-gateway-1 Recreated
+ Container art-ldt-g6-dashboard-1 Recreate
+ Container art-ldt-g6-dashboard-1 Recreated
+ Container art-ldt-g6-zookeeper-1 Starting
+ Container art-ldt-g6-planning-service-1 Starting
+ Container art-ldt-g6-neo4j-1 Starting
+ Container art-ldt-g6-zookeeper-1 Started
+ Container art-ldt-g6-kafka-1 Starting
+ Container art-ldt-g6-planning-service-1 Started
+ Container art-ldt-g6-neo4j-1 Started
+ Container art-ldt-g6-neo4j-1 Waiting
+ Container art-ldt-g6-kafka-1 Started
+ Container art-ldt-g6-kafka-1 Waiting
+ Container art-ldt-g6-neo4j-1 Healthy
+ Container art-ldt-g6-kafka-1 Error dependency kafka failed to start
+ Container art-ldt-g6-dashboard-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-cost-service-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-api-gateway-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-sim-orchestrator-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-baggage-service-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-analysis-service-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-kafka-init-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-flight-service-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-weather-service-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-incident-service-1 not started: condition "service_healthy" of service "kafka" not met
+ Container art-ldt-g6-passenger-service-1 not started: condition "service_healthy" of service "kafka" not met
+dependency failed to start: container art-ldt-g6-kafka-1 is unhealthy

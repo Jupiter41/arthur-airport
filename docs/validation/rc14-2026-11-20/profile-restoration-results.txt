@@ -1,0 +1,1 @@
+{"daily_flights": 420, "speed_multiplier": 60, "paused": false, "sim_time": "2024-08-01T18:04:00+00:00"}

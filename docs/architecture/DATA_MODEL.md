@@ -565,3 +565,21 @@ and PassengerOutbox; archive purge removes it with the passenger.
 Seed acceptance reserves unique numeric tag ranges with domain creation and
 creation facts. Initial migration reads the owner's live/archive tag identities
 once; retries and competing acceptances cannot allocate the same range.
+
+
+## RC14 legacy baggage identity history
+
+Baggage-service owns `LegacyBaggage` and `LegacyScanEvent`. These preserve
+unprovable pre-manifest history, properties and relationships outside live and
+normal archive labels. `LegacyBaggage` records `legacy_original_label`,
+`identity_disposition` (`missing_passenger` or `ambiguous_passenger`), and
+`identity_disposition_at` in owner simulation time. It has no invented passenger
+ID, status transition or automatic purge. Its barcode remains reserved.
+A unique existing passenger identity on CARRIES permits backfill instead;
+that bag retains its operational/archive label and gets `existing_link` metadata.
+
+`LegacyBaggageDisposition {id: 'rc14-identity-v1'}` holds durable linked and
+quarantined counters and the owner checkpoint time. Its unique ID serializes
+migration workers. `LegacyBaggageCandidate` is an indexed, restartable processing
+label; it is removed atomically with disposition and the outbox fact. Candidate
+marking is a derived-index backfill, not a claimed physical baggage transition.

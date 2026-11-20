@@ -3,18 +3,26 @@
 Review date: 2026-11-16 · Reviewed commit: `1e7b16d` (main, clean)
 Reviewed stack: `art-ldt-g6-*` compose project. It had been running continuously for about 23 simulated days at 60× (sim day 23–24, 2024-07-07 → 07-08).
 
+> **RC14 closed — 2026-11-20.** The original `art-ldt-g6` airport now runs
+> eleven immutable, verified images from clean revision `04038a4`, with baked
+> shared code/configuration and fail-closed integrity/cohort checks. Of 659,872
+> legacy bags, 326,005 IDs were proved from existing links and 333,867 retained
+> as unprovable history. No identities were invented. Arrival, transfer, pickup,
+> six-hour outage recovery and day-boundary/restart checks pass on that deployment.
+> [Closure evidence](docs/validation/rc14-2026-11-20/README.md). RC15-RC20 remain open.
+
 > **RC13 closed — 2026-11-20.** Initial settings derive from airport configuration;
 > saved requests and application modes are distinct from effective owner observations.
 > Built-image cold start, explicit lane application/replay, durable restart, owner
 > outage and future-manifest checks pass.
-> [Closure evidence](docs/validation/rc13-2026-11-19/README.md). RC14/RC15 remain open.
+> [Closure evidence](docs/validation/rc13-2026-11-19/README.md). RC15 remains open; RC14 closure is recorded above.
 
 > **RC11 closed — 2026-11-19.** Late checkpoint commit errors now participate
 > in retry/acknowledgement policy, and failed midnight barriers cannot advance
 > into an unseeded day. Seven real database/Kafka fault/profile regressions,
 > six restart checks and 1,493 unit tests pass. A live six-hour owner outage
 > converges to the current clock in 37.47 seconds at 60x without operator resume.
-> [Closure evidence](docs/validation/rc11-2026-11-19/README.md). RC16/RC14 remain open.
+> [Closure evidence](docs/validation/rc11-2026-11-19/README.md). RC16 remains open; RC14 closure is recorded above.
 
 > **RC7 / RC8 / RC12 closed — 2026-11-19.** Real cold start, owner inbound
 > transitions, named links/transfers, 23:30/midnight seeding and durable collection
@@ -55,7 +63,7 @@ problems share one cause.
 
 The original review identified RC1–RC11. Closure revalidation adds RC12–RC20, including
 promotion of five unresolved lower-level findings. RC1, RC7, RC8, RC11 and RC12
-are closed with 2026-11-19 evidence; RC13 is closed with the completed
+are closed with 2026-11-19 evidence; RC13 and RC14 are closed with completed
 2026-11-20 validation below. Previously
 completed implementation work is retained, but the review remains open until the new
 closure criteria are met. See the [revalidation report](docs/validation/data-review-2026-11-17/README.md).
@@ -75,7 +83,7 @@ closure criteria are met. See the [revalidation report](docs/validation/data-rev
 | RC11 | Planner traps, coalesced catch-up and clock checkpoint/day-boundary failures | Historical six-hour owner stall followed by whole-airport auto-pause | 🔴 High | ✅ Closed | Original bounded queries and ≤5-minute transactions retained. Checkpoint results are consumed inside retry policy; failed midnight barriers pause before the new day and retry on resume. Real six-hour partial-crash recovery, 40k-history PROFILE checks, database interruption and moving-clock convergence pass. [2026-11-19 evidence](docs/validation/rc11-2026-11-19/README.md). RC16 poison policy and RC14 rollout remain separate. |
 | RC12 | Arrival baggage observation durability and lifecycle guards | Historical volatile collection and premature carousel positioning | 🔴 High | ✅ Closed | Observation/inbox/outbox commit before ACK; early inputs persist independently of passenger creation, claim lifecycle gates location, and owner ticks fence source timestamps. Actual BULK planner → Kafka → passenger ACK/death/restart exits claim. [Closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md). |
 | RC13 | Settings defaults and saved preferences diverged from effective owners | Historical lanes 4/3/4 and sorting 1,800/h versus owners 8/12/8 and 5,400/h | 🟠 Medium | ✅ Closed | Config-derived initial preferences; explicit application modes; gateway owner observations fail to unknown on outage. UI uses durable owner lane commands and labels future/configuration-only/stored-only requests. Built-image cold start, restart, replay and future-manifest application pass. [Closure evidence](docs/validation/rc13-2026-11-19/README.md). RC14 rollout remains separate. |
-| RC14 | Owner images and shared libraries are deployed at different revisions                                                                                                | 13 source files differ across four images; no live seed manifests despite current shared mounts                                                                    | 🔴 High    | ❌ Open     | Report B7; coherent rollout and legacy-data disposition required; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| RC14 | Mixed owner/shared revisions invalidated deployment verification | Historical images differed from checkout and old graph had anonymous bags | 🔴 High | ✅ Closed | Original airport volumes upgraded to eleven immutable images with verified revision/source/artifact/shared/config identity. Proven IDs restored from existing links; unprovable bags/scans retained outside live indexes. Real arrival/transfer/pickup, six-hour outage, next-day and restart checks pass; original operating profile restored. [2026-11-20 evidence](docs/validation/rc14-2026-11-20/README.md). |
 | RC15 | Validation coverage and fixtures lag the architecture                                                                                                                | Unit checks miss real startup failures; 3 integration and 2 transaction fixtures fail                                                                              | 🟠 Medium  | ❌ Open     | Report validation gates; no closure from temporary application workarounds; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | RC16 | Consumer failures retry indefinitely without quarantine or recovery policy                                                                                           | One valid inbound event stalls passenger-service by 124 sim-minutes                                                                                                | 🔴 High    | ❌ Open     | Promoted L2; reproduced by B2, not merely a hypothetical poison payload; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | RC17 | Financial events are not checked against the simulation clock                                                                                                        | A 2030 event is accepted into CostInbox while the simulation is in 2024                                                                                            | 🟠 Medium  | ❌ Open     | Promoted L3; isolated reproduction in the report; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -998,8 +1006,9 @@ builds. RC14 rollout and RC15 broader CI remain open.
 
 ### RC14 — Mixed owner images and shared-library revisions invalidate deployment verification 🔴
 
-> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
-> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+> **Status: ✅ Closed — 2026-11-20.** Final deployed cohort `04038a4`;
+> [original-airport rollout evidence](docs/validation/rc14-2026-11-20/README.md).
+> The 2026-11-17 observations below are historical.
 
 **Evidence.** Report B7. Thirteen Python files differ between the checkout and four running service images, while shared-library mounts match. The live graph has no SeedDay/SeedBatch; the initial sample still has 20,949 airborne passengers on scheduled arrivals.
 
@@ -1008,6 +1017,31 @@ builds. RC14 rollout and RC15 broader CI remain open.
 **Root cause.** A shared-library update can become live without the matching service image. Readiness tests connectivity, not a coherent build identity, so a healthy older airport can be mistaken for validation of the new implementation.
 
 **Closure criteria.** After RC7/RC12 are fixed, roll out a coherent revision and expose/verify build identity per service and shared contract. Repeat arrival, transfer, recovery and day-boundary checks on that deployment. Record an explicit disposition for legacy anonymous bags; do not fabricate missing passenger identities.
+
+
+**Resolution.** All eleven application images bake shared code/configuration,
+expose revision/content identity and use immutable tags with an image-ID lock.
+Readiness and the rollout verifier reject stale artifacts, changed contracts and
+mixed revisions. The original airport volumes were retained and the durable
+clock restored. A stopped-graph snapshot remains available. Baggage-service
+backfilled 326,005 identities only from unique existing passenger links and
+quarantined 333,867 unprovable bags with their history/status/scans preserved.
+The migration is bounded, outbox-atomic and restart-idempotent; quarantined
+barcodes remain reserved. No missing passenger identity was fabricated.
+
+**Validation.** All eleven deployed identities and frontend artifacts verify.
+Actual stale-shared, mixed-revision and changed compiled-JSON probes fail
+readiness and recover after exact restoration. A six-hour flow-owner outage
+recovers against the moving clock in 371.43 seconds. On the next day, real Kafka
+owner seed facts identify 60 flights, 9,523 passengers and 8,422 correctly linked
+bags, including 805 passenger transfers and 714 transfer bags. There are 1,803
+claim exits before 45 minutes and no phantom airborne arrivals. All 1,896
+collected-passenger observations survive restart with the exact paused clock.
+The original 420-flight/day, 60x running profile is restored. Local gates: 1,498
+Python tests, 47 gateway tests, real migration rollback/replay, builds and Ruff.
+CI build stamping/cohort verification and a dedicated migration test job are
+wired; broader remote CI closure remains RC15. This closes the original local
+airport rollout and does not claim a remote Raspberry deployment.
 
 ---
 
@@ -1169,10 +1203,10 @@ remaining order of work; see the [report](docs/validation/data-review-2026-11-17
 5. **RC15:** repair stale fixtures and pass all mandatory gates without the
    disposable application/test workarounds. Test fixes do not resolve application
    defects by themselves.
-6. **RC14:** deploy a coherent fixed revision, record the legacy-data disposition,
-   and remeasure daytime flows, transfers, pickup, outages/replay, day-boundary
-   seeding and retention. RC1/RC7/RC8/RC11/RC12/RC13 are closed in the checkout; close
-   remaining findings against their
+6. **RC14 — complete (2026-11-20):** coherent original-airport rollout, explicit
+   legacy disposition, arrival/transfer/pickup, outage recovery and day-boundary
+   restart checks pass. The original operator profile is restored. Close
+   remaining RC15-RC20 findings against their
    individual evidence and closure criteria, or explicitly record accepted
    exclusions as remaining risks rather than “fixed”.
 

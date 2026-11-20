@@ -1,0 +1,438 @@
+{
+  "initial_readiness": {
+    "status": "ready",
+    "kafka": true,
+    "kafka_fresh": true,
+    "upstream": true,
+    "services": {
+      "flight_service": true,
+      "passenger_service": true,
+      "baggage_service": true,
+      "weather_service": true,
+      "incident_service": true,
+      "sim_orchestrator": true,
+      "analysis_service": true,
+      "cost_service": true,
+      "planning_service": true
+    },
+    "build_identity": true,
+    "identity": {
+      "flight_service": true,
+      "passenger_service": true,
+      "baggage_service": true,
+      "weather_service": true,
+      "incident_service": true,
+      "sim_orchestrator": true,
+      "analysis_service": true,
+      "cost_service": true,
+      "planning_service": true
+    }
+  },
+  "restored_clock": {
+    "sim_time": "2024-07-31T09:06:00+00:00",
+    "day_number": 47,
+    "paused": true,
+    "speed_multiplier": 3600
+  },
+  "legacy_disposition": {
+    "migration": {
+      "at": "2024-07-29T14:00:00",
+      "lock": 661,
+      "id": "rc14-identity-v1",
+      "quarantined": 333867,
+      "linked": 326005
+    },
+    "retained_quarantine": 333867
+  },
+  "stale_shared_overlay_rejected": [
+    "shared_sha256 mismatch"
+  ],
+  "mixed_revision_rejected": true,
+  "compiled_json_policy_rejected": [
+    "artifact_sha256 mismatch"
+  ],
+  "six_hour_outage": {
+    "start": "2024-07-31T09:27:00",
+    "end": "2024-07-31T15:29:00"
+  },
+  "moving_clock_recovery": {
+    "elapsed_seconds": 371.43,
+    "sim_time": "2024-07-31T17:57:00+00:00",
+    "watermarks": {
+      "baggage-service": {
+        "sim_time": "2024-07-31T17:57:00",
+        "lag_minutes": 0.0,
+        "stale": false
+      },
+      "flight-service": {
+        "sim_time": "2024-07-31T17:56:00",
+        "lag_minutes": 1.0,
+        "stale": false
+      },
+      "passenger-service": {
+        "sim_time": "2024-07-31T17:57:00",
+        "lag_minutes": 0.0,
+        "stale": false
+      }
+    }
+  },
+  "arrival_transfer_day_boundary": {
+    "day": "2024-08-01",
+    "clock": "2024-08-01T18:03:00",
+    "flights": 60,
+    "passengers": 9523,
+    "bags": 8422,
+    "links": {
+      "n": 8422,
+      "invalid": 0
+    },
+    "claim_exits": {
+      "exits": 3070,
+      "early": 1803
+    },
+    "transfers": 805,
+    "transfer_bags": 714,
+    "phantom_airborne": 0,
+    "owner_seed_facts": [
+      {
+        "kind": "FlightsScheduled",
+        "event_id": "seed:2024-08-01:flight:0",
+        "batch": "2024-08-01:flight:0",
+        "topic": "flights.events",
+        "partition": 3,
+        "offset": 50447
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:14",
+        "batch": "2024-08-01:passenger:14",
+        "topic": "passengers.events",
+        "partition": 0,
+        "offset": 632851
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:15",
+        "batch": "2024-08-01:passenger:15",
+        "topic": "passengers.events",
+        "partition": 0,
+        "offset": 632852
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:16",
+        "batch": "2024-08-01:passenger:16",
+        "topic": "passengers.events",
+        "partition": 2,
+        "offset": 631132
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:17",
+        "batch": "2024-08-01:passenger:17",
+        "topic": "passengers.events",
+        "partition": 0,
+        "offset": 632853
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:18",
+        "batch": "2024-08-01:passenger:18",
+        "topic": "passengers.events",
+        "partition": 3,
+        "offset": 631617
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:19",
+        "batch": "2024-08-01:passenger:19",
+        "topic": "passengers.events",
+        "partition": 1,
+        "offset": 697315
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:2",
+        "batch": "2024-08-01:passenger:2",
+        "topic": "passengers.events",
+        "partition": 4,
+        "offset": 631728
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:3",
+        "batch": "2024-08-01:passenger:3",
+        "topic": "passengers.events",
+        "partition": 0,
+        "offset": 632854
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:4",
+        "batch": "2024-08-01:passenger:4",
+        "topic": "passengers.events",
+        "partition": 3,
+        "offset": 631618
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:5",
+        "batch": "2024-08-01:passenger:5",
+        "topic": "passengers.events",
+        "partition": 3,
+        "offset": 631619
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:6",
+        "batch": "2024-08-01:passenger:6",
+        "topic": "passengers.events",
+        "partition": 1,
+        "offset": 697316
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:7",
+        "batch": "2024-08-01:passenger:7",
+        "topic": "passengers.events",
+        "partition": 1,
+        "offset": 697317
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:8",
+        "batch": "2024-08-01:passenger:8",
+        "topic": "passengers.events",
+        "partition": 4,
+        "offset": 631729
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:9",
+        "batch": "2024-08-01:passenger:9",
+        "topic": "passengers.events",
+        "partition": 4,
+        "offset": 631730
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:0",
+        "batch": "2024-08-01:passenger:0",
+        "topic": "passengers.events",
+        "partition": 2,
+        "offset": 631133
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:1",
+        "batch": "2024-08-01:passenger:1",
+        "topic": "passengers.events",
+        "partition": 2,
+        "offset": 631134
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:10",
+        "batch": "2024-08-01:passenger:10",
+        "topic": "passengers.events",
+        "partition": 5,
+        "offset": 764858
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:11",
+        "batch": "2024-08-01:passenger:11",
+        "topic": "passengers.events",
+        "partition": 3,
+        "offset": 631620
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:12",
+        "batch": "2024-08-01:passenger:12",
+        "topic": "passengers.events",
+        "partition": 1,
+        "offset": 697320
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:13",
+        "batch": "2024-08-01:baggage:13",
+        "topic": "baggage.events",
+        "partition": 2,
+        "offset": 913157
+      },
+      {
+        "kind": "PassengersSeeded",
+        "event_id": "seed:2024-08-01:passenger:13",
+        "batch": "2024-08-01:passenger:13",
+        "topic": "passengers.events",
+        "partition": 5,
+        "offset": 764859
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:14",
+        "batch": "2024-08-01:baggage:14",
+        "topic": "baggage.events",
+        "partition": 5,
+        "offset": 910888
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:15",
+        "batch": "2024-08-01:baggage:15",
+        "topic": "baggage.events",
+        "partition": 5,
+        "offset": 910889
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:16",
+        "batch": "2024-08-01:baggage:16",
+        "topic": "baggage.events",
+        "partition": 3,
+        "offset": 913988
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:2",
+        "batch": "2024-08-01:baggage:2",
+        "topic": "baggage.events",
+        "partition": 5,
+        "offset": 910890
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:3",
+        "batch": "2024-08-01:baggage:3",
+        "topic": "baggage.events",
+        "partition": 5,
+        "offset": 910891
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:4",
+        "batch": "2024-08-01:baggage:4",
+        "topic": "baggage.events",
+        "partition": 4,
+        "offset": 914475
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:5",
+        "batch": "2024-08-01:baggage:5",
+        "topic": "baggage.events",
+        "partition": 2,
+        "offset": 913159
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:6",
+        "batch": "2024-08-01:baggage:6",
+        "topic": "baggage.events",
+        "partition": 2,
+        "offset": 913160
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:7",
+        "batch": "2024-08-01:baggage:7",
+        "topic": "baggage.events",
+        "partition": 4,
+        "offset": 914476
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:8",
+        "batch": "2024-08-01:baggage:8",
+        "topic": "baggage.events",
+        "partition": 5,
+        "offset": 910892
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:9",
+        "batch": "2024-08-01:baggage:9",
+        "topic": "baggage.events",
+        "partition": 3,
+        "offset": 913989
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:0",
+        "batch": "2024-08-01:baggage:0",
+        "topic": "baggage.events",
+        "partition": 5,
+        "offset": 910894
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:1",
+        "batch": "2024-08-01:baggage:1",
+        "topic": "baggage.events",
+        "partition": 3,
+        "offset": 913990
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:10",
+        "batch": "2024-08-01:baggage:10",
+        "topic": "baggage.events",
+        "partition": 0,
+        "offset": 913005
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:11",
+        "batch": "2024-08-01:baggage:11",
+        "topic": "baggage.events",
+        "partition": 0,
+        "offset": 913006
+      },
+      {
+        "kind": "BaggageSeeded",
+        "event_id": "seed:2024-08-01:baggage:12",
+        "batch": "2024-08-01:baggage:12",
+        "topic": "baggage.events",
+        "partition": 4,
+        "offset": 914477
+      }
+    ]
+  },
+  "projection_lookup_correction": "PassengerBaggageObservation.id is a passenger ID; use the observed owner passenger cohort, not bag IDs.",
+  "durable_collection_restart": {
+    "n": 1896,
+    "collected": 1896
+  },
+  "final_readiness": {
+    "status": "ready",
+    "kafka": true,
+    "kafka_fresh": true,
+    "upstream": true,
+    "services": {
+      "flight_service": true,
+      "passenger_service": true,
+      "baggage_service": true,
+      "weather_service": true,
+      "incident_service": true,
+      "sim_orchestrator": true,
+      "analysis_service": true,
+      "cost_service": true,
+      "planning_service": true
+    },
+    "build_identity": true,
+    "identity": {
+      "flight_service": true,
+      "passenger_service": true,
+      "baggage_service": true,
+      "weather_service": true,
+      "incident_service": true,
+      "sim_orchestrator": true,
+      "analysis_service": true,
+      "cost_service": true,
+      "planning_service": true
+    }
+  },
+  "passed": true
+}

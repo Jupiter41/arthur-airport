@@ -1,0 +1,51 @@
+{
+  "initial_readiness": {
+    "status": "ready",
+    "kafka": true,
+    "kafka_fresh": true,
+    "upstream": true,
+    "services": {
+      "flight_service": true,
+      "passenger_service": true,
+      "baggage_service": true,
+      "weather_service": true,
+      "incident_service": true,
+      "sim_orchestrator": true,
+      "analysis_service": true,
+      "cost_service": true,
+      "planning_service": true
+    },
+    "build_identity": true,
+    "identity": {
+      "flight_service": true,
+      "passenger_service": true,
+      "baggage_service": true,
+      "weather_service": true,
+      "incident_service": true,
+      "sim_orchestrator": true,
+      "analysis_service": true,
+      "cost_service": true,
+      "planning_service": true
+    }
+  },
+  "restored_clock": {
+    "sim_time": "2024-07-31T08:06:00+00:00",
+    "day_number": 47,
+    "paused": true,
+    "speed_multiplier": 60
+  },
+  "legacy_disposition": {
+    "migration": {
+      "at": "2024-07-29T14:00:00",
+      "lock": 661,
+      "id": "rc14-identity-v1",
+      "quarantined": 333867,
+      "linked": 326005
+    },
+    "retained_quarantine": 333867
+  },
+  "stale_shared_overlay_rejected": [
+    "shared_sha256 mismatch"
+  ],
+  "mixed_revision_rejected": true
+}

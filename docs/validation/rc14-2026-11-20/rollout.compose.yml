@@ -1,0 +1,69 @@
+# Original airport volumes, final immutable image cohort; no source/config overlays.
+services:
+  analysis-service:
+    image: arthur-airport-analysis-service:04038a42ce31-97cc9f554923
+    pull_policy: never
+    healthcheck:
+      start_period: 180s
+      retries: 12
+  api-gateway:
+    image: arthur-airport-api-gateway:04038a42ce31-04f27056f081
+    pull_policy: never
+    healthcheck:
+      start_period: 180s
+      retries: 12
+  cost-service:
+    image: arthur-airport-cost-service:04038a42ce31-0fbb1a0eab3b
+    pull_policy: never
+    healthcheck:
+      start_period: 180s
+      retries: 12
+  sim-orchestrator:
+    image: arthur-airport-sim-orchestrator:04038a42ce31-d9c15d8b18ac
+    pull_policy: never
+    healthcheck:
+      start_period: 180s
+      retries: 12
+  baggage-service:
+    image: arthur-airport-baggage-service:04038a42ce31-e973cb46c108
+    pull_policy: never
+    healthcheck:
+      start_period: 900s
+      retries: 12
+  flight-service:
+    image: arthur-airport-flight-service:04038a42ce31-bcffcf13516d
+    pull_policy: never
+    healthcheck:
+      start_period: 180s
+      retries: 12
+  incident-service:
+    image: arthur-airport-incident-service:04038a42ce31-713c0151eff7
+    pull_policy: never
+    healthcheck:
+      start_period: 180s
+      retries: 12
+  passenger-service:
+    image: arthur-airport-passenger-service:04038a42ce31-1944b2ea2fa0
+    pull_policy: never
+    healthcheck:
+      start_period: 180s
+      retries: 12
+  weather-service:
+    image: arthur-airport-weather-service:04038a42ce31-ac2d48f1fe0a
+    pull_policy: never
+    healthcheck:
+      start_period: 180s
+      retries: 12
+  dashboard:
+    image: arthur-airport-dashboard:04038a42ce31-d08e9246e718
+    pull_policy: never
+  planning-service:
+    image: arthur-airport-planning-service:04038a42ce31-afb213cd0949
+    pull_policy: never
+    healthcheck:
+      start_period: 180s
+      retries: 12
+  kafka:
+    healthcheck:
+      start_period: 180s
+      retries: 12

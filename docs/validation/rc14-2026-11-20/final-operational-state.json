@@ -1,0 +1,54 @@
+{
+  "readiness": {
+    "status": "ready",
+    "kafka": true,
+    "kafka_fresh": true,
+    "upstream": true,
+    "services": {
+      "flight_service": true,
+      "passenger_service": true,
+      "baggage_service": true,
+      "weather_service": true,
+      "incident_service": true,
+      "sim_orchestrator": true,
+      "analysis_service": true,
+      "cost_service": true,
+      "planning_service": true
+    },
+    "build_identity": true,
+    "identity": {
+      "flight_service": true,
+      "passenger_service": true,
+      "baggage_service": true,
+      "weather_service": true,
+      "incident_service": true,
+      "sim_orchestrator": true,
+      "analysis_service": true,
+      "cost_service": true,
+      "planning_service": true
+    }
+  },
+  "status": {
+    "sim_time": "2024-08-02T05:42:00+00:00",
+    "day_number": 49,
+    "paused": false,
+    "speed_multiplier": 60,
+    "watermarks": {
+      "baggage-service": {
+        "sim_time": "2024-08-02T05:42:00",
+        "lag_minutes": 0.0,
+        "stale": false
+      },
+      "flight-service": {
+        "sim_time": "2024-08-02T05:42:00",
+        "lag_minutes": 0.0,
+        "stale": false
+      },
+      "passenger-service": {
+        "sim_time": "2024-08-02T05:37:00",
+        "lag_minutes": 5.0,
+        "stale": false
+      }
+    }
+  }
+}

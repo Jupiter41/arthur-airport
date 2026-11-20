@@ -13,8 +13,8 @@
 
 Before rebuilding queues at startup, baggage-service classifies legacy live and
 archived bags with a missing `passenger_id`, in bounded transactions at its
-persisted simulation checkpoint. Exactly one existing `CARRIES` relationship
-from a Passenger/PassengerArchive proves the ID and permits backfill. No link,
+persisted simulation checkpoint. Exactly one unique existing passenger ID on `CARRIES`
+from Passenger/PassengerArchive nodes proves the ID and permits backfill. No link,
 multiple identities or an absent passenger ID is unprovable: preserve the bag as
 `LegacyBaggage`, recording original live/archive label and identity disposition,
 without changing its status or claiming collection. Preserve scans under

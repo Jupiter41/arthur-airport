@@ -1,0 +1,11 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/chevallier/Documents/dev/PERSOS/arthur-airport
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests/rc14_transactions/test_legacy_identity.py .                        [100%]
+
+============================== 1 passed in 0.76s ===============================
