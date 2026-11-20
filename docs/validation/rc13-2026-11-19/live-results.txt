@@ -1,0 +1,26 @@
+PASS cold startup: configured and owner-observed lanes 8/12/8; sorting 5400/h
+PASS explicit owner application and stable-ID replay: observed lanes A=3, saved request A=4
+ Container art-rc13-verified-baggage-service-1 Restarting 
+ Container art-rc13-verified-sim-orchestrator-1 Restarting 
+ Container art-rc13-verified-passenger-service-1 Restarting 
+ Container art-rc13-verified-api-gateway-1 Restarting 
+ Container art-rc13-verified-api-gateway-1 Started 
+ Container art-rc13-verified-baggage-service-1 Started 
+ Container art-rc13-verified-sim-orchestrator-1 Started 
+ Container art-rc13-verified-passenger-service-1 Started 
+PASS durable restart: stale preferences remain requested; owner lane override survives
+ Container art-rc13-verified-baggage-service-1 Stopping 
+ Container art-rc13-verified-baggage-service-1 Stopped 
+ Container art-rc13-verified-neo4j-1 Waiting 
+ Container art-rc13-verified-kafka-1 Waiting 
+ Container art-rc13-verified-neo4j-1 Healthy 
+ Container art-rc13-verified-kafka-1 Healthy 
+ Container art-rc13-verified-kafka-init-1 Starting 
+ Container art-rc13-verified-kafka-init-1 Started 
+ Container art-rc13-verified-kafka-init-1 Waiting 
+ Container art-rc13-verified-kafka-init-1 Exited 
+ Container art-rc13-verified-baggage-service-1 Starting 
+ Container art-rc13-verified-baggage-service-1 Started 
+PASS owner outage: effective capacity unknown, saved 1800 never substituted
+PASS future manifest application: day one remains 60 flights; next day owner has 80
+PASS image/source fingerprints for all changed Python owners; built gateway and dashboard recorded

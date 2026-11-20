@@ -3,6 +3,12 @@
 Review date: 2026-11-16 · Reviewed commit: `1e7b16d` (main, clean)
 Reviewed stack: `art-ldt-g6-*` compose project. It had been running continuously for about 23 simulated days at 60× (sim day 23–24, 2024-07-07 → 07-08).
 
+> **RC13 closed — 2026-11-20.** Initial settings derive from airport configuration;
+> saved requests and application modes are distinct from effective owner observations.
+> Built-image cold start, explicit lane application/replay, durable restart, owner
+> outage and future-manifest checks pass.
+> [Closure evidence](docs/validation/rc13-2026-11-19/README.md). RC14/RC15 remain open.
+
 > **RC11 closed — 2026-11-19.** Late checkpoint commit errors now participate
 > in retry/acknowledgement policy, and failed midnight barriers cannot advance
 > into an unseeded day. Seven real database/Kafka fault/profile regressions,
@@ -48,8 +54,9 @@ problems share one cause.
 ## 0. TL;DR
 
 The original review identified RC1–RC11. Closure revalidation adds RC12–RC20, including
-promotion of five unresolved lower-level findings. RC1, RC7, RC8 and RC12 are now
-**closed** with the 2026-11-19 evidence below; RC11 closure is also recorded above. Previously
+promotion of five unresolved lower-level findings. RC1, RC7, RC8, RC11 and RC12
+are closed with 2026-11-19 evidence; RC13 is closed with the completed
+2026-11-20 validation below. Previously
 completed implementation work is retained, but the review remains open until the new
 closure criteria are met. See the [revalidation report](docs/validation/data-review-2026-11-17/README.md).
 
@@ -67,7 +74,7 @@ closure criteria are met. See the [revalidation report](docs/validation/data-rev
 | RC10 | The gateway builds data-source health itself (hardcoded) instead of the adapters reporting it                                                                        | ADS-B shown as `adsb.lol · active` while `ADSB_ENABLED=false` and 0 aircraft                                                                                       | 🟡 Low–Med | ✅ Done     | Owners report a `SourceHealth` block (enabled, items, wall ingest/error, sim observation); gateway derives `unavailable/disabled/error/stale/active` with a reason and clock-labelled timestamps; new `GET /flights/adsb/source` (`83feb91`). Unit-tested                                                                                                                                                                                                                                                                                                    |
 | RC11 | Planner traps, coalesced catch-up and clock checkpoint/day-boundary failures | Historical six-hour owner stall followed by whole-airport auto-pause | 🔴 High | ✅ Closed | Original bounded queries and ≤5-minute transactions retained. Checkpoint results are consumed inside retry policy; failed midnight barriers pause before the new day and retry on resume. Real six-hour partial-crash recovery, 40k-history PROFILE checks, database interruption and moving-clock convergence pass. [2026-11-19 evidence](docs/validation/rc11-2026-11-19/README.md). RC16 poison policy and RC14 rollout remain separate. |
 | RC12 | Arrival baggage observation durability and lifecycle guards | Historical volatile collection and premature carousel positioning | 🔴 High | ✅ Closed | Observation/inbox/outbox commit before ACK; early inputs persist independently of passenger creation, claim lifecycle gates location, and owner ticks fence source timestamps. Actual BULK planner → Kafka → passenger ACK/death/restart exits claim. [Closure evidence](docs/validation/rc7-rc8-2026-11-19/README.md). |
-| RC13 | Settings API defaults diverge from owner configuration                                                                                                               | Settings show lanes 4/3/4 and sorting 1,800/h; actual owners use 8/12/8 and 5,400/h                                                                                | 🟠 Medium  | ❌ Open     | Report B6; settings must report effective values and distinguish requested changes; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                               |
+| RC13 | Settings defaults and saved preferences diverged from effective owners | Historical lanes 4/3/4 and sorting 1,800/h versus owners 8/12/8 and 5,400/h | 🟠 Medium | ✅ Closed | Config-derived initial preferences; explicit application modes; gateway owner observations fail to unknown on outage. UI uses durable owner lane commands and labels future/configuration-only/stored-only requests. Built-image cold start, restart, replay and future-manifest application pass. [Closure evidence](docs/validation/rc13-2026-11-19/README.md). RC14 rollout remains separate. |
 | RC14 | Owner images and shared libraries are deployed at different revisions                                                                                                | 13 source files differ across four images; no live seed manifests despite current shared mounts                                                                    | 🔴 High    | ❌ Open     | Report B7; coherent rollout and legacy-data disposition required; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | RC15 | Validation coverage and fixtures lag the architecture                                                                                                                | Unit checks miss real startup failures; 3 integration and 2 transaction fixtures fail                                                                              | 🟠 Medium  | ❌ Open     | Report validation gates; no closure from temporary application workarounds; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | RC16 | Consumer failures retry indefinitely without quarantine or recovery policy                                                                                           | One valid inbound event stalls passenger-service by 124 sim-minutes                                                                                                | 🔴 High    | ❌ Open     | Promoted L2; reproduced by B2, not merely a hypothetical poison payload; [report](docs/validation/data-review-2026-11-17/README.md)                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -957,8 +964,9 @@ transaction pool was doubled (2G heap), and `seed_day` moved off the tick path (
 
 ### RC13 — Settings describe a different model from the owning services 🟠
 
-> **Status: ❌ Open — added by closure revalidation (2026-11-17).**
-> [Full report](docs/validation/data-review-2026-11-17/README.md). No application fix was made during revalidation.
+> **Status: ✅ Closed — 2026-11-20.** Implementation `69e90b7`;
+> [built-image closure evidence](docs/validation/rc13-2026-11-19/README.md).
+> The 2026-11-17 observations below are retained as historical evidence.
 
 **Evidence.** Report B6. The settings API and browser show lanes A/B/C = 4/3/4 and sorting = 1,800/h. Owner responses in the same run show 8/12/8 and 5,400/h.
 
@@ -967,6 +975,22 @@ transaction pool was doubled (2G heap), and `seed_day` moved off the tick path (
 **Root cause.** SimSettings retains independent hardcoded defaults after the model was resized in airport.yaml. The exposed settings are not a reliable statement of effective owner configuration.
 
 **Closure criteria.** Derive initial settings from the authoritative configuration and distinguish requested/pending settings from applied owner state. Verify fresh startup, durable restart and settings application against owner observations. The RC5/RC6 operational fixes stay recorded as implemented; this finding tracks the remaining configuration contract.
+
+**Resolution.** Initial lane/sorting/screening preferences derive from shared
+airport configuration. GET/PATCH expose saved `requested` values and application
+modes; the gateway separately queries effective passenger/baggage configuration.
+Owner outages yield null effective values. The UI uses the passenger owner
+command for lanes, shows static capacities read-only, and labels future-manifest
+and non-executing legacy preferences explicitly.
+
+**Validation.** 1,496 Python tests, 44 gateway tests, 117 dashboard tests, both
+TypeScript/production builds and Ruff pass. A fresh built-image airport confirms
+8/12/8 lanes and 5,400 bags/hour. Stale saved preferences never replace owner
+values; an explicit A=3 command and its stable-ID replay survive restart. Stopping
+the baggage owner reports unknown capacity. A saved daily-flight request of 80
+creates 80 owner flights for the next day while the existing day remains at 60.
+All changed Python owners and compiled gateway JavaScript match the recorded
+builds. RC14 rollout and RC15 broader CI remain open.
 
 ---
 
@@ -1139,14 +1163,15 @@ remaining order of work; see the [report](docs/validation/data-review-2026-11-17
    guards and acknowledgement/crash, late-input, BULK and replay checks pass.
 3. **RC1 — complete (2026-11-19):** terminal retention, diverted-flight
    disposition and restart/age-based regressions are green; see closure evidence.
-4. **RC13 + RC17–RC20:** reconcile effective settings, financial clock sanity,
-   UI replay semantics, weather/incident atomicity and UTC normalization.
+4. **RC17–RC20:** financial clock sanity, UI replay semantics, weather/incident
+   atomicity and UTC normalization. RC13 effective-settings reconciliation is
+   complete (2026-11-20); see its built-image closure evidence.
 5. **RC15:** repair stale fixtures and pass all mandatory gates without the
    disposable application/test workarounds. Test fixes do not resolve application
    defects by themselves.
 6. **RC14:** deploy a coherent fixed revision, record the legacy-data disposition,
    and remeasure daytime flows, transfers, pickup, outages/replay, day-boundary
-   seeding and retention. RC1/RC7/RC8/RC12 are closed in the checkout; close
+   seeding and retention. RC1/RC7/RC8/RC11/RC12/RC13 are closed in the checkout; close
    remaining findings against their
    individual evidence and closure criteria, or explicitly record accepted
    exclusions as remaining risks rather than “fixed”.

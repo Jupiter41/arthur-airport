@@ -36,6 +36,8 @@ Routes are grouped by service, listing the HTTP method, path, and a one-line des
 | `GET`  | `/api/v1/passengers/search`         | Search passengers by PNR or name                                      |
 | `GET`  | `/api/v1/passengers/{passenger_id}` | Full passenger detail with timeline and alerts                        |
 | `GET`  | `/api/v1/flow/summary`              | Real-time passenger flow summary across all zones                     |
+| `GET`  | `/api/v1/flow/configuration`        | Effective owner lane overrides/defaults and MCT, with simulation time |
+| `POST` | `/api/v1/flow/security/{terminal}/lanes` | Durable lane command and receipt; unavailable on public deployments |
 | `GET`  | `/api/v1/flow/heatmap`              | Zone-level passenger density for the heatmap dashboard                |
 | `GET`  | `/api/v1/flow/forecast`             | LightGBM queue depth forecast per terminal (up to 90 sim-min)         |
 | `GET`  | `/api/v1/connections/at-risk`       | All connecting passengers currently at risk of missing connection     |
@@ -52,6 +54,7 @@ Routes are grouped by service, listing the HTTP method, path, and a one-line des
 | Method | Path                           | Description                                                       |
 | ------ | ------------------------------ | ----------------------------------------------------------------- |
 | `GET`  | `/api/v1/baggage`              | List baggage items with filters (flight, passenger, status, zone) |
+| `GET`  | `/api/v1/baggage/configuration` | Initialized owner screening count, nominal sorting capacity and DG rate |
 | `GET`  | `/api/v1/baggage/{baggage_id}` | Full item detail with scan history                                |
 | `GET`  | `/api/v1/baggage/tag/{tag}`    | Look up baggage by 10-digit barcode tag                           |
 | `GET`  | `/api/v1/flow/summary`         | Real-time baggage flow summary across the handling system         |
@@ -104,6 +107,8 @@ Routes are grouped by service, listing the HTTP method, path, and a one-line des
 | Method  | Path                   | Description                                                        |
 | ------- | ---------------------- | ------------------------------------------------------------------ |
 | `GET`   | `/api/v1/sim/status`   | Full current simulation status (time, speed, day, weather, counts) |
+| `GET`   | `/api/v1/sim/settings` | Saved requests/application modes; gateway adds effective owner observations |
+| `PATCH` | `/api/v1/sim/settings` | Checkpoint preferences; response describes application, not owner execution |
 | `PATCH` | `/api/v1/sim/speed`    | Change simulation speed multiplier (1×, 10×, 60×, 600×, 3600×)     |
 | `POST`  | `/api/v1/sim/pause`    | Pause the simulation clock                                         |
 | `POST`  | `/api/v1/sim/resume`   | Resume after pause                                                 |

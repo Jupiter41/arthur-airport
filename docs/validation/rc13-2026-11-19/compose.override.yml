@@ -1,0 +1,29 @@
+# Guarded, built images; no service-source overlays. Fresh isolated project volumes.
+services:
+  flight-service:
+    image: arthur-airport-flight-service:latest
+  passenger-service:
+    image: arthur-airport-passenger-service:latest
+    environment:
+      FORECAST_TRAINING_ENABLED: 'false'
+  baggage-service:
+    image: arthur-airport-baggage-service:latest
+  sim-orchestrator:
+    image: arthur-airport-sim-orchestrator:latest
+    environment:
+      DAILY_FLIGHT_TARGET: '60'
+      SIM_SPEED_MULTIPLIER: '60'
+  weather-service:
+    image: arthur-airport-weather-service:latest
+  incident-service:
+    image: arthur-airport-incident-service:latest
+  analysis-service:
+    image: arthur-airport-analysis-service:latest
+  cost-service:
+    image: arthur-airport-cost-service:latest
+  planning-service:
+    image: arthur-airport-planning-service:latest
+  api-gateway:
+    image: arthur-airport-api-gateway:latest
+  dashboard:
+    image: arthur-airport-dashboard:latest

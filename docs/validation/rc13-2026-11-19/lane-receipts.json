@@ -1,0 +1,20 @@
+{
+  "command": {
+    "event_type": "CommandExecuted",
+    "receipt": {
+      "command_id": "rc13-live-lanes-A",
+      "command_type": "OpenSecurityLane",
+      "reason": null
+    },
+    "applied": true
+  },
+  "replay": {
+    "event_type": "CommandExecuted",
+    "receipt": {
+      "command_id": "rc13-live-lanes-A",
+      "command_type": "OpenSecurityLane",
+      "reason": null
+    },
+    "applied": false
+  }
+}

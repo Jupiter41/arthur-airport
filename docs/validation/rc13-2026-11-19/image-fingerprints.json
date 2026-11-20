@@ -1,0 +1,34 @@
+{
+  "sim-orchestrator": {
+    "image": "sha256:4e4dccd4f1ca35ca5a2ec6f8483e494b255d6f7cb043532be155d6ef9e9afee1",
+    "sha256": {
+      "services/settings.py": "cf9a6e85b747104d0c370c95c3ef5d5529e70800682ded395f9a824879c59cfc",
+      "routers/sim.py": "6f0dd65c908719ed074f84d2fd77e2c315fa0946aeddfd5407c5014723e6f720"
+    }
+  },
+  "passenger-service": {
+    "image": "sha256:ef5c41f93bc0b0ed336f9c93b032386ff866fd9d6d1edb82204543a0668e14d3",
+    "sha256": {
+      "routers/passengers.py": "f0b9a422a33edb66b09b21084d185f4a1e91387a76fafc7d7a9b90f678821054"
+    }
+  },
+  "baggage-service": {
+    "image": "sha256:ed446e511e3474620dd7147188b8e66082b4334e67f580aa27ebc940883a8dbf",
+    "sha256": {
+      "routers/baggage.py": "aa0844ea3e0f715e70a80e5bb24c269d4dd48716d84b4ad94c4ef470396d1dc6"
+    }
+  },
+  "api-gateway": {
+    "image": "sha256:d9d550ab8b62f10243f8f72fa695680b44e08b55aacdf9337efbddeef9c5d2f6",
+    "sha256": {
+      "dist/settings.js": "2449a6586939b8fc6280049d5d061b9d4ca44723a14e2a4d88edd1def36558a3",
+      "dist/index.js": "0eb8d6d2b275b61da7ccbd3667c59e926a1c03af28df23681584016e6940cb81"
+    }
+  },
+  "dashboard": {
+    "image": "sha256:ca9299228ba6e56024eacb16452011810fae07344b8b19db05ccce84664aa62d",
+    "sha256": {
+      "/usr/share/nginx/html/index.html": "0163696b1992cf6567a04fd5dc90ef9dfa36a2e1f43e12636eedfa80ed6d0946"
+    }
+  }
+}

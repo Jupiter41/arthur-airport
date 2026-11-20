@@ -1,0 +1,28 @@
+/var/lib/docker: 35.1 GiB free
+/var/lib/docker: 35.1 GiB free
+Docker builder filesystem: 80.3 GiB free
+ Image arthur-airport-passenger-service Built 
+/var/lib/docker: 34.3 GiB free
+Docker builder filesystem: 80.2 GiB free
+ Image arthur-airport-baggage-service Built 
+/var/lib/docker: 34.2 GiB free
+Docker builder filesystem: 80.2 GiB free
+ Image arthur-airport-sim-orchestrator Built 
+/var/lib/docker: 34.1 GiB free
+Docker builder filesystem: 80.2 GiB free
+ Image arthur-airport-flight-service Built 
+/var/lib/docker: 34.0 GiB free
+Docker builder filesystem: 80.2 GiB free
+ Image arthur-airport-incident-service Built 
+/var/lib/docker: 34.0 GiB free
+Docker builder filesystem: 80.1 GiB free
+ Image arthur-airport-weather-service Built 
+/var/lib/docker: 33.9 GiB free
+Docker builder filesystem: 80.1 GiB free
+ Image arthur-airport-api-gateway Built 
+/var/lib/docker: 33.8 GiB free
+Docker builder filesystem: 80.1 GiB free
+ Image arthur-airport-cost-service Built 
+/var/lib/docker: 33.6 GiB free
+Docker builder filesystem: 80.0 GiB free
+ Image arthur-airport-dashboard Built 

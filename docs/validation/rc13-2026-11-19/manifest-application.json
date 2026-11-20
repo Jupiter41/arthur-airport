@@ -1,0 +1,45 @@
+{
+  "initial_daily_request": 60,
+  "saved_future_request": 80,
+  "existing_day_flights_after_change": 60,
+  "next_day_owner_flights": 80,
+  "sim_status": {
+    "airport": {
+      "name": "Arthur International Airport",
+      "iata": "ART",
+      "icao": "KART",
+      "timezone": "America/Arthur"
+    },
+    "running": true,
+    "paused": true,
+    "sim_time": "2024-06-15T23:51:00+00:00",
+    "real_time": "2026-11-20T12:52:49.554535+00:00",
+    "speed_multiplier": 3600,
+    "mode": "BULK",
+    "watermarks": {
+      "baggage-service": {
+        "sim_time": "2024-06-15T23:39:00",
+        "lag_minutes": 12.0,
+        "stale": false
+      },
+      "flight-service": {
+        "sim_time": "2024-06-15T23:51:00",
+        "lag_minutes": 0.0,
+        "stale": false
+      },
+      "passenger-service": {
+        "sim_time": "2024-06-15T23:39:00",
+        "lag_minutes": 12.0,
+        "stale": false
+      }
+    },
+    "day_number": 1,
+    "tick_number": 191,
+    "real_elapsed_seconds": 3,
+    "sim_elapsed_minutes": 191,
+    "active_incidents": 0,
+    "weather_category": "CAVOK",
+    "flights_today": 60,
+    "passengers_today": 10058
+  }
+}
