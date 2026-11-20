@@ -5,6 +5,16 @@ Host: `arthur@arthurrasp.local`. Deployment directory: `/opt/arthur-airport`.
 The deployment contains the current local working tree; it has not been committed
 or pushed by this task. The original development Compose profile is separate.
 
+## Revision stamping for new builds (RC14)
+
+Application builds now use the repository root and bake shared code/configuration.
+For explicit Pi builds, pass --build-arg ART_REVISION=<clean-git-sha> and
+--build-arg ART_SOURCE_DIRTY=false to every application build. An unstamped image
+fails readiness intentionally. Use one revision for the cohort, retain image IDs,
+and inspect internal /build responses and frontend /build.json before accepting
+rollout. RC14 validation targets the original local art-ldt-g6 airport; it does
+not claim a deployment to this remote host.
+
 ## Access and shared control
 
 Visitors automatically receive a read-only viewer session. Operator ID `arthur`

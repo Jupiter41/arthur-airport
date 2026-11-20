@@ -22,6 +22,7 @@ jobs:
         run: |
           ruff check services/_common/
           ruff check tests/live_transactions/
+          ruff check tests/rc14_transactions/
           ruff check services/flight-service/
           ruff check services/passenger-service/
           ruff check services/baggage-service/
@@ -110,11 +111,16 @@ jobs:
           python-version: "3.11"
       - name: Install integration dependencies
         run: pip install pytest pytest-asyncio httpx requests neo4j
-      - name: Build and start the full synthetic stack
-        run: docker compose up -d --build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build and start the stamped full synthetic stack
+        run: python scripts/docker_storage.py up
       - name: Require readiness and run all live integration tests
         run: python scripts/validate_stack.py --timeout 300 --report stack-readiness.json
         timeout-minutes: 15
+      - name: Require a coherent immutable application cohort
+        run: python scripts/verify_builds.py --project arthur-airport --report deployed-builds.json
       - name: Collect service status and logs
         if: always()
         run: |
@@ -124,8 +130,11 @@ jobs:
         if: always()
         with:
           name: full-stack-validation
+          include-hidden-files: true
           path: |
             stack-readiness.json
+            deployed-builds.json
+            .art-build-manifest.json
             stack-status.txt
             stack-services.log
       - name: Tear down disposable CI stack
@@ -149,7 +158,7 @@ jobs:
           python-version: "3.11"
       - run: pip install pytest
       - name: Build domain, clock and projection recovery workers
-        run: docker compose build flight-service passenger-service baggage-service analysis-service sim-orchestrator
+        run: python scripts/docker_storage.py build flight-service passenger-service baggage-service analysis-service sim-orchestrator
       - name: Start disposable Neo4j and Kafka
         run: |
           docker compose up -d --wait neo4j kafka
@@ -172,3 +181,29 @@ jobs:
       - name: Tear down disposable G1 stack
         if: always()
         run: docker compose down -v
+
+  legacy-disposition:
+    name: RC14 legacy identity rollback and replay
+    runs-on: ubuntu-latest
+    needs: [lint-python, unit-tests]
+    timeout-minutes: 10
+    env:
+      RC14_MIGRATION_TEST_URI: bolt://localhost:7688
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest pytest-asyncio -r services/baggage-service/requirements.txt
+      - name: Start isolated migration database
+        run: docker compose -p art-rc14-ci -f tests/rc14_transactions/compose.yml up -d --wait
+      - name: Require real migration rollback and idempotency
+        run: python -m pytest tests/rc14_transactions -q --junitxml=legacy-disposition.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legacy-disposition
+          path: legacy-disposition.xml
+      - name: Tear down disposable migration database
+        if: always()
+        run: docker compose -p art-rc14-ci -f tests/rc14_transactions/compose.yml down -v
