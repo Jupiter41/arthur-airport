@@ -18,7 +18,7 @@ export function treeHash(root, kind) {
     const include = kind === "shared" ? [".py", ".mjs"].includes(extname(path)) :
       kind === "config" ? [".yaml", ".yml", ".json"].includes(extname(path)) :
       kind === "source" ? [".ts", ".tsx", ".json", ".html", ".css"].includes(extname(path)) :
-      kind === "gateway" ? extname(path) === ".js" : basename(path) !== "build.json";
+      kind === "gateway" ? [".js", ".json"].includes(extname(path)) : basename(path) !== "build.json";
     if (include) digest.update(name + "\0" + createHash("sha256").update(readFileSync(path)).digest("hex") + "\n");
   }
   return digest.digest("hex");
