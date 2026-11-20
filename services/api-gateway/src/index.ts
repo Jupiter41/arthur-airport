@@ -10,6 +10,7 @@ import { setupProxy } from "./proxy";
 import { handleAggregate } from "./aggregate";
 import { handleDataSources } from "./dataSources";
 import { handleSettings } from "./settings";
+import { handleBuild } from "./buildIdentity";
 import { handleServicesHealth, handleReady } from "./health";
 import { setupKafka, shutdownKafka } from "./kafka";
 import { setupWebSocket } from "./websocket";
@@ -76,6 +77,7 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 app.get("/ready", handleReady);
+app.get("/build", handleBuild);
 
 app.get("/metrics", async (_req: Request, res: Response) => {
   res.set("Content-Type", client.register.contentType);

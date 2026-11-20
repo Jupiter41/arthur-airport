@@ -36,9 +36,6 @@ x-python: &python
   cap_drop: [ALL]
   read_only: true
   tmpfs: ["/tmp:size=16m,mode=1777"]
-  volumes:
-    - ./services/_common:/app/_common:ro
-    - ./config:/app/config:ro
   depends_on:
     neo4j: {condition: service_healthy}
     kafka-init: {condition: service_completed_successfully}
@@ -127,13 +124,13 @@ services:
 
   flight-service:
     <<: *python
-    build: ./services/flight-service
+    build: {context: ., dockerfile: services/flight-service/Dockerfile}
     environment:
       <<: *environment
       ADSB_ENABLED: "false"
   passenger-service:
     <<: *python
-    build: ./services/passenger-service
+    build: {context: ., dockerfile: services/passenger-service/Dockerfile}
     mem_limit: 320m
     environment:
       <<: *environment
@@ -141,19 +138,19 @@ services:
       FORECAST_TRAINING_ENABLED: "false"
   baggage-service:
     <<: *python
-    build: ./services/baggage-service
+    build: {context: ., dockerfile: services/baggage-service/Dockerfile}
   weather-service:
     <<: *python
-    build: ./services/weather-service
+    build: {context: ., dockerfile: services/weather-service/Dockerfile}
     environment:
       <<: *environment
       WEATHER_SOURCE: simulated
   incident-service:
     <<: *python
-    build: ./services/incident-service
+    build: {context: ., dockerfile: services/incident-service/Dockerfile}
   sim-orchestrator:
     <<: *python
-    build: ./services/sim-orchestrator
+    build: {context: ., dockerfile: services/sim-orchestrator/Dockerfile}
     mem_limit: 192m
     environment:
       <<: *environment
@@ -176,7 +173,7 @@ services:
       start_period: 180s
   analysis-service:
     <<: *python
-    build: {context: ./services/analysis-service, dockerfile: Dockerfile.pi}
+    build: {context: ., dockerfile: services/analysis-service/Dockerfile.pi}
     mem_limit: 256m
     environment:
       <<: *environment
@@ -191,11 +188,11 @@ services:
       start_period: 180s
   cost-service:
     <<: *python
-    build: ./services/cost-service
+    build: {context: ., dockerfile: services/cost-service/Dockerfile}
 
   api-gateway:
     <<: *limits
-    build: ./services/api-gateway
+    build: {context: ., dockerfile: services/api-gateway/Dockerfile}
     user: node
     networks: [domain, frontend]
     mem_limit: 192m
@@ -222,7 +219,8 @@ services:
   dashboard:
     <<: *limits
     build:
-      context: ./dashboards/art-dashboard
+      context: .
+      dockerfile: dashboards/art-dashboard/Dockerfile
       args: {VITE_PUBLIC_DEPLOYMENT: "true"}
     networks: [frontend, traefik-public]
     mem_limit: 64m

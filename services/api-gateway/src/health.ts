@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { buildRequired, getBuildIdentity, matchesBuild, BuildIdentity } from "./buildIdentity";
 import { UPSTREAM } from "./proxy";
 import { isKafkaConnected, isKafkaFresh, getLastMessageAt } from "./kafka";
 
@@ -76,14 +77,29 @@ export async function handleReady(_req: Request, res: Response): Promise<void> {
   );
   const services = Object.fromEntries(checks);
   const allUpstreamsOk = checks.every(([, ok]) => ok);
+  const localBuild = getBuildIdentity();
+  const identity = buildRequired() ? await Promise.all(Object.entries(SERVICE_KEYS).map(async ([name, key]) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    try {
+      const response = await fetch(`${UPSTREAM[key]}/build`, {signal:controller.signal, redirect:"error"});
+      if (!response.ok) { await response.body?.cancel(); return [name, false] as const; }
+      const owner = await response.json() as BuildIdentity;
+      return [name, matchesBuild(owner,localBuild,name.replaceAll("_", "-"))] as const;
+    } catch { return [name,false] as const; }
+    finally { clearTimeout(timer); }
+  })) : [];
+  const buildOk = !buildRequired() || (localBuild.integrity && identity.every(([,ok]) => ok));
 
-  if (!kafkaOk || !kafkaFresh || !allUpstreamsOk) {
+  if (!kafkaOk || !kafkaFresh || !allUpstreamsOk || !buildOk) {
     res.status(503).json({
       status: "not ready",
       kafka: kafkaOk,
       kafka_fresh: kafkaFresh,
       upstream: allUpstreamsOk,
       services,
+      build_identity: buildOk,
+      identity: Object.fromEntries(identity),
     });
     return;
   }
@@ -94,5 +110,7 @@ export async function handleReady(_req: Request, res: Response): Promise<void> {
     kafka_fresh: kafkaFresh,
     upstream: allUpstreamsOk,
     services,
+    build_identity: buildOk,
+    identity: Object.fromEntries(identity),
   });
 }

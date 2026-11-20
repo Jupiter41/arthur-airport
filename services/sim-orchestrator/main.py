@@ -2,6 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+from _common.build_identity import install_build_identity
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -215,6 +216,8 @@ app = FastAPI(title="sim-orchestrator", lifespan=lifespan)
 
 from _common._tracing import init_tracing  # noqa: E402
 init_tracing(app, "sim-orchestrator")
+
+install_build_identity(app, "sim-orchestrator")
 
 Instrumentator().instrument(app).expose(app)
 

@@ -7,16 +7,25 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY services/cost-service/requirements.txt .
 # BuildKit cache mount: pip's wheel/HTTP cache lives outside the image layers,
 # so rebuilds reuse downloads even when the layer itself is invalidated.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --only-binary=:all: -r requirements.txt
 
-COPY . .
+COPY services/cost-service/ .
+COPY services/_common/ /app/_common/
+COPY config/ /app/config/
 
 # Fixed packaging tools: keep inherited base-image advisories out of runtime.
 RUN pip install --no-cache-dir --only-binary=:all: pip==26.2.1 setuptools==83.0.0
+
+
+ARG ART_REVISION=unversioned
+ARG ART_SOURCE_DIRTY=true
+LABEL org.opencontainers.image.revision=$ART_REVISION
+RUN python /app/_common/build_identity.py --service cost-service --revision "$ART_REVISION" --dirty "$ART_SOURCE_DIRTY"
+ENV ART_REQUIRE_BUILD_IDENTITY=1
 
 EXPOSE 8008
 

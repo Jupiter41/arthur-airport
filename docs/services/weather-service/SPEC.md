@@ -1,5 +1,7 @@
 # weather-service — specification
 
+Build identity and readiness follow the [RC14 immutable deployment contract](../../infra/DOCKER.md#coherent-builds-and-rollout-rc14-2026-11-20), including `GET /build`.
+
 **Language:** Python 3.11+  
 **Framework:** FastAPI  
 **Port:** 8004  

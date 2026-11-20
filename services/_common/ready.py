@@ -53,6 +53,10 @@ async def readiness_response(checks: dict[str, CheckFn]) -> dict[str, object]:
                 "consumer": is_consumer_running,
             })
     """
+    import os
+    if os.getenv("ART_REQUIRE_BUILD_IDENTITY") == "1":
+        from _common.build_identity import identity_ready
+        checks = {**checks, "build_identity": identity_ready}
     results = await evaluate_readiness(checks)
     if all(results.values()):
         return {"status": "ready", **results}

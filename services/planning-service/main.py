@@ -11,6 +11,7 @@ import os
 import threading
 
 import structlog
+from _common.build_identity import install_build_identity
 from fastapi import FastAPI, HTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -77,6 +78,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+install_build_identity(app, "planning-service")
 
 Instrumentator().instrument(app).expose(app)
 

@@ -95,6 +95,9 @@ def build(profiles: list[str], services: list[str], disk_path: Path) -> None:
     unknown = set(services) - definitions.keys()
     if unknown:
         raise RuntimeError(f"Unknown services: {', '.join(sorted(unknown))}")
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal", "--", "services", "config", "dashboards", "docker-compose.yml", "docker-compose.pi.yml", ".dockerignore", "scripts"], cwd=ROOT, text=True).strip())
+    built_images: dict[str, dict[str, str]] = {}
     selected: list[str] = []
 
     def include(name: str) -> None:
@@ -111,7 +114,20 @@ def build(profiles: list[str], services: list[str], disk_path: Path) -> None:
             continue
         host_preflight(disk_path)
         ensure_builder()
-        docker(*compose, "build", "--builder", BUILDER, service)
+        docker(*compose, "build", "--build-arg", f"ART_REVISION={revision}",
+               "--build-arg", f"ART_SOURCE_DIRTY={str(dirty).lower()}",
+               "--builder", BUILDER, service)
+        if (ROOT / "services" / service).is_dir() or service == "dashboard":
+            image = definitions[service].get("image", f"{config['name']}-{service}")
+            image_id = docker("image", "inspect", "--format", "{{.Id}}", image, capture=True).stdout.strip()
+            repository = image.rsplit(":", 1)[0] if ":" in image.rsplit("/", 1)[-1] else image
+            immutable = f"{repository}:{revision[:12]}-{image_id.removeprefix('sha256:')[:12]}"
+            docker("image", "tag", image, immutable)
+            built_images[service] = {"image": immutable, "image_id": image_id}
+    if built_images:
+        (ROOT / ".art-build-manifest.json").write_text(json.dumps({
+            "schema_version": 1, "revision": revision, "dirty": dirty, "services": built_images,
+        }, indent=2) + "\n")
 
 
 def main() -> int:

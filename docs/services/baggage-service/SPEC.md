@@ -9,6 +9,28 @@
 
 ## 1. Domain responsibilities
 
+### Legacy identity disposition (RC14)
+
+Before rebuilding queues at startup, baggage-service classifies legacy live and
+archived bags with a missing `passenger_id`, in bounded transactions at its
+persisted simulation checkpoint. Exactly one existing `CARRIES` relationship
+from a Passenger/PassengerArchive proves the ID and permits backfill. No link,
+multiple identities or an absent passenger ID is unprovable: preserve the bag as
+`LegacyBaggage`, recording original live/archive label and identity disposition,
+without changing its status or claiming collection. Preserve scans under
+`LegacyScanEvent` and all properties/relationships. Remove live/archive and
+derived queue/review labels so ordinary ticks and retention do not act on it.
+Quarantined history has no automatic purge policy; its barcode remains reserved
+by the monotonic tag allocator. No passenger or relationship
+is invented. A missing owner checkpoint fails migration if candidates exist.
+
+Each migration batch stages `BaggageIdentityDisposition` with linked/quarantined
+IDs and simulation time in the same transaction as its changes and durable
+`LegacyBaggageDisposition` counters. Retry/crash cannot duplicate disposition.
+Fresh manifest bags carry identity and never enter this migration. Startup must
+complete classification before readiness. `/api/v1/baggage/legacy-summary`
+reports the durable migration totals and retained quarantine count.
+
 `GET /api/v1/baggage/configuration` reports `sim_time` and `values` containing
 the initialized conveyor's screening-unit count and sorting throughput per hour,
 and the screening engine's DG false-positive rate. These are nominal owner

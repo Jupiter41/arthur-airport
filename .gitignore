@@ -65,3 +65,6 @@ MISC.md
 .claude
 operator-credentials.txt
 audit-production.json
+
+# Local immutable image deployment lock (copy to validation evidence when promoting).
+.art-build-manifest.json

@@ -10,6 +10,7 @@ from _common import neo4j_client
 logger = logging.getLogger(__name__)
 
 CONSTRAINTS = [
+    "CREATE CONSTRAINT legacy_baggage_disposition_id IF NOT EXISTS FOR (m:LegacyBaggageDisposition) REQUIRE m.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_tag_sequence_id IF NOT EXISTS FOR (s:BaggageTagSequence) REQUIRE s.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_index_migration_id IF NOT EXISTS FOR (m:BaggageIndexMigration) REQUIRE m.id IS UNIQUE",
     "CREATE CONSTRAINT baggage_projection_id IF NOT EXISTS FOR (p:BaggageProjection) REQUIRE p.id IS UNIQUE",
@@ -23,6 +24,7 @@ CONSTRAINTS = [
 ]
 
 INDEXES = [
+    "CREATE INDEX legacy_baggage_candidate_id IF NOT EXISTS FOR (b:LegacyBaggageCandidate) ON (b.id)",
     "CREATE INDEX review_baggage_id IF NOT EXISTS FOR (b:ReviewBaggage) ON (b.id)",
     "CREATE INDEX unscanned_baggage_id IF NOT EXISTS FOR (b:UnscannedBaggage) ON (b.id)",
     "CREATE INDEX baggage_review_status IF NOT EXISTS FOR (b:Baggage) ON (b.review_status)",

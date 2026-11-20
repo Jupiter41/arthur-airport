@@ -1,5 +1,7 @@
 # analysis-service — execution contract
 
+Build identity and readiness follow the [RC14 immutable deployment contract](../../infra/DOCKER.md#coherent-builds-and-rollout-rc14-2026-11-20), including `GET /build`.
+
 Port: 8007. Consumes domain facts, detects bottlenecks, projects interventions,
 and proposes actions. It never writes another service's operational entities.
 

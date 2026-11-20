@@ -1,5 +1,7 @@
 # sim-orchestrator — specification
 
+Build identity and readiness follow the [RC14 immutable deployment contract](../../infra/DOCKER.md#coherent-builds-and-rollout-rc14-2026-11-20), including `GET /build`.
+
 ## Settings contract (RC13, 2026-11-19)
 
 GET/PATCH `/api/v1/sim/settings` retain legacy flat fields and include `requested`

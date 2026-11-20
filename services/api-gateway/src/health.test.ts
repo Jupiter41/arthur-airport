@@ -81,3 +81,30 @@ describe("complete digital twin readiness", () => {
     assert.equal(res.body.planning_service, "ok");
   });
 });
+
+it("fails readiness for a mismatched owner build while operational checks remain healthy", async () => {
+  const builds = require("./buildIdentity") as typeof import("./buildIdentity");
+  const local = {schema_version:1,service:"api-gateway",revision:"release",dirty:false,
+    shared_sha256:"contract",config_sha256:"config",integrity:true,errors:[]};
+  mock.method(builds,"buildRequired",() => true);
+  mock.method(builds,"getBuildIdentity",() => local);
+  mock.method(kafka,"isKafkaConnected",() => true);
+  mock.method(kafka,"isKafkaFresh",() => true);
+  let mismatch = true;
+  mock.method(globalThis,"fetch",async (url: string) => {
+    if (url.endsWith("/ready")) return {ok:true};
+    const key = Object.keys(UPSTREAM).find(key => url === `${UPSTREAM[key]}/build`)!;
+    const names: Record<string,string> = {flights:"flight-service",passengers:"passenger-service",baggage:"baggage-service",
+      weather:"weather-service",incidents:"incident-service",sim:"sim-orchestrator",analysis:"analysis-service",costs:"cost-service",planning:"planning-service"};
+    return {ok:true,json:async () => ({...local,service:names[key],revision:mismatch && key === "baggage" ? "old" : local.revision})};
+  });
+  const rejected = response();
+  await handleReady({} as never,rejected as never);
+  assert.equal(rejected.statusCode,503);
+  assert.equal(rejected.body.upstream,true);
+  assert.equal(rejected.body.build_identity,false);
+  mismatch = false;
+  const accepted = response();
+  await handleReady({} as never,accepted as never);
+  assert.equal(accepted.statusCode,200);
+});

@@ -31,10 +31,10 @@ async def allocate_baggage_tags(tx: Any, rows: list[dict]) -> None:
         # One-time migration reads only this owner's tag identities. Archives
         # retain their barcode too, so legacy history cannot be reassigned.
         record = await (await tx.run(
-            "CALL { MATCH (b:Baggage) RETURN max(toInteger(b.tag)) AS live } "
-            "CALL { MATCH (b:BaggageArchive) RETURN max(toInteger(b.tag)) AS archived } "
-            "RETURN CASE WHEN coalesce(live, 0) > coalesce(archived, 0) "
-            "THEN coalesce(live, 0) ELSE coalesce(archived, 0) END AS last"
+            "CALL { MATCH (b:Baggage) RETURN max(toInteger(b.tag)) AS tag "
+            "UNION ALL MATCH (b:BaggageArchive) RETURN max(toInteger(b.tag)) AS tag "
+            "UNION ALL MATCH (b:LegacyBaggage) RETURN max(toInteger(b.tag)) AS tag } "
+            "RETURN coalesce(max(tag), 999999999) AS last"
         )).single()
         start = max(1_000_000_000, record["last"] + 1)
     if start + len(rows) > 10_000_000_000:

@@ -1,5 +1,7 @@
 # cost-service — Specification
 
+Build identity and readiness follow the [RC14 immutable deployment contract](../../infra/DOCKER.md#coherent-builds-and-rollout-rc14-2026-11-20), including `GET /build`.
+
 **Port:** 8008  
 **Language:** Python 3.11 / FastAPI  
 **Status:** Durable airport-perspective ledger; G2 closed (2026-11-13); remaining intelligence gaps in `archive/ROADMAP_REAL_LDT.md`

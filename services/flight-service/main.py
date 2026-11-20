@@ -4,6 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+from _common.build_identity import install_build_identity
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -179,6 +180,8 @@ app = FastAPI(title="flight-service", lifespan=lifespan)
 
 from _common._tracing import init_tracing  # noqa: E402
 init_tracing(app, "flight-service")
+
+install_build_identity(app, "flight-service")
 
 Instrumentator().instrument(app).expose(app)
 

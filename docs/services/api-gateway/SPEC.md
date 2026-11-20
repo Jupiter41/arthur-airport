@@ -1,5 +1,13 @@
 # api-gateway — specification
 
+## Build identity (RC14)
+
+`GET /build` reports immutable build provenance and runtime integrity. `/ready`
+checks owner identities as well as operational readiness, and rejects a mixed
+revision/shared-contract/configuration deployment. See infra/DOCKER.md for the
+cross-service hashing and rollout contract. Diagnostic build endpoints expose
+only hashes/revision/service and never credentials or environment contents.
+
 ## Effective settings aggregation (RC13)
 
 GET `/api/v1/sim/settings` preserves the orchestrator's requested preferences

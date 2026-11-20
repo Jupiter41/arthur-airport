@@ -3,6 +3,7 @@ import json
 import logging
 from contextlib import asynccontextmanager, suppress
 
+from _common.build_identity import install_build_identity
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -103,6 +104,9 @@ async def lifespan(app: FastAPI):
     loaded = await flight_view.bootstrap(flight_view.VIEW, get_driver, checkpoint)
     logger.info("FlightView bootstrapped: %d flights (stamp=%s)", loaded, checkpoint)
 
+    from services.legacy_identity import migrate_legacy_identity
+    await migrate_legacy_identity(checkpoint)
+
     # 5. Register WebSocket broadcast callback
     set_ws_broadcast(ws_broadcast)
 
@@ -166,6 +170,8 @@ app = FastAPI(title="baggage-service", lifespan=lifespan)
 
 from _common._tracing import init_tracing  # noqa: E402
 init_tracing(app, "baggage-service")
+
+install_build_identity(app, "baggage-service")
 
 Instrumentator().instrument(app).expose(app)
 

@@ -3,6 +3,7 @@ import json
 import logging
 from contextlib import asynccontextmanager, suppress
 
+from _common.build_identity import install_build_identity
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -190,6 +191,8 @@ app = FastAPI(title="passenger-service", lifespan=lifespan)
 
 from _common._tracing import init_tracing  # noqa: E402
 init_tracing(app, "passenger-service")
+
+install_build_identity(app, "passenger-service")
 
 Instrumentator().instrument(app).expose(app)
 

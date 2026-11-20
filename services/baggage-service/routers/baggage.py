@@ -22,6 +22,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1")
 
 
+@router.get("/baggage/legacy-summary")
+async def legacy_summary() -> dict:
+    from db.neo4j import get_driver
+    async with get_driver().session() as session:
+        summary = await (await session.run(
+            "OPTIONAL MATCH (m:LegacyBaggageDisposition {id: 'rc14-identity-v1'}) "
+            "RETURN properties(m) AS migration"
+        )).single()
+        count = await (await session.run("MATCH (b:LegacyBaggage) RETURN count(b) AS n")).single()
+    return {"migration": summary["migration"], "retained_quarantine": count["n"]}
+
+
 @router.get("/baggage/configuration")
 async def baggage_configuration() -> dict:
     """Nominal values from the initialized conveyor and screening model."""

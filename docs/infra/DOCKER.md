@@ -1,5 +1,32 @@
 # Docker & docker-compose — specification
 
+## Coherent builds and rollout (RC14, 2026-11-20)
+
+Application builds use repository-root contexts and bake shared `_common` code
+and `config` into each image. Default and Pi deployments do not bind-mount these
+directories. The storage guard passes one Git revision and dirty flag to every
+selected build. Images expose `/build` (Python/gateway) or `/build.json`
+(dashboard), containing schema version, service, revision, dirty flag, source,
+runtime artifact, shared-contract and configuration SHA-256 digests. Hashes are
+computed from the actual copied/build output, with deterministic relative paths.
+Revision is provenance; content hashes verify what is running.
+
+Python/gateway runtime readiness rejects missing or changed build artifacts,
+shared code or configuration in required-build mode (enabled in images).
+Gateway readiness also rejects owners with missing identity, mismatched revision,
+shared/config digests, or failed integrity. `/build` remains available for diagnosis
+independently of Kafka/database readiness. Native development without an image
+reports unverified identity; it must not certify a deployment. Dirty snapshots
+are labelled; the rollout verifier requires clean builds and expected hashes.
+The external verifier includes the dashboard and records image IDs. It must fail
+on partial rollout, a stale shared-library overlay, or an unexpected image.
+
+Existing volumes are preserved during rollout. Snapshot the stopped legacy graph
+before owner migrations. Restore the durable clock rather than resetting the
+airport. Run arrival/transfer, bounded recovery/restart and 23:30/midnight checks
+against the deployed graph. Legacy baggage policy is specified by its owner;
+never fabricate missing passenger nodes or links to make validation pass.
+
 **Project:** Arthur International Airport Digital Twin  
 **Runtime:** Docker ≥ 24 · Docker Compose ≥ 2.20  
 **File:** `docker-compose.yml` at repo root

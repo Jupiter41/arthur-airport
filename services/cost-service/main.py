@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
+from _common.build_identity import install_build_identity
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -143,6 +144,8 @@ app = FastAPI(
 )
 
 # Prometheus metrics
+install_build_identity(app, "cost-service")
+
 Instrumentator().instrument(app).expose(app)
 
 # Mount router

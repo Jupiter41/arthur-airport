@@ -1,5 +1,7 @@
 # passenger-service — specification
 
+Build identity and readiness follow the [RC14 immutable deployment contract](../../infra/DOCKER.md#coherent-builds-and-rollout-rc14-2026-11-20), including `GET /build`.
+
 ### Raspberry runtime profile (2026-10-15)
 
 `FORECAST_TRAINING_ENABLED=false` disables collection, parquet writes, and all
