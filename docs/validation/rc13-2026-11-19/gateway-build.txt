@@ -1,4 +1,3 @@
 
 > api-gateway@0.1.0 build
 > tsc --outDir /tmp/rc13-gateway-dist
-
